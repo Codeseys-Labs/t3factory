@@ -39,6 +39,8 @@ export type ProjectCoordinatorIntent = typeof ProjectCoordinatorIntent.Type;
 
 const Binding = Schema.Struct({
   intent: Schema.fromJsonString(ProjectCoordinatorIntent),
+  revision: Schema.Int,
+  kind: Schema.Literals(["launch", "assignment"]),
   accepted: Schema.Literals([0, 1]),
   superseded: Schema.Literals([0, 1]),
 });
@@ -59,8 +61,16 @@ export class ProjectCoordinators extends Context.Service<
     >;
     readonly reserve: (
       intent: ProjectCoordinatorIntent,
+      expectedRevision?: number,
     ) => Effect.Effect<ProjectCoordinatorBinding, ProjectCoordinatorError>;
-    readonly accept: (threadId: ThreadId) => Effect.Effect<void, ProjectCoordinatorError>;
+    readonly assign: (
+      intent: ProjectCoordinatorIntent,
+      expectedRevision: number,
+    ) => Effect.Effect<ProjectCoordinatorBinding, ProjectCoordinatorError>;
+    readonly accept: (
+      threadId: ThreadId,
+      requestCommandId: CommandId,
+    ) => Effect.Effect<void, ProjectCoordinatorError>;
   }
 >()("t3/persistence/ProjectCoordinators") {}
 
@@ -72,7 +82,7 @@ const make = Effect.gen(function* () {
     Request: ProjectId,
     Result: Binding,
     execute: (projectId) => sql`
-      SELECT intent_json AS intent, accepted, superseded FROM project_coordinators
+      SELECT intent_json AS intent, accepted, superseded, revision, kind FROM project_coordinators
       WHERE project_id = ${projectId} AND superseded = 0
     `,
   });
@@ -80,7 +90,7 @@ const make = Effect.gen(function* () {
     Request: CommandId,
     Result: Binding,
     execute: (commandId) => sql`
-      SELECT intent_json AS intent, accepted, superseded FROM project_coordinators
+      SELECT intent_json AS intent, accepted, superseded, revision, kind FROM project_coordinators
       WHERE request_command_id = ${commandId}
     `,
   });
@@ -88,7 +98,7 @@ const make = Effect.gen(function* () {
     Request: Schema.Void,
     Result: Binding,
     execute: () => sql`
-      SELECT intent_json AS intent, accepted, superseded FROM project_coordinators
+      SELECT intent_json AS intent, accepted, superseded, revision, kind FROM project_coordinators
       WHERE superseded = 0 ORDER BY project_id
     `,
   });
@@ -106,53 +116,85 @@ const make = Effect.gen(function* () {
   const list = Effect.fn("ProjectCoordinators.list")(() =>
     findAllCurrent(undefined).pipe(Effect.mapError(persistenceError)),
   );
-  const reserve = Effect.fn("ProjectCoordinators.reserve")((intent: ProjectCoordinatorIntent) =>
-    sql
-      .withTransaction(
-        Effect.gen(function* () {
-          // Request identity precedes the current binding, including after replacement or deletion.
-          const replay = yield* findRequest(intent.requestCommandId);
-          if (Option.isSome(replay)) {
-            if (replay.value.intent.projectId !== intent.projectId) {
-              return yield* new ProjectCoordinatorError({ reason: "command-conflict" });
+  const save = Effect.fn("ProjectCoordinators.save")(
+    (
+      intent: ProjectCoordinatorIntent,
+      kind: ProjectCoordinatorBinding["kind"],
+      expectedRevision?: number,
+    ) =>
+      sql
+        .withTransaction(
+          Effect.gen(function* () {
+            // Request identity precedes the current binding, including after replacement or deletion.
+            const replay = yield* findRequest(intent.requestCommandId);
+            if (Option.isSome(replay)) {
+              if (
+                replay.value.intent.projectId !== intent.projectId ||
+                replay.value.kind !== kind ||
+                (kind === "assignment" &&
+                  (replay.value.intent.threadId !== intent.threadId ||
+                    replay.value.revision - 1 !== expectedRevision))
+              ) {
+                return yield* new ProjectCoordinatorError({ reason: "command-conflict" });
+              }
+              return replay.value;
             }
-            return replay.value;
-          }
-          const current = yield* findCurrent(intent.projectId);
-          if (Option.isSome(current)) {
-            if (current.value.intent.threadId !== intent.previousThreadId) return current.value;
-          } else if (intent.previousThreadId !== null) {
-            return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
-          }
-          const json = yield* encode(intent);
-          if (Option.isSome(current)) {
-            yield* sql`
+            const current = yield* findCurrent(intent.projectId);
+            if (
+              expectedRevision !== undefined &&
+              (Option.isSome(current) ? current.value.revision : 0) !== expectedRevision
+            )
+              return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
+            if (Option.isSome(current)) {
+              if (kind === "assignment" && current.value.intent.threadId === intent.threadId)
+                return yield* new ProjectCoordinatorError({ reason: "ineligible-thread" });
+              if (current.value.intent.threadId !== intent.previousThreadId) {
+                if (expectedRevision !== undefined)
+                  return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
+                return current.value;
+              }
+            } else if (intent.previousThreadId !== null) {
+              return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
+            }
+            const json = yield* encode(intent);
+            if (Option.isSome(current)) {
+              yield* sql`
             UPDATE project_coordinators SET superseded = 1
-            WHERE thread_id = ${current.value.intent.threadId} AND superseded = 0
+            WHERE request_command_id = ${current.value.intent.requestCommandId} AND superseded = 0
           `;
-          }
-          // A constraint failure must roll back superseding, never silently lose the current row.
-          yield* sql`
+            }
+            // A constraint failure must roll back superseding, never silently lose the current row.
+            yield* sql`
           INSERT INTO project_coordinators
-            (thread_id, project_id, request_command_id, intent_json)
-          VALUES (${intent.threadId}, ${intent.projectId}, ${intent.requestCommandId}, ${json})
+            (thread_id, project_id, request_command_id, revision, kind, intent_json, accepted)
+          VALUES (${intent.threadId}, ${intent.projectId}, ${intent.requestCommandId},
+            ${Option.isSome(current) ? current.value.revision + 1 : 1}, ${kind}, ${json}, ${kind === "assignment" ? 1 : 0})
         `;
-          const winner = yield* findCurrent(intent.projectId);
-          if (Option.isNone(winner)) {
-            return yield* new ProjectCoordinatorError({ reason: "persistence-failure" });
-          }
-          return winner.value;
-        }),
-      )
-      .pipe(Effect.mapError(persistenceError)),
+            const winner = yield* findCurrent(intent.projectId);
+            if (Option.isNone(winner)) {
+              return yield* new ProjectCoordinatorError({ reason: "persistence-failure" });
+            }
+            return winner.value;
+          }),
+        )
+        .pipe(Effect.mapError(persistenceError)),
   );
-  const accept = Effect.fn("ProjectCoordinators.accept")((threadId: ThreadId) =>
-    sql`UPDATE project_coordinators SET accepted = 1 WHERE thread_id = ${threadId}`.pipe(
-      Effect.asVoid,
-      Effect.mapError(persistenceError),
-    ),
+  const reserve = Effect.fn("ProjectCoordinators.reserve")(
+    (intent: ProjectCoordinatorIntent, expectedRevision?: number) =>
+      save(intent, "launch", expectedRevision),
   );
-  return ProjectCoordinators.of({ get, getByRequest, list, reserve, accept });
+  const assign = Effect.fn("ProjectCoordinators.assign")(
+    (intent: ProjectCoordinatorIntent, expectedRevision: number) =>
+      save(intent, "assignment", expectedRevision),
+  );
+  const accept = Effect.fn("ProjectCoordinators.accept")(
+    (threadId: ThreadId, requestCommandId: CommandId) =>
+      sql`UPDATE project_coordinators SET accepted = 1 WHERE thread_id = ${threadId} AND request_command_id = ${requestCommandId} AND kind = 'launch'`.pipe(
+        Effect.asVoid,
+        Effect.mapError(persistenceError),
+      ),
+  );
+  return ProjectCoordinators.of({ get, getByRequest, list, reserve, assign, accept });
 });
 
 export const layer = Layer.effect(ProjectCoordinators, make);

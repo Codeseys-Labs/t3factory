@@ -48,6 +48,23 @@ describe("orchestrator MCP contracts", () => {
     expect(result.status).toBe("completed");
     expect(result.summary).toBe("Workspace inspected.");
     expect(result.pendingApproval).toBeNull();
+    expect(result.baseCommit).toBeUndefined();
+    expect(result.resultCommit).toBeUndefined();
+    const baseCommit = "a".repeat(40);
+    const resultCommit = "b".repeat(40);
+    expect(
+      decodeDelegateTaskInput({ ...request, isolation: "worktree", baseRef: baseCommit }).baseRef,
+    ).toBe(baseCommit);
+    expect(decodeDelegateTaskResult({ ...result, baseCommit, resultCommit })).toMatchObject({
+      baseCommit,
+      resultCommit,
+    });
+    expect(
+      decodeDelegateTaskResult({ ...result, baseCommit: null, resultCommit: null }),
+    ).toMatchObject({
+      baseCommit: null,
+      resultCommit: null,
+    });
     const pendingApproval = {
       requestId: "request-approval-1",
       kind: "command",

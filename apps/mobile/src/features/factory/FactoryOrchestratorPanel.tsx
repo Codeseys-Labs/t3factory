@@ -1,15 +1,26 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { projectCoordinatorCandidates } from "@t3tools/client-runtime/state/factory";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import {
   AuthOrchestrationReadScope,
   CommandId,
+  EnvironmentAuthorizationError,
   type EnvironmentId,
   type ProjectCoordinatorEnsureInput,
+  type ProjectCoordinator,
+  type ProjectCoordinatorAssignInput,
+  ProjectCoordinatorError,
   type ProjectId,
+  type ThreadId,
   type ProviderInteractionMode,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { useLayoutEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
@@ -19,6 +30,7 @@ import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { uuidv4 } from "../../lib/uuid";
 import { factoryEnvironment } from "../../state/factory";
 import { useEnvironmentQuery } from "../../state/query";
+import { environmentThreadShells } from "../../state/threads";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsSection } from "../settings/components/SettingsSection";
@@ -90,6 +102,7 @@ export function FactoryOrchestratorPanel({
       commandId: CommandId.make(uuidv4()),
       projectId,
       expectedThreadId: coordinator?.threadId ?? null,
+      expectedRevision: coordinator?.revision ?? 0,
       modelSelection,
       runtimeMode:
         coordinator?.status === "launching" ? coordinator.runtimeMode : selection.runtimeMode,
@@ -272,7 +285,161 @@ export function FactoryOrchestratorPanel({
           {failure}
         </Text>
       ) : null}
+      {launch.config?.environment.capabilities.projectCoordinatorAssignments === true ? (
+        <AssignCoordinator
+          environmentId={environmentId}
+          projectId={projectId}
+          coordinator={coordinator}
+          ready={query.isSuccess && !pending && review === null}
+          onReview={query.refresh}
+        />
+      ) : null}
       <Button label="Refresh orchestrator" disabled={pending || !canRead} onPress={query.refresh} />
+    </View>
+  );
+}
+
+const isCoordinatorError = Schema.is(ProjectCoordinatorError);
+const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
+
+function assignmentFailure(error: unknown): { message: string; requiresReview: boolean } {
+  if (isAuthorizationError(error))
+    return {
+      message: "This connection does not have permission to assign a coordinator.",
+      requiresReview: true,
+    };
+  if (isCoordinatorError(error) && error.reason !== "persistence-failure")
+    return { message: error.message, requiresReview: true };
+  return {
+    message:
+      "Could not assign this thread. Check the connection, then retry; retry preserves this exact request.",
+    requiresReview: false,
+  };
+}
+
+function AssignCoordinator({
+  environmentId,
+  projectId,
+  coordinator,
+  ready,
+  onReview,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly projectId: ProjectId;
+  readonly coordinator: ProjectCoordinator | null;
+  readonly ready: boolean;
+  readonly onReview: () => void;
+}) {
+  const focused = useIsFocused();
+  const canAssign = useAtomValue(
+    factoryEnvironment.coordinatorsAssign.permissionAtom(environmentId),
+  );
+  const assign = useAtomCommand(factoryEnvironment.coordinatorsAssign, { reportFailure: false });
+  const candidates = projectCoordinatorCandidates(
+    useAtomValue(
+      environmentThreadShells.threadShellsForProjectRefsAtom([
+        scopeProjectRef(environmentId, projectId),
+      ]),
+    ),
+    { environmentId, projectId, currentThreadId: coordinator?.threadId ?? null },
+  );
+  const [threadId, setThreadId] = useState<ThreadId | null>(null);
+  const [visibleCandidates, setVisibleCandidates] = useState(20);
+  const [request, setRequest] = useState<ProjectCoordinatorAssignInput | null>(null);
+  const [pending, setPending] = useState(false);
+  const [failure, setFailure] = useState<{ message: string; requiresReview: boolean } | null>(null);
+  const inFlight = useRef(false);
+  const selected = candidates.find((thread) => thread.id === threadId) ?? null;
+  const blocked = !canAssign || !ready || pending || failure?.requiresReview === true;
+  const submit = async () => {
+    const input =
+      request ??
+      (selected === null
+        ? null
+        : {
+            commandId: CommandId.make(uuidv4()),
+            projectId,
+            threadId: selected.id,
+            expectedRevision: coordinator?.revision ?? 0,
+          });
+    if (inFlight.current || blocked || !focused || input === null) return;
+    inFlight.current = true;
+    setRequest(input);
+    setPending(true);
+    setFailure(null);
+    const result = await assign({ environmentId, input });
+    inFlight.current = false;
+    setPending(false);
+    if (result._tag === "Success") {
+      setRequest(null);
+      if (!result.value.coordinator.current)
+        setFailure({
+          message:
+            "This request refers to an earlier assignment. Review the refreshed coordinator.",
+          requiresReview: true,
+        });
+    } else if (!isAtomCommandInterrupted(result)) {
+      setFailure(assignmentFailure(squashAtomCommandFailure(result)));
+    }
+  };
+  const review = () => {
+    setRequest(null);
+    setFailure(null);
+    onReview();
+  };
+  return (
+    <View className="gap-3">
+      <Text className="text-sm text-foreground-muted">
+        Set an existing ordinary thread as coordinator. This sends no message and starts no new
+        work. It does not stop existing or pending work; schedules and active tasks stay on their
+        threads.
+      </Text>
+      {coordinator?.status === "launching" ? (
+        <Text className="text-sm text-foreground-muted">
+          A start is pending for the current coordinator. Reassigning removes its resume option but
+          does not cancel a launch that already began.
+        </Text>
+      ) : null}
+      <Text className="text-sm text-foreground">
+        {selected
+          ? `Selected: ${selected.title} (${selected.id.slice(-8)})`
+          : candidates.length === 0
+            ? "No eligible threads in this project."
+            : "Choose a thread:"}
+      </Text>
+      {candidates.slice(0, visibleCandidates).map((thread) => (
+        <Button
+          key={thread.id}
+          label={`${thread.title} (${thread.id.slice(-8)})`}
+          tone={thread.id === selected?.id ? "primary" : "secondary"}
+          disabled={!canAssign || !ready || pending}
+          onPress={() => {
+            setThreadId(thread.id);
+            setRequest(null);
+            setFailure(null);
+          }}
+        />
+      ))}
+      {candidates.length > visibleCandidates ? (
+        <Button
+          label="Show more threads"
+          onPress={() => setVisibleCandidates((count) => count + 20)}
+        />
+      ) : null}
+      <Button
+        label={request ? "Retry assignment" : "Set project coordinator"}
+        loading={pending}
+        disabled={blocked || (request === null && selected === null)}
+        onPress={() => void submit()}
+      />
+      {request !== null || failure?.requiresReview === true ? (
+        <Button label="Review refreshed binding" disabled={pending} onPress={review} />
+      ) : null}
+      {failure ? (
+        <Text accessibilityRole="alert" className="text-sm text-danger-foreground">
+          {failure.message}
+        </Text>
+      ) : null}
     </View>
   );
 }

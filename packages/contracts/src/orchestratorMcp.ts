@@ -176,6 +176,12 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
         "'shared' (default): parent checkout. 'worktree': new prepared checkout from the parent commit, for a separate checkout or PR per child. Uncommitted edits stay out.",
     }),
   ),
+  baseRef: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description:
+        "With isolation 'worktree' only: commit or ref to resolve before launch. Default: parent commit.",
+    }),
+  ),
   mode: Schema.optional(
     Schema.Literals(["async", "wait"]).annotate({
       description:
@@ -216,6 +222,9 @@ export const OrchestratorMcpDelegateTaskResult = Schema.Struct({
   workState: Schema.Literals(["working", "waiting_for_children", "result_available"]),
   hasPendingChildRuns: Schema.Boolean,
   latestTerminalRunId: Schema.NullOr(RunId),
+  baseCommit: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  /** Ready checkpoint commit for latestTerminalRunId, never the child's current HEAD. */
+  resultCommit: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   latestTerminalStatus: Schema.NullOr(OrchestratorMcpTerminalDelegatedTaskStatus),
   latestTerminalSummary: Schema.NullOr(Schema.String),
   latestTerminalResultContextTransferId: Schema.NullOr(ContextTransferId),

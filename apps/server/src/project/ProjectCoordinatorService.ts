@@ -5,6 +5,8 @@ import {
   RunId,
   ThreadId,
   type ProjectCoordinator,
+  type ProjectCoordinatorAssignInput,
+  type ProjectCoordinatorAssignResult,
   type ProjectCoordinatorEnsureInput,
   type ProjectCoordinatorEnsureResult,
   type ProjectCoordinatorGetInput,
@@ -43,6 +45,10 @@ export class ProjectCoordinatorService extends Context.Service<
     readonly ensure: (
       input: ProjectCoordinatorEnsureInput,
     ) => Effect.Effect<ProjectCoordinatorEnsureResult, ProjectCoordinatorError>;
+    readonly assign: (
+      input: ProjectCoordinatorAssignInput,
+      provenance?: Pick<Bindings.ProjectCoordinatorIntent, "createdBy" | "creationSource">,
+    ) => Effect.Effect<ProjectCoordinatorAssignResult, ProjectCoordinatorError>;
   }
 >()("t3/project/ProjectCoordinatorService") {}
 
@@ -159,6 +165,7 @@ const make = Effect.gen(function* () {
       interactionMode: intent.interactionMode,
       createdAt: intent.createdAt,
       current: binding.superseded === 0,
+      revision: binding.revision,
     } satisfies ProjectCoordinator;
     return { coordinator, orientationAccepted, latestRunId };
   });
@@ -197,7 +204,8 @@ const make = Effect.gen(function* () {
     const inspected = yield* inspect(binding);
     let { coordinator } = inspected;
     // A historical command is an immutable reference, never a new launch authorization.
-    if (binding.superseded === 1) return { coordinator, resumed: true };
+    if (binding.superseded === 1 || binding.kind === "assignment")
+      return { coordinator, resumed: true };
     if (
       binding.accepted === 0 &&
       coordinator.status !== "missing" &&
@@ -244,8 +252,10 @@ const make = Effect.gen(function* () {
           runId: inspected.latestRunId,
         });
       }
-      yield* bindings.accept(intent.threadId);
-      coordinator = (yield* inspect({ ...binding, accepted: 1 })).coordinator;
+      yield* bindings.accept(intent.threadId, intent.requestCommandId);
+      const acknowledged = yield* bindings.getByRequest(intent.requestCommandId);
+      if (Option.isSome(acknowledged))
+        coordinator = (yield* inspect(acknowledged.value)).coordinator;
     }
     return { coordinator, resumed };
   });
@@ -258,17 +268,38 @@ const make = Effect.gen(function* () {
         const project = yield* requireOwner(input.projectId);
         const replay = yield* bindings.getByRequest(input.commandId);
         if (Option.isSome(replay)) {
-          if (replay.value.intent.projectId !== input.projectId)
+          if (replay.value.intent.projectId !== input.projectId || replay.value.kind !== "launch")
             return yield* new ProjectCoordinatorError({ reason: "command-conflict" });
+          if (
+            replay.value.superseded === 0 &&
+            replay.value.accepted === 0 &&
+            input.expectedRevision === undefined &&
+            replay.value.revision > 1
+          )
+            return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
           return yield* resume(replay.value, true);
         }
         const existing = yield* bindings.get(input.projectId);
         let previousThreadId: ThreadId | null = null;
         if (Option.isSome(existing)) {
           const { coordinator } = yield* inspect(existing.value);
+          if (
+            input.expectedRevision !== undefined &&
+            input.expectedRevision !== existing.value.revision
+          )
+            return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
           if (input.expectedThreadId !== null && input.expectedThreadId !== coordinator.threadId)
             return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
-          if (coordinator.status !== "missing") return yield* resume(existing.value, true);
+          if (coordinator.status !== "missing") {
+            // Legacy clients can observe bindings, but cannot recover a newer unaccepted launch.
+            if (
+              existing.value.accepted === 0 &&
+              existing.value.revision > 1 &&
+              input.expectedRevision === undefined
+            )
+              return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
+            return yield* resume(existing.value, true);
+          }
           if (input.replaceRetired !== true)
             return yield* new ProjectCoordinatorError({
               reason:
@@ -279,8 +310,13 @@ const make = Effect.gen(function* () {
             });
           if (input.expectedThreadId !== coordinator.threadId)
             return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
+          if (input.expectedRevision === undefined)
+            return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
           previousThreadId = coordinator.threadId;
-        } else if (input.expectedThreadId !== null) {
+        } else if (
+          input.expectedThreadId !== null ||
+          (input.expectedRevision !== undefined && input.expectedRevision !== 0)
+        ) {
           return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
         }
         yield* assertModes(input);
@@ -323,12 +359,76 @@ const make = Effect.gen(function* () {
         const currentProject = yield* requireOwner(input.projectId);
         if (currentProject.workspaceRoot !== intent.workspaceRoot)
           return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
-        const winner = yield* bindings.reserve(intent);
+        const winner = yield* bindings.reserve(intent, input.expectedRevision ?? 0);
         return yield* resume(winner, winner.intent.threadId !== intent.threadId);
       }),
     );
   });
-  return ProjectCoordinatorService.of({ get, list, ensure });
+  const assign = Effect.fn("ProjectCoordinatorService.assign")(function* (
+    input: ProjectCoordinatorAssignInput,
+    provenance: Pick<Bindings.ProjectCoordinatorIntent, "createdBy" | "creationSource"> = {
+      createdBy: "user",
+      creationSource: "web",
+    },
+  ): Effect.fn.Return<ProjectCoordinatorAssignResult, ProjectCoordinatorError> {
+    return yield* locks.withLock(
+      input.projectId,
+      Effect.gen(function* () {
+        const replay = yield* bindings.getByRequest(input.commandId);
+        if (Option.isSome(replay)) {
+          if (
+            replay.value.kind !== "assignment" ||
+            replay.value.intent.projectId !== input.projectId ||
+            replay.value.intent.threadId !== input.threadId ||
+            replay.value.revision - 1 !== input.expectedRevision
+          )
+            return yield* new ProjectCoordinatorError({ reason: "command-conflict" });
+          return { coordinator: (yield* inspect(replay.value)).coordinator };
+        }
+        const project = yield* requireOwner(input.projectId);
+        const target = yield* threads
+          .getThreadShell(input.threadId)
+          .pipe(
+            Effect.mapError(
+              (cause) => new ProjectCoordinatorError({ reason: "persistence-failure", cause }),
+            ),
+          );
+        if (
+          target === null ||
+          target.projectId !== input.projectId ||
+          target.deletedAt !== null ||
+          target.archivedAt !== null ||
+          target.lineage.relationshipToParent === "subagent" ||
+          target.linkOrigin !== undefined ||
+          target.delegatedFrom !== undefined
+        )
+          return yield* new ProjectCoordinatorError({ reason: "ineligible-thread" });
+        const current = yield* bindings.get(input.projectId);
+        // Assigned records are already accepted and never enter launch recovery.
+        const binding = yield* bindings.assign(
+          {
+            projectId: input.projectId,
+            workspaceRoot: project.workspaceRoot,
+            requestCommandId: input.commandId,
+            commandId: input.commandId,
+            threadId: input.threadId,
+            messageId: MessageId.make(`${input.commandId}:unused`),
+            prompt: "",
+            modelSelection: target.modelSelection,
+            runtimeMode: target.runtimeMode,
+            interactionMode: target.interactionMode,
+            createdBy: provenance.createdBy,
+            creationSource: provenance.creationSource,
+            createdAt: DateTime.formatIso(yield* DateTime.now),
+            previousThreadId: Option.isSome(current) ? current.value.intent.threadId : null,
+          },
+          input.expectedRevision,
+        );
+        return { coordinator: (yield* inspect(binding)).coordinator };
+      }),
+    );
+  });
+  return ProjectCoordinatorService.of({ get, list, ensure, assign });
 });
 
 export const layer = Layer.effect(ProjectCoordinatorService, make);

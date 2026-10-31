@@ -2638,6 +2638,11 @@ export const layerWsRpc = (
           }),
         [WS_METHODS.projectCoordinatorsGet]: (input) => projectCoordinators.get(input),
         [WS_METHODS.projectCoordinatorsList]: (_input) => projectCoordinators.list(),
+        [WS_METHODS.projectCoordinatorsAssign]: (input) =>
+          projectCoordinators.assign(input, {
+            createdBy: "user",
+            creationSource: clientAnalyticsProps.surface === "mobile" ? "mobile" : "web",
+          }),
         [WS_METHODS.projectCoordinatorsEnsure]: (input) =>
           projectCoordinators.ensure({
             ...input,

@@ -3,11 +3,13 @@ import {
   type EnvironmentId,
   type FactoryResearchProtocolId,
   type ProjectId,
+  type ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
+import type { EnvironmentThreadShell } from "./models.ts";
 import { createEnvironmentRpcCommand, createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
 
 export function createFactoryEnvironmentAtoms<R, E>(
@@ -460,13 +462,34 @@ export function createFactoryEnvironmentAtoms<R, E>(
     }),
     coordinatorsGet,
     coordinatorsList,
+    coordinatorsAssign: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:factory:coordinators:assign",
+      tag: WS_METHODS.projectCoordinatorsAssign,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.projectId, input.threadId, input.expectedRevision]),
+      },
+      onSettled: ({ environmentId, input }, registry) =>
+        Effect.sync(() => {
+          registry.refresh(
+            coordinatorsGet({ environmentId, input: { projectId: input.projectId } }),
+          );
+          registry.refresh(coordinatorsList({ environmentId, input: {} }));
+        }),
+    }),
     coordinatorsEnsure: createEnvironmentRpcCommand(runtime, {
       label: "environment-command:factory:coordinators:ensure",
       tag: WS_METHODS.projectCoordinatorsEnsure,
       concurrency: {
         mode: "singleFlight",
         key: ({ environmentId, input }) =>
-          JSON.stringify([environmentId, input.projectId, input.expectedThreadId]),
+          JSON.stringify([
+            environmentId,
+            input.projectId,
+            input.expectedThreadId,
+            input.expectedRevision,
+          ]),
       },
       // A failed response can still follow a persisted binding or an accepted launch.
       onSettled: ({ environmentId, input }, registry) =>
@@ -478,6 +501,28 @@ export function createFactoryEnvironmentAtoms<R, E>(
         }),
     }),
   };
+}
+
+/** Client-side mirror of the server's assignment eligibility; the server stays authoritative. */
+export function projectCoordinatorCandidates(
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+  target: {
+    readonly environmentId: EnvironmentId;
+    readonly projectId: ProjectId;
+    readonly currentThreadId: ThreadId | null;
+  },
+): ReadonlyArray<EnvironmentThreadShell> {
+  return threads.filter(
+    (thread) =>
+      thread.environmentId === target.environmentId &&
+      thread.projectId === target.projectId &&
+      thread.id !== target.currentThreadId &&
+      thread.archivedAt === null &&
+      thread.deletedAt === null &&
+      thread.lineage.relationshipToParent !== "subagent" &&
+      thread.linkOrigin === null &&
+      thread.delegatedFrom === null,
+  );
 }
 
 // Review text must expose hidden characters without deleting task content or making a literal

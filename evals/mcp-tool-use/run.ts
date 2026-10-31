@@ -42,6 +42,7 @@ import { buildCodexAdditionalContext } from "../../apps/server/src/provider/Code
 import { AttachmentToolkit } from "../../apps/server/src/mcp/toolkits/attachment/tools.ts";
 import { DeviceToolkit } from "../../apps/server/src/mcp/toolkits/device/tools.ts";
 import { EnvironmentToolkit } from "../../apps/server/src/mcp/toolkits/environment/tools.ts";
+import { FactoryToolkit } from "../../apps/server/src/mcp/toolkits/factory/tools.ts";
 import { HtmlToolkit } from "../../apps/server/src/mcp/toolkits/html/tools.ts";
 import { OrchestratorToolkit } from "../../apps/server/src/mcp/toolkits/orchestrator/tools.ts";
 import { PreviewToolkit } from "../../apps/server/src/mcp/toolkits/preview/tools.ts";
@@ -364,7 +365,13 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
   PreviewToolkit,
   DeviceToolkit,
   HtmlToolkit,
-].flatMap((toolkit): ReadonlyArray<Tool.Any> => Object.values(toolkit.tools));
+]
+  .flatMap((toolkit): ReadonlyArray<Tool.Any> => Object.values(toolkit.tools))
+  .concat([
+    FactoryToolkit.tools.factory_get_orchestrator,
+    FactoryToolkit.tools.factory_start_orchestrator,
+    FactoryToolkit.tools.factory_assign_orchestrator,
+  ]);
 const t3Tools: ReadonlyArray<ApiTool> = t3SourceTools.map((tool) => ({
   name: `${T3_PREFIX}${tool.name}`,
   description: Tool.getDescription(tool) ?? "",

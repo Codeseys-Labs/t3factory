@@ -705,6 +705,7 @@ describe("project coordinator authorization", () => {
     WS_METHODS.projectCoordinatorsGet,
     WS_METHODS.projectCoordinatorsList,
     WS_METHODS.projectCoordinatorsEnsure,
+    WS_METHODS.projectCoordinatorsAssign,
     WS_METHODS.factoryStartIssue,
   ] as const;
   const group = WsRpcGroup.omit(
@@ -732,6 +733,12 @@ describe("project coordinator authorization", () => {
     current: true,
   };
   const fetchedAt = "2026-10-24T00:00:00.000Z";
+  const assignment = {
+    commandId: input.commandId,
+    projectId: input.projectId,
+    threadId: coordinator.threadId,
+    expectedRevision: 0,
+  };
   const makeClient = (scopes: ReadonlyArray<AuthEnvironmentScope>, handled: Array<string>) =>
     RpcTest.makeClient(group).pipe(
       Effect.provide(
@@ -752,6 +759,12 @@ describe("project coordinator authorization", () => {
             Effect.sync(() => {
               handled.push("ensure");
               return { coordinator, resumed: false };
+            }),
+          ),
+          group.toLayerHandler(WS_METHODS.projectCoordinatorsAssign, () =>
+            Effect.sync(() => {
+              handled.push("assign");
+              return { coordinator };
             }),
           ),
           group.toLayerHandler(WS_METHODS.factoryStartIssue, () =>
@@ -775,6 +788,12 @@ describe("project coordinator authorization", () => {
         yield* client[WS_METHODS.projectCoordinatorsEnsure](input).pipe(Effect.flip),
       ).toMatchObject({
         _tag: "EnvironmentAuthorizationError",
+        requiredPermission: AuthOrchestrationOperateScope,
+      });
+      expect(handled).toEqual([]);
+      expect(
+        yield* client[WS_METHODS.projectCoordinatorsAssign](assignment).pipe(Effect.flip),
+      ).toMatchObject({
         requiredPermission: AuthOrchestrationOperateScope,
       });
       expect(handled).toEqual([]);
@@ -829,6 +848,9 @@ describe("project coordinator authorization", () => {
           coordinator,
           resumed: false,
         });
+        expect(yield* client[WS_METHODS.projectCoordinatorsAssign](assignment)).toEqual({
+          coordinator,
+        });
         expect(
           yield* client[WS_METHODS.projectCoordinatorsGet]({
             projectId: input.projectId,
@@ -846,7 +868,7 @@ describe("project coordinator authorization", () => {
             interactionMode: input.interactionMode,
           }).pipe(Effect.flip),
         ).toMatchObject({ requiredPermission: AuthSourceControlWriteScope });
-        expect(handled).toEqual(["ensure"]);
+        expect(handled).toEqual(["ensure", "assign"]);
       }).pipe(Effect.scoped),
   );
 });

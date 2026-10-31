@@ -8,6 +8,7 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  SourceControlProviderKind,
   ThreadId,
   type ProjectCoordinatorEnsureInput,
 } from "@t3tools/contracts";
@@ -22,6 +23,7 @@ import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Coordinator from "./ProjectCoordinatorService.ts";
 import * as Bindings from "../persistence/ProjectCoordinators.ts";
+import * as IssueLaunches from "../persistence/FactoryIssueLaunches.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Projects from "./ProjectService.ts";
 import * as Identities from "./RepositoryIdentityResolver.ts";
@@ -206,6 +208,258 @@ const launchInput = (
   creationSource: intent.creationSource,
 });
 
+it.effect(
+  "assigning an ordinary settled thread preserves its conversation and never launches work",
+  () =>
+    Effect.gen(function* () {
+      yield* seed;
+      const threads = yield* Threads.ThreadManagementService;
+      const service = yield* Coordinator.ProjectCoordinatorService;
+      const threadId = ThreadId.make("ordinary");
+      yield* threads.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("ordinary:create"),
+        threadId,
+        projectId,
+        title: "Existing outcome",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "plan",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* threads.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make("ordinary:settle"),
+        threadId,
+      });
+      const before = yield* threads.getThreadProjection(threadId);
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO scheduled_tasks ${sql.insert({
+        task_id: "fixed-coordinator-watch",
+        title: "Existing watch",
+        prompt: "Inspect the current outcome",
+        enabled: 1,
+        schedule_json: '{"type":"interval","everyMs":60000}',
+        project_id: projectId,
+        thread_id: threadId,
+        workspace_strategy_json: '{"type":"root"}',
+        model_selection_json: JSON.stringify(modelSelection),
+        runtime_mode: "approval-required",
+        interaction_mode: "default",
+        created_by: "user",
+        creation_source: "web",
+        created_at: DateTime.formatIso(before.thread.createdAt),
+        updated_at: DateTime.formatIso(before.thread.updatedAt),
+        next_run_at: null,
+        last_run_at: null,
+        last_run_status: "never",
+        last_run_error: null,
+        run_count: 0,
+      })}`;
+      const issueLaunches = yield* IssueLaunches.FactoryIssueLaunches.pipe(
+        Effect.provide(IssueLaunches.layer),
+      );
+      yield* issueLaunches.reserve({
+        ...savedIntent("claimed-outcome"),
+        threadId,
+        baseRef: "a".repeat(40),
+        repository: {
+          provider: SourceControlProviderKind.make("github"),
+          host: "github.com",
+          repository: "acme/app",
+          canonicalKey: "github.com/acme/app",
+          url: "https://github.com/acme/app",
+        },
+        issue: {
+          number: 7,
+          title: "Existing outcome",
+          body: null,
+          state: "open",
+          url: "https://github.com/acme/app/issues/7",
+          labels: [],
+          updatedAt: "2026-10-24T00:00:00.000Z",
+          task: null,
+        },
+      });
+      yield* issueLaunches.accept(threadId);
+      const schedules = yield* sql`SELECT * FROM scheduled_tasks`;
+      const claims = yield* sql`SELECT * FROM factory_issue_launches`;
+      const request = {
+        commandId: CommandId.make("assign-ordinary"),
+        projectId,
+        threadId,
+        expectedRevision: 0,
+      };
+      const assigned = yield* service.assign(request, {
+        createdBy: "user",
+        creationSource: "mobile",
+      });
+      assert.equal(assigned.coordinator.threadId, threadId);
+      assert.equal(assigned.coordinator.revision, 1);
+      const store = yield* Bindings.ProjectCoordinators;
+      assert.equal(Option.getOrThrow(yield* store.get(projectId)).intent.creationSource, "mobile");
+      assert.equal(
+        (yield* Effect.flip(
+          service.assign({ ...request, commandId: CommandId.make("self"), expectedRevision: 1 }),
+        )).reason,
+        "ineligible-thread",
+      );
+      assert.equal((yield* service.get({ projectId })).coordinator?.revision, 1);
+      assert.deepEqual(yield* threads.getThreadProjection(threadId), before);
+      assert.equal(before.messages.length, 0);
+      assert.equal(before.runs.length, 0);
+      yield* service.ensure({ ...input("open-assigned"), expectedThreadId: threadId });
+      assert.deepEqual(yield* threads.getThreadProjection(threadId), before);
+      const otherThreadId = ThreadId.make("other-ordinary");
+      yield* threads.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("other-ordinary:create"),
+        threadId: otherThreadId,
+        projectId,
+        title: "Another outcome",
+        modelSelection,
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* service.assign(
+        {
+          ...request,
+          commandId: CommandId.make("assign-b"),
+          threadId: otherThreadId,
+          expectedRevision: 1,
+        },
+        { createdBy: "agent", creationSource: "mcp" },
+      );
+      const agentBinding = Option.getOrThrow(yield* store.get(projectId));
+      assert.equal(agentBinding.intent.createdBy, "agent");
+      assert.equal(agentBinding.intent.creationSource, "mcp");
+      yield* service.assign({
+        ...request,
+        commandId: CommandId.make("assign-a-again"),
+        expectedRevision: 2,
+      });
+      const historical = yield* service.assign(request);
+      assert.equal(historical.coordinator.revision, 1);
+      assert.isFalse(historical.coordinator.current);
+      for (const changed of [
+        { expectedRevision: 3 },
+        { threadId: otherThreadId },
+        { projectId: secondProjectId },
+      ]) {
+        assert.equal(
+          (yield* Effect.flip(service.assign({ ...request, ...changed }))).reason,
+          "command-conflict",
+        );
+      }
+      assert.equal(
+        (yield* Effect.flip(
+          service.assign({
+            ...request,
+            commandId: CommandId.make("stale-assignment"),
+            threadId: otherThreadId,
+            expectedRevision: 1,
+          }),
+        )).reason,
+        "binding-changed",
+      );
+      assert.equal(
+        (yield* Effect.flip(
+          service.ensure({
+            ...input("stale-ensure"),
+            expectedThreadId: threadId,
+            expectedRevision: 1,
+          }),
+        )).reason,
+        "binding-changed",
+      );
+      assert.deepEqual(yield* threads.getThreadProjection(threadId), before);
+      assert.deepEqual(yield* sql`SELECT * FROM scheduled_tasks`, schedules);
+      assert.deepEqual(yield* sql`SELECT * FROM factory_issue_launches`, claims);
+      for (const target of [ThreadId.make("absent"), threadId]) {
+        const bad = {
+          ...request,
+          commandId: CommandId.make(`bad:${target}`),
+          threadId: target,
+          projectId: target === threadId ? secondProjectId : projectId,
+          expectedRevision: target === threadId ? 0 : 3,
+        };
+        assert.equal((yield* Effect.flip(service.assign(bad))).reason, "ineligible-thread");
+      }
+      const shell = yield* threads.getThreadShell(threadId);
+      if (shell === null) return assert.fail("Expected the ordinary thread shell");
+      for (const ineligible of [
+        { ...shell, lineage: { ...shell.lineage, relationshipToParent: "subagent" as const } },
+        { ...shell, linkOrigin: { sessionId: "linked-session", label: "Linked environment" } },
+      ]) {
+        const guarded = yield* Coordinator.ProjectCoordinatorService.pipe(
+          Effect.provide(Layer.fresh(Coordinator.layer)),
+          Effect.provideService(Threads.ThreadManagementService, {
+            ...threads,
+            getThreadShell: () => Effect.succeed(ineligible),
+          }),
+        );
+        assert.equal(
+          (yield* Effect.flip(
+            guarded.assign({
+              ...request,
+              commandId: CommandId.make(`ineligible:${ineligible.lineage.relationshipToParent}`),
+              expectedRevision: 3,
+            }),
+          )).reason,
+          "ineligible-thread",
+        );
+      }
+      yield* threads.dispatch({
+        type: "thread.archive",
+        commandId: CommandId.make("ordinary:archive"),
+        threadId,
+      });
+      assert.equal((yield* service.get({ projectId })).coordinator?.status, "archived");
+      assert.equal(
+        (yield* Effect.flip(
+          service.assign({
+            ...request,
+            commandId: CommandId.make("archived"),
+            expectedRevision: 3,
+          }),
+        )).reason,
+        "ineligible-thread",
+      );
+      assert.equal((yield* service.get({ projectId })).coordinator?.revision, 3);
+      const replaced = yield* service.assign({
+        ...request,
+        commandId: CommandId.make("replace-archived"),
+        threadId: otherThreadId,
+        expectedRevision: 3,
+      });
+      assert.equal(replaced.coordinator.revision, 4);
+      yield* threads.dispatch({
+        type: "thread.delete",
+        commandId: CommandId.make("delete-target"),
+        threadId: otherThreadId,
+      });
+      assert.equal((yield* service.get({ projectId })).coordinator?.status, "missing");
+      assert.equal(
+        (yield* Effect.flip(
+          service.assign({
+            ...request,
+            commandId: CommandId.make("deleted"),
+            threadId: otherThreadId,
+            expectedRevision: 4,
+          }),
+        )).reason,
+        "ineligible-thread",
+      );
+    }).pipe(Effect.provide(harness())),
+);
+
 it.effect("passive reads do not reserve a coordinator or create a conversation", () =>
   Effect.gen(function* () {
     yield* seed;
@@ -221,6 +475,61 @@ it.effect("passive reads do not reserve a coordinator or create a conversation",
       [],
     );
   }).pipe(Effect.provide(harness())),
+);
+
+it.effect(
+  "assignment supersedes launch recovery without launching or acknowledging the replacement",
+  () =>
+    Effect.gen(function* () {
+      yield* seed;
+      const threads = yield* Threads.ThreadManagementService;
+      const service = yield* Coordinator.ProjectCoordinatorService;
+      const store = yield* Bindings.ProjectCoordinators;
+      const old = savedIntent("superseded-orientation");
+      const reserved = yield* store.reserve(old);
+      const threadId = ThreadId.make("existing-coordinator");
+      yield* threads.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("existing-coordinator:create"),
+        threadId,
+        projectId,
+        title: "Existing outcome",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "plan",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const assigned = yield* service.assign({
+        commandId: CommandId.make("replace-orientation"),
+        projectId,
+        threadId,
+        expectedRevision: reserved.revision,
+      });
+      const replay = yield* service.ensure({
+        ...input(old.requestCommandId),
+        expectedThreadId: old.threadId,
+      });
+      assert.isFalse(replay.coordinator.current);
+      assert.equal(replay.coordinator.threadId, old.threadId);
+      yield* store.accept(old.threadId, old.requestCommandId);
+      assert.deepEqual((yield* service.get({ projectId })).coordinator, assigned.coordinator);
+      assert.isNull(yield* threads.getThreadShell(old.threadId));
+      const projection = yield* threads.getThreadProjection(threadId);
+      assert.equal(projection.messages.length, 0);
+      assert.equal(projection.runs.length, 0);
+      assert.equal(
+        (yield* Effect.flip(
+          service.ensure({
+            ...input("reuse-assignment-as-launch"),
+            commandId: CommandId.make("replace-orientation"),
+          }),
+        )).reason,
+        "command-conflict",
+      );
+    }).pipe(Effect.provide(harness())),
 );
 
 it.effect("explicit create runs one frozen orientation; reopen and reads send nothing", () =>
@@ -334,10 +643,24 @@ it.effect.each(["reservation", "thread", "message", "response"] as const)(
           createdBy: "user",
           creationSource: "web",
         });
+        const service = yield* Coordinator.ProjectCoordinatorService;
+        const binding = Option.getOrThrow(yield* store.get(projectId));
+        assert.equal(
+          (yield* Effect.flip(
+            service.assign({
+              commandId: CommandId.make("self-pending-launch"),
+              projectId,
+              threadId: intent.threadId,
+              expectedRevision: binding.revision,
+            }),
+          )).reason,
+          "ineligible-thread",
+        );
+        assert.deepEqual(Option.getOrThrow(yield* store.get(projectId)), binding);
       }
       if (stage === "message" || stage === "response")
         yield* (yield* ThreadLaunch.ThreadLaunchService).launch(launchInput(intent));
-      if (stage === "response") yield* store.accept(intent.threadId);
+      if (stage === "response") yield* store.accept(intent.threadId, intent.requestCommandId);
       const resumed = yield* Effect.gen(function* () {
         const fresh = yield* Coordinator.ProjectCoordinatorService;
         return yield* fresh.ensure({
@@ -431,8 +754,19 @@ it.effect(
           .pipe(Effect.flip)).reason,
         "binding-changed",
       );
+      assert.equal(
+        (yield* Effect.flip(
+          service.ensure({
+            ...input("legacy-replacement"),
+            replaceRetired: true,
+            expectedThreadId: predecessor,
+          }),
+        )).reason,
+        "binding-changed",
+      );
       const replacement = yield* service.ensure({
         ...input("generation-two"),
+        expectedRevision: 1,
         replaceRetired: true,
         expectedThreadId: predecessor,
       });
@@ -482,7 +816,7 @@ it.effect(
       const intent = savedIntent("no-shell");
       yield* store.reserve(intent);
       assert.equal((yield* service.get({ projectId })).coordinator?.status, "launching");
-      yield* store.accept(intent.threadId);
+      yield* store.accept(intent.threadId, intent.requestCommandId);
       assert.equal((yield* service.get({ projectId })).coordinator?.status, "missing");
       assert.equal(
         (yield* service.ensure(input("do-not-recreate")).pipe(Effect.flip)).reason,
@@ -615,6 +949,7 @@ it.effect.each(["thread.create", "message.dispatch"] as const)(
       assert.deepEqual(Option.getOrThrow(yield* store.get(projectId)).intent, intent);
       const replacement = yield* service.ensure({
         ...input("fresh-rejected-replacement"),
+        expectedRevision: 1,
         replaceRetired: true,
         expectedThreadId: intent.threadId,
       });
@@ -635,6 +970,8 @@ it.effect.each(["thread.create", "message.dispatch"] as const)(
       assert.isTrue(replayAfter.resumed);
       assert.deepEqual(Option.getOrThrow(yield* store.getByRequest(intent.requestCommandId)), {
         intent,
+        kind: "launch",
+        revision: 1,
         accepted: 0,
         superseded: 1,
       });
@@ -1026,6 +1363,7 @@ it.effect.each(["reservation", "thread"] as const)(
       assert.equal(Option.getOrThrow(yield* store.get(projectId)).accepted, 0);
       const replacement = yield* service.ensure({
         ...input("fresh-moved-replacement"),
+        expectedRevision: 1,
         replaceRetired: true,
         expectedThreadId: intent.threadId,
       });
@@ -1108,11 +1446,11 @@ it.effect.each([
         Effect.provide(Layer.fresh(Coordinator.layer)),
         Effect.provideService(Bindings.ProjectCoordinators, {
           ...store,
-          accept: (threadId) =>
+          accept: (threadId, requestCommandId) =>
             Effect.suspend(() =>
               refuseAccept
                 ? Effect.fail(new ProjectCoordinatorError({ reason: "persistence-failure" }))
-                : store.accept(threadId),
+                : store.accept(threadId, requestCommandId),
             ),
         }),
       );

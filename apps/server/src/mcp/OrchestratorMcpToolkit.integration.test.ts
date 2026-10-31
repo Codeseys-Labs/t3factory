@@ -1,3 +1,4 @@
+import * as NodeURL from "node:url";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import {
@@ -96,9 +97,7 @@ const readDelegatedTaskStatusTranscript = Effect.fn("readDelegatedTaskStatusTran
   followupResult: string,
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const text = yield* fs.readFileString(
-    decodeURIComponent(delegatedTaskStatusTranscriptFile.pathname),
-  );
+  const text = yield* fs.readFileString(NodeURL.fileURLToPath(delegatedTaskStatusTranscriptFile));
   const transcript = yield* decodeProviderReplayNdjson(
     text.replaceAll(queuedFollowupResult, followupResult),
   );
@@ -243,7 +242,11 @@ describe("orchestrator MCP toolkit", () => {
           Layer.provide(Layer.mock(PeerForwarding.PeerForwarding)({})),
           Layer.provide(Layer.mock(PeerLinkRequests.PeerLinkRequests)({})),
           Layer.provide(Layer.mock(PeerLinks.PeerLinks)({})),
-          Layer.provide(Layer.mock(ProjectService.ProjectService)({})),
+          Layer.provide(
+            Layer.mock(ProjectService.ProjectService)({
+              getById: () => Effect.succeedNone,
+            }),
+          ),
           Layer.provideMerge(
             SecretRequests.layer.pipe(
               Layer.provide(layerMemorySecretStore),
@@ -334,6 +337,8 @@ describe("orchestrator MCP toolkit", () => {
             mode: "async",
             clientRequestId: "delegate-codex-replay-1",
           });
+          expect(delegatedCall.isError, JSON.stringify(delegatedCall)).not.toBe(true);
+          expect(delegatedCall.structuredContent, JSON.stringify(delegatedCall)).toBeDefined();
           const delegatedStart = yield* decodeDelegateTaskResult(
             delegatedCall.structuredContent,
           ).pipe(Effect.orDie);
@@ -362,6 +367,10 @@ describe("orchestrator MCP toolkit", () => {
           const delegatedStatusCall = yield* invoke("task_status", {
             taskId: delegatedStart.taskId,
           });
+          expect(
+            delegatedStatusCall.structuredContent,
+            JSON.stringify(delegatedStatusCall),
+          ).toBeDefined();
           const delegated = yield* decodeDelegateTaskResult(
             delegatedStatusCall.structuredContent,
           ).pipe(Effect.orDie);
@@ -390,6 +399,10 @@ describe("orchestrator MCP toolkit", () => {
             message: cancellationPrompt,
             clientRequestId: "delegated-child-replay-running-1",
           });
+          expect(
+            runningFollowupCall.structuredContent,
+            JSON.stringify(runningFollowupCall),
+          ).toBeDefined();
           const runningFollowup = yield* decodeThreadSendResult(
             runningFollowupCall.structuredContent,
           ).pipe(Effect.orDie);
@@ -419,6 +432,10 @@ describe("orchestrator MCP toolkit", () => {
             mode: "queue",
             clientRequestId: "delegated-child-replay-queued-1",
           });
+          expect(
+            queuedFollowupCall.structuredContent,
+            JSON.stringify(queuedFollowupCall),
+          ).toBeDefined();
           const queuedFollowup = yield* decodeThreadSendResult(
             queuedFollowupCall.structuredContent,
           ).pipe(Effect.orDie);
@@ -460,6 +477,10 @@ describe("orchestrator MCP toolkit", () => {
           const pendingStatusCall = yield* invoke("task_status", {
             taskId: delegated.taskId,
           });
+          expect(
+            pendingStatusCall.structuredContent,
+            JSON.stringify(pendingStatusCall),
+          ).toBeDefined();
           const pendingStatus = yield* decodeDelegateTaskResult(
             pendingStatusCall.structuredContent,
           ).pipe(Effect.orDie);
@@ -484,6 +505,7 @@ describe("orchestrator MCP toolkit", () => {
             reason: "Allow the queued replay follow-up to run.",
             clientRequestId: "interrupt-delegated-child-replay-1",
           });
+          expect(interruptCall.structuredContent, JSON.stringify(interruptCall)).toBeDefined();
           const interrupt = yield* decodeThreadInterruptResult(
             interruptCall.structuredContent,
           ).pipe(Effect.orDie);
@@ -573,6 +595,7 @@ describe("orchestrator MCP toolkit", () => {
           const finalStatusCall = yield* invoke("task_status", {
             taskId: delegated.taskId,
           });
+          expect(finalStatusCall.structuredContent, JSON.stringify(finalStatusCall)).toBeDefined();
           const finalStatus = yield* decodeDelegateTaskResult(
             finalStatusCall.structuredContent,
           ).pipe(Effect.orDie);

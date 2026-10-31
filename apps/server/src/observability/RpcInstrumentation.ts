@@ -32,6 +32,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.projectsMutate]: "orchestration",
   [WS_METHODS.projectCoordinatorsGet]: "orchestration",
   [WS_METHODS.projectCoordinatorsList]: "orchestration",
+  [WS_METHODS.projectCoordinatorsAssign]: "orchestration",
   [WS_METHODS.projectCoordinatorsEnsure]: "orchestration",
   [WS_METHODS.factoryListIssues]: "factory",
   [WS_METHODS.factoryListClaims]: "factory",

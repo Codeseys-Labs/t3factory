@@ -55,6 +55,7 @@ import {
   type FactoryResearchRunLaunchInput,
   type ProjectCoordinator,
   type ProjectCoordinatorEnsureInput,
+  type ProjectCoordinatorAssignInput,
   type ProjectCoordinatorGetInput,
   SourceControlProviderKind,
 } from "@t3tools/contracts";
@@ -181,6 +182,15 @@ const makeEnvironmentHarness = Effect.fn("TestFactory.makeEnvironmentHarness")(f
   return { atoms: createFactoryEnvironmentAtoms(runtime), registry };
 });
 
+function assignmentInput(command: string, thread = "existing"): ProjectCoordinatorAssignInput {
+  return {
+    commandId: CommandId.make(command),
+    projectId,
+    threadId: ThreadId.make(thread),
+    expectedRevision: 0,
+  };
+}
+
 const makeCoordinatorHarness = Effect.fn("TestFactory.makeCoordinatorHarness")(function* (
   failAfterBinding = false,
 ) {
@@ -189,7 +199,7 @@ const makeCoordinatorHarness = Effect.fn("TestFactory.makeCoordinatorHarness")(f
     input: ProjectCoordinatorEnsureInput;
   }>();
   const release = yield* Deferred.make<void>();
-  const calls: ProjectCoordinatorEnsureInput[] = [];
+  const calls: (ProjectCoordinatorEnsureInput | ProjectCoordinatorAssignInput)[] = [];
   const bindings = new Map<string, ProjectCoordinator>();
   const bindingKey = (id: EnvironmentId, project: ProjectId) => JSON.stringify([id, project]);
   const h = yield* makeEnvironmentHarness((id) => ({
@@ -205,6 +215,28 @@ const makeCoordinatorHarness = Effect.fn("TestFactory.makeCoordinatorHarness")(f
         ),
         fetchedAt,
       })),
+    [WS_METHODS.projectCoordinatorsAssign]: (input: ProjectCoordinatorAssignInput) =>
+      Effect.gen(function* () {
+        calls.push(input);
+        const revision = bindings.get(bindingKey(id, input.projectId))?.revision ?? 0;
+        if (revision !== input.expectedRevision)
+          return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
+        const coordinator: ProjectCoordinator = {
+          projectId: input.projectId,
+          threadId: input.threadId,
+          status: "idle",
+          modelSelection: ensureInput("model").modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "plan",
+          createdAt: fetchedAt,
+          current: true,
+          revision: revision + 1,
+        };
+        bindings.set(bindingKey(id, input.projectId), coordinator);
+        if (failAfterBinding)
+          return yield* new ProjectCoordinatorError({ reason: "persistence-failure" });
+        return { coordinator };
+      }),
     [WS_METHODS.projectCoordinatorsEnsure]: (input: ProjectCoordinatorEnsureInput) =>
       Effect.gen(function* () {
         calls.push(input);
@@ -270,9 +302,35 @@ describe("Factory coordinator commands", () => {
         expect(results.every(AsyncResult.isSuccess)).toBe(true);
         expect(results[1]).toEqual(results[0]);
         expect(h.calls).toHaveLength(4);
-        expect(h.calls.find((input) => input.commandId === "first")?.runtimeMode).toBe(
-          "approval-required",
+        expect(
+          h.calls
+            .filter((input) => "runtimeMode" in input)
+            .find((input) => input.commandId === "first")?.runtimeMode,
+        ).toBe("approval-required");
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "coalesces an identical assignment but sends competing targets to the revision check",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* makeCoordinatorHarness();
+        const run = (input: ProjectCoordinatorAssignInput) =>
+          h.atoms.coordinatorsAssign.run(h.registry, { environmentId, input });
+        const results = yield* Effect.promise(() =>
+          Promise.all([
+            run(assignmentInput("first", "a")),
+            run(assignmentInput("duplicate", "a")),
+            run(assignmentInput("competitor", "b")),
+          ]),
         );
+        expect(h.calls.map((input) => input.commandId)).toEqual(["first", "competitor"]);
+        expect(results[1]).toEqual(results[0]);
+        expect(AsyncResult.isSuccess(results[0]!)).toBe(true);
+        const competitor = results[2]!;
+        expect(AsyncResult.isFailure(competitor)).toBe(true);
+        if (AsyncResult.isFailure(competitor))
+          expect(Cause.squash(competitor.cause)).toMatchObject({ reason: "binding-changed" });
       }).pipe(Effect.scoped),
   );
 
@@ -311,6 +369,30 @@ describe("Factory coordinator commands", () => {
       );
       expect(AsyncResult.isFailure(revoked)).toBe(true);
       expect(h.calls).toHaveLength(1);
+      const assignment = { environmentId, input: assignmentInput("assign") };
+      expect(
+        AsyncResult.isFailure(
+          yield* Effect.promise(() => h.atoms.coordinatorsAssign.run(h.registry, assignment)),
+        ),
+      ).toBe(true);
+      h.registry.set(sessions(environmentId), AsyncResult.failure(Cause.die("offline")));
+      expect(h.registry.get(h.atoms.coordinatorsAssign.permissionAtom(environmentId))).toBe(false);
+      expect(
+        AsyncResult.isFailure(
+          yield* Effect.promise(() => h.atoms.coordinatorsAssign.run(h.registry, assignment)),
+        ),
+      ).toBe(true);
+      expect(h.calls).toHaveLength(1);
+      h.registry.set(
+        sessions(environmentId),
+        AsyncResult.success(sessionWith([AuthOrchestrationOperateScope])),
+      );
+      expect(
+        AsyncResult.isSuccess(
+          yield* Effect.promise(() => h.atoms.coordinatorsAssign.run(h.registry, assignment)),
+        ),
+      ).toBe(true);
+      expect(h.calls).toHaveLength(2);
     }).pipe(Effect.scoped),
   );
 
@@ -346,6 +428,23 @@ describe("Factory coordinator commands", () => {
         expect(afterGet.coordinator?.threadId).toBe("thread-refresh");
         expect(afterList.coordinators.map((coordinator) => coordinator.threadId)).toEqual([
           "thread-refresh",
+        ]);
+        const assigned = yield* Effect.promise(() =>
+          h.atoms.coordinatorsAssign.run(h.registry, {
+            environmentId,
+            input: assignmentInput("refresh-assignment"),
+          }),
+        );
+        expect(AsyncResult.isFailure(assigned)).toBe(failAfterBinding);
+        const afterAssignment = yield* AtomRegistry.getResult(h.registry, get, {
+          suspendOnWaiting: true,
+        });
+        expect(afterAssignment.coordinator?.threadId).toBe("existing");
+        const assignedList = yield* AtomRegistry.getResult(h.registry, list, {
+          suspendOnWaiting: true,
+        });
+        expect(assignedList.coordinators.map((coordinator) => coordinator.threadId)).toEqual([
+          "existing",
         ]);
       }).pipe(Effect.scoped),
   );

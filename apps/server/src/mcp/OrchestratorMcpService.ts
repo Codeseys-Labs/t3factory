@@ -1453,12 +1453,20 @@ const make = Effect.gen(function* () {
       ),
     ];
     const resultRecords = yield* threadManagement
-      .getThreadRecords(task.childThreadId, ["messages", "turnItems"], {
-        messageRoles: ["assistant"],
-        messageRunIds: resultRunIds,
-        turnItemRunIds: resultRunIds,
-        turnItemTypes: ["assistant_message", "error"],
-      })
+      .getThreadRecords(
+        task.childThreadId,
+        [
+          "messages",
+          "turnItems",
+          ...(terminalRun?.checkpointId == null ? [] : ["checkpoints" as const]),
+        ],
+        {
+          messageRoles: ["assistant"],
+          messageRunIds: resultRunIds,
+          turnItemRunIds: resultRunIds,
+          turnItemTypes: ["assistant_message", "error"],
+        },
+      )
       .pipe(Effect.mapError(threadManagementFailure));
     const childProjection = {
       ...childControls,
@@ -1517,6 +1525,48 @@ const make = Effect.gen(function* () {
       : null;
     const resultContextTransferId = resultTransfer?.id ?? null;
     const latestTerminalResultContextTransferId = resultTransferForRun(terminalRun)?.id ?? null;
+    // Continuations keep the original launch base; never resolve a historical branch at today's HEAD.
+    let launchRun = terminalRun ?? childRun;
+    const visitedRuns = new Set<RunId>();
+    while (
+      launchRun !== undefined &&
+      launchRun.workspacePreparation === undefined &&
+      launchRun.restartContinuationOfRunId !== undefined &&
+      !visitedRuns.has(launchRun.id)
+    ) {
+      visitedRuns.add(launchRun.id);
+      launchRun = childControls.runs.find(
+        (run) => run.id === launchRun?.restartContinuationOfRunId,
+      );
+    }
+    const preparation = launchRun?.workspacePreparation ?? childRun?.workspacePreparation;
+    const baseRef = preparation?.type === "worktree" ? preparation.baseRef : undefined;
+    const immutableBase =
+      baseRef !== undefined && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(baseRef) ? baseRef : null;
+    const checkpoint = resultRecords.checkpoints?.find(
+      (candidate) =>
+        terminalRun !== undefined &&
+        candidate.id === terminalRun.checkpointId &&
+        candidate.runId === terminalRun.id &&
+        candidate.status === "ready",
+    );
+    const commits =
+      checkpoint === undefined
+        ? { baseCommit: immutableBase, resultCommit: null }
+        : yield* Effect.gen(function* () {
+            const project = yield* requireProject(childControls.thread.projectId);
+            const resolve = (revision: string | null) =>
+              revision === null
+                ? Effect.succeed(null)
+                : gitDriver.resolveCommit({ cwd: project.workspaceRoot, revision }).pipe(
+                    Effect.map((commit) => commit.commitSha),
+                    Effect.orElseSucceed(() => null),
+                  );
+            return {
+              baseCommit: immutableBase,
+              resultCommit: yield* resolve(checkpoint?.ref ?? null),
+            };
+          }).pipe(Effect.orElseSucceed(() => ({ baseCommit: immutableBase, resultCommit: null })));
     const modelSelection = childRun?.modelSelection ??
       childControls.thread.modelSelection ?? {
         instanceId: task.providerInstanceId,
@@ -1540,6 +1590,7 @@ const make = Effect.gen(function* () {
       summary: derivedResult,
       resultContextTransferId,
       latestTerminalRunId: terminalRun?.id ?? null,
+      ...commits,
       latestTerminalStatus:
         terminalStatus !== null && isTerminalTaskStatus(terminalStatus) ? terminalStatus : null,
       latestTerminalSummary: latestTerminalSummary === derivedResult ? null : latestTerminalSummary,
@@ -1697,6 +1748,8 @@ const make = Effect.gen(function* () {
       summary: task.result,
       resultContextTransferId: null,
       latestTerminalRunId: null,
+      baseCommit: null,
+      resultCommit: null,
       latestTerminalStatus: terminal
         ? (status as OrchestratorMcpDelegateTaskResult["latestTerminalStatus"])
         : null,
@@ -2177,11 +2230,23 @@ const make = Effect.gen(function* () {
       };
     }),
     delegateTask: Effect.fn("OrchestratorMcpService.delegateTask")(function* (callerScope, input) {
+      if (input.baseRef !== undefined && input.isolation !== "worktree") {
+        return yield* failure("invalid_request", "baseRef requires isolation 'worktree'.");
+      }
+      if (input.baseRef?.startsWith("-")) {
+        return yield* failure("invalid_request", "baseRef must be a Git revision, not an option.");
+      }
       const environmentId =
         input.target === undefined
           ? undefined
           : PeerForwarding.remoteTarget(callerScope, input.target.environmentId);
       if (input.target !== undefined && environmentId !== undefined) {
+        if (input.baseRef !== undefined) {
+          return yield* failure(
+            "invalid_request",
+            "Explicit baseRef is not supported for linked-environment delegation.",
+          );
+        }
         yield* requireCapability(callerScope);
         const scope = yield* requireThreadScope(callerScope, "delegate_task");
         // The task's child runs as an ordinary thread there; this thread keeps the task.
@@ -2224,12 +2289,10 @@ const make = Effect.gen(function* () {
         operation: "delegate-task",
       });
       const isRetryOfAcceptedDelegation = yield* threadManagement.hasReceipt(commandId);
-      const target = yield* resolveTargetRechecking({
-        parent,
-        target: input.target,
-        providers,
-        skipProjectEnablementFilter: isRetryOfAcceptedDelegation,
-      });
+      // A receipt replays the stored child; current provider catalogs cannot change that identity.
+      const target = isRetryOfAcceptedDelegation
+        ? { modelSelection: parentRun.modelSelection, supportedRuntimeModes: undefined }
+        : yield* resolveTargetRechecking({ parent, target: input.target, providers });
       const runtimeMode = yield* resolveRuntimeMode(
         parent.thread.runtimeMode,
         input.runtimeMode,
@@ -2245,11 +2308,16 @@ const make = Effect.gen(function* () {
         const base = yield* gitDriver
           .resolveCommit({
             cwd: parent.thread.worktreePath ?? project.workspaceRoot,
-            revision: "HEAD",
+            revision: input.baseRef ?? "HEAD",
           })
           .pipe(
             Effect.mapError(() =>
-              failure("invalid_request", "Unable to resolve the parent checkout commit."),
+              failure(
+                "invalid_request",
+                input.baseRef === undefined
+                  ? "Unable to resolve the parent checkout commit."
+                  : "Unable to resolve the worktree base commit.",
+              ),
             ),
           );
         // Launch preparation creates the worktree from the project root, so a

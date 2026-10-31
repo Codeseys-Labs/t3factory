@@ -790,6 +790,8 @@ export const makeDeviceTools = Effect.fn("evaluateMcpToolUse.makeDeviceTools")(f
       ),
       Layer.provideMerge(config),
       Layer.provideMerge(files),
+      // The simulated environment uses POSIX paths even when the eval runs on Windows.
+      Layer.provideMerge(Path.layer),
     ),
   );
   type Entry = Parameters<McpServer.McpServer["Service"]["addTool"]>[0];

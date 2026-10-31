@@ -226,6 +226,7 @@ export const make = Effect.gen(function* () {
       factoryKnowledge: true,
       factoryDelivery: true,
       projectCoordinators: true,
+      projectCoordinatorAssignments: true,
       repositoryIdentity: true,
       connectionProbe: true,
       attachmentUploads: true,

@@ -73,6 +73,8 @@ import {
   FactoryDeliveryReconcileInput,
 } from "./factoryDelivery.ts";
 import {
+  ProjectCoordinatorAssignInput,
+  ProjectCoordinatorAssignResult,
   ProjectCoordinatorEnsureInput,
   ProjectCoordinatorEnsureResult,
   ProjectCoordinatorError,
@@ -513,6 +515,7 @@ export const WS_METHODS = {
   factoryAcceptKnowledgeArtifact: "factory.acceptKnowledgeArtifact",
   projectCoordinatorsGet: "projectCoordinators.get",
   projectCoordinatorsList: "projectCoordinators.list",
+  projectCoordinatorsAssign: "projectCoordinators.assign",
   projectCoordinatorsEnsure: "projectCoordinators.ensure",
   projectsListEntries: "projects.listEntries",
   projectsListIgnoredFiles: "projects.listIgnoredFiles",
@@ -2231,6 +2234,12 @@ const WsProjectCoordinatorsListRpc = Rpc.make(WS_METHODS.projectCoordinatorsList
   error: Schema.Union([ProjectCoordinatorError, EnvironmentAuthorizationError]),
 });
 
+const WsProjectCoordinatorsAssignRpc = Rpc.make(WS_METHODS.projectCoordinatorsAssign, {
+  payload: ProjectCoordinatorAssignInput,
+  success: ProjectCoordinatorAssignResult,
+  error: Schema.Union([ProjectCoordinatorError, EnvironmentAuthorizationError]),
+});
+
 const WsProjectCoordinatorsEnsureRpc = Rpc.make(WS_METHODS.projectCoordinatorsEnsure, {
   payload: ProjectCoordinatorEnsureInput,
   success: ProjectCoordinatorEnsureResult,
@@ -2278,6 +2287,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectCoordinatorsGetRpc,
   WsProjectCoordinatorsListRpc,
   WsProjectCoordinatorsEnsureRpc,
+  WsProjectCoordinatorsAssignRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,

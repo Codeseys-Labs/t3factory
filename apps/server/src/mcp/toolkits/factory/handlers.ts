@@ -224,6 +224,14 @@ export const layer = McpToolAccess.toLayer(FactoryToolkit, {
       return yield* coordinators.get(input).pipe(Effect.mapError(failure));
     }),
   ),
+  factory_assign_orchestrator: McpToolAccess.writes((input) =>
+    Effect.gen(function* () {
+      const coordinators = yield* Coordinators.ProjectCoordinatorService;
+      return yield* coordinators
+        .assign(input, { createdBy: "agent", creationSource: "mcp" })
+        .pipe(Effect.mapError(failure));
+    }),
+  ),
   factory_start_orchestrator: McpToolAccess.startsThreads(
     (input) => input,
     (input, modes) =>

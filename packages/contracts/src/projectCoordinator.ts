@@ -24,6 +24,7 @@ export const ProjectCoordinator = Schema.Struct({
   interactionMode: ProviderInteractionMode,
   createdAt: IsoDateTime,
   current: Schema.Boolean,
+  revision: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
 });
 export type ProjectCoordinator = typeof ProjectCoordinator.Type;
 
@@ -48,6 +49,7 @@ export const ProjectCoordinatorEnsureInput = Schema.Struct({
   commandId: CommandId,
   projectId: ProjectId,
   expectedThreadId: Schema.NullOr(ThreadId),
+  expectedRevision: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
@@ -62,11 +64,23 @@ export const ProjectCoordinatorEnsureResult = Schema.Struct({
 });
 export type ProjectCoordinatorEnsureResult = typeof ProjectCoordinatorEnsureResult.Type;
 
+export const ProjectCoordinatorAssignInput = Schema.Struct({
+  commandId: CommandId,
+  projectId: ProjectId,
+  threadId: ThreadId,
+  expectedRevision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+export type ProjectCoordinatorAssignInput = typeof ProjectCoordinatorAssignInput.Type;
+
+export const ProjectCoordinatorAssignResult = Schema.Struct({ coordinator: ProjectCoordinator });
+export type ProjectCoordinatorAssignResult = typeof ProjectCoordinatorAssignResult.Type;
+
 export class ProjectCoordinatorError extends Schema.TaggedError<ProjectCoordinatorError>()(
   "ProjectCoordinatorError",
   {
     reason: Schema.Literals([
       "missing-project",
+      "ineligible-thread",
       "provider-unavailable",
       "retired-coordinator",
       "binding-changed",
@@ -82,14 +96,16 @@ export class ProjectCoordinatorError extends Schema.TaggedError<ProjectCoordinat
     switch (this.reason) {
       case "missing-project":
         return "The selected project no longer exists.";
+      case "ineligible-thread":
+        return "Choose a different existing, unarchived ordinary thread in this project.";
       case "provider-unavailable":
         return "The selected provider is unavailable or disabled for this project. Enable it or select an enabled provider before starting the orchestrator.";
       case "retired-coordinator":
         return "The project orchestrator is missing. Review its binding and explicitly confirm a replacement.";
       case "binding-changed":
-        return "The project orchestrator binding changed. Refresh and review the current binding before starting a replacement.";
+        return "The project orchestrator binding changed. Refresh and review the current binding before trying again. Older clients must be updated to replace or resume a pending coordinator.";
       case "command-conflict":
-        return "This request was already used for another project. Start a new request for the selected project.";
+        return "This request was already used for another project, thread or operation. Start a new request.";
       case "launch-authority":
         return "This reserved launch exceeds the caller's runtime authority. Resume it from an authorized client.";
       case "launch-failed":

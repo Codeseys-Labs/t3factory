@@ -347,6 +347,10 @@ it.effect.each([
             called = true;
             return Effect.die("Unauthorized orchestrator start reached the service");
           },
+          assign: () => {
+            called = true;
+            return Effect.die("Unauthorized assignment reached the service");
+          },
         }),
       );
       const toolkit = yield* FactoryToolkit.pipe(
@@ -366,6 +370,18 @@ it.effect.each([
         .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
       assert.deepInclude(outputs.at(-1)?.result, { code });
       assert.isFalse(called);
+      if (code === "capability_denied" || code === "parent_not_active") {
+        const assignment = yield* toolkit
+          .handle("factory_assign_orchestrator", {
+            commandId: CommandId.make("assignment-denied"),
+            projectId: ProjectId.make("project"),
+            threadId: ThreadId.make("existing"),
+            expectedRevision: 0,
+          })
+          .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+        assert.deepInclude(assignment.at(-1)?.result, { code });
+        assert.isFalse(called);
+      }
     }),
 );
 
@@ -467,6 +483,7 @@ it.effect(
             admitted = true;
             return Effect.fail(new ProjectCoordinatorError({ reason: "provider-unavailable" }));
           },
+          assign: () => Effect.fail(new ProjectCoordinatorError({ reason: "ineligible-thread" })),
         }),
       );
       const toolkit = yield* FactoryToolkit.pipe(
@@ -489,6 +506,18 @@ it.effect(
         code: "invalid_request",
         message: new ProjectCoordinatorError({ reason: "provider-unavailable" }).message,
       });
+      const assignment = yield* toolkit
+        .handle("factory_assign_orchestrator", {
+          commandId: CommandId.make("assignment-root"),
+          projectId: ProjectId.make("project"),
+          threadId: ThreadId.make("existing"),
+          expectedRevision: 0,
+        })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+      assert.deepInclude(assignment.at(-1)?.result, {
+        code: "invalid_request",
+        message: new ProjectCoordinatorError({ reason: "ineligible-thread" }).message,
+      });
     }),
 );
 
@@ -498,6 +527,8 @@ it.effect("denies replay of a stored broader launch before any launch or binding
     const commandId = CommandId.make("reserved-request");
     const createdAt = "2026-10-24T00:00:00.000Z";
     const binding: Bindings.ProjectCoordinatorBinding = {
+      revision: 1,
+      kind: "launch",
       intent: {
         projectId,
         workspaceRoot: "/projects/target",

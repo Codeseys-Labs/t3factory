@@ -32,6 +32,65 @@ const intent = (
 });
 const layer = Coordinators.layer.pipe(Layer.provideMerge(Sqlite.layerMemory));
 
+it.effect(
+  "assignment CAS retains A-B-A history, immutable replay and launch acknowledgements",
+  () =>
+    Effect.gen(function* () {
+      const store = yield* Coordinators.ProjectCoordinators;
+      const other = yield* Coordinators.ProjectCoordinators.pipe(
+        Effect.provide(Coordinators.layer),
+      );
+      const a = yield* store.reserve(intent("a"));
+      assert.equal(
+        (yield* Effect.flip(
+          store.assign(
+            { ...intent("self", a.intent.threadId), threadId: a.intent.threadId },
+            a.revision,
+          ),
+        )).reason,
+        "ineligible-thread",
+      );
+      assert.deepEqual(Option.getOrThrow(yield* store.get(projectId)), a);
+      const candidates = [intent("b", a.intent.threadId), intent("c", a.intent.threadId)];
+      const results = yield* Effect.forEach(
+        candidates,
+        (candidate, index) =>
+          (index === 0 ? store : other).assign(candidate, a.revision).pipe(Effect.result),
+        { concurrency: "unbounded" },
+      );
+      assert.equal(results.filter((result) => result._tag === "Success").length, 1);
+      const loser = results.find((result) => result._tag === "Failure");
+      assert.equal(loser?._tag === "Failure" && loser.failure.reason, "binding-changed");
+      const b = Option.getOrThrow(yield* store.get(projectId));
+      const back = { ...intent("back", b.intent.threadId), threadId: a.intent.threadId };
+      const latest = yield* store.assign(back, b.revision);
+      assert.equal(latest.revision, b.revision + 1);
+      assert.equal(
+        (yield* Effect.flip(store.assign(intent("stale"), a.revision))).reason,
+        "binding-changed",
+      );
+      assert.deepEqual(yield* store.assign(b.intent, a.revision), { ...b, superseded: 1 });
+      assert.equal(
+        (yield* Effect.flip(store.assign(b.intent, latest.revision))).reason,
+        "command-conflict",
+      );
+      assert.equal(
+        (yield* Effect.flip(
+          store.assign({ ...b.intent, threadId: latest.intent.threadId }, latest.revision),
+        )).reason,
+        "command-conflict",
+      );
+      assert.equal(
+        (yield* Effect.flip(store.assign({ ...b.intent, projectId: ProjectId.make("other") }, 0)))
+          .reason,
+        "command-conflict",
+      );
+      yield* store.accept(a.intent.threadId, a.intent.requestCommandId);
+      assert.deepEqual(Option.getOrThrow(yield* store.get(projectId)), latest);
+      assert.deepEqual(yield* store.reserve(a.intent), { ...a, superseded: 1, accepted: 1 });
+    }).pipe(Effect.provide(layer)),
+);
+
 it.effect("passive reads return no binding without reserving anything", () =>
   Effect.gen(function* () {
     const store = yield* Coordinators.ProjectCoordinators;
@@ -90,8 +149,8 @@ it.effect(
         concurrency: "unbounded",
       });
       assert.deepEqual(a, b);
-      yield* store.accept(a.intent.threadId);
-      yield* store.accept(a.intent.threadId);
+      yield* store.accept(a.intent.threadId, a.intent.requestCommandId);
+      yield* store.accept(a.intent.threadId, a.intent.requestCommandId);
       const reopened = yield* Coordinators.ProjectCoordinators.pipe(
         Effect.provide(Coordinators.layer),
       );
@@ -112,7 +171,7 @@ it.effect(
     Effect.gen(function* () {
       const store = yield* Coordinators.ProjectCoordinators;
       const original = yield* store.reserve(intent("original"));
-      yield* store.accept(original.intent.threadId);
+      yield* store.accept(original.intent.threadId, original.intent.requestCommandId);
       const replacement = yield* store.reserve(intent("replacement", original.intent.threadId));
       const latest = yield* store.reserve(intent("latest", replacement.intent.threadId));
       const replay = yield* store.reserve({
@@ -136,7 +195,7 @@ it.effect("concurrent CAS replacements and stale callers cannot supersede a newe
     const first = yield* Coordinators.ProjectCoordinators;
     const second = yield* Coordinators.ProjectCoordinators.pipe(Effect.provide(Coordinators.layer));
     const original = yield* first.reserve(intent("original"));
-    yield* first.accept(original.intent.threadId);
+    yield* first.accept(original.intent.threadId, original.intent.requestCommandId);
     const [a, b] = yield* Effect.all(
       [
         first.reserve(intent("replacement-a", original.intent.threadId)),
@@ -245,15 +304,15 @@ it.effect(
       const other = yield* store.reserve(intent("other", null, ProjectId.make("project:other")));
       const candidate = {
         ...intent("bad-replacement", original.intent.threadId),
-        threadId: other.intent.threadId,
       };
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`CREATE TRIGGER reject_binding BEFORE INSERT ON project_coordinators BEGIN SELECT RAISE(ABORT, 'fixture'); END`;
       const failure = yield* Effect.flip(store.reserve(candidate));
       assert.equal(failure.reason, "persistence-failure");
       assert.deepEqual(Option.getOrThrow(yield* store.get(projectId)), original);
       assert.deepEqual(Option.getOrThrow(yield* store.get(other.intent.projectId)), other);
       assert.isTrue(Option.isNone(yield* store.getByRequest(candidate.requestCommandId)));
       assert.equal((yield* store.list()).length, 2);
-      const sql = yield* SqlClient.SqlClient;
       assert.equal((yield* sql`SELECT * FROM project_coordinators WHERE superseded = 1`).length, 0);
     }).pipe(Effect.provide(layer)),
 );
@@ -266,12 +325,12 @@ it.effect(
       const original = yield* store.reserve(intent("original"));
       const sql = yield* SqlClient.SqlClient;
       yield* Effect.flip(sql`
-      INSERT INTO project_coordinators (thread_id, project_id, request_command_id, intent_json)
-      VALUES ('thread:duplicate-project', ${projectId}, 'request:duplicate-project', ${JSON.stringify(intent("duplicate-project"))})
+      INSERT INTO project_coordinators (revision, thread_id, project_id, request_command_id, intent_json)
+      VALUES (2, 'thread:duplicate-project', ${projectId}, 'request:duplicate-project', ${JSON.stringify(intent("duplicate-project"))})
     `);
       yield* Effect.flip(sql`
-      INSERT INTO project_coordinators (thread_id, project_id, request_command_id, intent_json, superseded)
-      VALUES ('thread:duplicate-request', 'project:other', ${original.intent.requestCommandId}, ${JSON.stringify(intent("duplicate-request"))}, 1)
+      INSERT INTO project_coordinators (revision, thread_id, project_id, request_command_id, intent_json, superseded)
+      VALUES (1, 'thread:duplicate-request', 'project:other', ${original.intent.requestCommandId}, ${JSON.stringify(intent("duplicate-request"))}, 1)
     `);
       yield* Effect.flip(
         sql`UPDATE project_coordinators SET accepted = 2 WHERE thread_id = ${original.intent.threadId}`,
@@ -309,11 +368,22 @@ it.effect(
         yield* sql`SELECT name FROM effect_sql_migrations WHERE migration_id = 194`,
         [{ name: "ProjectCoordinators" }],
       );
+      const legacyReplacement = intent("replacement", original.threadId);
+      for (const [legacy, accepted, superseded] of [
+        [original, 1, 1],
+        [legacyReplacement, 0, 0],
+      ] as const) {
+        yield* sql`INSERT INTO project_coordinators (thread_id, project_id, request_command_id, intent_json, accepted, superseded)
+          VALUES (${legacy.threadId}, ${projectId}, ${legacy.requestCommandId}, ${JSON.stringify(legacy)}, ${accepted}, ${superseded})`;
+      }
+      yield* runMigrations();
       yield* Effect.gen(function* () {
         const store = yield* Coordinators.ProjectCoordinators;
-        const reserved = yield* store.reserve(original);
-        yield* store.accept(original.threadId);
-        const replacement = yield* store.reserve(intent("replacement", original.threadId));
+        const reserved = Option.getOrThrow(yield* store.getByRequest(original.requestCommandId));
+        assert.equal(reserved.revision, 1);
+        yield* store.accept(original.threadId, original.requestCommandId);
+        const replacement = Option.getOrThrow(yield* store.get(projectId));
+        assert.equal(replacement.revision, 2);
         // Simulate an older binary's ordinary lifecycle SQL with the additive table left in place.
         yield* sql`UPDATE projection_projects SET title = 'Renamed by older code' WHERE project_id = ${projectId}`;
         assert.deepEqual(
@@ -343,8 +413,11 @@ it.effect("late acceptance of a superseded launch does not accept its replacemen
   Effect.gen(function* () {
     const store = yield* Coordinators.ProjectCoordinators;
     const original = yield* store.reserve(intent("original"));
-    const replacement = yield* store.reserve(intent("replacement", original.intent.threadId));
-    yield* store.accept(original.intent.threadId);
+    const replacement = yield* store.reserve({
+      ...intent("replacement", original.intent.threadId),
+      threadId: original.intent.threadId,
+    });
+    yield* store.accept(original.intent.threadId, original.intent.requestCommandId);
     assert.deepEqual(
       Option.getOrThrow(yield* store.getByRequest(original.intent.requestCommandId)),
       {

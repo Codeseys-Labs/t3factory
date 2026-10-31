@@ -4,7 +4,6 @@ import * as SqlClient from "effect/sql/SqlClient";
 export default Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   // No foreign keys: project/thread deletion must retain request replay and binding provenance.
-  // Older binaries can leave this additive table untouched when rolling back.
   yield* sql`
     CREATE TABLE project_coordinators (
       thread_id TEXT PRIMARY KEY NOT NULL,

@@ -1,9 +1,11 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodeZlib from "node:zlib";
+import * as NodePath from "@effect/platform-node/NodePath";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import {
@@ -73,7 +75,7 @@ const model = "claude-opus-5-5";
 const base = buildBase(capture, { model, keepUserInstructions: false });
 const json = (text: string) => JSON.parse(text);
 
-it.effect("answers device calls with T3's handlers over the case's world", () =>
+it.effect("answers device calls over the case's POSIX world even with Windows host paths", () =>
   Effect.gen(function* () {
     const { devices, deviceHosts } = deviceCase({}).setup.world ?? {};
     const tools = yield* makeDeviceTools({ devices: devices ?? [], deviceHosts }, base.environment);
@@ -100,7 +102,7 @@ it.effect("answers device calls with T3's handlers over the case's world", () =>
     const elsewhere = yield* tools.call("device_open", { hostId: "local", deviceId: IPHONE });
     assert.isTrue(elsewhere.isError);
     assert.include(elsewhere.text, IPHONE);
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodePath.layerWin32))),
 );
 
 it.effect("lists the boot state T3 left a device in", () =>

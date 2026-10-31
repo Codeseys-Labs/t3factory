@@ -33,6 +33,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.factoryUnbindFeedSource]: AuthSettingsWriteScope,
   [WS_METHODS.factoryRefreshFeedSource]: AuthOrchestrationOperateScope,
   [WS_METHODS.factorySetFeedCandidateDismissed]: AuthOrchestrationOperateScope,
+  [WS_METHODS.projectCoordinatorsAssign]: AuthOrchestrationOperateScope,
   [WS_METHODS.projectCoordinatorsEnsure]: AuthOrchestrationOperateScope,
   [WS_METHODS.previewClose]: AuthPreviewOperateScope,
   // Stopping a server signals its processes, as closing a terminal does.

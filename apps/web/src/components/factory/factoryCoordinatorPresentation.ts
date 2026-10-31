@@ -61,6 +61,8 @@ export function coordinatorFailure(error: unknown): CoordinatorFailure {
   }
   if (isCoordinatorError(error)) {
     switch (error.reason) {
+      case "ineligible-thread":
+        return { title: "Thread unavailable", message: error.message, requiresReview: true };
       case "missing-project":
         return {
           title: "Project unavailable",

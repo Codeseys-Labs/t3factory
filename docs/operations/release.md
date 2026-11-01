@@ -50,9 +50,11 @@ in issue 68 is not evidence for a later candidate.
 
 ### Dispatch
 
-`finalize` prints a `gh workflow run factory-check.yml` command and runs nothing. `--ref` names the
-branch or tag holding the workflow definition, not the candidate. The workflow checks out its
-control scripts at `github.workflow_sha` and the candidate separately at `candidate_sha`, without
+`finalize --ref` names the candidate branch or tag whose reachability will be checked. It prints
+a `gh workflow run factory-check.yml` command and runs nothing. In that printed command, replace
+`--ref <default-branch>` with the trusted branch or tag holding the workflow definition; this is
+separate from `candidate_ref`. The workflow checks out its control scripts at `github.workflow_sha`
+and the candidate separately at `candidate_sha`, without
 persisted credentials, secrets, OIDC or the remote task cache. It requires `candidate_sha` to be
 reachable from `candidate_ref`, one branch or tag, and `base_sha` to be an ancestor of it. Lanes run
 on `ubuntu-24.04`; the Windows desktop build lane runs on `windows-2025` and is off by default.

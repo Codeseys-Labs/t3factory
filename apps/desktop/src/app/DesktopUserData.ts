@@ -44,7 +44,10 @@ export const resolveUserDataPath = Effect.fn("desktop.userData.resolveUserDataPa
     const path = yield* Path.Path;
     // A Factory profile starts empty; it never adopts another install's profile or keys.
     if (input.distribution === "factory-preview") {
-      return path.join(input.appDataDirectory, FACTORY_PREVIEW_IDENTITY.userDataDirectoryName);
+      return path.join(
+        input.appDataDirectory,
+        `${FACTORY_PREVIEW_IDENTITY.userDataDirectoryName}${input.isDevelopment ? "-dev" : ""}`,
+      );
     }
     const names = input.isDevelopment
       ? { current: "t3code-dev", legacy: "T3 Code (Dev)" }

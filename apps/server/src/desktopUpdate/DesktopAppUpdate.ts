@@ -60,7 +60,10 @@ export const make = Effect.fn("desktopUpdate.desktopAppUpdate.make")(function* (
   const receiver = yield* DesktopTelemetryReceiver.DesktopTelemetryReceiver;
   const inFlight = yield* Ref.make(false);
 
-  const available = config.mode === "desktop" && config.desktopTelemetryControlFd !== undefined;
+  const available =
+    config.mode === "desktop" &&
+    !config.desktopUpdatesDisabled &&
+    config.desktopTelemetryControlFd !== undefined;
   const failWith = (reason: string, cause?: unknown) =>
     cause === undefined
       ? new ServerSelfUpdateError({ reason })
@@ -142,7 +145,9 @@ export const make = Effect.fn("desktopUpdate.desktopAppUpdate.make")(function* (
     function* (reportProgress, trackSwitch) {
       if (!available) {
         return yield* failWith(
-          "This server was not started by the T3 Code desktop app, so it cannot drive a desktop update.",
+          config.desktopUpdatesDisabled
+            ? "Updates are disabled for this desktop distribution."
+            : "This server was not started by the T3 Code desktop app, so it cannot drive a desktop update.",
         );
       }
       if (yield* Ref.getAndSet(inFlight, true)) {

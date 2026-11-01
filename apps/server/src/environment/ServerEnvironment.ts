@@ -196,10 +196,13 @@ export const make = Effect.gen(function* () {
   const launcher = yield* resolveServiceLauncherMode();
   const serverSelfUpdate = resolveServerSelfUpdateCapability({
     desktopManaged: serverConfig.mode === "desktop",
+    desktopUpdatesDisabled: serverConfig.desktopUpdatesDisabled,
     launcherManaged: launcher.managed,
   });
-  const serverInstallation = serverSelfUpdate === null ? yield* resolveServerInstallation : null;
-  // Desktop and server ship together; a control fd guarantees requestDesktopUpdate support.
+  const serverInstallation =
+    serverConfig.mode !== "desktop" && serverSelfUpdate === null
+      ? yield* resolveServerInstallation
+      : null;
 
   const desktopAppUpdate =
     serverSelfUpdate === "desktop-managed" && serverConfig.desktopTelemetryControlFd !== undefined;

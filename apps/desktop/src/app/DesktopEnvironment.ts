@@ -109,10 +109,9 @@ export function resolveDesktopAppBranding(input: {
   readonly distribution: DesktopDistribution;
 }): DesktopAppBranding {
   if (input.distribution === "factory-preview") {
-    // The shared stage labels have no Preview; Alpha is the closest pre-release stage.
     return {
       baseName: FACTORY_PREVIEW_IDENTITY.baseName,
-      stageLabel: "Alpha",
+      stageLabel: "Preview",
       displayName: FACTORY_PREVIEW_IDENTITY.productName,
     };
   }
@@ -247,7 +246,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
     displayName,
     appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
       distribution === "factory-preview"
-        ? FACTORY_PREVIEW_IDENTITY.appId
+        ? `${FACTORY_PREVIEW_IDENTITY.appId}${isDevelopment ? ".dev" : ""}`
         : isDevelopment
           ? "com.t3tools.t3code.dev"
           : "com.t3tools.t3code",

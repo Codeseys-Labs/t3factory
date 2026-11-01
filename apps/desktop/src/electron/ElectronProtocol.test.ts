@@ -33,7 +33,7 @@ describe("ElectronProtocol", () => {
 
     assert.equal(scheme(false, "factory-preview"), "t3factory");
     assert.equal(scheme(false, "t3code"), "t3code");
-    assert.equal(scheme(true, "factory-preview"), "t3code-dev");
+    assert.equal(scheme(true, "factory-preview"), "t3factory-dev");
   });
 
   it.effect("serves the bundled client from disk without a backend", () =>

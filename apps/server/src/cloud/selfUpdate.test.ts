@@ -21,6 +21,7 @@ import * as ServerSelfUpdate from "./selfUpdate.ts";
 
 interface HarnessOptions {
   readonly mode?: "web" | "desktop";
+  readonly desktopUpdatesDisabled?: boolean;
   readonly managed?: boolean;
   readonly preflight?: "ready" | "blocked";
   readonly beforeDownload?: Effect.Effect<void>;
@@ -122,7 +123,13 @@ const makeHarness = Effect.fn("test.make_self_update_harness")(function* (
     Effect.provideService(HttpClient.HttpClient, releaseHttpClient(order, options.beforeDownload)),
     Effect.provideService(HostProcess.Platform, "linux"),
     Effect.provideService(HostProcess.Architecture, "x64"),
-    Effect.provide(ServerConfig.layer({ ...config, mode: options.mode ?? "web" })),
+    Effect.provide(
+      ServerConfig.layer({
+        ...config,
+        mode: options.mode ?? "web",
+        desktopUpdatesDisabled: options.desktopUpdatesDisabled,
+      }),
+    ),
   );
   return { selfUpdate, order };
 });
@@ -139,7 +146,11 @@ it.layer(NodeServices.layer)("server self update", (it) => {
       expect(
         (yield* desktop.selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason,
       ).toContain("desktop app");
-      expect([...web.order, ...desktop.order]).toEqual([]);
+      const preview = yield* makeHarness({ mode: "desktop", desktopUpdatesDisabled: true });
+      expect(
+        (yield* preview.selfUpdate.update({ targetVersion: "1.1.0" }).pipe(Effect.flip)).reason,
+      ).toContain("disabled");
+      expect([...web.order, ...desktop.order, ...preview.order]).toEqual([]);
     }),
   );
 

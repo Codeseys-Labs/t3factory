@@ -55,6 +55,7 @@ function report(
 
 interface HarnessOptions {
   readonly mode?: "web" | "desktop";
+  readonly desktopUpdatesDisabled?: boolean;
   readonly controlFd?: number | undefined;
   readonly reports?: (requestId: string) => readonly DesktopUpdateStatusReport[];
   readonly keepOpen?: boolean;
@@ -72,6 +73,7 @@ const makeHarness = Effect.fn("test.make_desktop_app_update_harness")(function* 
   const config: ServerConfig.ServerConfig["Service"] = {
     ...baseConfig,
     mode: options.mode ?? "desktop",
+    desktopUpdatesDisabled: options.desktopUpdatesDisabled,
     ...("controlFd" in options
       ? { desktopTelemetryControlFd: options.controlFd }
       : { desktopTelemetryControlFd: 5 }),
@@ -105,6 +107,18 @@ const makeHarness = Effect.fn("test.make_desktop_app_update_harness")(function* 
 });
 
 it.layer(NodeServices.layer)("desktop app update", (it) => {
+  it.effect("rejects update preparation and commit when the desktop disables updates", () =>
+    Effect.gen(function* () {
+      const { service } = yield* makeHarness({ desktopUpdatesDisabled: true });
+      expect(service.available).toBe(false);
+      expect((yield* service.run(() => Effect.void).pipe(Effect.flip)).reason).toContain(
+        "disabled",
+      );
+      expect((yield* service.commit("untrusted-token").pipe(Effect.flip)).reason).toContain(
+        "cannot commit",
+      );
+    }),
+  );
   it.effect("collapses state reports into progress stages and succeeds on installing", () =>
     Effect.gen(function* () {
       const { service } = yield* makeHarness({

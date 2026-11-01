@@ -233,11 +233,19 @@ options.
 `vp run dist:desktop:artifact --distribution factory-preview --output-dir <dir>` builds the
 unsigned Windows x64 portable `T3Factory-<version>-x64.zip` as `T3Factory (Preview)`. It
 uses its own app ID, `t3factory` scheme, `%APPDATA%\t3factory` profile and `~/.t3factory` home
-(`T3CODE_HOME` still wins), never reads or imports local T3 Code profiles or `~/.t3`, and has no
+unless `T3CODE_HOME` explicitly selects a different home. Check that variable before launching:
+pointing it at a T3 Code home opens that database and may migrate it. With the default home,
+the preview never reads or imports local T3 Code profiles or `~/.t3`, and has no
 update feed, telemetry, WSL backend, or `t3` PATH command. The build refuses any configured
 Clerk or relay value, so T3 Connect sign-in is unavailable in this preview. Installers,
 signing, `--skip-build`, and other platforms are rejected. Hosted provenance and publication
 are separate; see [T3Factory manual validation](release.md#t3factory-manual-validation).
+
+Launching the portable app registers the `t3factory` URL handler to that executable; launching
+another copy replaces that handler without changing `t3code`. Factory development builds use
+the separate `t3factory-dev` profile and scheme. A resource monitor reused through
+`T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR` does not prove the Windows Spectre prerequisite was met;
+retain its build provenance when qualifying a package.
 
 ### Linux AppImage prerequisites
 

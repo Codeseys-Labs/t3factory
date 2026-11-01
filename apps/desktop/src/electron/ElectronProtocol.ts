@@ -25,8 +25,10 @@ export function resolveDesktopScheme(input: {
   readonly isDevelopment: boolean;
   readonly distribution: DesktopDistribution;
 }): string {
-  if (input.isDevelopment) return DESKTOP_DEVELOPMENT_SCHEME;
-  return input.distribution === "factory-preview" ? FACTORY_PREVIEW_IDENTITY.scheme : "t3code";
+  if (input.distribution === "factory-preview") {
+    return `${FACTORY_PREVIEW_IDENTITY.scheme}${input.isDevelopment ? "-dev" : ""}`;
+  }
+  return input.isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : "t3code";
 }
 
 const DESKTOP_PRODUCTION_SCHEME = resolveDesktopScheme({
@@ -35,7 +37,9 @@ const DESKTOP_PRODUCTION_SCHEME = resolveDesktopScheme({
 });
 
 export function getDesktopScheme(isDevelopment: boolean): string {
-  return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;
+  return isDevelopment
+    ? resolveDesktopScheme({ isDevelopment, distribution: bundledDesktopDistribution })
+    : DESKTOP_PRODUCTION_SCHEME;
 }
 
 function getDesktopOrigin(isDevelopment: boolean): string {

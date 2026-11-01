@@ -90,6 +90,19 @@ const fakePowerShell = (initial: string) => {
   return { registry, spawner };
 };
 
+// The Linux scenarios split PATH on ":", so a Windows host gets rooted entries without drive letters,
+// which resolve on the current drive and come back from the PATH search in that form.
+const onSearchPath = (path: Path.Path, target: string) => {
+  if (HostProcess.Platform.defaultValue() !== "win32") return target;
+  const { root } = path.parse(target);
+  if (root.toLowerCase() !== path.parse(process.cwd()).root.toLowerCase()) {
+    throw new Error(`Run these tests from the drive that holds ${target}.`);
+  }
+  return target.slice(root.length - 1);
+};
+const searchPath = (path: Path.Path, ...directories: ReadonlyArray<string>) =>
+  directories.map((directory) => onSearchPath(path, directory)).join(":");
+
 const machinePath = process.env.PATH;
 beforeEach(() => {
   process.env.PATH = "";
@@ -145,8 +158,11 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
 
       const launcher = path.join(home, ".t3", "bin", "t3");
       yield* fs.writeFileString(launcher, "npm's t3\n");
-      process.env.PATH = path.dirname(launcher);
-      expect(yield* command.state).toMatchObject({ onPath: false, shadowedBy: launcher });
+      process.env.PATH = searchPath(path, path.dirname(launcher));
+      expect(yield* command.state).toMatchObject({
+        onPath: false,
+        shadowedBy: onSearchPath(path, launcher),
+      });
       expect((yield* Effect.flip(command.install)).message).toContain("Could not set up");
       yield* command.uninstall;
       expect(yield* fs.readFileString(launcher)).toBe("npm's t3\n");
@@ -179,13 +195,13 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
       const shadow = path.join(home, "shadow");
       yield* fs.makeDirectory(shadow);
       yield* fs.writeFileString(path.join(shadow, "t3"), "#!/bin/sh\n", { mode: 0o755 });
-      process.env.PATH = [shadow, path.join(home, ".local", "bin")].join(":");
+      process.env.PATH = searchPath(path, shadow, path.join(home, ".local", "bin"));
 
       const command = yield* commandIn({ home });
       const theirs = path.join(shadow, "t3");
-      expect((yield* command.state).shadowedBy).toBe(theirs);
+      expect((yield* command.state).shadowedBy).toBe(onSearchPath(path, theirs));
       const error = yield* Effect.flip(command.install);
-      expect(error.message).toContain(theirs);
+      expect(error.message).toContain(onSearchPath(path, theirs));
       expect(yield* fs.exists(path.join(home, ".local", "bin", "t3"))).toBe(false);
 
       yield* fs.remove(theirs);
@@ -215,7 +231,13 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
         yield* fs.chmod(path.join(plain, "t3"), process.getuid?.() === 0 ? 0o600 : 0o601);
         yield* fs.makeDirectory(shadow);
         yield* fs.writeFileString(path.join(shadow, "t3"), "#!/bin/sh\n", { mode: 0o755 });
-        process.env.PATH = [folder, plain, shadow, path.join(home, ".local", "bin")].join(":");
+        process.env.PATH = searchPath(
+          path,
+          folder,
+          plain,
+          shadow,
+          path.join(home, ".local", "bin"),
+        );
 
         const command = yield* commandIn({ home });
         expect((yield* command.state).shadowedBy).toBe(path.join(shadow, "t3"));
@@ -237,7 +259,7 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
       const path = yield* Path.Path;
       const home = yield* fs.makeTempDirectoryScoped();
       const launcher = path.join(home, ".t3", "bin", "t3");
-      process.env.PATH = [path.dirname(launcher), path.join(home, ".local", "bin")].join(":");
+      process.env.PATH = searchPath(path, path.dirname(launcher), path.join(home, ".local", "bin"));
 
       const command = yield* commandIn({ home });
       const installed = yield* command.install;

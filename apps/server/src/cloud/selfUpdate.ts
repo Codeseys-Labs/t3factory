@@ -43,9 +43,10 @@ const PREFLIGHT_TIMEOUT = Duration.seconds(30);
 
 export function resolveServerSelfUpdateCapability(input: {
   readonly desktopManaged: boolean;
+  readonly desktopUpdatesDisabled?: boolean | undefined;
   readonly launcherManaged: boolean;
 }): ServerSelfUpdateCapability | null {
-  if (input.desktopManaged) return "desktop-managed" as const;
+  if (input.desktopManaged) return input.desktopUpdatesDisabled ? null : "desktop-managed";
   return input.launcherManaged ? ("boot-service" as const) : null;
 }
 
@@ -133,8 +134,11 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
     Effect.forkScoped,
   );
 
-  const capability: ServerSelfUpdateCapability | null =
-    serverConfig.mode === "desktop" ? "desktop-managed" : launcher.managed ? "boot-service" : null;
+  const capability = resolveServerSelfUpdateCapability({
+    desktopManaged: serverConfig.mode === "desktop",
+    desktopUpdatesDisabled: serverConfig.desktopUpdatesDisabled,
+    launcherManaged: launcher.managed,
+  });
   const failWith = (reason: string, cause?: unknown) =>
     cause === undefined
       ? new ServerSelfUpdateError({ reason })
@@ -151,6 +155,9 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
   const update: ServerSelfUpdate["Service"]["update"] = Effect.fn(
     "cloud.server_self_update.update",
   )(function* (input, reportProgress = () => Effect.void, onHandoffAccepted = () => Effect.void) {
+    if (serverConfig.mode === "desktop" && serverConfig.desktopUpdatesDisabled) {
+      return yield* failWith("Updates are disabled for this desktop distribution.");
+    }
     if (capability === "desktop-managed") {
       const unsafeCrossing = input.channel === undefined ? null : crossesTrackUnsafely(input);
       if (unsafeCrossing !== null) return yield* failWith(unsafeCrossing);

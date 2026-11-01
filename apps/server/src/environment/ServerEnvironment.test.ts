@@ -90,7 +90,11 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
       yield* fs.symlink(entry, `${prefix}/bin/t3`);
       const config = yield* makeServerConfig(baseDir);
       yield* fs.makeDirectory(config.stateDir, { recursive: true });
-      for (const mode of ["web", "desktop"] as const) {
+      for (const { mode, desktopUpdatesDisabled } of [
+        { mode: "web", desktopUpdatesDisabled: false },
+        { mode: "desktop", desktopUpdatesDisabled: false },
+        { mode: "desktop", desktopUpdatesDisabled: true },
+      ] as const) {
         const descriptor = yield* Effect.gen(function* () {
           const environment = yield* ServerEnvironment.ServerEnvironment;
           return yield* environment.getDescriptor;
@@ -98,7 +102,14 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           Effect.provide(
             ServerEnvironment.layer.pipe(
               Layer.provide(layerEmptySecretStore),
-              Layer.provide(ServerConfig.layer({ ...config, mode })),
+              Layer.provide(
+                ServerConfig.layer({
+                  ...config,
+                  mode,
+                  desktopUpdatesDisabled,
+                  desktopTelemetryControlFd: 5,
+                }),
+              ),
             ),
           ),
           Effect.provideService(HostProcess.Arguments, ["node", entry]),
@@ -116,7 +127,13 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           mode === "web" ? { kind: "npm-global", prefix } : undefined,
         );
         expect(descriptor.capabilities.serverSelfUpdate).toBe(
-          mode === "web" ? undefined : "desktop-managed",
+          mode === "web" || desktopUpdatesDisabled ? undefined : "desktop-managed",
+        );
+        expect(descriptor.capabilities.desktopAppUpdate).toBe(
+          mode === "desktop" && !desktopUpdatesDisabled ? true : undefined,
+        );
+        expect(descriptor.capabilities.desktopAppChannelSwitch).toBe(
+          mode === "desktop" && !desktopUpdatesDisabled ? true : undefined,
         );
         expect(descriptor.capabilities).toMatchObject({
           settledWorktreeCleanup: true,

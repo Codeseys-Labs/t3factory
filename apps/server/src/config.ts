@@ -99,6 +99,7 @@ export class ServerConfig extends Context.Service<
     readonly shellEnvironmentPrepared?: boolean | undefined;
     readonly desktopTelemetryFd?: number | undefined;
     readonly desktopTelemetryControlFd?: number | undefined;
+    readonly desktopUpdatesDisabled?: boolean | undefined;
     readonly desktopBrowserFd?: number | undefined;
     readonly desktopBrowserControlFd?: number | undefined;
     readonly resourceMonitorPath?: string | undefined;

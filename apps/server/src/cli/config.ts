@@ -368,6 +368,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
   const shellEnvironmentPrepared = bootstrap?.shellEnvironmentPrepared;
   const desktopTelemetryFd = bootstrap?.desktopTelemetryFd;
   const desktopTelemetryControlFd = bootstrap?.desktopTelemetryControlFd;
+  const desktopUpdatesDisabled = bootstrap?.desktopUpdatesDisabled;
   const desktopBrowserFd = bootstrap?.desktopBrowserFd;
   const desktopBrowserControlFd = bootstrap?.desktopBrowserControlFd;
   const resourceMonitorPath = bootstrap?.resourceMonitorPath;
@@ -498,6 +499,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     ...(shellEnvironmentPrepared === undefined ? {} : { shellEnvironmentPrepared }),
     desktopTelemetryFd,
     desktopTelemetryControlFd,
+    desktopUpdatesDisabled,
     desktopBrowserFd,
     desktopBrowserControlFd,
     resourceMonitorPath,

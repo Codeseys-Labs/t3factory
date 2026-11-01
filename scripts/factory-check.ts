@@ -256,6 +256,8 @@ export function validateReceipt(
   if (parsed.baseSha !== expected.baseSha) {
     errors.push(`receipt base ${String(parsed.baseSha)} is not ${expected.baseSha}`);
   }
+  if (parsed.baseSha === parsed.candidateSha)
+    errors.push("receipt base must differ from candidate");
   if (parsed.worktreeClean !== true) errors.push("receipt was not recorded from a clean worktree");
   const toolchain = isRecord(parsed.toolchain) ? parsed.toolchain : {};
   for (const tool of ["node", "pnpm"] as const) {
@@ -526,7 +528,7 @@ export function resolveCandidate(
 }
 
 function pnpmVersion(cwd: string) {
-  const result = NodeChildProcess.spawnSync("vp", ["exec", "pnpm", "--version"], {
+  const result = NodeChildProcess.spawnSync("vp", ["env", "exec", "--", "pnpm", "--version"], {
     cwd,
     encoding: "utf8",
   });
@@ -720,9 +722,10 @@ async function runRecord(options: {
   const head = requireCleanCandidate(root);
   if (
     !SHA_PATTERN.test(options.base) ||
+    options.base === head ||
     !gitSucceeds(root, ["merge-base", "--is-ancestor", options.base, head])
   ) {
-    throw new Error(`--base ${options.base} must be a full SHA and an ancestor of HEAD`);
+    throw new Error(`--base ${options.base} must be a full SHA and a strict ancestor of HEAD`);
   }
   const pins = readToolchainPins(NodeFS.readFileSync(NodePath.join(root, "package.json"), "utf8"));
   const toolchain = { node: process.version.slice(1), pnpm: pnpmVersion(root) };

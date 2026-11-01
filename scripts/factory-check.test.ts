@@ -63,6 +63,7 @@ describe("validateReceipt", () => {
   it.each([
     ["another candidate", receipt({ candidateSha: "d".repeat(40) }), "receipt candidate"],
     ["another base", receipt({ baseSha: "d".repeat(40) }), "receipt base"],
+    ["the candidate as its own base", receipt({ baseSha: candidateSha }), "base must differ"],
     ["another repository", receipt({ repository: "other/factory" }), "receipt repository"],
     [
       "an unpinned Node.js",

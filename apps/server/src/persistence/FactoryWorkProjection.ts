@@ -114,7 +114,7 @@ const launchBranch = (kind: "issue" | "feed", table: string) => {
     substr(COALESCE(${title}, '(untitled)'), 1, 512) AS title, ${intent("createdAt")} AS createdAt,
     origin_key AS sourceKey, ${kind === "issue" ? intent("issue.url") : intent("snapshot.link")} AS sourceUrl,
     ${kind === "issue" ? intent("issue.state") : "NULL"} AS sourceState,
-    NULL AS revision, NULL AS supersededBy, ${
+    ${kind === "feed" ? intent("revision") : "NULL"} AS revision, NULL AS supersededBy, ${
       kind === "feed"
         ? `CASE WHEN origin_conflict = 1 OR EXISTS (
       SELECT 1 FROM factory_feed_launches conflicts WHERE conflicts.origin_key = factory_feed_launches.origin_key

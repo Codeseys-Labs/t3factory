@@ -124,9 +124,10 @@ function FactoryWorkWorkspace() {
   const selectedStatus =
     selection === null
       ? "offline"
-      : (owners.find((owner) => owner.environmentId === selection.environmentId)?.status ??
-        access.get(selection.environmentId) ??
-        "offline");
+      : owners.find((owner) => owner.environmentId === selection.environmentId)?.status ===
+          "forbidden"
+        ? "forbidden"
+        : (access.get(selection.environmentId) ?? "offline");
   const labelOf = (id: EnvironmentId) =>
     environments.find((environment) => environment.environmentId === id)?.label ?? id;
   const movePage = (id: EnvironmentId, next: string | null) =>
@@ -179,7 +180,7 @@ function FactoryWorkWorkspace() {
       </ToggleGroup>
       <p className="text-xs text-muted-foreground">
         Pages and observation times belong to each environment. No global total or synchronized
-        snapshot. Source matches flag possible competing work, not shared ownership.
+        snapshot. Source matches cover loaded pages only; other competing work may exist.
       </p>
       {!isReady ? <p role="status">Loading environments…</p> : null}
       {isReady && plan.length === 0 ? <p>No environments in this scope.</p> : null}
@@ -382,10 +383,14 @@ function FactoryWorkDetail(props: {
             per execution below; idle is not completion.
           </p>
           <p className="text-xs text-muted-foreground">
-            Frozen source snapshot, not a live source observation.{" "}
+            {reference.kind === "protocol"
+              ? "Sealed protocol."
+              : reference.kind === "brief"
+                ? "Authored brief."
+                : "Source snapshot saved at admission."}{" "}
             {data.item.revision === null
               ? "No stored source revision."
-              : `Exact revision ${data.item.revision}.`}{" "}
+              : `${reference.kind === "protocol" ? "Protocol" : reference.kind === "brief" ? "Brief" : "Source"} revision ${data.item.revision}.`}{" "}
             Attention, readiness, acceptance currentness and delivery authority require their
             existing review reads.
           </p>

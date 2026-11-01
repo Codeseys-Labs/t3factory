@@ -49,7 +49,7 @@ const seed = Effect.gen(function* () {
     ('issue-retry', 'github.com/test/repo', 1, 'issue-retry', ${JSON.stringify({ ...issue, previousThreadId: "issue-root" })}, 'github:github.com/test/repo#1', 0, 1)`;
   for (const id of ["feed-one", "feed-conflict"]) {
     yield* sql`INSERT INTO factory_feed_launches (thread_id, source_id, item_key, request_command_id, intent_json, origin_key, origin_conflict)
-      VALUES (${id}, ${id}, 'item', ${id}, ${JSON.stringify({ projectId: owner, createdAt: at, previousThreadId: null, title: id, snapshot: { content: "Frozen feed content", link: null } })}, 'feed:same-source', ${id === "feed-conflict" ? 1 : 0})`;
+      VALUES (${id}, ${id}, 'item', ${id}, ${JSON.stringify({ projectId: owner, createdAt: at, previousThreadId: null, title: id, revision: "admitted-feed-revision", snapshot: { content: "Frozen feed content", link: null } })}, 'feed:same-source', ${id === "feed-conflict" ? 1 : 0})`;
   }
   for (const id of ["brief-one", "brief-two"]) {
     yield* sql`INSERT INTO factory_knowledge_briefs (id, project_id, revision, brief_json, request_command_id, created_at, created_by, superseded_by)
@@ -86,6 +86,10 @@ it.effect(
         true,
       );
       assert.equal(page.items.find((item) => item.ref.id === "issue-root")?.revision, null);
+      assert.equal(
+        page.items.find((item) => item.ref.id === "feed-one")?.revision,
+        "admitted-feed-revision",
+      );
       const oldBrief = yield* work.read({ ref: ref("brief", "brief-one") });
       assert.equal(oldBrief.item.supersededBy, "brief-two");
       assert.equal((yield* work.read({ ref: ref("brief", "brief-two") })).supersedes, "brief-one");

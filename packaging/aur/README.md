@@ -6,10 +6,10 @@ repackage the official x86_64 AppImage from GitHub Releases.
 
 ## Publishing
 
-The release workflow calls `.github/workflows/publish-aur.yml` after publishing a GitHub release;
-the workflow can also be run manually for a specific tag. It selects the stable or nightly
-package, then updates its version and checksums, builds it, regenerates `.SRCINFO`, and pushes it
-to the AUR.
+Upstream's release workflow calls `.github/workflows/publish-aur.yml` after publishing a GitHub
+release. In T3Factory, that caller is inactive and `publish-aur.yml` has no manual dispatch entry
+point. These retained scripts target the upstream packages, not a Factory preview. See
+[T3Factory release operations](../../docs/operations/release.md).
 
 To validate a release on Arch Linux:
 

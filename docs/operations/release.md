@@ -1,19 +1,14 @@
-# Release Checklist
+# T3Factory validation and release operations
 
 > For maintainers. Using T3 Code? See [docs/user](../user/).
 
-This document covers the unified release workflow for stable and nightly desktop releases.
-
-Beta is the product label, not a release channel or version suffix. Release channels
-remain stable and nightly. To ship 0.1.0 Beta, use `channel=stable` and
-`version=0.1.0`. Removing the Beta label later is a branding change independent of
-the version.
-
 ## T3Factory manual validation
 
-T3Factory runs no inherited upstream CI, build, deployment or release workflow. The rest of this
-document describes upstream T3 Code's delivery path. In this fork those workflows keep their bodies
-for upstream reconciliation, but their only trigger is `workflow_call` and nothing calls them.
+This checkout disables inherited upstream CI, build, deployment and release entry points.
+Those workflows retain their bodies for upstream reconciliation, but their only trigger is
+`workflow_call` and no active entry point calls them. Applying this policy to GitHub also requires
+the [rollout](#rollout) below. The upstream release reference later in this document is inactive
+in T3Factory; it is not a procedure for publishing this fork.
 Upstream guards such as `github.repository == 'pingdotgg/t3code'` stay as defense, not as the
 manual-only guarantee.
 
@@ -89,7 +84,14 @@ published to `feat/t3factory`, a maintainer:
 
 To roll back, re-enable the recorded workflows and switch the default branch back to `main`.
 
-## What the workflow does
+## Upstream release reference (inactive in T3Factory)
+
+The remaining sections describe upstream T3 Code's stable, nightly and preview release paths.
+Beta is a product label, not a release channel or version suffix. T3Factory's isolated artifact
+and publication workflows are separate work; do not dispatch an inherited publisher to build a
+Factory preview.
+
+### What the upstream workflow does
 
 - Workflow: `.github/workflows/release.yml`
 - Triggers:

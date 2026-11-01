@@ -800,6 +800,55 @@ describe("Factory claims query", () => {
   );
 });
 
+it.effect("removes cached Work detail immediately when owner read permission is revoked", () =>
+  Effect.gen(function* () {
+    let snapshot = "Protected intent";
+    const h = yield* makeEnvironmentHarness(
+      () => ({
+        [WS_METHODS.factoryReadWork]: () =>
+          Effect.sync(() => ({
+            item: {
+              ref: { version: 1, environmentId, kind: "brief", id: "exact-brief" },
+              projectId,
+              title: "Protected brief",
+              createdAt: fetchedAt,
+              sourceKey: null,
+              sourceUrl: null,
+              sourceState: null,
+              revision: "revision",
+              supersededBy: null,
+              originConflict: false,
+              planningStage: null,
+            },
+            reviewTarget: { kind: "brief", briefId: "exact-brief" },
+            snapshot,
+            snapshotTruncated: false,
+            projectAvailable: true,
+            reviewProjectId: projectId,
+            projectCoordinatorThreadId: null,
+            supersedes: null,
+            fetchedAt,
+          })),
+      }),
+      [AuthOrchestrationReadScope],
+    );
+    const atom = h.atoms.readWork({
+      environmentId,
+      input: { ref: { version: 1, environmentId, kind: "brief", id: "exact-brief" } },
+    });
+    yield* AtomRegistry.mount(h.registry, atom);
+    const detail = yield* AtomRegistry.getResult(h.registry, atom, { suspendOnWaiting: true });
+    expect(detail.snapshot).toBe("Protected intent");
+    snapshot = "Changed protected intent";
+    h.registry.refresh(atom);
+    expect(
+      (yield* AtomRegistry.getResult(h.registry, atom, { suspendOnWaiting: true })).snapshot,
+    ).toBe(snapshot);
+    h.registry.set(sessions(environmentId), AsyncResult.success(sessionWith([])));
+    expect(Option.isNone(AsyncResult.value(h.registry.get(atom)))).toBe(true);
+  }).pipe(Effect.scoped),
+);
+
 const makeReadinessHarness = Effect.fn("TestFactory.makeReadinessHarness")(function* (
   grants: ReadonlyArray<AuthEnvironmentScope> = [AuthOrchestrationOperateScope],
   failCommands = false,

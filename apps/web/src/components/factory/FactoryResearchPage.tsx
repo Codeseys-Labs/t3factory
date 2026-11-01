@@ -14,13 +14,13 @@ import {
   type FactoryResearchFinding,
   type FactoryResearchImplementationAdmitInput,
   type FactoryResearchProtocol,
-  type FactoryResearchProtocolId,
+  FactoryResearchProtocolId,
   type FactoryResearchProtocolReadResult,
   type FactoryResearchRunRole,
   type ModelSelection,
   type ThreadId,
 } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowLeftIcon, ChevronDownIcon, FactoryIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -68,6 +68,8 @@ import { singleFactoryMember } from "./factoryScope";
 
 export function FactoryResearchPage() {
   const { scope, groups, selectScope } = useSettingsScope();
+  const search = useSearch({ from: "/_chat/factory" });
+  const navigate = useNavigate();
   const { isReady, environments } = useEnvironments();
   const allProjects = useProjects();
   const member = singleFactoryMember(scope);
@@ -150,6 +152,16 @@ export function FactoryResearchPage() {
           icon={<FactoryIcon />}
           title="Read access unavailable"
           description="This connection needs orchestration read access to list research protocols."
+        />
+      ) : search.reviewId !== undefined ? (
+        <FactoryResearchProtocolDetail
+          key={search.reviewId}
+          environmentId={environment.environmentId}
+          project={project}
+          protocolId={FactoryResearchProtocolId.make(search.reviewId)}
+          onBack={() => {
+            void navigate({ to: "/factory/research", search: { ...search, reviewId: undefined } });
+          }}
         />
       ) : (
         <FactoryResearchWorkspace

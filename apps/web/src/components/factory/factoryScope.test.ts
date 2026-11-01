@@ -10,6 +10,8 @@ import {
   factoryScopeSearchForMember,
   singleFactoryMember,
   validateFactorySearch,
+  parseFactoryWorkReturn,
+  parseFactoryFeedReview,
 } from "./factoryScope";
 
 const laptopId = EnvironmentId.make("laptop");
@@ -147,5 +149,29 @@ describe("factory scope narrowing", () => {
     );
     expect(scope).toMatchObject({ kind: "unavailable", reason: "environment-missing" });
     expect(singleFactoryMember(scope)).toBeNull();
+  });
+
+  it("returns from exact native review to the original logical scope and concrete Work selection", () => {
+    const work = JSON.stringify({
+      version: 1,
+      environmentId: serverId,
+      kind: "brief",
+      id: "brief-revision-two",
+    });
+    const saved = { project: project.projectKey, work, workKind: "brief" as const };
+    const native = validateFactorySearch({
+      ...factoryScopeSearchForMember(remote, project),
+      reviewId: "brief-revision-two",
+      workReturn: JSON.stringify(saved),
+    });
+    expect(singleFactoryMember(resolve({ ...native }))).toBe(remote);
+    expect(parseFactoryWorkReturn(native.workReturn)).toEqual(saved);
+    expect(validateFactorySearch(saved).work).toBe(work);
+    expect(parseFactoryWorkReturn("https://untrusted.example")).toBeNull();
+    expect(parseFactoryFeedReview(JSON.stringify(["feed-id", "item-key"]))).toEqual([
+      "feed-id",
+      "item-key",
+    ]);
+    expect(parseFactoryFeedReview(JSON.stringify(["feed-id"]))).toBeNull();
   });
 });

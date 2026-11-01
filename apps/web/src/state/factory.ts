@@ -1,7 +1,7 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { arrayElementsEqual } from "@t3tools/client-runtime/state/entities";
 import { createFactoryEnvironmentAtoms } from "@t3tools/client-runtime/state/factory";
-import { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, FactoryWorkListInput } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { Atom } from "effect/reactivity";
@@ -148,4 +148,36 @@ export function useFactoryClaimLists(targets: ReadonlyArray<FactoryClaimListTarg
     }
   };
   return { lists, refresh };
+}
+
+const workTargets = Schema.fromJsonString(
+  Schema.Array(
+    Schema.Struct({
+      environmentId: EnvironmentId,
+      input: FactoryWorkListInput,
+    }),
+  ),
+);
+const workLists = Atom.family((key: string) =>
+  Atom.make((get) =>
+    Schema.decodeSync(workTargets)(key).map((target) => ({
+      environmentId: target.environmentId,
+      result: get(factoryEnvironment.listWork(target)),
+    })),
+  ).pipe(Atom.setIdleTTL(0)),
+);
+export function useFactoryWorkLists(
+  targets: readonly {
+    readonly environmentId: EnvironmentId;
+    readonly input: FactoryWorkListInput;
+  }[],
+) {
+  const registry = useContext(RegistryContext);
+  const lists = useAtomValue(workLists(JSON.stringify(targets)));
+  return {
+    lists,
+    refresh: () => {
+      for (const target of targets) registry.refresh(factoryEnvironment.listWork(target));
+    },
+  };
 }

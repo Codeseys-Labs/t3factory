@@ -80,7 +80,7 @@ import {
 import { factoryTaskPresentation, safeExternalUrl } from "./factoryIssues.logic";
 import { useFactoryLaunchModelSettings } from "./FactoryLaunchControls";
 import { FactoryReviewFailure, FactoryReviewSnapshot } from "./FactoryReview";
-import { singleFactoryMember, type FactorySearch } from "./factoryScope";
+import { singleFactoryMember, parseFactoryFeedReview, type FactorySearch } from "./factoryScope";
 import { useFactoryClaims, type FactoryClaimsView } from "./useFactoryClaims";
 
 export function FactorySourcesPage() {
@@ -213,17 +213,56 @@ function FactorySourcesWorkspace(props: {
 }) {
   const { environmentId, project } = props;
   const navigate = useNavigate();
-  const sources = useEnvironmentQuery(
-    factoryEnvironment.listFeedSources({ environmentId, input: { projectId: project.id } }),
+  const reviewFeed = parseFactoryFeedReview(props.issuesSearch.reviewFeed);
+  const sourcePage = useEnvironmentQuery(
+    reviewFeed === null
+      ? factoryEnvironment.listFeedSources({ environmentId, input: { projectId: project.id } })
+      : null,
   );
   // One list for the whole project: the server's `open` filter would hide retracted and
   // unreviewable items, which must stay visible and labelled.
-  const candidates = useEnvironmentQuery(
-    factoryEnvironment.listFeedCandidates({
-      environmentId,
-      input: { projectId: project.id, disposition: "all" },
-    }),
+  const candidatePage = useEnvironmentQuery(
+    reviewFeed === null
+      ? factoryEnvironment.listFeedCandidates({
+          environmentId,
+          input: { projectId: project.id, disposition: "all" },
+        })
+      : null,
   );
+  const singleCandidate = useEnvironmentQuery(
+    reviewFeed === null
+      ? null
+      : factoryEnvironment.readFeedCandidate({
+          environmentId,
+          input: { projectId: project.id, sourceId: reviewFeed[0], itemKey: reviewFeed[1] },
+        }),
+  );
+  const candidates =
+    reviewFeed === null
+      ? candidatePage
+      : {
+          ...singleCandidate,
+          data:
+            singleCandidate.data === null
+              ? null
+              : {
+                  ...singleCandidate.data,
+                  candidates: [singleCandidate.data.candidate],
+                },
+        };
+  const sources =
+    reviewFeed === null
+      ? sourcePage
+      : {
+          ...singleCandidate,
+          data:
+            singleCandidate.data === null
+              ? null
+              : {
+                  sources: [singleCandidate.data.source],
+                  fetchedAt: singleCandidate.data.fetchedAt,
+                },
+        };
   const canBind = useAtomValue(factoryEnvironment.bindFeedSource.permissionAtom(environmentId));
   const canUnbind = useAtomValue(factoryEnvironment.unbindFeedSource.permissionAtom(environmentId));
   const canRefresh = useAtomValue(
@@ -474,7 +513,7 @@ function FactorySourcesWorkspace(props: {
               candidates={visibleFactoryFeedCandidates(
                 candidateList.candidates,
                 source.id,
-                showDismissed,
+                showDismissed || reviewFeed !== null,
               )}
               dismissedHidden={
                 showDismissed

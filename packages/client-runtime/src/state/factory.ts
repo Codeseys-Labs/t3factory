@@ -1,20 +1,67 @@
 import {
   WS_METHODS,
+  AuthOrchestrationReadScope,
+  EnvironmentAuthorizationError,
+  sessionGrantsScope,
   type EnvironmentId,
   type FactoryResearchProtocolId,
   type ProjectId,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import { Atom, type AtomRegistry } from "effect/reactivity";
+import * as Cause from "effect/Cause";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import type { EnvironmentThreadShell } from "./models.ts";
 import { createEnvironmentRpcCommand, createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
+import { createEnvironmentSessionAtoms } from "./session.ts";
 
 export function createFactoryEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
+  const sessions = createEnvironmentSessionAtoms(runtime);
+  const protectedRead = <Input, A, Error>(
+    query: (target: {
+      readonly environmentId: EnvironmentId;
+      readonly input: Input;
+    }) => Atom.Atom<AsyncResult.AsyncResult<A, Error>>,
+  ) => {
+    const cache = new WeakMap<
+      Atom.Atom<AsyncResult.AsyncResult<A, Error>>,
+      Atom.Atom<AsyncResult.AsyncResult<A, Error>>
+    >();
+    return (target: { readonly environmentId: EnvironmentId; readonly input: Input }) => {
+      const raw = query(target);
+      const existing = cache.get(raw);
+      if (existing) return existing;
+      const guarded = Atom.readable(
+        (get) => {
+          const session = get(sessions.sessionStateAtom(target.environmentId));
+          if (
+            session._tag !== "Success" ||
+            !sessionGrantsScope(session.value, AuthOrchestrationReadScope)
+          )
+            return AsyncResult.initial<A, Error>(false);
+          const result = get(raw);
+          if (
+            result._tag === "Failure" &&
+            Option.exists(
+              Cause.findErrorOption(result.cause),
+              Schema.is(EnvironmentAuthorizationError),
+            )
+          )
+            return AsyncResult.failure<A, Error>(result.cause);
+          return result;
+        },
+        (refresh) => refresh(raw),
+      ).pipe(Atom.setIdleTTL(0));
+      cache.set(raw, guarded);
+      return guarded;
+    };
+  };
   const coordinatorsGet = createEnvironmentRpcQueryAtomFamily(runtime, {
     label: "environment-data:factory:coordinators:get",
     tag: WS_METHODS.projectCoordinatorsGet,
@@ -135,6 +182,38 @@ export function createFactoryEnvironmentAtoms<R, E>(
       );
     });
   return {
+    readIssue: protectedRead(
+      createEnvironmentRpcQueryAtomFamily(runtime, {
+        label: "environment-data:factory:issue",
+        tag: WS_METHODS.factoryReadIssue,
+        staleTimeMs: 0,
+        idleTtlMs: 0,
+      }),
+    ),
+    listWork: protectedRead(
+      createEnvironmentRpcQueryAtomFamily(runtime, {
+        label: "environment-data:factory:work",
+        tag: WS_METHODS.factoryListWork,
+        staleTimeMs: 0,
+        idleTtlMs: 0,
+      }),
+    ),
+    readWork: protectedRead(
+      createEnvironmentRpcQueryAtomFamily(runtime, {
+        label: "environment-data:factory:work-detail",
+        tag: WS_METHODS.factoryReadWork,
+        staleTimeMs: 0,
+        idleTtlMs: 0,
+      }),
+    ),
+    readWorkHistory: protectedRead(
+      createEnvironmentRpcQueryAtomFamily(runtime, {
+        label: "environment-data:factory:work-history",
+        tag: WS_METHODS.factoryReadWorkHistory,
+        staleTimeMs: 0,
+        idleTtlMs: 0,
+      }),
+    ),
     list: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:factory:issues",
       tag: WS_METHODS.factoryListIssues,

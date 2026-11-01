@@ -13,7 +13,7 @@ import {
   type FactoryKnowledgeTask,
   type ProjectId,
 } from "@t3tools/contracts";
-import { Link } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import { FileTextIcon } from "lucide-react";
 import { useId, useRef, useState } from "react";
 
@@ -61,9 +61,10 @@ import {
   useFactoryLaunchModelSettings,
 } from "./FactoryLaunchControls";
 import { FactoryReviewSnapshot } from "./FactoryReview";
-import { singleFactoryMember } from "./factoryScope";
+import { singleFactoryMember, validateFactorySearch } from "./factoryScope";
 
 export function FactoryBriefsPage() {
+  const search = validateFactorySearch(useSearch({ strict: false }));
   const { scope, groups, selectScope } = useSettingsScope();
   const { isReady, environments } = useEnvironments();
   const projects = useProjects();
@@ -138,6 +139,16 @@ export function FactoryBriefsPage() {
         />
       ) : unavailable !== null ? (
         <FactoryEmptyState icon={<FileTextIcon />} {...unavailable} />
+      ) : environment && project && search.reviewId !== undefined ? (
+        <FactorySelectedBrief
+          key={`${environment.environmentId}:${search.reviewId}`}
+          environmentId={environment.environmentId}
+          project={project}
+          briefId={search.reviewId}
+          deliverySupported={
+            environment.serverConfig?.environment.capabilities.factoryDelivery === true
+          }
+        />
       ) : environment && project ? (
         <FactoryBriefsWorkspace
           key={`${environment.environmentId}:${project.id}`}
@@ -246,6 +257,65 @@ function FactoryBriefsWorkspace(props: {
           }}
         />
       ) : null}
+    </div>
+  );
+}
+
+function FactorySelectedBrief(props: {
+  readonly environmentId: EnvironmentId;
+  readonly project: EnvironmentProject;
+  readonly briefId: string;
+  readonly deliverySupported: boolean;
+}) {
+  const query = useEnvironmentQuery(
+    factoryEnvironment.readKnowledgeTask({
+      environmentId: props.environmentId,
+      input: { projectId: props.project.id, briefId: props.briefId },
+    }),
+  );
+  const canStart = useAtomValue(
+    factoryEnvironment.startKnowledgeTask.permissionAtom(props.environmentId),
+  );
+  const [review, setReview] = useState<boolean | null>(null);
+  const data = query.error === null && !query.isPending ? query.data : null;
+  return (
+    <div className="space-y-3">
+      {query.error ? (
+        <p role="alert">{query.error}</p>
+      ) : data === null ? (
+        <p role="status">Loading exact brief…</p>
+      ) : (
+        <>
+          <ul>
+            <KnowledgeBriefRow
+              environmentId={props.environmentId}
+              projectId={props.project.id}
+              brief={data.brief}
+              task={data.task}
+              deliverySupported={props.deliverySupported}
+              canStart={canStart}
+              onReview={setReview}
+            />
+          </ul>
+          {review !== null ? (
+            <KnowledgeStartDialog
+              environmentId={props.environmentId}
+              project={props.project}
+              brief={data.brief}
+              restart={review}
+              canStart={canStart}
+              onClose={() => setReview(null)}
+              onStarted={() => {
+                setReview(null);
+                query.refresh();
+              }}
+            />
+          ) : null}
+        </>
+      )}
+      <Button size="sm" variant="outline" onClick={query.refresh}>
+        Refresh exact brief
+      </Button>
     </div>
   );
 }

@@ -47,6 +47,7 @@ import * as FactoryIssueRelations from "./factory/FactoryIssueRelations.ts";
 import * as FactoryFeedService from "./factory/FactoryFeedService.ts";
 import * as FactoryResearchService from "./factory/FactoryResearchService.ts";
 import * as FactoryClaimsService from "./factory/FactoryClaimsService.ts";
+import * as FactoryWorkService from "./factory/FactoryWorkService.ts";
 import * as FactoryAcceptanceService from "./factory/FactoryAcceptanceService.ts";
 import * as FactoryKnowledgeService from "./factory/FactoryKnowledgeService.ts";
 import * as FactoryDeliveryService from "./factory/FactoryDeliveryService.ts";
@@ -549,6 +550,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(FactoryFeedService.FactoryFeedService)({}),
   Layer.mock(FactoryResearchService.FactoryResearchService)({}),
   Layer.mock(FactoryClaimsService.FactoryClaimsService)({}),
+  Layer.mock(FactoryWorkService.FactoryWorkService)({}),
   Layer.mock(FactoryAcceptanceService.FactoryAcceptanceService)({}),
   Layer.mock(FactoryKnowledgeService.FactoryKnowledgeService)({}),
   Layer.mock(FactoryDeliveryService.FactoryDeliveryService)({}),

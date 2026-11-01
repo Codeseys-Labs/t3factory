@@ -2,6 +2,8 @@ import {
   FactoryIssueError,
   FactoryIssueListInput,
   FactoryIssueListResult,
+  FactoryIssueReadInput,
+  FactoryIssueReadResult,
   FactoryIssueStartInput,
   FactoryIssueStartResult,
 } from "./factory.ts";
@@ -44,6 +46,15 @@ import {
   FactoryResearchRunLaunchResult,
 } from "./factoryResearch.ts";
 import { FactoryClaimListInput, FactoryClaimListResult } from "./factoryClaims.ts";
+import {
+  FactoryWorkError,
+  FactoryWorkListInput,
+  FactoryWorkListResult,
+  FactoryWorkReadInput,
+  FactoryWorkReadResult,
+  FactoryWorkHistoryInput,
+  FactoryWorkHistoryResult,
+} from "./factoryWork.ts";
 import {
   FactoryKnowledgeAcceptInput,
   FactoryKnowledgeBrief,
@@ -502,6 +513,10 @@ export const WS_METHODS = {
   factoryLaunchResearchRun: "factory.launchResearchRun",
   factoryAdmitResearchImplementation: "factory.admitResearchImplementation",
   factoryListClaims: "factory.listClaims",
+  factoryListWork: "factory.listWork",
+  factoryReadWork: "factory.readWork",
+  factoryReadWorkHistory: "factory.readWorkHistory",
+  factoryReadIssue: "factory.readIssue",
   factoryAcceptCommit: "factory.acceptCommit",
   factoryReadAcceptance: "factory.readAcceptance",
   factoryPrepareDelivery: "factory.prepareDelivery",
@@ -2046,9 +2061,30 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
   stream: true,
 });
 
+const WsFactoryListWorkRpc = Rpc.make(WS_METHODS.factoryListWork, {
+  payload: FactoryWorkListInput,
+  success: FactoryWorkListResult,
+  error: Schema.Union([FactoryWorkError, EnvironmentAuthorizationError]),
+});
+const WsFactoryReadWorkRpc = Rpc.make(WS_METHODS.factoryReadWork, {
+  payload: FactoryWorkReadInput,
+  success: FactoryWorkReadResult,
+  error: Schema.Union([FactoryWorkError, EnvironmentAuthorizationError]),
+});
+const WsFactoryReadWorkHistoryRpc = Rpc.make(WS_METHODS.factoryReadWorkHistory, {
+  payload: FactoryWorkHistoryInput,
+  success: FactoryWorkHistoryResult,
+  error: Schema.Union([FactoryWorkError, EnvironmentAuthorizationError]),
+});
+
 const WsFactoryListIssuesRpc = Rpc.make(WS_METHODS.factoryListIssues, {
   payload: FactoryIssueListInput,
   success: FactoryIssueListResult,
+  error: Schema.Union([FactoryIssueError, EnvironmentAuthorizationError]),
+});
+const WsFactoryReadIssueRpc = Rpc.make(WS_METHODS.factoryReadIssue, {
+  payload: FactoryIssueReadInput,
+  success: FactoryIssueReadResult,
   error: Schema.Union([FactoryIssueError, EnvironmentAuthorizationError]),
 });
 const WsFactoryStartIssueRpc = Rpc.make(WS_METHODS.factoryStartIssue, {
@@ -2253,7 +2289,11 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
 
 export const WsRpcGroup = RpcGroup.make(
   WsGuestShareCreateRpc,
+  WsFactoryListWorkRpc,
+  WsFactoryReadWorkRpc,
+  WsFactoryReadWorkHistoryRpc,
   WsFactoryListIssuesRpc,
+  WsFactoryReadIssueRpc,
   WsFactoryStartIssueRpc,
   WsFactoryListFeedSourcesRpc,
   WsFactoryBindFeedSourceRpc,

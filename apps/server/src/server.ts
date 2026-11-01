@@ -8,6 +8,7 @@ import * as FactoryFeedStore from "./persistence/FactoryFeedStore.ts";
 import * as FactoryResearchService from "./factory/FactoryResearchService.ts";
 import * as FactoryResearchStore from "./persistence/FactoryResearchStore.ts";
 import * as FactoryClaimsService from "./factory/FactoryClaimsService.ts";
+import * as FactoryWorkService from "./factory/FactoryWorkService.ts";
 import * as FactoryAcceptanceService from "./factory/FactoryAcceptanceService.ts";
 import * as FactoryKnowledgeService from "./factory/FactoryKnowledgeService.ts";
 import * as FactoryDeliveryService from "./factory/FactoryDeliveryService.ts";
@@ -779,6 +780,7 @@ const layerMakeRoutes = Layer.mergeAll(
       FactoryFeedService.layer,
       FactoryResearchService.layer,
       FactoryClaimsService.layer,
+      FactoryWorkService.layer,
       FactoryAcceptanceService.layer,
       FactoryKnowledgeService.layer,
       FactoryDeliveryService.layer.pipe(

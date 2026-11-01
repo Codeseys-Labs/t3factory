@@ -10,11 +10,13 @@ import { ScrollArea } from "../ui/scroll-area";
 import { SidebarInset } from "../ui/sidebar";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
+import { parseFactoryWorkReturn } from "./factoryScope";
 
 export function FactoryPage() {
   const search = useSearch({ from: "/_chat/factory" });
   const navigate = useNavigate({ from: "/factory" });
   const pathname = useLocation({ select: (location) => location.pathname });
+  const workReturn = parseFactoryWorkReturn(search.workReturn);
   return (
     <SettingsScopeProvider
       search={search}
@@ -27,6 +29,10 @@ export function FactoryPage() {
             machine: next.machine,
             checkout: next.checkout,
             taskId: undefined,
+            work: undefined,
+            reviewId: undefined,
+            reviewIssue: undefined,
+            reviewFeed: undefined,
           }),
           replace: true,
           hash: "",
@@ -43,6 +49,20 @@ export function FactoryPage() {
           <ScrollArea className="min-h-0 flex-1">
             <WorkspacePageContainer width="wide">
               <SettingsScopeSentence leadIn="Showing work for" />
+              {workReturn !== null ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    void navigate({
+                      to: "/factory",
+                      search: { ...workReturn, state: "all", view: "list" },
+                    });
+                  }}
+                >
+                  Return to selected Work and scope
+                </Button>
+              ) : null}
               <FactoryScopedContent />
             </WorkspacePageContainer>
           </ScrollArea>

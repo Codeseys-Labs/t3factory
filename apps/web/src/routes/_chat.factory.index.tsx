@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { FactoryOverviewPage } from "../components/factory/FactoryOverviewPage";
+import { FactoryWorkPage } from "../components/factory/FactoryWorkPage";
 
 export const Route = createFileRoute("/_chat/factory/")({
-  component: FactoryOverviewPage,
+  component: FactoryWorkPage,
 });

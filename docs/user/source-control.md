@@ -144,8 +144,10 @@ make your first commit before pushing.
 
 ## Factory
 
-Open **Factory** in the sidebar or command palette. Its sections are **Overview**, **Issues**,
-**Briefs**, **Sources**, **Research**, **Workflows**, and **Orchestrator**. **Sessions** and **New thread** still open
+Open **Factory** in the sidebar or command palette. Web and desktop open **Work**, a mixed
+collection of retained admitted issues and feed work, authored briefs, and sealed research
+protocols. **Issues**, **Briefs**, **Sources**, **Research**, **Workflows**, and **Orchestrator**
+remain available for intake and specialized review. **Sessions** and **New thread** still open
 ordinary conversations; you do not need an orchestrator to use them.
 
 ### Choose the scope
@@ -162,11 +164,22 @@ environments or several checkouts on one machine. Check the environment and full
 path before starting work. A removed or invalid selection is unavailable, not a request to
 use the first project or all projects. Reset it or choose another valid target.
 
-Overview shows the selected projects' environments and paths, thread and running counts,
-scheduled workflow counts and latest dispatch, and orchestrator state. Loading, offline,
-unsupported, and denied environments are not empty projects. Opening a checkout narrows the
-scope. Opening a workflow selects its owning environment, checkout, and exact definition;
-a missing or out-of-scope workflow link does not open a different workflow.
+Work lists one page per environment in the selected scope, including unstarted briefs and
+protocols. Select an item to inspect its frozen snapshot, concrete brief lineage, executions,
+V2 runs, retry attempts, and output pins. Native review opens the saved owning checkout, with a
+return link to the original scope and selected item. Starting, accepting, and publishing still
+require their existing reviews and permissions. Opening Work performs none of those actions.
+
+An issue or feed title is an admission snapshot, not a current source observation. Output pins
+do not prove that an acceptance is still current. Matching sources on different environments
+remain separate work with separate owners; legacy feed conflicts also stay separate. Offline,
+failed, unsupported, and denied owners are not empty collections. Page times are local
+observations, not a synchronized global snapshot.
+
+The advanced environment overview shows project paths, thread and running counts, scheduled
+workflow counts and latest dispatch, and project coordinator context. Opening a workflow selects
+its owning environment, checkout, and exact definition; a missing or out-of-scope workflow link
+does not open a different workflow.
 
 Issues requires a single checkout. At a broader scope, choose a checkout before browsing;
 Factory does not combine its GitHub pages into a global issue queue. Orchestrator creation

@@ -183,6 +183,10 @@
       "types": "./src/state/factory.ts",
       "default": "./src/state/factory.ts"
     },
+    "./state/factory-work": {
+      "types": "./src/state/factoryWork.ts",
+      "default": "./src/state/factoryWork.ts"
+    },
     "./state/filesystem": {
       "types": "./src/state/filesystem.ts",
       "default": "./src/state/filesystem.ts"

@@ -222,6 +222,7 @@ export const make = Effect.gen(function* () {
       factoryFeeds: true,
       factoryResearch: true,
       factoryClaims: true,
+      factoryWork: true,
       factoryAcceptance: true,
       factoryKnowledge: true,
       factoryDelivery: true,

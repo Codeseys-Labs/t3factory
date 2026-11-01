@@ -11,6 +11,7 @@ export * from "./factoryFeeds.ts";
 export * from "./factoryReadiness.ts";
 export * from "./factoryResearch.ts";
 export * from "./factoryClaims.ts";
+export * from "./factoryWork.ts";
 export * from "./factoryAcceptance.ts";
 export * from "./factoryDelivery.ts";
 export * from "./factoryKnowledge.ts";

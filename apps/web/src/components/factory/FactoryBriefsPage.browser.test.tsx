@@ -366,9 +366,6 @@ it("lists a thread's comments with their link and reconciles one whose outcome i
   await expect
     .element(screen.getByRole("link", { name: "View comment" }))
     .toHaveAttribute("href", "https://github.com/owner/repo/issues/53#issuecomment-7");
-  await expect
-    .element(screen.getByText("The server lost the response. Reconcile to check github.com."))
-    .toBeVisible();
   const reconcile = screen.getByRole("button", { name: "Reconcile", exact: true });
   await reconcile.click();
   await vi.waitFor(() => {

@@ -7,7 +7,7 @@ import {
   FlaskConicalIcon,
   FolderGit2Icon,
   GlobeIcon,
-  LayoutDashboardIcon,
+  ListChecksIcon,
   ListTodoIcon,
   RssIcon,
   SquarePenIcon,
@@ -40,7 +40,7 @@ import {
 } from "./factoryScope";
 
 const FACTORY_SECTIONS = [
-  { to: "/factory", label: "Overview", icon: LayoutDashboardIcon },
+  { to: "/factory", label: "Work", icon: ListChecksIcon },
   { to: "/factory/issues", label: "Issues", icon: ListTodoIcon },
   { to: "/factory/briefs", label: "Briefs", icon: FileTextIcon },
   { to: "/factory/sources", label: "Sources", icon: RssIcon },

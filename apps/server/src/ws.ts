@@ -3,6 +3,7 @@ import * as FactoryIssueRelations from "./factory/FactoryIssueRelations.ts";
 import * as FactoryFeedService from "./factory/FactoryFeedService.ts";
 import * as FactoryResearchService from "./factory/FactoryResearchService.ts";
 import * as FactoryClaimsService from "./factory/FactoryClaimsService.ts";
+import * as FactoryWorkService from "./factory/FactoryWorkService.ts";
 import * as FactoryAcceptanceService from "./factory/FactoryAcceptanceService.ts";
 import * as FactoryKnowledgeService from "./factory/FactoryKnowledgeService.ts";
 import * as FactoryDeliveryService from "./factory/FactoryDeliveryService.ts";
@@ -1286,6 +1287,7 @@ export const layerWsRpc = (
       const factoryFeeds = yield* FactoryFeedService.FactoryFeedService;
       const factoryResearch = yield* FactoryResearchService.FactoryResearchService;
       const factoryClaims = yield* FactoryClaimsService.FactoryClaimsService;
+      const factoryWork = yield* FactoryWorkService.FactoryWorkService;
       const factoryAcceptance = yield* FactoryAcceptanceService.FactoryAcceptanceService;
       const factoryKnowledge = yield* FactoryKnowledgeService.FactoryKnowledgeService;
       const factoryDelivery = yield* FactoryDeliveryService.FactoryDeliveryService;
@@ -2591,7 +2593,11 @@ export const layerWsRpc = (
               ),
           ),
         [WS_METHODS.factoryListIssues]: (input) => factory.list(input),
+        [WS_METHODS.factoryReadIssue]: (input) => factory.read(input),
         [WS_METHODS.factoryListClaims]: (input) => factoryClaims.list(input),
+        [WS_METHODS.factoryListWork]: (input) => factoryWork.list(input),
+        [WS_METHODS.factoryReadWork]: (input) => factoryWork.read(input),
+        [WS_METHODS.factoryReadWorkHistory]: (input) => factoryWork.history(input),
         [WS_METHODS.factoryAcceptCommit]: (input) => factoryAcceptance.acceptCommit(input),
         [WS_METHODS.factoryReadAcceptance]: (input) => factoryAcceptance.read(input),
         [WS_METHODS.factoryCreateKnowledgeBrief]: (input) => factoryKnowledge.createBrief(input),
@@ -3344,6 +3350,7 @@ export const layer = Layer.unwrap(
     const factoryFeeds = yield* FactoryFeedService.FactoryFeedService;
     const factoryResearch = yield* FactoryResearchService.FactoryResearchService;
     const factoryClaims = yield* FactoryClaimsService.FactoryClaimsService;
+    const factoryWork = yield* FactoryWorkService.FactoryWorkService;
     const factoryAcceptance = yield* FactoryAcceptanceService.FactoryAcceptanceService;
     const factoryKnowledge = yield* FactoryKnowledgeService.FactoryKnowledgeService;
     const factoryDelivery = yield* FactoryDeliveryService.FactoryDeliveryService;
@@ -3437,6 +3444,7 @@ export const layer = Layer.unwrap(
                 Layer.provide(
                   Layer.succeed(FactoryClaimsService.FactoryClaimsService, factoryClaims),
                 ),
+                Layer.provide(Layer.succeed(FactoryWorkService.FactoryWorkService, factoryWork)),
                 Layer.provide(
                   Layer.succeed(
                     FactoryAcceptanceService.FactoryAcceptanceService,

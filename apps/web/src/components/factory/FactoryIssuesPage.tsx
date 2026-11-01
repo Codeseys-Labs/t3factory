@@ -203,6 +203,7 @@ export function FactoryIssuesPage() {
               )
             }
             state={state}
+            reviewIssue={search.reviewIssue}
             mode={view}
             onModeChange={(next) => {
               void navigate({ search: (previous) => ({ ...previous, view: next }), replace: true });
@@ -229,14 +230,35 @@ function FactoryInbox(props: {
   readonly state: FactoryIssueStateFilter;
   readonly mode: FactoryIssueViewMode;
   readonly onModeChange: (mode: FactoryIssueViewMode) => void;
+  readonly reviewIssue?: number | undefined;
 }) {
   const { environmentId, project, state, mode } = props;
   const navigate = useNavigate();
   const [pages, setPages] = useState<ReadonlyArray<number>>([1]);
   const page = currentFactoryPage(pages);
-  const query = useEnvironmentQuery(
-    factoryEnvironment.list({ environmentId, input: { projectId: project.id, state, page } }),
+  const list = useEnvironmentQuery(
+    props.reviewIssue === undefined
+      ? factoryEnvironment.list({ environmentId, input: { projectId: project.id, state, page } })
+      : null,
   );
+  const single = useEnvironmentQuery(
+    props.reviewIssue === undefined
+      ? null
+      : factoryEnvironment.readIssue({
+          environmentId,
+          input: { projectId: project.id, issueNumber: props.reviewIssue },
+        }),
+  );
+  const query =
+    props.reviewIssue === undefined
+      ? list
+      : {
+          ...single,
+          data:
+            single.data === null
+              ? null
+              : { ...single.data, issues: [single.data.issue], nextPage: null },
+        };
   const canStart = useAtomValue(factoryEnvironment.start.permissionAtom(environmentId));
   const runStart = useAtomCommand(factoryEnvironment.start, {
     label: "factory issue start",

@@ -15,9 +15,9 @@ name: Web Preview
 # `isHostedStaticApp` matches on origin, so branch-alias URLs will not
 # self-identify as the hosted app.
 
+# T3Factory: inherited trigger neutralized to reusable-only with no caller. See docs/operations/release.md.
 on:
-  pull_request:
-    types: [labeled, synchronize, reopened]
+  workflow_call:
 
 permissions:
   contents: read

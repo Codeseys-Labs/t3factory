@@ -1,0 +1,763 @@
+# Manual validation of one exact T3Factory candidate. Dispatch-only: nothing
+# triggers it, and it publishes, deploys and releases nothing. Control scripts
+# come from the workflow's own revision (`github.workflow_sha`); candidate code
+# is checked out separately at `candidate_sha`, with a read-only token that is
+# not persisted. No secrets, OIDC or remote task cache are used.
+#
+# Prepare local evidence first (docs/operations/release.md, "T3Factory manual
+# validation"). `Check` writes the versioned manifest artifact and fails unless
+# every requested lane passed and every unrequested lane was skipped.
+name: Factory Check
+run-name: Factory check ${{ inputs.candidate_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact 40-character candidate commit SHA
+        required: true
+        type: string
+      base_sha:
+        description: Exact 40-character base commit SHA the local check:changed ran against
+        required: true
+        type: string
+      candidate_ref:
+        description: Branch or tag of this repository that contains candidate_sha
+        required: true
+        type: string
+      local_receipt_sha256:
+        description: SHA-256 of the local evidence receipt bytes
+        required: true
+        type: string
+      local_receipt_b64:
+        description: Base64 of the local evidence receipt (at most 16 KiB decoded)
+        required: true
+        type: string
+      lane_lint:
+        description: Lint, knip and generated-code checks
+        type: boolean
+        default: true
+      lane_build:
+        description: Desktop build and typecheck
+        type: boolean
+        default: true
+      lane_test:
+        description: Package tests except server and web
+        type: boolean
+        default: true
+      lane_test_web:
+        description: Web tests and built-client boot
+        type: boolean
+        default: true
+      lane_test_server:
+        description: Server tests (8 shards)
+        type: boolean
+        default: true
+      lane_rust:
+        description: Rust formatting and tests
+        type: boolean
+        default: true
+      lane_release_smoke:
+        description: Release script smoke (no publishing)
+        type: boolean
+        default: true
+      lane_windows:
+        description: Windows desktop build
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: factory-check-${{ inputs.candidate_sha }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve candidate and local evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: control
+          persist-credentials: false
+          sparse-checkout: |
+            /package.json
+            /scripts/package.json
+            /scripts/factory-check.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Validate candidate and base SHAs
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+        run: |
+          for sha in "$CANDIDATE_SHA" "$BASE_SHA"; do
+            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::candidate_sha and base_sha must be 40-character lowercase SHAs"
+              exit 1
+            fi
+          done
+
+      # Full history and every branch and tag, to prove reachability and ancestry.
+      - name: Checkout candidate history
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+          sparse-checkout: |
+            /package.json
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node.js
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: control/package.json
+          cache: false
+          run-install: false
+
+      - name: Resolve candidate and validate local receipt
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          LOCAL_RECEIPT_SHA256: ${{ inputs.local_receipt_sha256 }}
+          LOCAL_RECEIPT_B64: ${{ inputs.local_receipt_b64 }}
+        run: node control/scripts/factory-check.ts resolve --candidate-dir candidate --out "$RUNNER_TEMP/factory-resolve"
+
+      - name: Upload resolve record
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-resolve-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-resolve
+          if-no-files-found: error
+
+  lint:
+    name: Lint
+    needs: resolve
+    if: ${{ inputs.lane_lint }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: candidate
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: control
+          persist-credentials: false
+          sparse-checkout: |
+            /scripts/package.json
+            /scripts/factory-check.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: candidate/package.json
+          cache: false
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+
+      - name: Record lane toolchain
+        run: node ../control/scripts/factory-check.ts lane-record --lane lint --candidate-dir . --out "$RUNNER_TEMP/factory-lane/lane.json"
+
+      - name: Reject repository-owned PR assets
+        run: |
+          files="$(git ls-files .github/pr-assets)"
+          if test -n "$files"; then
+            printf 'PR evidence must be uploaded to GitHub, not committed:\n%s\n' "$files" >&2
+            exit 1
+          fi
+
+      - name: Ensure Electron runtime is installed
+        run: vp run --filter @t3tools/desktop ensure:electron
+
+      - name: Check unused code
+        run: vp run knip:check
+
+      - name: Check generated GitHub GraphQL operations
+        run: vp run --filter @t3tools/source-control-github generate --check
+
+      - name: Check generated Expo GraphQL operations
+        run: vp run --filter t3 generate --check
+
+      - name: Check
+        run: vp check
+
+      # Fails if the candidate adds an automatic delivery trigger or a route to a publisher.
+      - name: Audit workflow triggers
+        run: node scripts/factory-workflow-audit.ts
+
+      - name: Upload lane record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-lane-lint-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-lane
+          if-no-files-found: ignore
+
+  build:
+    name: Build and Typecheck
+    needs: resolve
+    if: ${{ inputs.lane_build }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: candidate
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: control
+          persist-credentials: false
+          sparse-checkout: |
+            /scripts/package.json
+            /scripts/factory-check.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
+          sparse-checkout-cone-mode: false
+
+      - name: Install browser secret helper build libraries
+        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: candidate/package.json
+          cache: false
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+
+      - name: Record lane toolchain
+        run: node ../control/scripts/factory-check.ts lane-record --lane build --candidate-dir . --out "$RUNNER_TEMP/factory-lane/lane.json"
+
+      - name: Ensure Electron runtime is installed
+        run: vp run --filter @t3tools/desktop ensure:electron
+
+      - name: Build desktop pipeline
+        run: vp run build:desktop
+
+      - name: Verify preload bundle output
+        run: node apps/desktop/scripts/verify-preload-bundle.mjs
+
+      - name: Typecheck
+        run: vp run typecheck
+
+      - name: Upload lane record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-lane-build-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-lane
+          if-no-files-found: ignore
+
+  # Everything except `t3` (apps/server) and the web app, which have their own lanes.
+  test:
+    name: Test
+    needs: resolve
+    if: ${{ inputs.lane_test }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: candidate
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: control
+          persist-credentials: false
+          sparse-checkout: |
+            /scripts/package.json
+            /scripts/factory-check.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
+          sparse-checkout-cone-mode: false
+
+      # The desktop tests compile the browser secret helper.
+      - name: Install browser secret helper build libraries
+        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: candidate/package.json
+          cache: false
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+
+      - name: Record lane toolchain
+        run: node ../control/scripts/factory-check.ts lane-record --lane test --candidate-dir . --out "$RUNNER_TEMP/factory-lane/lane.json"
+
+      - name: Ensure Electron runtime is installed
+        run: vp run --filter @t3tools/desktop ensure:electron
+
+      - name: Test preview artifact validation
+        run: python3 -B .github/scripts/stage-preview-bundle.test.py
+
+      - name: Test release checks
+        run: node --test .github/scripts/check-nightly-release.test.cjs .github/scripts/vercel-deployment-output.test.cjs
+
+      - name: Test
+        run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/monorepo' --filter '!@t3tools/web' test
+
+      - name: Upload lane record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-lane-test-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-lane
+          if-no-files-found: ignore
+
+  test_web:
+    name: Test Web
+    needs: resolve
+    if: ${{ inputs.lane_test_web }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: candidate
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: control
+          persist-credentials: false
+          sparse-checkout: |
+            /scripts/package.json
+            /scripts/factory-check.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: candidate/package.json
+          cache: false
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+
+      - name: Record lane toolchain
+        run: node ../control/scripts/factory-check.ts lane-record --lane test_web --candidate-dir . --out "$RUNNER_TEMP/factory-lane/lane.json"
+
+      - name: Install Chromium for web browser tests
+        run: node apps/web/node_modules/playwright/cli.js install --only-shell chromium
+
+      - name: Install missing Chromium system dependencies
+        run: |
+          browser=$(find "$HOME/.cache/ms-playwright" -name chrome-headless-shell -type f -print -quit)
+          test -n "$browser"
+          if ldd "$browser" | grep '=> not found'; then
+            node apps/web/node_modules/playwright/cli.js install-deps chromium
+          fi
+
+      - name: Test
+        run: vp run --filter @t3tools/web test
+
+      # Browser tests run source modules; this boots the production chunk graph.
+      - name: Boot the built web client
+        run: |
+          vp run --filter @t3tools/web build
+          node apps/web/scripts/verify-built-boot.ts
+
+      - name: Upload lane record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-lane-test_web-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-lane
+          if-no-files-found: ignore
+
+  # apps/server runs its test files one at a time; shards spread them over runners.
+  test_server:
+    name: Test Server ${{ matrix.shard }}
+    needs: resolve
+    if: ${{ inputs.lane_test_server }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    defaults:
+      run:
+        working-directory: candidate
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: control
+          persist-credentials: false
+          sparse-checkout: |
+            /scripts/package.json
+            /scripts/factory-check.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: candidate/package.json
+          cache: false
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+
+      - name: Record lane toolchain
+        env:
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: node ../control/scripts/factory-check.ts lane-record --lane test_server --shard "$SHARD" --candidate-dir . --out "$RUNNER_TEMP/factory-lane/lane.json"
+
+      - name: Install Chromium for server browser integration tests
+        run: node apps/server/node_modules/playwright-core/cli.js install --only-shell chromium
+
+      - name: Install missing Chromium system dependencies
+        run: |
+          browser=$(find "$HOME/.cache/ms-playwright" -name chrome-headless-shell -type f -print -quit)
+          test -n "$browser"
+          if ldd "$browser" | grep '=> not found'; then
+            node apps/server/node_modules/playwright-core/cli.js install-deps chromium
+          fi
+
+      - name: Test
+        env:
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: >-
+          vp run test:cached -- --shard "$SHARD"
+          --uncached apps/server/integration/transferBudgetV2.integration.test.ts apps/server
+
+      - name: Upload lane record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-lane-test_server-${{ matrix.shard }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-lane
+          if-no-files-found: ignore
+
+  rust:
+    name: Rust
+    needs: resolve
+    if: ${{ inputs.lane_rust }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: candidate
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: control
+          persist-credentials: false
+          sparse-checkout: |
+            /scripts/package.json
+            /scripts/factory-check.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
+          sparse-checkout-cone-mode: false
+
+      # Only for the lane record; the Rust checks need no workspace install.
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: candidate/package.json
+          cache: false
+          run-install: false
+
+      - name: Record lane toolchain
+        run: node ../control/scripts/factory-check.ts lane-record --lane rust --candidate-dir . --out "$RUNNER_TEMP/factory-lane/lane.json"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Rust formatting
+        run: |
+          for crate in resource-monitor kde-snap-shot hyprland-snap-shot; do
+            cargo fmt --manifest-path "native/$crate/Cargo.toml" -- --check
+          done
+
+      - name: Test Rust crates
+        run: |
+          for crate in resource-monitor kde-snap-shot hyprland-snap-shot; do
+            cargo test --locked --manifest-path "native/$crate/Cargo.toml"
+          done
+
+      - name: Upload lane record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-lane-rust-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-lane
+          if-no-files-found: ignore
+
+  release_smoke:
+    name: Release Smoke
+    needs: resolve
+    if: ${{ inputs.lane_release_smoke }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: candidate
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: control
+          persist-credentials: false
+          sparse-checkout: |
+            /scripts/package.json
+            /scripts/factory-check.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: candidate/package.json
+          cache: false
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+
+      - name: Record lane toolchain
+        run: node ../control/scripts/factory-check.ts lane-record --lane release_smoke --candidate-dir . --out "$RUNNER_TEMP/factory-lane/lane.json"
+
+      - name: Exercise release-only workflow steps
+        run: node scripts/release-smoke.ts
+
+      - name: Upload lane record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-lane-release_smoke-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-lane
+          if-no-files-found: ignore
+
+  windows:
+    name: Windows Build
+    needs: resolve
+    if: ${{ inputs.lane_windows }}
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: candidate
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: control
+          persist-credentials: false
+          sparse-checkout: |
+            /scripts/package.json
+            /scripts/factory-check.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: candidate/package.json
+          cache: false
+          run-install: false
+
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+
+      - name: Record lane toolchain
+        run: node ../control/scripts/factory-check.ts lane-record --lane windows --candidate-dir . --out "$RUNNER_TEMP/factory-lane/lane.json"
+
+      - name: Ensure Electron runtime is installed
+        run: vp run --filter @t3tools/desktop ensure:electron
+
+      - name: Build desktop pipeline
+        run: vp run build:desktop
+
+      - name: Verify preload bundle output
+        run: node apps/desktop/scripts/verify-preload-bundle.mjs
+
+      - name: Upload lane record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-lane-windows-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-lane
+          if-no-files-found: ignore
+
+  # Every lane in scripts/factory-check.ts CHECK_LANES must be listed here; the
+  # manifest fails on a missing, unknown, failed, cancelled or ungated lane.
+  check:
+    name: Check
+    if: ${{ always() }}
+    needs: [resolve, lint, build, test, test_web, test_server, rust, release_smoke, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: control
+          persist-credentials: false
+          sparse-checkout: |
+            /package.json
+            /scripts/package.json
+            /scripts/factory-check.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node.js
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: control/package.json
+          cache: false
+          run-install: false
+
+      # Only this attempt's evidence: a partial re-run cannot reuse an earlier attempt's records.
+      # A failed resolve uploads nothing; the manifest still records that as a failure.
+      - name: Download evidence
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: factory-*-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-evidence
+
+      - name: Build validation manifest
+        env:
+          FACTORY_INPUTS: ${{ toJSON(inputs) }}
+          FACTORY_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          status=0
+          node control/scripts/factory-check.ts manifest --evidence "$RUNNER_TEMP/factory-evidence" --out "$RUNNER_TEMP/factory-manifest" || status=$?
+          {
+            echo '```json'
+            jq '{status, failures, candidate, baseSha, lanes: [.lanes[] | {name, requested, result}], unsupportedLanes, localEvidence: (.localEvidence | {evidence, attested, sha256})}' "$RUNNER_TEMP/factory-manifest/factory-check-manifest.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Upload validation manifest
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-check-manifest-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-manifest
+          if-no-files-found: error

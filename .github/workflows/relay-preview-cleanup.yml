@@ -8,12 +8,9 @@ name: Clean up relay preview
 # This runs under pull_request_target, so the workflow and the Alchemy program
 # come from the default branch. No PR code runs here, which is why it needs no
 # reviewer approval and why a PR cannot edit its own teardown to reach secrets.
+# T3Factory: inherited trigger neutralized to reusable-only with no caller. See docs/operations/release.md.
 on:
-  pull_request_target:
-    types: [unlabeled, closed]
-  schedule:
-    - cron: "17 7 * * *"
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

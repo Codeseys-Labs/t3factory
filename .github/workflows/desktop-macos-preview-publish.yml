@@ -14,15 +14,9 @@ name: Desktop macOS Preview Publish
 # one commit a maintainer applied it to. A later push builds nothing until the
 # label is applied again.
 
+# T3Factory: inherited trigger neutralized to reusable-only with no caller. See docs/operations/release.md.
 on:
-  workflow_run:
-    workflows: [Desktop macOS Preview]
-    types: [completed]
-  # The way out: closing the PR deletes its download, and removing the label
-  # before it is consumed cancels the preview. pull_request_target gives this a
-  # write token for fork PRs; it never checks out PR code.
-  pull_request_target:
-    types: [closed, unlabeled]
+  workflow_call:
 
 permissions:
   contents: read

@@ -3,8 +3,15 @@ import { defaultInclude, defineConfig } from "vite-plus";
 
 import { isDesktopRuntimeExternalDependency } from "../../scripts/lib/desktop-external-packages.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
+import { isDesktopDistribution } from "./src/app/DesktopDistribution.ts";
 
 const repoEnv = loadRepoEnv();
+
+// Only the packaging script selects a distribution; `.env` must not make dev builds a Factory preview.
+const desktopDistribution = process.env.T3CODE_DESKTOP_DISTRIBUTION?.trim() || "t3code";
+if (!isDesktopDistribution(desktopDistribution)) {
+  throw new Error(`Unknown T3CODE_DESKTOP_DISTRIBUTION '${desktopDistribution}'.`);
+}
 
 // Install only bundle externals; the server bundle already carries its dependency tree.
 const isMainProcessExternal = (id: string) =>
@@ -14,6 +21,7 @@ const publicConfigDefine = {
   __T3CODE_BUILD_CLERK_PUBLISHABLE_KEY__: JSON.stringify(
     repoEnv.T3CODE_CLERK_PUBLISHABLE_KEY?.trim() ?? "",
   ),
+  __T3CODE_DESKTOP_DISTRIBUTION__: JSON.stringify(desktopDistribution),
 };
 
 export default defineConfig({

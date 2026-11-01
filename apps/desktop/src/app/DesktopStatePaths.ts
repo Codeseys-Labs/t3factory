@@ -1,5 +1,7 @@
 import * as Option from "effect/Option";
 
+import { FACTORY_PREVIEW_IDENTITY, type DesktopDistribution } from "./DesktopDistribution.ts";
+
 export type JoinPath = (first: string, ...segments: string[]) => string;
 
 function normalizeConfiguredBaseDir(t3Home: Option.Option<string>): Option.Option<string> {
@@ -14,9 +16,13 @@ export function resolveDesktopBaseDir(input: {
   readonly homeDirectory: string;
   readonly joinPath: JoinPath;
   readonly t3Home: Option.Option<string>;
+  readonly distribution: DesktopDistribution;
 }): string {
   return Option.getOrElse(normalizeConfiguredBaseDir(input.t3Home), () =>
-    input.joinPath(input.homeDirectory, ".t3"),
+    input.joinPath(
+      input.homeDirectory,
+      input.distribution === "factory-preview" ? FACTORY_PREVIEW_IDENTITY.homeDirectoryName : ".t3",
+    ),
   );
 }
 

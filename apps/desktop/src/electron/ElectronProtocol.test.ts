@@ -27,6 +27,15 @@ describe("ElectronProtocol", () => {
     unhandleMock.mockReset();
   });
 
+  it("gives a packaged Factory preview its own scheme and keeps the shared dev scheme", () => {
+    const scheme = (isDevelopment: boolean, distribution: "t3code" | "factory-preview") =>
+      ElectronProtocol.resolveDesktopScheme({ isDevelopment, distribution });
+
+    assert.equal(scheme(false, "factory-preview"), "t3factory");
+    assert.equal(scheme(false, "t3code"), "t3code");
+    assert.equal(scheme(true, "factory-preview"), "t3code-dev");
+  });
+
   it.effect("serves the bundled client from disk without a backend", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

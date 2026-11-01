@@ -64,6 +64,23 @@ describe("DesktopUpdates", () => {
     ).pipe(Effect.provide(harness.layer));
   });
 
+  it.effect("never checks a feed from a Factory preview, even with mock updates configured", () => {
+    const harness = makeHarness({ distribution: "factory-preview" });
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        yield* updates.check("startup");
+
+        const state = yield* updates.getState;
+        assert.equal(state.status, "disabled");
+        assert.match(state.message ?? "", /^T3Factory \(Preview\) does not update itself/);
+        assert.equal(harness.checkCount(), 0);
+      }),
+    ).pipe(Effect.provide(harness.layer));
+  });
+
   it.effect("checks for newer releases after an update has been downloaded", () => {
     const harness = makeHarness();
 

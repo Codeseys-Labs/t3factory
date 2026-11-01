@@ -14,6 +14,7 @@ import * as Path from "effect/Path";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
 import { resolveLinuxDesktopEntryName } from "./DesktopEarlyElectronStartup.ts";
+import { FACTORY_PREVIEW_IDENTITY, type DesktopDistribution } from "./DesktopDistribution.ts";
 import { resolveDesktopBaseDir, resolveDesktopStateDir } from "./DesktopStatePaths.ts";
 import { isNightlyDesktopVersion } from "../updates/updateChannels.ts";
 import type { OtlpProtocol } from "@t3tools/shared/observability";
@@ -28,6 +29,8 @@ export interface MakeDesktopEnvironmentInput {
   readonly isPackaged: boolean;
   readonly resourcesPath: string;
   readonly runningUnderArm64Translation: boolean;
+  /** Defaults to the upstream T3 Code identity. */
+  readonly distribution?: DesktopDistribution;
 }
 
 export class DesktopEnvironment extends Context.Service<
@@ -38,6 +41,7 @@ export class DesktopEnvironment extends Context.Service<
     readonly platform: NodeJS.Platform;
     readonly processArch: string;
     readonly isPackaged: boolean;
+    readonly distribution: DesktopDistribution;
     readonly isDevelopment: boolean;
     readonly appVersion: string;
     readonly appPath: string;
@@ -102,7 +106,16 @@ function resolveDesktopAppStageLabel(input: {
 export function resolveDesktopAppBranding(input: {
   readonly isDevelopment: boolean;
   readonly appVersion: string;
+  readonly distribution: DesktopDistribution;
 }): DesktopAppBranding {
+  if (input.distribution === "factory-preview") {
+    // The shared stage labels have no Preview; Alpha is the closest pre-release stage.
+    return {
+      baseName: FACTORY_PREVIEW_IDENTITY.baseName,
+      stageLabel: "Alpha",
+      displayName: FACTORY_PREVIEW_IDENTITY.productName,
+    };
+  }
   const stageLabel = resolveDesktopAppStageLabel(input);
   return {
     baseName: APP_BASE_NAME,
@@ -147,6 +160,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
   const path = yield* Path.Path;
   const config = yield* DesktopConfig.DesktopConfig;
   const homeDirectory = input.homeDirectory;
+  const distribution = input.distribution ?? "t3code";
   const devServerUrl = config.devServerUrl;
   const isDevelopment = Option.isSome(devServerUrl);
   const appDataDirectory =
@@ -161,6 +175,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
     homeDirectory,
     joinPath: path.join,
     t3Home: config.t3Home,
+    distribution,
   });
   const rootDir = path.resolve(input.dirname, "../../..");
   const appRoot = input.isPackaged ? input.appPath : rootDir;
@@ -171,6 +186,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
   const branding = resolveDesktopAppBranding({
     isDevelopment,
     appVersion: input.appVersion,
+    distribution,
   });
   const displayName = branding.displayName;
   const stateDir = resolveDesktopStateDir({
@@ -191,6 +207,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
     platform: input.platform,
     processArch: input.processArch,
     isPackaged: input.isPackaged,
+    distribution,
     isDevelopment,
     appVersion: input.appVersion,
     appPath: input.appPath,
@@ -229,7 +246,11 @@ const make = Effect.fn("desktop.environment.make")(function* (
     branding,
     displayName,
     appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
-      isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code",
+      distribution === "factory-preview"
+        ? FACTORY_PREVIEW_IDENTITY.appId
+        : isDevelopment
+          ? "com.t3tools.t3code.dev"
+          : "com.t3tools.t3code",
     ),
     linuxDesktopEntryName: resolveLinuxDesktopEntryName(isDevelopment),
     linuxWmClass: isDevelopment ? "t3code-dev" : "t3code",

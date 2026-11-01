@@ -1137,11 +1137,15 @@ export const layer = Layer.effect(
       effect.pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
 
     // Cache availability so synchronous IPC bootstrap can read it without yielding to filesystem I/O.
-    const wslAvailable = yield* makeIsAvailable(environment.platform, windir).pipe(
-      Effect.provideService(FileSystem.FileSystem, fileSystem),
-      Effect.provideService(Path.Path, environment.path),
-      Effect.withSpan("desktop.wsl.isAvailable"),
-    );
+    // Factory previews ship no WSL runtime, and its server would use the distro's live ~/.t3.
+    const wslAvailable =
+      environment.distribution === "factory-preview"
+        ? false
+        : yield* makeIsAvailable(environment.platform, windir).pipe(
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, environment.path),
+            Effect.withSpan("desktop.wsl.isAvailable"),
+          );
     const isAvailable = Effect.succeed(wslAvailable);
 
     const windowsToWslPath = (distro: string | null, windowsPath: string) =>

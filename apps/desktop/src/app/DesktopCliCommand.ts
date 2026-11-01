@@ -174,7 +174,8 @@ export const make = Effect.gen(function* () {
   });
 
   const state: DesktopCliCommand["Service"]["state"] = Effect.gen(function* () {
-    if (!environment.isPackaged) {
+    // CLI distribution is not part of the Factory preview; keep the upstream `t3` untouched.
+    if (!environment.isPackaged || environment.distribution === "factory-preview") {
       return { supported: false, installedPath: null, onPath: false, launcherPath: null } as const;
     }
     const launcherPath = (yield* exists(launcher)) ? launcher : null;
@@ -214,6 +215,9 @@ export const make = Effect.gen(function* () {
 
   const install: DesktopCliCommand["Service"]["install"] = Effect.gen(function* () {
     if (!environment.isPackaged) return yield* fail("The t3 command needs an installed app.");
+    if (environment.distribution === "factory-preview") {
+      return yield* fail("T3Factory (Preview) does not install a t3 command.");
+    }
     yield* ensureLauncher;
     if (windows) {
       const entries = pathEntries(yield* readUserPath, ";");

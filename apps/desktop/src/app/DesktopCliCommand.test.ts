@@ -13,14 +13,20 @@ import * as DesktopCliCommand from "./DesktopCliCommand.ts";
 import * as DesktopCliShim from "./DesktopCliShim.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
-const environmentFor = (
-  path: Path.Path,
-  input: { home: string; baseDir: string; platform?: NodeJS.Platform; isPackaged?: boolean },
-) =>
+type CommandInput = {
+  readonly home: string;
+  readonly baseDir?: string;
+  readonly platform?: NodeJS.Platform;
+  readonly isPackaged?: boolean;
+  readonly distribution?: DesktopEnvironment.DesktopEnvironment["Service"]["distribution"];
+};
+
+const environmentFor = (path: Path.Path, input: CommandInput & { readonly baseDir: string }) =>
   DesktopEnvironment.DesktopEnvironment.of({
     path,
     platform: input.platform ?? "linux",
     isPackaged: input.isPackaged ?? true,
+    distribution: input.distribution ?? "t3code",
     homeDirectory: input.home,
     baseDir: input.baseDir,
     stateDir: path.join(input.baseDir, "userdata"),
@@ -29,7 +35,7 @@ const environmentFor = (
   } as unknown as DesktopEnvironment.DesktopEnvironment["Service"]);
 
 const commandIn = (
-  input: { home: string; baseDir?: string; platform?: NodeJS.Platform; isPackaged?: boolean },
+  input: CommandInput,
   spawner?: ChildProcessSpawner.ChildProcessSpawner["Service"],
 ) =>
   Effect.gen(function* () {
@@ -294,6 +300,24 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
       expect((yield* command.state).installedPath).toBeNull();
       yield* command.uninstall;
       expect(registry.path).toBe(userPath);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("never edits the Windows PATH from a Factory preview", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped();
+      const userPath = "C:\\Users\\Me\\npm";
+      const { registry, spawner } = fakePowerShell(userPath);
+      const command = yield* commandIn(
+        { home, platform: "win32", distribution: "factory-preview" },
+        spawner,
+      );
+
+      expect((yield* command.state).supported).toBe(false);
+      const error = yield* Effect.flip(command.install);
+      expect(error.message).toContain("does not install a t3 command");
+      expect(registry).toMatchObject({ path: userPath, writes: 0 });
     }).pipe(Effect.scoped),
   );
 });

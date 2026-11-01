@@ -13,6 +13,7 @@ const resolveWindowsUserData = (appDataDirectory: string) =>
     appDataDirectory,
     isDevelopment: false,
     platform: "win32",
+    distribution: "t3code",
   }).pipe(Effect.provide(DesktopPreReadyFileSystem.layer));
 
 it.layer(NodeServices.layer)("DesktopPreReadyFileSystem", (it) => {

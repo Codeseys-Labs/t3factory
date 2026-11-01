@@ -185,6 +185,7 @@ describe("DesktopAppIdentity", () => {
       stage: "Dev",
       environment: { env: { VITE_DEV_SERVER_URL: "http://localhost:5173" } },
     },
+    { stage: "Factory preview", environment: { distribution: "factory-preview" as const } },
   ])("uses a valid native User-Agent product name for $stage", ({ environment }) => {
     const calls: ElectronAppCalls = {
       setAboutPanelOptions: [],

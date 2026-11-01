@@ -23,6 +23,11 @@ import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import gnomeCaptureBundle from "../apps/desktop/gnome-extension/bundle.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
+import {
+  DESKTOP_DISTRIBUTIONS,
+  FACTORY_PREVIEW_IDENTITY,
+  type DesktopDistribution,
+} from "../apps/desktop/src/app/DesktopDistribution.ts";
 
 import {
   ReleasePackageManifestError,
@@ -67,6 +72,7 @@ const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
 const BuildArch = Schema.Literals(["arm64", "x64", "universal"]);
+const BuildDistribution = Schema.Literals(DESKTOP_DISTRIBUTIONS);
 
 const WorkspaceConfig = Schema.Struct({
   catalog: Schema.optional(Schema.Record(Schema.String, Schema.String)),
@@ -188,6 +194,7 @@ interface BuildCliInput {
   readonly mockUpdates: Option.Option<boolean>;
   readonly mockUpdateServerPort: Option.Option<number>;
   readonly wslRuntime: Option.Option<string>;
+  readonly distribution: Option.Option<DesktopDistribution>;
 }
 
 function detectHostBuildPlatform(hostPlatform: string): typeof BuildPlatform.Type | undefined {
@@ -279,6 +286,56 @@ export class UnsupportedDesktopBuildArchitectureError extends Schema.TaggedError
   override get message(): string {
     return `Unsupported architecture '${this.arch}' for ${this.platform}.`;
   }
+}
+
+export class UnsupportedFactoryPreviewBuildError extends Schema.TaggedError<UnsupportedFactoryPreviewBuildError>()(
+  "UnsupportedFactoryPreviewBuildError",
+  { reason: Schema.String },
+) {
+  override get message(): string {
+    return `${FACTORY_PREVIEW_IDENTITY.productName} packaging ${this.reason}`;
+  }
+}
+
+export class FactoryPreviewServiceIdentityError extends Schema.TaggedError<FactoryPreviewServiceIdentityError>()(
+  "FactoryPreviewServiceIdentityError",
+  { variables: Schema.Array(Schema.String) },
+) {
+  override get message(): string {
+    return `${FACTORY_PREVIEW_IDENTITY.productName} must not embed a Clerk or relay identity. Unset ${this.variables.join(", ")} in the environment, .env, and .env.local, then rebuild.`;
+  }
+}
+
+// Bundles compile these in; loadRepoEnv already maps their VITE_/EXPO_PUBLIC_ aliases onto these names.
+const EMBEDDED_SERVICE_IDENTITY_VARIABLES = [
+  "T3CODE_CLERK_PUBLISHABLE_KEY",
+  "T3CODE_CLERK_JWT_TEMPLATE",
+  "T3CODE_CLERK_CLI_OAUTH_CLIENT_ID",
+  "T3CODE_RELAY_URL",
+  "T3CODE_RELAY_CLIENT_OTLP_TRACES_URL",
+  "T3CODE_RELAY_CLIENT_OTLP_TRACES_DATASET",
+  "T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN",
+] as const;
+
+export function findEmbeddedServiceIdentityVariables(
+  repoEnv: Readonly<Record<string, string | undefined>>,
+): ReadonlyArray<string> {
+  return EMBEDDED_SERVICE_IDENTITY_VARIABLES.filter((name) => repoEnv[name]?.trim());
+}
+
+function factoryPreviewBuildIssue(options: ResolvedBuildOptions): string | null {
+  if (options.platform !== "win" || options.arch !== "x64") {
+    return "supports only Windows x64.";
+  }
+  if (options.target !== "zip")
+    return "produces only the portable zip; installers are unsupported.";
+  if (options.signed) return "is unsigned; signing is unsupported.";
+  if (options.mockUpdates) return "has no update feed, including mock updates.";
+  if (options.wslRuntime !== undefined) return "does not bundle a WSL runtime.";
+  if (options.skipBuild) {
+    return "rebuilds the bundles to compile in its identity; --skip-build is unsupported.";
+  }
+  return null;
 }
 
 const InvalidMockUpdateServerPortReason = Schema.Literals([
@@ -950,6 +1007,7 @@ interface ResolvedBuildOptions {
   readonly mockUpdates: boolean;
   readonly mockUpdateServerPort: number | undefined;
   readonly wslRuntime: string | undefined;
+  readonly distribution: DesktopDistribution;
 }
 
 interface StagePackageJson {
@@ -1643,6 +1701,7 @@ const BuildEnvConfig = Config.all({
   mockUpdates: Config.Boolean("T3CODE_DESKTOP_MOCK_UPDATES").pipe(Config.withDefault(false)),
   mockUpdateServerPort: Config.String("T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT").pipe(Config.option),
   wslRuntime: Config.String("T3CODE_DESKTOP_WSL_RUNTIME").pipe(Config.option),
+  distribution: Config.schema(BuildDistribution, "T3CODE_DESKTOP_DISTRIBUTION").pipe(Config.option),
 });
 
 const MockUpdateServerPortSchema = Schema.NumberFromString.check(
@@ -1696,7 +1755,12 @@ export const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (
     return yield* new UnsupportedHostBuildPlatformError({ hostPlatform });
   }
 
-  const target = mergeOptions(input.target, env.target, PLATFORM_CONFIG[platform].defaultTarget);
+  const distribution = mergeOptions(input.distribution, env.distribution, "t3code");
+  const target = mergeOptions(
+    input.target,
+    env.target,
+    distribution === "factory-preview" ? "zip" : PLATFORM_CONFIG[platform].defaultTarget,
+  );
   const defaultArch = yield* getDefaultArch(platform);
   const arch = mergeOptions(input.arch, env.arch, defaultArch);
   const supportedArchitectures = PLATFORM_CONFIG[platform].archChoices;
@@ -1736,7 +1800,7 @@ export const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (
   const wslRuntime =
     Option.getOrUndefined(input.wslRuntime) ?? Option.getOrUndefined(env.wslRuntime);
 
-  return {
+  const options = {
     platform,
     target,
     arch,
@@ -1749,7 +1813,14 @@ export const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (
     mockUpdates,
     mockUpdateServerPort,
     wslRuntime,
+    distribution,
   } satisfies ResolvedBuildOptions;
+  const factoryIssue =
+    distribution === "factory-preview" ? factoryPreviewBuildIssue(options) : null;
+  if (factoryIssue !== null) {
+    return yield* new UnsupportedFactoryPreviewBuildError({ reason: factoryIssue });
+  }
+  return options;
 });
 
 const runCommand = Effect.fn("runCommand")(function* (
@@ -1825,6 +1896,7 @@ const buildDesktopBundlesUnlocked = Effect.fn("buildDesktopBundlesUnlocked")(fun
   repoRoot: string,
   appVersion: string,
   verbose: boolean,
+  distribution: DesktopDistribution = "t3code",
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -1850,7 +1922,7 @@ const buildDesktopBundlesUnlocked = Effect.fn("buildDesktopBundlesUnlocked")(fun
           ChildProcess.make(spawnCommand.command, spawnCommand.args, {
             cwd: repoRoot,
             shell: spawnCommand.shell,
-            env: { APP_VERSION: appVersion },
+            env: { APP_VERSION: appVersion, T3CODE_DESKTOP_DISTRIBUTION: distribution },
             extendEnv: true,
           }),
           { label: "vp run build:desktop", verbose },
@@ -2748,7 +2820,11 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
   return `${trimmed.slice(0, versionSeparator)}/${trimmed.slice(versionSeparator + 1)}`;
 }
 
-export function resolveDesktopProductName(version: string): string {
+export function resolveDesktopProductName(
+  version: string,
+  distribution: DesktopDistribution = "t3code",
+): string {
+  if (distribution === "factory-preview") return FACTORY_PREVIEW_IDENTITY.productName;
   // Directory-launched dev credentials can depend on package metadata; packaged
   // display names must not change that startup namespace.
   return resolveDesktopUpdateChannel(version) === "nightly"
@@ -2771,11 +2847,15 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     | undefined,
   wslRuntimeBundled = false,
   arch?: typeof BuildArch.Type,
+  distribution: DesktopDistribution = "t3code",
 ) {
+  const factoryPreview = distribution === "factory-preview";
   const buildConfig: Record<string, unknown> = {
-    appId: DESKTOP_APP_ID,
-    productName: resolveDesktopProductName(version),
-    artifactName: "T3-Code-${version}-${arch}.${ext}",
+    appId: factoryPreview ? FACTORY_PREVIEW_IDENTITY.appId : DESKTOP_APP_ID,
+    productName: resolveDesktopProductName(version, distribution),
+    artifactName: factoryPreview
+      ? `${FACTORY_PREVIEW_IDENTITY.artifactPrefix}\${version}-\${arch}.\${ext}`
+      : "T3-Code-${version}-${arch}.${ext}",
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
     files: [
       ...DESKTOP_FILE_EXCLUSIONS,
@@ -2802,8 +2882,9 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   };
   const updateChannel = resolveDesktopUpdateChannel(version);
   // Missing publish config infers a GitHub feed from tokens; staging has no repository, so manifest generation would crash.
+  // Factory previews never get a feed: GITHUB_REPOSITORY would otherwise make one.
   buildConfig.publish = null;
-  if (!isDesktopPreviewVersion(version)) {
+  if (!factoryPreview && !isDesktopPreviewVersion(version)) {
     const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
     if (publishConfig) {
       buildConfig.publish = [publishConfig];
@@ -3566,6 +3647,12 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   const path = yield* Path.Path;
   const fs = yield* FileSystem.FileSystem;
   const hostPlatform = yield* HostProcess.Platform;
+  if (options.distribution === "factory-preview") {
+    const embedded = findEmbeddedServiceIdentityVariables(loadRepoEnv({ repoRoot }));
+    if (embedded.length > 0) {
+      return yield* new FactoryPreviewServiceIdentityError({ variables: [...embedded] });
+    }
+  }
   if (hostPlatform === "linux" && options.platform === "linux") {
     yield* preflightLinuxDesktopBuild(options.arch);
   }
@@ -3654,7 +3741,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
 
   if (!options.skipBuild) {
     yield* Effect.log("[desktop-artifact] Building desktop/server/web artifacts...");
-    yield* buildDesktopBundlesUnlocked(repoRoot, appVersion, options.verbose);
+    yield* buildDesktopBundlesUnlocked(repoRoot, appVersion, options.verbose, options.distribution);
   }
 
   const requiredBuildInputs = [
@@ -3883,6 +3970,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
         : undefined,
       bundlesWslRuntime({ platform: options.platform, runtimeArchivePath: options.wslRuntime }),
       options.arch,
+      options.distribution,
     ),
     dependencies: stageDependencies,
     devDependencies: {
@@ -4044,7 +4132,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   if (options.platform === "win") {
     yield* validateWindowsPackagedPayload({
       stageDistDir,
-      appExecutableName: `${resolveDesktopProductName(appVersion)}.exe`,
+      appExecutableName: `${resolveDesktopProductName(appVersion, options.distribution)}.exe`,
       targetArch: options.arch,
       appVersion,
       expectWslRuntime: bundlesWslRuntime({
@@ -4150,6 +4238,12 @@ const buildDesktopArtifactCli = Command.make("build-desktop-artifact", {
   wslRuntime: Flag.String("wsl-runtime").pipe(
     Flag.withDescription(
       "Path to the Linux CLI release archive (t3-<version>-linux-x64.tar.gz) to embed as the WSL runtime of a Windows build (env: T3CODE_DESKTOP_WSL_RUNTIME).",
+    ),
+    Flag.optional,
+  ),
+  distribution: Flag.Literals("distribution", DESKTOP_DISTRIBUTIONS).pipe(
+    Flag.withDescription(
+      "App identity: t3code, or factory-preview for the unsigned Windows x64 T3Factory (Preview) zip (env: T3CODE_DESKTOP_DISTRIBUTION).",
     ),
     Flag.optional,
   ),

@@ -12,9 +12,27 @@ import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
 
+import {
+  bundledDesktopDistribution,
+  FACTORY_PREVIEW_IDENTITY,
+  type DesktopDistribution,
+} from "../app/DesktopDistribution.ts";
+
 export const DESKTOP_HOST = "app";
-const DESKTOP_PRODUCTION_SCHEME = "t3code";
 const DESKTOP_DEVELOPMENT_SCHEME = "t3code-dev";
+
+export function resolveDesktopScheme(input: {
+  readonly isDevelopment: boolean;
+  readonly distribution: DesktopDistribution;
+}): string {
+  if (input.isDevelopment) return DESKTOP_DEVELOPMENT_SCHEME;
+  return input.distribution === "factory-preview" ? FACTORY_PREVIEW_IDENTITY.scheme : "t3code";
+}
+
+const DESKTOP_PRODUCTION_SCHEME = resolveDesktopScheme({
+  isDevelopment: false,
+  distribution: bundledDesktopDistribution,
+});
 
 export function getDesktopScheme(isDevelopment: boolean): string {
   return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;

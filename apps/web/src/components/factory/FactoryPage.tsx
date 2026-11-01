@@ -56,7 +56,7 @@ export function FactoryPage() {
                   onClick={() => {
                     void navigate({
                       to: "/factory",
-                      search: { ...workReturn, state: "all", view: "list" },
+                      search: { ...workReturn, state: "all", view: workReturn.view ?? "list" },
                     });
                   }}
                 >

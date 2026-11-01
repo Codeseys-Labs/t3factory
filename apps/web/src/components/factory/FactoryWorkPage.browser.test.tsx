@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   loading: false,
   readable: true,
   version: 0,
+  targets: [] as string[],
   listeners: new Set<() => void>(),
 }));
 
@@ -37,7 +38,8 @@ vi.mock(import("../../state/factory"), async () => {
       startKnowledgeTask: { permissionAtom },
       launchResearchRun: { permissionAtom },
     },
-    useFactoryWorkLists: () => {
+    useFactoryWorkLists: (targets: unknown) => {
+      state.targets.push(JSON.stringify(targets));
       useSyncExternalStore(subscribe, () => state.version);
       return {
         lists: [
@@ -97,9 +99,17 @@ vi.mock(import("./FactoryOverviewPage"), () => ({ FactoryOverviewPage: () => nul
 import { act, render } from "../../../test/render";
 import { FactoryWorkPage } from "./FactoryWorkPage";
 
+const publish = (change: () => void) =>
+  act(() => {
+    change();
+    state.version++;
+    state.listeners.forEach((listener) => listener());
+  });
+
 function setup() {
   state.listeners.clear();
   state.version = 0;
+  state.targets = [];
   const environmentId = EnvironmentId.make("owner");
   const reference = { version: 1, environmentId, kind: "brief", id: "brief" };
   const item = {
@@ -173,4 +183,36 @@ it("retains selected history through collection paging but removes protected det
   });
   await expect.element(screen.getByText(/Second attempt page/)).not.toBeInTheDocument();
   await expect.element(screen.getByText("Review this brief.")).not.toBeInTheDocument();
+});
+
+it("switches List, Table and Board over the same pages without clearing selection or detail", async () => {
+  setup();
+  state.search = { ...state.search, view: "list" };
+  await using screen = await render(<FactoryWorkPage />, { router: "/factory" });
+  await userEvent.click(screen.getByRole("button", { name: "V2 runs", exact: true }));
+  await userEvent.click(screen.getByRole("button", { name: "Retry attempts", exact: true }));
+  await userEvent.click(screen.getByRole("button", { name: "Next history page", exact: true }));
+  await expect.element(screen.getByText(/Second attempt page/)).toBeVisible();
+
+  for (const view of ["table", "board", "list"]) {
+    await publish(() => {
+      state.search = { ...state.search, view };
+    });
+    await expect.element(screen.getByText(/Second attempt page/)).toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Selected brief", pressed: true }))
+      .toBeVisible();
+    await expect
+      .element(screen.getByRole("button", { name: "Next page", exact: true }))
+      .toBeEnabled();
+    if (view === "board") {
+      await expect
+        .element(screen.getByRole("region", { name: "Authored brief, 1 loaded" }))
+        .toBeVisible();
+      await expect
+        .element(screen.getByText(/Shows the current page of each answering owner only/))
+        .toBeVisible();
+    }
+  }
+  expect(new Set(state.targets).size).toBe(1);
 });

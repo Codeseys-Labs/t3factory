@@ -228,6 +228,17 @@ DMGs default to the host architecture. Use `--arch` to choose another target and
 to retain packaging files for inspection. Run `vp run dist:desktop:artifact --help` for other
 options.
 
+### T3Factory preview zip
+
+`vp run dist:desktop:artifact --distribution factory-preview --output-dir <dir>` builds the
+unsigned Windows x64 portable `T3Factory-<version>-x64.zip` as `T3Factory (Preview)`. It
+uses its own app ID, `t3factory` scheme, `%APPDATA%\t3factory` profile and `~/.t3factory` home
+(`T3CODE_HOME` still wins), never reads or imports local T3 Code profiles or `~/.t3`, and has no
+update feed, telemetry, WSL backend, or `t3` PATH command. The build refuses any configured
+Clerk or relay value, so T3 Connect sign-in is unavailable in this preview. Installers,
+signing, `--skip-build`, and other platforms are rejected. Hosted provenance and publication
+are separate; see [T3Factory manual validation](release.md#t3factory-manual-validation).
+
 ### Linux AppImage prerequisites
 
 Build on Linux because the browser-secret helper links against the host's libsecret. Install

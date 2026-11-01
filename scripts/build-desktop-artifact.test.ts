@@ -28,10 +28,12 @@ import {
   parseWslRuntimeArchiveMembers,
   readWorkspaceConfig,
   createBuildConfig,
+  findEmbeddedServiceIdentityVariables,
   DESKTOP_FILE_EXCLUSIONS,
   InvalidMacPasskeyRpDomainError,
   InvalidMacPasskeyPublishableKeyError,
   UnsupportedDesktopBuildArchitectureError,
+  UnsupportedFactoryPreviewBuildError,
   MacPasskeySigningConfigurationResolutionError,
   MissingMacPasskeyProvisioningProfileError,
   packWindowsServerAsar,
@@ -67,6 +69,7 @@ import {
   ReleasePackageManifestError,
   releasePackageFiles,
 } from "./update-release-package-versions.ts";
+import { loadRepoEnv } from "./lib/public-config.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 
@@ -544,6 +547,49 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       ),
     ),
   );
+
+  it.effect("packages a Factory preview under its own identity with no update feed", () =>
+    Effect.gen(function* () {
+      const factory = yield* createBuildConfig(
+        "win",
+        "zip",
+        "0.0.43",
+        false,
+        false,
+        undefined,
+        undefined,
+        false,
+        "x64",
+        "factory-preview",
+      );
+
+      assert.equal(factory.appId, "io.github.baladithyab.t3factory");
+      assert.equal(factory.productName, "T3Factory (Preview)");
+      assert.equal(factory.artifactName, "T3Factory-${version}-${arch}.${ext}");
+      assert.isNull(factory.publish);
+    }).pipe(
+      Effect.provide(
+        ConfigProvider.layer(
+          ConfigProvider.fromEnv({ env: { GITHUB_REPOSITORY: "baladithyab/t3code-factory" } }),
+        ),
+      ),
+    ),
+  );
+
+  it("finds Clerk and relay identity a Factory preview would embed, including aliases", () => {
+    const repoRoot = NodePath.join(import.meta.dirname, "fixtures", "missing-repo-root");
+    const embedded = (baseEnv: Record<string, string>) =>
+      findEmbeddedServiceIdentityVariables(loadRepoEnv({ baseEnv, repoRoot }));
+
+    assert.deepStrictEqual(embedded({ T3CODE_HOME: "/tmp/home" }), []);
+    assert.deepStrictEqual(
+      embedded({
+        VITE_CLERK_PUBLISHABLE_KEY: "pk_live_x",
+        VITE_T3CODE_RELAY_URL: "https://r.test",
+      }),
+      ["T3CODE_CLERK_PUBLISHABLE_KEY", "T3CODE_RELAY_URL"],
+    );
+  });
 
   // pnpm writes "set this to true or false" placeholders into allowBuilds when a
   // tarball changes. pnpm ignores them, but the release build decode rejects them.
@@ -1644,6 +1690,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
             mockUpdates: Option.none(),
             mockUpdateServerPort: Option.none(),
             wslRuntime: Option.none(),
+            distribution: Option.none(),
           }),
         );
 
@@ -1668,6 +1715,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         mockUpdates: Option.some(false),
         mockUpdateServerPort: Option.none(),
         wslRuntime: Option.none(),
+        distribution: Option.none(),
       }).pipe(
         Effect.provide(
           ConfigProvider.layer(
@@ -1689,6 +1737,44 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.equal(resolved.signed, false);
       assert.equal(resolved.verbose, false);
       assert.equal(resolved.mockUpdates, false);
+    }),
+  );
+
+  it.effect("defaults a Factory preview to the Windows x64 zip and rejects other outputs", () =>
+    Effect.gen(function* () {
+      const factoryOptions = (overrides: {
+        readonly platform?: "mac" | "linux" | "win";
+        readonly target?: string;
+        readonly signed?: boolean;
+      }) =>
+        resolveBuildOptions({
+          platform: Option.some(overrides.platform ?? "win"),
+          target: Option.fromUndefinedOr(overrides.target),
+          arch: Option.some("x64"),
+          buildVersion: Option.none(),
+          outputDir: Option.none(),
+          skipBuild: Option.none(),
+          keepStage: Option.none(),
+          signed: Option.fromUndefinedOr(overrides.signed),
+          verbose: Option.none(),
+          mockUpdates: Option.none(),
+          mockUpdateServerPort: Option.none(),
+          wslRuntime: Option.none(),
+          distribution: Option.some("factory-preview"),
+        });
+
+      const resolved = yield* factoryOptions({});
+      assert.equal(resolved.target, "zip");
+      assert.equal(resolved.distribution, "factory-preview");
+
+      for (const overrides of [
+        { target: "nsis" },
+        { signed: true },
+        { platform: "mac" as const },
+      ]) {
+        const error = yield* Effect.flip(factoryOptions(overrides));
+        assert.instanceOf(error, UnsupportedFactoryPreviewBuildError);
+      }
     }),
   );
 });

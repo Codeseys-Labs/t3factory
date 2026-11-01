@@ -72,7 +72,8 @@ const make = Effect.gen(function* () {
   });
 
   const load = Effect.fn("desktop.legacyLocalStorage.load")(function* (userDataPath: string) {
-    if (environment.isDevelopment) return;
+    // Factory previews never read another install's browser storage.
+    if (environment.isDevelopment || environment.distribution === "factory-preview") return;
     const marker = path.join(userDataPath, MARKER_FILE_NAME);
     if (yield* fs.exists(marker).pipe(Effect.orElseSucceed(() => true))) return;
     yield* Ref.set(markerPath, Option.some(marker));

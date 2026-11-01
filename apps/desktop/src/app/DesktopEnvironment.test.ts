@@ -72,4 +72,34 @@ describe("DesktopEnvironment", () => {
       assert.equal(production.stateDir, "/Users/alice/.t3/userdata");
     }),
   );
+
+  it.effect("defaults a Factory preview to its own home and Windows identity", () =>
+    Effect.gen(function* () {
+      const factory = yield* makeEnvironment({
+        distribution: "factory-preview",
+        platform: "win32",
+        isPackaged: true,
+      });
+      const upstream = yield* makeEnvironment({ platform: "win32", isPackaged: true });
+
+      assert.equal(factory.baseDir, "/Users/alice/.t3factory");
+      assert.equal(factory.stateDir, "/Users/alice/.t3factory/userdata");
+      assert.equal(factory.appUserModelId, "io.github.baladithyab.t3factory");
+      assert.equal(factory.displayName, "T3Factory (Preview)");
+      assert.equal(upstream.baseDir, "/Users/alice/.t3");
+      assert.equal(upstream.appUserModelId, "com.t3tools.t3code");
+    }),
+  );
+
+  it.effect("keeps an explicit T3CODE_HOME ahead of the Factory default home", () =>
+    Effect.gen(function* () {
+      const factory = yield* makeEnvironment(
+        { distribution: "factory-preview" },
+        { T3CODE_HOME: "/tmp/isolated-home" },
+      );
+
+      assert.equal(factory.baseDir, "/tmp/isolated-home");
+      assert.equal(factory.stateDir, "/tmp/isolated-home/userdata");
+    }),
+  );
 });

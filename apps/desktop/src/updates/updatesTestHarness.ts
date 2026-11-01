@@ -8,6 +8,7 @@ import * as Option from "effect/Option";
 
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
+import type { DesktopDistribution } from "../app/DesktopDistribution.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
@@ -40,6 +41,7 @@ export interface UpdatesHarnessOptions {
   readonly savedChannel?: DesktopAppSettings.DesktopSettings["updateChannel"];
   /** Adds a WSL backend beside the primary, as on a Windows host with WSL enabled. */
   readonly wslBackend?: boolean;
+  readonly distribution?: DesktopDistribution;
 }
 
 export function makeHarness(options: UpdatesHarnessOptions = {}) {
@@ -179,6 +181,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
     isPackaged: true,
     resourcesPath: "/missing/resources",
     runningUnderArm64Translation: false,
+    distribution: options.distribution ?? "t3code",
   }).pipe(
     Layer.provide(
       Layer.mergeAll(

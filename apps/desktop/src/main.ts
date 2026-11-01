@@ -46,6 +46,7 @@ import * as DesktopBackendConfiguration from "./backend/DesktopBackendConfigurat
 import * as DesktopBackendPool from "./backend/DesktopBackendPool.ts";
 import * as DesktopLocalEnvironmentAuth from "./backend/DesktopLocalEnvironmentAuth.ts";
 import * as DesktopNetworkInterfaces from "./backend/DesktopNetworkInterfaces.ts";
+import { bundledDesktopDistribution } from "./app/DesktopDistribution.ts";
 import * as DesktopEnvironment from "./app/DesktopEnvironment.ts";
 import * as DesktopLifecycle from "./app/DesktopLifecycle.ts";
 import * as DesktopLinuxUrlHandler from "./app/DesktopLinuxUrlHandler.ts";
@@ -98,6 +99,7 @@ const layerDesktopEnvironment = Layer.unwrap(
       homeDirectory: NodeOS.homedir(),
       platform,
       processArch,
+      distribution: bundledDesktopDistribution,
       ...metadata,
     });
   }),

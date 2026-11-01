@@ -533,6 +533,10 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
         ...backendChildEnvPatch(),
         ELECTRON_RUN_AS_NODE: "1",
         T3CODE_CLI_PATH: Option.getOrUndefined(input.cliPath),
+        // The server's default analytics destination belongs to upstream T3 Code.
+        ...(environment.distribution === "factory-preview"
+          ? { T3CODE_TELEMETRY_ENABLED: "false" }
+          : {}),
       },
       extendEnv: true,
       bootstrap,

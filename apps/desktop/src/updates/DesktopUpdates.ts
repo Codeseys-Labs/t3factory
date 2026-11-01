@@ -27,6 +27,7 @@ import * as Stream from "effect/Stream";
 
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
+import type { DesktopDistribution } from "../app/DesktopDistribution.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopState from "../app/DesktopState.ts";
@@ -318,11 +319,16 @@ function getAutoUpdateDisabledReason(args: {
   isDevelopment: boolean;
   isPackaged: boolean;
   platform: NodeJS.Platform;
+  distribution: DesktopDistribution;
   appImage?: string | undefined;
   isDebPackage: boolean;
   disabledByEnv: boolean;
   hasUpdateFeedConfig: boolean;
 }): string | null {
+  // Checked first: no feed or mock setting may fall back to upstream T3 Code releases.
+  if (args.distribution === "factory-preview") {
+    return "T3Factory (Preview) does not update itself. Download a newer preview build to update.";
+  }
   if (!args.hasUpdateFeedConfig) {
     return "Automatic updates are not available because no update feed is configured.";
   }
@@ -441,6 +447,7 @@ export const make = Effect.gen(function* () {
         isDevelopment: environment.isDevelopment,
         isPackaged: environment.isPackaged,
         platform: environment.platform,
+        distribution: environment.distribution,
         appImage: Option.getOrUndefined(config.appImagePath),
         isDebPackage,
         disabledByEnv: config.disableAutoUpdate,

@@ -9,6 +9,7 @@ import {
   type LinuxPasswordStoreSwitch,
   type LinuxPasswordStorePreference,
 } from "../linuxSecretStorage.ts";
+import { bundledDesktopDistribution } from "./DesktopDistribution.ts";
 import {
   resolveDesktopBaseDir,
   resolveDesktopStateDir,
@@ -59,6 +60,7 @@ function resolveEarlyDesktopSettingsPath(input: {
     homeDirectory: input.homeDirectory,
     joinPath: input.joinPath,
     t3Home,
+    distribution: bundledDesktopDistribution,
   });
   const stateDir = resolveDesktopStateDir({
     baseDir,

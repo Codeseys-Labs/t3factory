@@ -24,6 +24,7 @@ it.effect.each(["t3code", "T3 Code (Alpha)"])(
         appDataDirectory: directory,
         isDevelopment: false,
         platform: "win32",
+        distribution: "t3code",
       });
       assert.equal(yield* fs.readFileString(path.join(destination, "Local State")), state);
       assert.equal(yield* fs.readFileString(path.join(source, "Local State")), state);
@@ -33,10 +34,33 @@ it.effect.each(["t3code", "T3 Code (Alpha)"])(
         appDataDirectory: directory,
         isDevelopment: false,
         platform: "win32",
+        distribution: "t3code",
       });
       assert.equal(
         yield* fs.readFileString(path.join(destination, "Local State")),
         "existing V2 state",
       );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect("gives the Factory preview its own empty profile beside existing T3 Code profiles", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3factory-profile-" });
+    for (const name of ["t3code", "T3 Code (Alpha)", "t3code-v2"]) {
+      yield* fs.makeDirectory(path.join(directory, name), { recursive: true });
+      yield* fs.writeFileString(path.join(directory, name, "Local State"), "live T3 keys");
+    }
+
+    const userDataPath = yield* resolveUserDataPath({
+      appDataDirectory: directory,
+      isDevelopment: false,
+      platform: "win32",
+      distribution: "factory-preview",
+    });
+
+    assert.equal(userDataPath, path.join(directory, "t3factory"));
+    assert.isFalse(yield* fs.exists(userDataPath));
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );

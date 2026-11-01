@@ -15,6 +15,7 @@ import {
 } from "../settings/settingsScope";
 import { parseFactoryStateFilter, type FactoryIssueStateFilter } from "./factoryIssues.logic";
 import { parseFactoryIssueViewMode, type FactoryIssueViewMode } from "./factoryIssues.views";
+import { parseFactoryWorkBoardGrouping, type FactoryWorkBoardGrouping } from "./factoryWork.views";
 
 export interface FactorySearch extends SettingsScopeSearch {
   state: FactoryIssueStateFilter;
@@ -22,6 +23,7 @@ export interface FactorySearch extends SettingsScopeSearch {
   taskId?: ScheduledTaskId | undefined;
   work?: string | undefined;
   workKind?: FactoryWorkKind | undefined;
+  workGroup?: FactoryWorkBoardGrouping | undefined;
   workReturn?: string | undefined;
   reviewId?: string | undefined;
   reviewIssue?: number | undefined;
@@ -36,6 +38,9 @@ export function validateFactorySearch(raw: Record<string, unknown>): FactorySear
     view: parseFactoryIssueViewMode(raw.view),
     ...(parseFactoryWorkSelection(raw.work) !== null ? { work: String(raw.work) } : {}),
     ...(isWorkKind(raw.workKind) ? { workKind: raw.workKind } : {}),
+    ...(raw.workGroup === undefined
+      ? {}
+      : { workGroup: parseFactoryWorkBoardGrouping(raw.workGroup) }),
     ...(typeof raw.workReturn === "string" && raw.workReturn.length <= 8192
       ? { workReturn: raw.workReturn }
       : {}),
@@ -83,6 +88,8 @@ const returnScope = Schema.fromJsonString(
     checkout: Schema.optional(Schema.String),
     work: Schema.String,
     workKind: Schema.optional(FactoryWorkKind),
+    view: Schema.optional(Schema.Literals(["list", "table", "board"])),
+    workGroup: Schema.optional(Schema.Literals(["origin", "project"])),
   }),
 );
 const decodeWorkReturn = Schema.decodeOption(returnScope);

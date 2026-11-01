@@ -158,7 +158,13 @@ describe("factory scope narrowing", () => {
       kind: "brief",
       id: "brief-revision-two",
     });
-    const saved = { project: project.projectKey, work, workKind: "brief" as const };
+    const saved = {
+      project: project.projectKey,
+      work,
+      workKind: "brief" as const,
+      view: "board" as const,
+      workGroup: "project" as const,
+    };
     const native = validateFactorySearch({
       ...factoryScopeSearchForMember(remote, project),
       reviewId: "brief-revision-two",
@@ -166,7 +172,11 @@ describe("factory scope narrowing", () => {
     });
     expect(singleFactoryMember(resolve({ ...native }))).toBe(remote);
     expect(parseFactoryWorkReturn(native.workReturn)).toEqual(saved);
-    expect(validateFactorySearch(saved).work).toBe(work);
+    expect(validateFactorySearch(saved)).toMatchObject({
+      work,
+      view: "board",
+      workGroup: "project",
+    });
     expect(parseFactoryWorkReturn("https://untrusted.example")).toBeNull();
     expect(parseFactoryFeedReview(JSON.stringify(["feed-id", "item-key"]))).toEqual([
       "feed-id",

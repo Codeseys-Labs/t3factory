@@ -15,6 +15,7 @@ import {
   type EnvironmentId,
   type FactoryWorkHistoryInput,
   type FactoryWorkRef,
+  type FactoryWorkSummary,
 } from "@t3tools/contracts";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import * as Cause from "effect/Cause";
@@ -30,10 +31,16 @@ import { useEnvironmentsWithScope } from "../../state/session";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { useSettingsScope } from "../settings/SettingsScopeContext";
 import { Button } from "../ui/button";
-import { Badge } from "../ui/badge";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { factoryScopeSearchForMember } from "./factoryScope";
 import { safeExternalUrl } from "./factoryIssues.logic";
+import { parseFactoryIssueViewMode } from "./factoryIssues.views";
+import { parseFactoryWorkBoardGrouping } from "./factoryWork.views";
+import {
+  FactoryWorkBoard,
+  FactoryWorkItemConditions,
+  FactoryWorkTable,
+} from "./FactoryWorkCollectionViews";
 import { FactoryOverviewPage } from "./FactoryOverviewPage";
 
 const ownerMessages: Record<FactoryWorkOwnerStatus, string> = {
@@ -62,7 +69,7 @@ export function FactoryWorkPage() {
 function FactoryWorkWorkspace() {
   const search = useSearch({ from: "/_chat/factory" });
   const navigate = useNavigate();
-  const { scope } = useSettingsScope();
+  const { scope, groups } = useSettingsScope();
   const { isReady, environments } = useEnvironments();
   const projects = useProjects();
   const readable = useEnvironmentsWithScope(environments, AuthOrchestrationReadScope);
@@ -130,6 +137,58 @@ function FactoryWorkWorkspace() {
         : (access.get(selection.environmentId) ?? "offline");
   const labelOf = (id: EnvironmentId) =>
     environments.find((environment) => environment.environmentId === id)?.label ?? id;
+  const projectLabel = (item: FactoryWorkSummary) =>
+    projects.find(
+      (candidate) =>
+        candidate.environmentId === item.ref.environmentId && candidate.id === item.projectId,
+    )?.title ?? `${item.projectId} (project unavailable)`;
+  const projectOf = (item: FactoryWorkSummary) => {
+    const group = groups.find((candidate) =>
+      candidate.memberProjects.some(
+        (member) => member.environmentId === item.ref.environmentId && member.id === item.projectId,
+      ),
+    );
+    return group
+      ? { key: group.projectKey, label: group.displayName }
+      : {
+          key: JSON.stringify([item.ref.environmentId, item.projectId]),
+          label: `${projectLabel(item)} · ${labelOf(item.ref.environmentId)}`,
+        };
+  };
+  const selectedKey = selection === null ? null : factoryWorkKey(selection);
+  const select = (reference: FactoryWorkRef) => {
+    void navigate({
+      to: "/factory",
+      search: { ...search, work: JSON.stringify(reference) },
+      resetScroll: false,
+    });
+  };
+  const pager = (owner: FactoryWorkOwner) => (
+    <div className="flex gap-2">
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={(cursors.get(owner.environmentId)?.length ?? 1) < 2}
+        onClick={() => movePage(owner.environmentId, null)}
+      >
+        Previous page
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={owner.status !== "current" || !owner.page?.nextCursor}
+        onClick={() => {
+          if (owner.page?.nextCursor) movePage(owner.environmentId, owner.page.nextCursor);
+        }}
+      >
+        Next page
+      </Button>
+    </div>
+  );
+  const layout = parseFactoryIssueViewMode(search.view);
+  const grouping = parseFactoryWorkBoardGrouping(search.workGroup);
+  const coversEveryPage =
+    !aggregate.incomplete && [...cursors.values()].every((history) => history.length < 2);
   const movePage = (id: EnvironmentId, next: string | null) =>
     setCursors((previous) => {
       const map = new Map(previous);
@@ -178,96 +237,143 @@ function FactoryWorkWorkspace() {
         <Toggle value="brief">Briefs</Toggle>
         <Toggle value="protocol">Protocols</Toggle>
       </ToggleGroup>
+      <div className="flex flex-wrap items-center gap-3">
+        <ToggleGroup
+          aria-label="Work layout"
+          value={[layout]}
+          onValueChange={(values) => {
+            const next = values[0];
+            if (next === "list" || next === "table" || next === "board") {
+              void navigate({
+                to: "/factory",
+                search: { ...search, view: next },
+                replace: true,
+                resetScroll: false,
+              });
+            }
+          }}
+        >
+          <Toggle value="list">List</Toggle>
+          <Toggle value="table">Table</Toggle>
+          <Toggle value="board">Board</Toggle>
+        </ToggleGroup>
+        {layout === "board" ? (
+          <ToggleGroup
+            aria-label="Board columns"
+            value={[grouping]}
+            onValueChange={(values) => {
+              const next = values[0];
+              if (next === "origin" || next === "project") {
+                void navigate({
+                  to: "/factory",
+                  search: { ...search, workGroup: next === "origin" ? undefined : next },
+                  replace: true,
+                  resetScroll: false,
+                });
+              }
+            }}
+          >
+            <Toggle value="origin">By origin</Toggle>
+            <Toggle value="project">By admission project</Toggle>
+          </ToggleGroup>
+        ) : null}
+      </div>
       <p className="text-xs text-muted-foreground">
         Pages and observation times belong to each environment. No global total or synchronized
         snapshot. Source matches cover loaded pages only; other competing work may exist.
       </p>
       {!isReady ? <p role="status">Loading environments…</p> : null}
       {isReady && plan.length === 0 ? <p>No environments in this scope.</p> : null}
-      {owners.map((owner) => (
-        <div key={owner.environmentId} className="space-y-2 rounded-lg border p-3">
-          <h3 className="font-medium text-sm">{labelOf(owner.environmentId)}</h3>
-          <p role="status" className="text-xs text-muted-foreground">
-            {ownerMessages[owner.status]}
-            {owner.page ? ` Observed ${owner.page.fetchedAt}.` : ""}
-          </p>
-          {owner.status === "current" && owner.page?.items.length === 0 ? (
-            <p>No retained work on this page.</p>
-          ) : null}
-          <ul className="space-y-2" aria-label={`Work on ${labelOf(owner.environmentId)}`}>
-            {aggregate.items
-              .filter(({ item }) => item.ref.environmentId === owner.environmentId)
-              .map(({ item, stale }) => {
-                const project = projects.find(
-                  (candidate) =>
-                    candidate.environmentId === owner.environmentId &&
-                    candidate.id === item.projectId,
-                );
-                return (
-                  <li key={factoryWorkKey(item.ref)} className="space-y-1 rounded border p-3">
+      {layout === "list" ? (
+        owners.map((owner) => (
+          <div key={owner.environmentId} className="space-y-2 rounded-lg border p-3">
+            <h3 className="font-medium text-sm">{labelOf(owner.environmentId)}</h3>
+            <p role="status" className="text-xs text-muted-foreground">
+              {ownerMessages[owner.status]}
+              {owner.page ? ` Observed ${owner.page.fetchedAt}.` : ""}
+            </p>
+            {owner.status === "current" && owner.page?.items.length === 0 ? (
+              <p>No retained work on this page.</p>
+            ) : null}
+            <ul className="space-y-2" aria-label={`Work on ${labelOf(owner.environmentId)}`}>
+              {aggregate.items
+                .filter(({ item }) => item.ref.environmentId === owner.environmentId)
+                .map((entry) => (
+                  <li key={factoryWorkKey(entry.item.ref)} className="space-y-1 rounded border p-3">
                     <Button
                       size="sm"
                       variant="ghost"
-                      disabled={stale}
-                      aria-pressed={
-                        selection !== null && factoryWorkKey(selection) === factoryWorkKey(item.ref)
-                      }
-                      onClick={() => {
-                        void navigate({
-                          to: "/factory",
-                          search: { ...search, work: JSON.stringify(item.ref) },
-                          resetScroll: false,
-                        });
-                      }}
+                      disabled={entry.stale}
+                      aria-pressed={selectedKey === factoryWorkKey(entry.item.ref)}
+                      onClick={() => select(entry.item.ref)}
                     >
-                      {item.title}
+                      {entry.item.title}
                     </Button>
                     <p className="text-xs text-muted-foreground">
-                      {item.ref.kind} · Admission/authoring project{" "}
-                      {project?.title ?? `${item.projectId} (project unavailable)`} ·{" "}
-                      {item.createdAt}
+                      {entry.item.ref.kind} · Admission/authoring project {projectLabel(entry.item)}{" "}
+                      · {entry.item.createdAt}
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      {stale ? <Badge variant="outline">Stale, actions disabled</Badge> : null}
-                      {item.sourceState !== null ? (
-                        <Badge variant="secondary">Source snapshot: {item.sourceState}</Badge>
-                      ) : null}
-                      {item.supersededBy !== null ? (
-                        <Badge variant="outline">Superseded brief</Badge>
-                      ) : null}
-                      {item.originConflict ||
-                      (item.sourceKey !== null && aggregate.conflicts.has(item.sourceKey)) ? (
-                        <Badge variant="warning">
-                          Comparable source conflict, owners remain separate
-                        </Badge>
-                      ) : null}
-                    </div>
+                    <FactoryWorkItemConditions entry={entry} conflicts={aggregate.conflicts} />
                   </li>
-                );
-              })}
-          </ul>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={(cursors.get(owner.environmentId)?.length ?? 1) < 2}
-              onClick={() => movePage(owner.environmentId, null)}
-            >
-              Previous page
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={owner.status !== "current" || !owner.page?.nextCursor}
-              onClick={() => {
-                if (owner.page?.nextCursor) movePage(owner.environmentId, owner.page.nextCursor);
-              }}
-            >
-              Next page
-            </Button>
+                ))}
+            </ul>
+            {pager(owner)}
           </div>
-        </div>
-      ))}
+        ))
+      ) : (
+        <>
+          <ul className="space-y-2" aria-label="Owner pages">
+            {owners.map((owner) => (
+              <li
+                key={owner.environmentId}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+              >
+                <div className="min-w-0">
+                  <h3 className="font-medium text-sm">{labelOf(owner.environmentId)}</h3>
+                  <p role="status" className="text-xs text-muted-foreground">
+                    {ownerMessages[owner.status]}
+                    {owner.page ? ` Observed ${owner.page.fetchedAt}.` : ""}
+                    {owner.status === "current" && owner.page?.items.length === 0
+                      ? " No retained work on this page."
+                      : ""}
+                  </p>
+                </div>
+                {pager(owner)}
+              </li>
+            ))}
+          </ul>
+          <p role="status" className="text-xs text-muted-foreground">
+            {coversEveryPage
+              ? "Every owner in scope answered with a single page; all retained work is shown."
+              : "Shows the current page of each answering owner only. Other pages and unavailable owners are not included in these counts."}{" "}
+            Planning stage is unavailable: Work has no planning state. Runtime, attention and
+            acceptance are not part of collection summaries; select an item to read its executions
+            and outputs. Source snapshots were saved at admission and never mean completion.
+          </p>
+          {layout === "table" ? (
+            <FactoryWorkTable
+              entries={aggregate.items}
+              conflicts={aggregate.conflicts}
+              selectedKey={selectedKey}
+              ownerLabel={labelOf}
+              projectLabel={projectLabel}
+              onSelect={select}
+            />
+          ) : (
+            <FactoryWorkBoard
+              entries={aggregate.items}
+              conflicts={aggregate.conflicts}
+              selectedKey={selectedKey}
+              ownerLabel={labelOf}
+              projectLabel={projectLabel}
+              onSelect={select}
+              grouping={grouping}
+              kind={search.workKind}
+              projectOf={projectOf}
+            />
+          )}
+        </>
+      )}
       {selection !== null ? (
         <FactoryWorkDetail
           key={factoryWorkKey(selection)}
@@ -476,6 +582,8 @@ function FactoryWorkDetail(props: {
                       checkout: search.checkout,
                       work: JSON.stringify(reference),
                       workKind: search.workKind,
+                      view: search.view,
+                      workGroup: search.workGroup,
                     }),
                     reviewId:
                       target.kind === "brief"

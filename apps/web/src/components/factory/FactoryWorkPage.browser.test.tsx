@@ -189,6 +189,9 @@ it("switches List, Table and Board over the same pages without clearing selectio
   setup();
   state.search = { ...state.search, view: "list" };
   await using screen = await render(<FactoryWorkPage />, { router: "/factory" });
+  await expect
+    .element(screen.getByRole("heading", { name: "Selected work", exact: true }))
+    .toHaveFocus();
   await userEvent.click(screen.getByRole("button", { name: "V2 runs", exact: true }));
   await userEvent.click(screen.getByRole("button", { name: "Retry attempts", exact: true }));
   await userEvent.click(screen.getByRole("button", { name: "Next history page", exact: true }));
@@ -209,9 +212,7 @@ it("switches List, Table and Board over the same pages without clearing selectio
       await expect
         .element(screen.getByRole("region", { name: "Authored brief, 1 loaded" }))
         .toBeVisible();
-      await expect
-        .element(screen.getByText(/Shows the current page of each answering owner only/))
-        .toBeVisible();
+      await expect.element(screen.getByText(/Showing loaded pages only/)).toBeVisible();
     }
   }
   expect(new Set(state.targets).size).toBe(1);

@@ -278,10 +278,14 @@ function FactoryWorkWorkspace() {
           </ToggleGroup>
         ) : null}
       </div>
-      <p className="text-xs text-muted-foreground">
-        Pages and observation times belong to each environment. No global total or synchronized
-        snapshot. Source matches cover loaded pages only; other competing work may exist.
-      </p>
+      <details className="text-xs text-muted-foreground">
+        <summary className="cursor-pointer">About Work states and coverage</summary>
+        <p className="mt-2">
+          Each environment has its own pages and observation time. Source matches cover loaded pages
+          only. Planning stage is unavailable; open an item for execution and acceptance evidence.
+          Source state is a snapshot saved at admission.
+        </p>
+      </details>
       {!isReady ? <p role="status">Loading environments…</p> : null}
       {isReady && plan.length === 0 ? <p>No environments in this scope.</p> : null}
       {layout === "list" ? (
@@ -342,14 +346,13 @@ function FactoryWorkWorkspace() {
               </li>
             ))}
           </ul>
-          <p role="status" className="text-xs text-muted-foreground">
-            {coversEveryPage
-              ? "Every owner in scope answered with a single page; all retained work is shown."
-              : "Shows the current page of each answering owner only. Other pages and unavailable owners are not included in these counts."}{" "}
-            Planning stage is unavailable: Work has no planning state. Runtime, attention and
-            acceptance are not part of collection summaries; select an item to read its executions
-            and outputs. Source snapshots were saved at admission and never mean completion.
-          </p>
+          {plan.length > 0 ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              {coversEveryPage
+                ? "All retained work in this scope is shown."
+                : "Showing loaded pages only. More work may be on other pages or unavailable environments."}
+            </p>
+          ) : null}
           {layout === "table" ? (
             <FactoryWorkTable
               entries={aggregate.items}
@@ -387,6 +390,10 @@ function FactoryWorkWorkspace() {
       {showOverview ? <FactoryOverviewPage /> : null}
     </section>
   );
+}
+
+function focusSelectedWork(heading: HTMLHeadingElement | null) {
+  heading?.focus();
 }
 
 function FactoryWorkDetail(props: {
@@ -454,7 +461,12 @@ function FactoryWorkDetail(props: {
       aria-labelledby="factory-work-detail-title"
     >
       <div className="flex items-center justify-between gap-3">
-        <h3 id="factory-work-detail-title" className="font-medium">
+        <h3
+          id="factory-work-detail-title"
+          className="font-medium"
+          tabIndex={-1}
+          ref={focusSelectedWork}
+        >
           Selected work
         </h3>
         <Button

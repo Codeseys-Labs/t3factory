@@ -60,7 +60,7 @@ export function groupFactoryWorkForBoard<E extends FactoryWorkEntry>(
   );
 }
 
-/** Roving focus over enabled cards; horizontal moves skip empty columns and clamp the row. */
+/** Arrow-key focus over enabled cards; horizontal moves skip empty columns and clamp the row. */
 export function moveFactoryWorkFocus(
   columnSizes: readonly number[],
   current: { readonly column: number; readonly row: number },

@@ -165,7 +165,9 @@ path before starting work. A removed or invalid selection is unavailable, not a 
 use the first project or all projects. Reset it or choose another valid target.
 
 Work lists one page per environment in the selected scope, including unstarted briefs and
-protocols. Select an item to inspect its frozen snapshot, concrete brief lineage, executions,
+protocols. Switch between List, Table and Board without losing the selected item. Board columns
+group loaded work by origin or admission project; they do not represent progress. Select an item
+to inspect its frozen snapshot, concrete brief lineage, executions,
 V2 runs, retry attempts, and output pins. Native review opens the saved owning checkout, with a
 return link to the original scope and selected item. Starting, accepting, and publishing still
 require their existing reviews and permissions. Opening Work performs none of those actions.

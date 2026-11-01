@@ -12,7 +12,12 @@ const workflows = readWorkflowFiles(
 type Workflow = {
   on: Record<string, unknown>;
   permissions?: Record<string, unknown>;
-  jobs: Record<string, Record<string, unknown> & { steps?: Array<Record<string, unknown>> }>;
+  jobs: Record<
+    string,
+    Record<string, unknown> & {
+      steps?: Array<Record<string, unknown> & { with?: Record<string, unknown> }>;
+    }
+  >;
 };
 
 function withWorkflow(file: string, change: (workflow: Workflow) => void) {
@@ -115,6 +120,97 @@ describe("auditWorkflows", () => {
         workflow.jobs.check!.needs = ["resolve", "lint"];
       }),
       "check must need resolve and every lane",
+    ],
+    [
+      "a factory-check job is renamed away from what factory-build matches",
+      withWorkflow("factory-check.yml", (workflow) => {
+        workflow.jobs.test_server!.name = "Server";
+      }),
+      "job test_server must be named Test Server ${{ matrix.shard }}",
+    ],
+    [
+      "factory-build runs after factory-check",
+      withWorkflow("factory-build.yml", (workflow) => {
+        workflow.on.workflow_run = { workflows: ["Factory Check"], types: ["completed"] };
+      }),
+      "factory-build.yml chains on workflow_run",
+    ],
+    [
+      "factory-build starts on a tag push",
+      withWorkflow("factory-build.yml", (workflow) => {
+        workflow.on.push = { tags: ["v*"] };
+      }),
+      "factory-build.yml must be dispatch-only",
+    ],
+    [
+      "factory-build gains a publish job",
+      withWorkflow("factory-build.yml", (workflow) => {
+        workflow.jobs.publish = { "runs-on": "ubuntu-24.04", steps: [] };
+      }),
+      "jobs must be exactly manifest, package, verify",
+    ],
+    [
+      "factory-build calls a release body",
+      withWorkflow("factory-build.yml", (workflow) => {
+        workflow.jobs.manifest = { uses: "./.github/workflows/release-desktop.yml" };
+      }),
+      "factory-build.yml can start reusable-delivery workflow release-desktop.yml",
+    ],
+    [
+      "factory-build dispatches a publisher",
+      withWorkflow("factory-build.yml", (workflow) => {
+        workflow.jobs.manifest!.steps!.push({ run: "gh workflow run release.yml" });
+      }),
+      "job manifest runs a dispatch, download, signing or publishing command",
+    ],
+    [
+      "factory-build uses a release action",
+      withWorkflow("factory-build.yml", (workflow) => {
+        workflow.jobs.manifest!.steps!.push({ uses: "softprops/action-gh-release@v2" });
+      }),
+      "uses softprops/action-gh-release@v2, which is not an allowed build action",
+    ],
+    [
+      "factory-build reads a signing secret",
+      withWorkflow("factory-build.yml", (workflow) => {
+        workflow.jobs.package!.env = { AZURE_CLIENT_SECRET: "${{ secrets.AZURE_CLIENT_SECRET }}" };
+      }),
+      "factory-build.yml must not reference secrets",
+    ],
+    [
+      "the candidate build gets the API token",
+      withWorkflow("factory-build.yml", (workflow) => {
+        workflow.jobs.package!.steps![0]!.env = { GH_TOKEN: "${{ github.token }}" };
+      }),
+      "job package must not read github.token",
+    ],
+    [
+      "the candidate build gains actions access",
+      withWorkflow("factory-build.yml", (workflow) => {
+        workflow.jobs.package!.permissions = { contents: "read", actions: "read" };
+      }),
+      "job package permissions must be the workflow's contents: read",
+    ],
+    [
+      "the candidate checkout persists its token",
+      withWorkflow("factory-build.yml", (workflow) => {
+        delete workflow.jobs.package!.steps![1]!.with!["persist-credentials"];
+      }),
+      "job package checks out without persist-credentials: false",
+    ],
+    [
+      "the package reuses a prebuilt resource monitor",
+      withWorkflow("factory-build.yml", (workflow) => {
+        workflow.jobs.package!.env = { T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR: "true" };
+      }),
+      "job package must build the resource monitor, not reuse one",
+    ],
+    [
+      "the manifest stops waiting for the package",
+      withWorkflow("factory-build.yml", (workflow) => {
+        workflow.jobs.manifest!.needs = ["verify"];
+      }),
+      "manifest must need verify and package",
     ],
   ])("rejects when %s", (_name, files, message) => {
     expect(auditWorkflows(files).join("\n")).toContain(message);

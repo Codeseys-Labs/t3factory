@@ -3,10 +3,12 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { parseDocument } from "yaml";
 
+import { CHECK_JOB_NAMES, SHARDED_CHECK_LANES } from "./factory-build.ts";
 import { CHECK_LANES, isRecord as isNode } from "./factory-check.ts";
 
 type WorkflowRole =
   | "factory-check"
+  | "factory-build"
   | "neutralized"
   | "reusable-delivery"
   | "housekeeping"
@@ -25,6 +27,7 @@ interface InventoryEntry {
  */
 export const WORKFLOW_INVENTORY: Readonly<Record<string, InventoryEntry>> = {
   "factory-check.yml": { role: "factory-check" },
+  "factory-build.yml": { role: "factory-build" },
   "agent-context-budget.yml": { role: "neutralized" },
   "ci.yml": { role: "neutralized" },
   "deploy-relay.yml": { role: "neutralized" },
@@ -131,9 +134,18 @@ function auditFactoryCheck(workflow: Node): string[] {
   }
 
   const jobs = new Map(jobsOf(workflow));
-  const expectedJobs = ["resolve", ...CHECK_LANES, "check"];
+  const expectedJobs = ["resolve", ...CHECK_LANES, "check"] as const;
   for (const name of jobs.keys()) {
-    if (!expectedJobs.includes(name)) errors.push(`${at} job ${name} is not a known lane`);
+    if (!(expectedJobs as ReadonlyArray<string>).includes(name)) {
+      errors.push(`${at} job ${name} is not a known lane`);
+    }
+  }
+  // factory-build matches the jobs the API reports to lanes by these names.
+  for (const name of expectedJobs) {
+    const job = jobs.get(name);
+    const sharded = (SHARDED_CHECK_LANES as ReadonlyArray<string>).includes(name);
+    const expected = `${CHECK_JOB_NAMES[name]}${sharded ? " ${{ matrix.shard }}" : ""}`;
+    if (job && job.name !== expected) errors.push(`${at} job ${name} must be named ${expected}`);
   }
   for (const [name, job] of jobs) {
     if (typeof job.uses === "string")
@@ -182,6 +194,116 @@ function auditFactoryCheck(workflow: Node): string[] {
   return errors;
 }
 
+const FACTORY_BUILD_JOBS = ["manifest", "package", "verify"];
+const FACTORY_BUILD_ACTIONS = [
+  "actions/checkout@",
+  "actions/upload-artifact@",
+  "actions/download-artifact@",
+  "voidzero-dev/setup-vp@",
+  "dtolnay/rust-toolchain@",
+];
+// Publication is separate (issue 75): the build only uploads run artifacts.
+const FACTORY_BUILD_FORBIDDEN_RUN =
+  /\bgh\s|\bcurl\b|\bwget\b|\/dispatches\b|\bpublish\b|--signed\b|--skip-build\b/i;
+const REUSE_MONITOR = "T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR";
+
+function auditFactoryBuild(workflow: Node): string[] {
+  const at = "factory-build.yml";
+  const errors: string[] = [];
+  const secrets = strings(workflow).filter((value) => /\bsecrets\b/.test(value));
+  if (secrets.length > 0) errors.push(`${at} must not reference secrets: ${secrets.join(", ")}`);
+  const workflowPermissions = workflow.permissions;
+  if (
+    !isNode(workflowPermissions) ||
+    Object.keys(workflowPermissions).length !== 1 ||
+    workflowPermissions.contents !== "read"
+  ) {
+    errors.push(`${at} workflow permissions must be exactly contents: read`);
+  }
+  const inputs =
+    isNode(workflow.on) && isNode(workflow.on.workflow_dispatch)
+      ? workflow.on.workflow_dispatch.inputs
+      : undefined;
+  for (const name of [
+    "candidate_sha",
+    "base_sha",
+    "candidate_ref",
+    "validation_run_id",
+    "validation_run_attempt",
+    "validation_control_sha",
+    "validation_manifest_sha256",
+    "package_receipt_sha256",
+    "package_receipt_b64",
+  ]) {
+    const input = isNode(inputs) ? inputs[name] : undefined;
+    if (!isNode(input) || input.required !== true) {
+      errors.push(`${at} needs required input ${name}`);
+    }
+  }
+  if (isNode(workflow.env) && REUSE_MONITOR in workflow.env) {
+    errors.push(`${at} must not set ${REUSE_MONITOR} for every job`);
+  }
+
+  const jobs = new Map(jobsOf(workflow));
+  if (JSON.stringify([...jobs.keys()].toSorted()) !== JSON.stringify(FACTORY_BUILD_JOBS)) {
+    errors.push(`${at} jobs must be exactly ${FACTORY_BUILD_JOBS.join(", ")}`);
+  }
+  for (const [name, job] of jobs) {
+    if (typeof job.uses === "string") {
+      errors.push(`${at} job ${name} calls reusable workflow ${job.uses}`);
+    }
+    if (!FACTORY_CHECK_RUNNERS.includes(job["runs-on"] as string)) {
+      errors.push(
+        `${at} job ${name} runs on ${JSON.stringify(job["runs-on"])}, not a hosted runner`,
+      );
+    }
+    // Only verify reads the API; the candidate build never gets more than the checkout token.
+    const expected = name === "verify" ? { contents: "read", actions: "read" } : undefined;
+    if (JSON.stringify(job.permissions) !== JSON.stringify(expected)) {
+      errors.push(
+        `${at} job ${name} permissions must be ${expected ? "exactly contents: read, actions: read" : "the workflow's contents: read"}`,
+      );
+    }
+    if (name !== "verify" && strings(job).some((value) => /\bgithub\.token\b/.test(value))) {
+      errors.push(`${at} job ${name} must not read github.token`);
+    }
+    const envs = [job.env, ...stepsOf(job).map((step) => step.env)].filter(isNode);
+    if (envs.some((env) => REUSE_MONITOR in env && env[REUSE_MONITOR] !== "false")) {
+      errors.push(`${at} job ${name} must build the resource monitor, not reuse one`);
+    }
+    for (const step of stepsOf(job)) {
+      const uses = typeof step.uses === "string" ? step.uses : "";
+      const options = isNode(step.with) ? step.with : {};
+      if (uses && !FACTORY_BUILD_ACTIONS.some((prefix) => uses.startsWith(prefix))) {
+        errors.push(`${at} job ${name} uses ${uses}, which is not an allowed build action`);
+      }
+      if (uses.startsWith("actions/checkout@") && options["persist-credentials"] !== false) {
+        errors.push(`${at} job ${name} checks out without persist-credentials: false`);
+      }
+      if ("token" in options || "github-token" in options) {
+        errors.push(`${at} job ${name} passes a token to ${uses}`);
+      }
+      if (typeof step.run === "string" && FACTORY_BUILD_FORBIDDEN_RUN.test(step.run)) {
+        errors.push(`${at} job ${name} runs a dispatch, download, signing or publishing command`);
+      }
+    }
+  }
+  const packageJob = jobs.get("package");
+  if (packageJob?.needs !== "verify") errors.push(`${at} package must need verify`);
+  if (packageJob?.["runs-on"] !== "windows-2025") {
+    errors.push(`${at} package must run on windows-2025`);
+  }
+  const manifest = jobs.get("manifest");
+  const needs = Array.isArray(manifest?.needs) ? manifest.needs.map(String).toSorted() : [];
+  if (JSON.stringify(needs) !== JSON.stringify(["package", "verify"])) {
+    errors.push(`${at} manifest must need verify and package`);
+  }
+  if (typeof manifest?.if !== "string" || !manifest.if.includes("always()")) {
+    errors.push(`${at} manifest must run always() so a failed or skipped job fails it`);
+  }
+  return errors;
+}
+
 /** Audits workflow file contents keyed by file name. Returns every violation found. */
 export function auditWorkflows(
   files: ReadonlyMap<string, string>,
@@ -217,11 +339,15 @@ export function auditWorkflows(
           `${file} is inherited delivery; its only trigger must be workflow_call, found ${triggers.join(", ")}`,
         );
       }
-    } else if (entry?.role === "factory-check") {
+    } else if (entry?.role === "factory-check" || entry?.role === "factory-build") {
       if (JSON.stringify(triggers) !== JSON.stringify(["workflow_dispatch"])) {
         errors.push(`${file} must be dispatch-only, found ${triggers.join(", ")}`);
       }
-      errors.push(...auditFactoryCheck(workflow));
+      errors.push(
+        ...(entry.role === "factory-check"
+          ? auditFactoryCheck(workflow)
+          : auditFactoryBuild(workflow)),
+      );
     } else if (entry?.triggers) {
       if (JSON.stringify(triggers) !== JSON.stringify(entry.triggers.toSorted())) {
         errors.push(

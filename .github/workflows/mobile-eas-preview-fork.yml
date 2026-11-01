@@ -9,9 +9,9 @@ name: Mobile EAS Preview (Fork)
 #
 # Same-repo PRs deploy on every push while labeled, via mobile-eas-preview.yml.
 
+# T3Factory: inherited trigger neutralized to reusable-only with no caller. See docs/operations/release.md.
 on:
-  pull_request_target:
-    types: [labeled]
+  workflow_call:
 
 permissions:
   contents: read

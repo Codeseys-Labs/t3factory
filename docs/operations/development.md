@@ -167,8 +167,9 @@ of the affected packages and their dependents, and the test files beside the cha
 runs the checks that read other files: the agent context budget when the server is affected, and
 React Compiler coverage for only the changed web and mobile files. It maps
 files to packages with [ci-changes.cjs](../../.github/scripts/ci-changes.cjs), as CI does. It
-compares against the merge base with `origin/main`, or with a ref you pass. CI still runs the full
-test suites and the jobs the summary lists, so a local pass does not promise a green CI run.
+compares against the merge base with `origin/main`, or with a ref you pass. Hosted validation runs
+only when a maintainer dispatches [factory-check.yml](../../.github/workflows/factory-check.yml),
+so a local pass is the gate before any hosted run.
 
 The steps run side by side, so a run takes about as long as its slowest step, usually knip's
 exports pass at about 10 s. When the files are exactly those of the last passing run, it prints that
@@ -191,10 +192,9 @@ TypeScript workspaces typecheck with `tsc`. The `typescript` catalog entry is
 `@tsc-rs/typescript`, the tsc-rs drop-in, with Effect diagnostics, quick fixes, and
 refactors built in. VS Code uses it through `js/ts.tsdk.path` in `.vscode/settings.json`.
 
-Use `vp run lint:mobile` for native mobile changes. CI owns the full suite; see
-[ci.yml](../../.github/workflows/ci.yml) for its current jobs.
-The [manual Windows lane](../../.github/workflows/windows-tests.yml) is available for focused
-Windows investigation while that suite is not a required gate.
+Use `vp run lint:mobile` for native mobile changes. The inherited `ci.yml` and Windows test lane do
+not run in T3Factory; see [T3Factory manual validation](release.md#t3factory-manual-validation) for
+the dispatch-only lanes, including the optional Windows build.
 
 ### Unused code
 

@@ -8,8 +8,9 @@
 #   gh run watch && gh run view --log-failed
 name: Windows Tests
 
+# T3Factory: inherited trigger neutralized to reusable-only with no caller; factory-check.yml has a Windows lane.
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       package:
         description: "Workspace directory to test, e.g. apps/server or packages/shared. Empty runs every package except apps/server."

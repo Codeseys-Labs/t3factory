@@ -2,6 +2,7 @@ name: Publish AUR package
 
 # See packaging/aur/README.md.
 
+# T3Factory: manual dispatch removed. Reusable-only; its one caller, release.yml, is neutralized.
 on:
   workflow_call:
     inputs:
@@ -15,17 +16,6 @@ on:
     secrets:
       AUR_SSH_PRIVATE_KEY:
         required: true
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Release tag to publish"
-        required: true
-        type: string
-      pkgrel:
-        description: "Arch package release override"
-        required: false
-        default: "1"
-        type: string
 
 permissions:
   contents: read

@@ -1,9 +1,8 @@
 name: Thread Transfer Report
 
+# T3Factory: inherited trigger neutralized to reusable-only with no caller. See docs/operations/release.md.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
+  workflow_call:
 
 permissions:
   actions: read

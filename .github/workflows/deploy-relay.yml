@@ -1,12 +1,8 @@
 name: Deploy T3 Connect relay
 
+# T3Factory: inherited trigger neutralized to reusable-only with no caller. See docs/operations/release.md.
 on:
-  push:
-    branches:
-      - main
-  # Redeploys main after a variable or secret change. Alchemy redeploys the
-  # Worker when a value it reads changes, so force is rarely needed.
-  workflow_dispatch:
+  workflow_call:
     inputs:
       force:
         description: Redeploy every resource, including ones with no detected changes.

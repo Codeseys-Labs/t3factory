@@ -9,6 +9,86 @@ remain stable and nightly. To ship 0.1.0 Beta, use `channel=stable` and
 `version=0.1.0`. Removing the Beta label later is a branding change independent of
 the version.
 
+## T3Factory manual validation
+
+T3Factory runs no inherited upstream CI, build, deployment or release workflow. The rest of this
+document describes upstream T3 Code's delivery path. In this fork those workflows keep their bodies
+for upstream reconciliation, but their only trigger is `workflow_call` and nothing calls them.
+Upstream guards such as `github.repository == 'pingdotgg/t3code'` stay as defense, not as the
+manual-only guarantee.
+
+[factory-workflow-audit.ts](../../scripts/factory-workflow-audit.ts) inventories every workflow
+file. It fails on an unknown workflow, a new trigger on inherited delivery, a `workflow_run` chain,
+or a path from any workflow that can start to a neutralized or publishing body. The `factory-check`
+lint lane runs it against the candidate. Run `node scripts/factory-workflow-audit.ts` before
+accepting workflow files from upstream. Workflows that can still start:
+
+| Role                             | Workflows                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------ |
+| Manual validation                | `factory-check.yml`, dispatch only                                             |
+| Housekeeping, not CI or delivery | `pr-size.yml`, `pr-vouch.yml`, `issue-labels.yml`, `stale-needs-more-info.yml` |
+| Manual tooling                   | `mobile-showcase-screenshots.yml`, screenshots as run artifacts only           |
+
+Housekeeping still starts on pull requests, comments, pushes to `main` and a schedule, so "no
+automatic workflows" covers CI, build, deploy and release only.
+
+### Record local evidence
+
+Run the relevant checks on the exact committed candidate, in a clean worktree, with the pinned
+toolchain. Keep the receipt outside the worktree. Each `record` runs one command, saves its output
+log beside the receipt, and appends the exit code and output SHA-256:
+
+```sh
+factory() { vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 -- node scripts/factory-check.ts "$@"; }
+evidence=(--receipt ../factory-evidence/receipt.json --repository baladithyab/t3code-factory --base "$BASE")
+factory record "${evidence[@]}" --kind check-changed -- vp run check:changed "$BASE"
+factory record "${evidence[@]}" --kind test -- vp test run <focused test files>
+factory record "${evidence[@]}" --kind build-desktop -- vp run build:desktop
+factory finalize --receipt ../factory-evidence/receipt.json --ref feat/t3factory
+```
+
+The receipt is dispatcher-declared evidence, not an attestation. The workflow checks its digest and
+size, the repository, candidate, base, pinned Node.js and pnpm, the clean-worktree flag, and that
+`check:changed` against the base, at least one test command and the desktop build all exited 0. It
+cannot prove the commands ran. A new commit or rebuilt artifact needs a new receipt; the V0 baseline
+in issue 68 is not evidence for a later candidate.
+
+### Dispatch
+
+`finalize` prints a `gh workflow run factory-check.yml` command and runs nothing. `--ref` names the
+branch or tag holding the workflow definition, not the candidate. The workflow checks out its
+control scripts at `github.workflow_sha` and the candidate separately at `candidate_sha`, without
+persisted credentials, secrets, OIDC or the remote task cache. It requires `candidate_sha` to be
+reachable from `candidate_ref`, one branch or tag, and `base_sha` to be an ancestor of it. Lanes run
+on `ubuntu-24.04`; the Windows desktop build lane runs on `windows-2025` and is off by default.
+Mobile native static analysis needs macOS and is recorded as not run.
+
+`Check` fails when resolve or a requested lane did not succeed (failure, cancellation or skip),
+when an unrequested lane did anything but skip, or when a lane tested another commit or ran a
+Node.js or pnpm other than the candidate's pins. It uploads `factory-check-manifest-a<attempt>`:
+`factory-check-manifest.json` (`t3factory.check-manifest/v1`) and its SHA-256, binding repository,
+workflow path, ref and revision, run ID and attempt, candidate, ref and base, pinned and per-lane
+toolchain, requested lanes and results, the local receipt and its digest, and the SHA-256 of every
+evidence artifact. Evidence is per attempt, so re-run all jobs rather than failed jobs. No workflow
+consumes the manifest; promoting a validated candidate to a build is a separate, explicit step.
+
+### Rollout
+
+The workflow files change nothing on GitHub by themselves. After the locally verified change is
+published to `feat/t3factory`, a maintainer:
+
+1. Makes `feat/t3factory` the default branch. `main` and its baseline
+   `dd148481531a0a090780a2ade20588566db099a2` stay; nothing is force-pushed.
+2. Lists registered workflows with `gh workflow list --all` and disables each inherited CI, build,
+   deploy and release workflow with `gh workflow disable`, recording the list. Disabling covers that
+   workflow file on every branch. Switching the default branch alone does not: `main` and other
+   refs still carry their automatic triggers.
+3. Decides housekeeping workflows separately.
+4. Configures required status checks or rulesets separately, if wanted. Nothing dispatches
+   `factory-check.yml` automatically.
+
+To roll back, re-enable the recorded workflows and switch the default branch back to `main`.
+
 ## What the workflow does
 
 - Workflow: `.github/workflows/release.yml`

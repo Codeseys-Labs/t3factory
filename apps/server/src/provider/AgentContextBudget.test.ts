@@ -7,6 +7,7 @@ import { FactoryResearchService } from "../factory/FactoryResearchService.ts";
 import { FactoryFeedService } from "../factory/FactoryFeedService.ts";
 import { FactoryIssueRelations } from "../factory/FactoryIssueRelations.ts";
 import { FactoryIssueService } from "../factory/FactoryIssueService.ts";
+import { FactoryWorkService } from "../factory/FactoryWorkService.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { ProviderInstanceId } from "@t3tools/contracts";
@@ -62,6 +63,7 @@ const toolHandlerServices = Layer.mergeAll(
   Layer.mock(FactoryAcceptanceService)({}),
   Layer.mock(FactoryKnowledgeService)({}),
   Layer.mock(FactoryDeliveryService)({}),
+  Layer.mock(FactoryWorkService)({}),
   Layer.mock(ProjectCoordinatorService)({}),
 
   Layer.mock(DeviceService)({}),

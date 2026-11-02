@@ -331,6 +331,10 @@ export class FactoryIssueRelations extends Context.Service<
     readonly read: (
       input: FactoryIssueReadinessReadInput,
     ) => Effect.Effect<FactoryIssueReadinessReadResult, FactoryIssueError>;
+    /** `read` for an admitted issue; refuses before any tracker request if the origin moved. */
+    readonly readAdmitted: (
+      input: FactoryIssueReadinessReadInput & { readonly canonicalKey: string },
+    ) => Effect.Effect<FactoryIssueReadinessReadResult, FactoryIssueError>;
     readonly setOverride: (
       input: FactoryReadinessOverrideSetInput,
     ) => Effect.Effect<FactoryIssueReadinessReadResult, FactoryIssueError>;
@@ -611,6 +615,14 @@ const make = Effect.gen(function* () {
     const { repository, tracker } = yield* resolve(input.projectId);
     return yield* readRepositoryIssue(repository, tracker, input);
   });
+  const readAdmitted = Effect.fn("FactoryIssueRelations.readAdmitted")(function* (
+    input: FactoryIssueReadinessReadInput & { readonly canonicalKey: string },
+  ) {
+    const { repository, tracker } = yield* resolve(input.projectId);
+    if (repository.canonicalKey !== input.canonicalKey)
+      return yield* new FactoryIssueError({ reason: "repository-changed" });
+    return yield* readRepositoryIssue(repository, tracker, input);
+  });
   const setOverride = Effect.fn("FactoryIssueRelations.setOverride")(function* (
     input: FactoryReadinessOverrideSetInput,
   ) {
@@ -807,6 +819,12 @@ const make = Effect.gen(function* () {
       observedAt,
     };
   });
-  return FactoryIssueRelations.of({ read, setOverride, revokeOverride, readFrontier });
+  return FactoryIssueRelations.of({
+    read,
+    readAdmitted,
+    setOverride,
+    revokeOverride,
+    readFrontier,
+  });
 });
 export const layer = Layer.effect(FactoryIssueRelations, make);

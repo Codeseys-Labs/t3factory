@@ -368,6 +368,10 @@ function WorkDetail(props: {
             The project coordinator is project context, not this item's provenance. Inspecting Work
             doesn't launch, reconcile, accept or publish.
           </Text>
+          <Text className="text-xs text-foreground-muted">
+            The prerequisites view isn't available in the mobile app yet. Open this item on web or
+            desktop to inspect its source blockers.
+          </Text>
         </View>
       </SettingsSection>
 

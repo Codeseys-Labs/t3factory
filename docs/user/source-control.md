@@ -178,6 +178,18 @@ remain separate work with separate owners; legacy feed conflicts also stay separ
 failed, unsupported, and denied owners are not empty collections. Page times are local
 observations, not a synchronized global snapshot.
 
+#### Follow an item's prerequisites
+
+On web and desktop, select an admitted issue and choose **Show prerequisites** to see its direct
+blockers on GitHub as a small diagram with an equivalent list. Factory asks GitHub only when you
+expand it, using the same evidence as **Blockers**. Each blocker says whether this environment
+retains Work for it. **Open retained Work** keeps your scope, kind filter and layout, even when the
+blocker belongs to another project, and **Return to previous selection** goes back. The diagram
+shows up to 25 blockers; the list pages through the rest. Feed work, briefs and protocols say
+prerequisites are not modeled here, which does not mean they have none. Sub-issues and execution
+history stay in their own views, and the mobile app does not show prerequisites yet. Agents can
+read the same view with the read-only `factory_read_work_prerequisites`.
+
 The advanced environment overview shows project paths, thread and running counts, scheduled
 workflow counts and latest dispatch, and project coordinator context. Opening a workflow selects
 its owning environment, checkout, and exact definition; a missing or out-of-scope workflow link

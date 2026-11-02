@@ -22,6 +22,8 @@ export interface FactorySearch extends SettingsScopeSearch {
   view: FactoryIssueViewMode;
   taskId?: ScheduledTaskId | undefined;
   work?: string | undefined;
+  /** The selection a followed prerequisite link returns to. */
+  workFrom?: string | undefined;
   workKind?: FactoryWorkKind | undefined;
   workGroup?: FactoryWorkBoardGrouping | undefined;
   workReturn?: string | undefined;
@@ -37,6 +39,7 @@ export function validateFactorySearch(raw: Record<string, unknown>): FactorySear
     state: parseFactoryStateFilter(raw.state),
     view: parseFactoryIssueViewMode(raw.view),
     ...(parseFactoryWorkSelection(raw.work) !== null ? { work: String(raw.work) } : {}),
+    ...(parseFactoryWorkSelection(raw.workFrom) !== null ? { workFrom: String(raw.workFrom) } : {}),
     ...(isWorkKind(raw.workKind) ? { workKind: raw.workKind } : {}),
     ...(raw.workGroup === undefined
       ? {}

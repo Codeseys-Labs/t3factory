@@ -214,6 +214,15 @@ export function createFactoryEnvironmentAtoms<R, E>(
         idleTtlMs: 0,
       }),
     ),
+    // Each mount observes the source again; nothing reads prerequisites until a person asks.
+    readWorkPrerequisites: protectedRead(
+      createEnvironmentRpcQueryAtomFamily(runtime, {
+        label: "environment-data:factory:work-prerequisites",
+        tag: WS_METHODS.factoryReadWorkPrerequisites,
+        staleTimeMs: 0,
+        idleTtlMs: 0,
+      }),
+    ),
     list: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:factory:issues",
       tag: WS_METHODS.factoryListIssues,

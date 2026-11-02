@@ -45,6 +45,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.factoryListWork]: AuthOrchestrationReadScope,
   [WS_METHODS.factoryReadWork]: AuthOrchestrationReadScope,
   [WS_METHODS.factoryReadWorkHistory]: AuthOrchestrationReadScope,
+  [WS_METHODS.factoryReadWorkPrerequisites]: AuthOrchestrationReadScope,
   [WS_METHODS.factoryReadAcceptance]: AuthOrchestrationReadScope,
   [WS_METHODS.factoryListKnowledgeBriefs]: AuthOrchestrationReadScope,
   [WS_METHODS.factoryReadKnowledgeTask]: AuthOrchestrationReadScope,

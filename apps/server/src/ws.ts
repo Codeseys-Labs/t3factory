@@ -2598,6 +2598,7 @@ export const layerWsRpc = (
         [WS_METHODS.factoryListWork]: (input) => factoryWork.list(input),
         [WS_METHODS.factoryReadWork]: (input) => factoryWork.read(input),
         [WS_METHODS.factoryReadWorkHistory]: (input) => factoryWork.history(input),
+        [WS_METHODS.factoryReadWorkPrerequisites]: (input) => factoryWork.readPrerequisites(input),
         [WS_METHODS.factoryAcceptCommit]: (input) => factoryAcceptance.acceptCommit(input),
         [WS_METHODS.factoryReadAcceptance]: (input) => factoryAcceptance.read(input),
         [WS_METHODS.factoryCreateKnowledgeBrief]: (input) => factoryKnowledge.createBrief(input),

@@ -371,6 +371,7 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
     FactoryToolkit.tools.factory_get_orchestrator,
     FactoryToolkit.tools.factory_start_orchestrator,
     FactoryToolkit.tools.factory_assign_orchestrator,
+    FactoryToolkit.tools.factory_read_work_prerequisites,
   ]);
 const t3Tools: ReadonlyArray<ApiTool> = t3SourceTools.map((tool) => ({
   name: `${T3_PREFIX}${tool.name}`,

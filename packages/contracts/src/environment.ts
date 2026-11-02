@@ -80,6 +80,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   /** Absent on older servers; clients must not request claim lists without it. */
   factoryClaims: Schema.optionalKey(Schema.Boolean),
   factoryWork: Schema.optionalKey(Schema.Boolean),
+  /** Absent on older servers; clients must not request Work prerequisites without it. */
+  factoryWorkPrerequisites: Schema.optionalKey(Schema.Boolean),
   /** Absent on older servers; clients must not read or record commit acceptance without it. */
   factoryAcceptance: Schema.optionalKey(Schema.Boolean),
   /** Absent on older servers; clients must not prepare, grant or read pull request deliveries without it. */

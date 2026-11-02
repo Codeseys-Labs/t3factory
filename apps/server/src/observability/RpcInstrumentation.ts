@@ -40,6 +40,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.factoryListWork]: "factory",
   [WS_METHODS.factoryReadWork]: "factory",
   [WS_METHODS.factoryReadWorkHistory]: "factory",
+  [WS_METHODS.factoryReadWorkPrerequisites]: "factory",
   [WS_METHODS.factoryReadAcceptance]: "factory",
   [WS_METHODS.factoryAcceptCommit]: "factory",
   [WS_METHODS.factoryCreateKnowledgeBrief]: "factory",

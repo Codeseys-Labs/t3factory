@@ -13,12 +13,11 @@ import { useEnvironmentQuery } from "../../state/query";
 import { Button } from "../ui/button";
 import { safeExternalUrl } from "./factoryIssues.logic";
 
-const NODE_WIDTH = 112;
+const NODE_WIDTH = 160;
 const NODE_HEIGHT = 36;
 const GAP_X = 12;
 const GAP_Y = 14;
 const COLUMNS = 5;
-const DIAGRAM_WIDTH = COLUMNS * NODE_WIDTH + (COLUMNS - 1) * GAP_X;
 const toneClasses: Record<FactoryWorkPrerequisiteTone, string> = {
   blocking: "fill-background stroke-destructive",
   unknown: "fill-background stroke-muted-foreground",
@@ -35,70 +34,82 @@ function FactoryWorkPrerequisiteDiagram(props: {
   readonly nodes: readonly FactoryWorkPrerequisiteNode[];
   readonly omitted: number;
 }) {
-  const rows = Math.max(1, Math.ceil(props.nodes.length / COLUMNS));
+  const columns = Math.max(1, Math.min(COLUMNS, props.nodes.length));
+  const rows = Math.max(1, Math.ceil(props.nodes.length / columns));
+  const gridWidth = columns * NODE_WIDTH + (columns - 1) * GAP_X;
+  const width = Math.max(300, gridWidth);
   const subjectY = rows * (NODE_HEIGHT + GAP_Y) + 24;
   const height = subjectY + NODE_HEIGHT + 4;
-  const subjectX = DIAGRAM_WIDTH / 2 - NODE_WIDTH / 2;
+  const subjectX = width / 2 - NODE_WIDTH / 2;
   const description = `Diagram of ${props.nodes.length} direct prerequisites${
     props.omitted > 0 ? `; ${props.omitted} more appear only in the list` : ""
   }. The list below is equivalent.`;
   return (
-    <svg
-      role="img"
-      aria-label={description}
-      viewBox={`0 0 ${DIAGRAM_WIDTH} ${height}`}
-      className="h-auto w-full max-w-2xl text-3xs"
+    <div
+      className="max-w-full overflow-x-auto"
+      role="region"
+      aria-label="Prerequisite diagram"
+      tabIndex={0}
     >
-      {props.nodes.map((node, index) => {
-        const x = (index % COLUMNS) * (NODE_WIDTH + GAP_X);
-        const y = Math.floor(index / COLUMNS) * (NODE_HEIGHT + GAP_Y);
-        return (
-          <g key={node.key}>
-            <line
-              x1={x + NODE_WIDTH / 2}
-              y1={y + NODE_HEIGHT}
-              x2={DIAGRAM_WIDTH / 2}
-              y2={subjectY}
-              className="stroke-border"
-            />
-            <rect
-              x={x}
-              y={y}
-              width={NODE_WIDTH}
-              height={NODE_HEIGHT}
-              rx={4}
-              strokeDasharray={
-                node.tone === "unknown" || node.tone === "removed" ? "3 2" : undefined
-              }
-              className={toneClasses[node.tone]}
-            />
-            <text x={x + 6} y={y + 14} className="fill-foreground">
-              {shorten(node.locator, 18)}
-            </text>
-            <text x={x + 6} y={y + 28} className="fill-muted-foreground">
-              {node.tone}
-              {node.link.kind === "retained" ? " · retained" : ""}
-            </text>
-          </g>
-        );
-      })}
-      <rect
-        x={subjectX}
-        y={subjectY}
-        width={NODE_WIDTH}
-        height={NODE_HEIGHT}
-        rx={4}
-        className="fill-muted stroke-foreground"
-      />
-      <text x={subjectX + 6} y={subjectY + 22} className="fill-foreground">
-        Selected item
-      </text>
-      {props.omitted > 0 ? (
-        <text x={subjectX + NODE_WIDTH + 8} y={subjectY + 22} className="fill-muted-foreground">
-          +{props.omitted} more in the list
+      <svg
+        role="img"
+        aria-label={description}
+        viewBox={`0 0 ${width} ${height}`}
+        width={width}
+        height={height}
+        className="max-w-none text-xs"
+      >
+        {props.nodes.map((node, index) => {
+          const x = (width - gridWidth) / 2 + (index % columns) * (NODE_WIDTH + GAP_X);
+          const y = Math.floor(index / columns) * (NODE_HEIGHT + GAP_Y);
+          return (
+            <g key={node.key}>
+              <line
+                x1={x + NODE_WIDTH / 2}
+                y1={y + NODE_HEIGHT}
+                x2={width / 2}
+                y2={subjectY}
+                className="stroke-border"
+              />
+              <rect
+                x={x}
+                y={y}
+                width={NODE_WIDTH}
+                height={NODE_HEIGHT}
+                rx={4}
+                strokeDasharray={
+                  node.tone === "unknown" || node.tone === "removed" ? "3 2" : undefined
+                }
+                className={toneClasses[node.tone]}
+              />
+              <text x={x + 6} y={y + 14} className="fill-foreground">
+                {shorten(node.locator, 22)}
+              </text>
+              <text x={x + 6} y={y + 28} className="fill-muted-foreground">
+                {node.tone}
+                {node.link.kind === "retained" ? " · retained" : ""}
+              </text>
+            </g>
+          );
+        })}
+        <rect
+          x={subjectX}
+          y={subjectY}
+          width={NODE_WIDTH}
+          height={NODE_HEIGHT}
+          rx={4}
+          className="fill-muted stroke-foreground"
+        />
+        <text x={subjectX + 6} y={subjectY + 22} className="fill-foreground">
+          Selected item
         </text>
-      ) : null}
-    </svg>
+        {props.omitted > 0 ? (
+          <text x={subjectX + NODE_WIDTH + 8} y={subjectY + 22} className="fill-muted-foreground">
+            +{props.omitted} more in the list
+          </text>
+        ) : null}
+      </svg>
+    </div>
   );
 }
 

@@ -3,6 +3,7 @@ import {
   ProjectId,
   ProviderInstanceId,
   ScheduledTaskId,
+  ThreadId,
   type ModelSelection,
 } from "@t3tools/contracts";
 import { describe, expect, it, onTestFinished } from "vite-plus/test";
@@ -11,11 +12,23 @@ import { appAtomRegistry } from "../../state/atom-registry";
 import {
   consumeFactoryWorkflowTarget,
   factoryInboxSelectionAtom,
+  factoryWorkHistoryFor,
+  factoryWorkPagesKey,
+  factoryWorkViewAtom,
+  loadedFactoryWorkCursors,
+  loadMoreFactoryWork,
+  moveFactoryWorkHistoryPage,
   openFactoryIssues,
+  openFactoryWorkReview,
+  resetFactoryWorkPages,
+  returnToFactoryWork,
   selectFactoryScope,
+  selectFactorySection,
+  selectFactoryWorkHistory,
   updateFactoryInboxSelection,
   type FactoryInboxSelection,
 } from "./factory-inbox-state";
+import { FACTORY_WORK_MAX_PAGES } from "./factoryWorkList";
 
 const environmentId = EnvironmentId.make("selected-environment");
 const projectId = ProjectId.make("selected-project");
@@ -28,7 +41,18 @@ const modelSelection: ModelSelection = {
 
 function setup(patch: Partial<FactoryInboxSelection> = {}): void {
   const previous = appAtomRegistry.get(factoryInboxSelectionAtom);
-  onTestFinished(() => appAtomRegistry.set(factoryInboxSelectionAtom, previous));
+  const previousWork = appAtomRegistry.get(factoryWorkViewAtom);
+  onTestFinished(() => {
+    appAtomRegistry.set(factoryInboxSelectionAtom, previous);
+    appAtomRegistry.set(factoryWorkViewAtom, previousWork);
+  });
+  appAtomRegistry.set(factoryWorkViewAtom, {
+    kind: null,
+    pagesKey: null,
+    cursors: {},
+    selected: null,
+    history: null,
+  });
   appAtomRegistry.set(factoryInboxSelectionAtom, {
     environmentId: null,
     projectId: null,
@@ -38,6 +62,7 @@ function setup(patch: Partial<FactoryInboxSelection> = {}): void {
     modelSelection: null,
     baseRef: null,
     runtimeMode: "approval-required",
+    workReturn: null,
     ...patch,
   });
 }
@@ -57,6 +82,7 @@ describe("openFactoryIssues", () => {
       modelSelection: null,
       baseRef: null,
       runtimeMode: "approval-required",
+      workReturn: null,
     });
   });
 
@@ -69,6 +95,7 @@ describe("openFactoryIssues", () => {
       modelSelection,
       baseRef: "release/previous-project",
       runtimeMode: "full-access",
+      workReturn: null,
     });
 
     openFactoryIssues(environmentId, projectId);
@@ -82,6 +109,7 @@ describe("openFactoryIssues", () => {
       modelSelection: null,
       baseRef: null,
       runtimeMode: "full-access",
+      workReturn: null,
     });
   });
 
@@ -95,6 +123,7 @@ describe("openFactoryIssues", () => {
       modelSelection,
       baseRef: "release/selected-project",
       runtimeMode: "full-access",
+      workReturn: null,
     });
 
     openFactoryIssues(environmentId, projectId);
@@ -108,6 +137,7 @@ describe("openFactoryIssues", () => {
       modelSelection,
       baseRef: "release/selected-project",
       runtimeMode: "full-access",
+      workReturn: null,
     });
   });
 
@@ -133,6 +163,7 @@ describe("openFactoryIssues", () => {
       modelSelection: null,
       baseRef: null,
       runtimeMode: "approval-required",
+      workReturn: null,
     });
   });
 });
@@ -148,6 +179,7 @@ describe("consumeFactoryWorkflowTarget", () => {
       modelSelection,
       baseRef: "release/selected-project",
       runtimeMode: "full-access",
+      workReturn: null,
     });
     const requested = appAtomRegistry.get(factoryInboxSelectionAtom);
 
@@ -202,5 +234,98 @@ describe("consumeFactoryWorkflowTarget", () => {
       section: "workflows",
       taskId: null,
     });
+  });
+});
+
+describe("Factory Work review return", () => {
+  const work = JSON.stringify({ version: 1, environmentId, kind: "issue", id: "admission" });
+  const reviewProject = ProjectId.make("review-project");
+
+  it("opens the review project's issues and returns to the exact Work scope and item", () => {
+    setup({ section: "work", filter: "closed", modelSelection, baseRef: "release/other" });
+
+    openFactoryWorkReview({ environmentId, projectId: reviewProject, section: "issues", work });
+
+    expect(appAtomRegistry.get(factoryInboxSelectionAtom)).toMatchObject({
+      environmentId,
+      projectId: reviewProject,
+      section: "issues",
+      filter: "all",
+      modelSelection: null,
+      baseRef: null,
+      workReturn: { environmentId: null, projectId: null, filter: "closed", work },
+    });
+    expect(returnToFactoryWork()).toBe(work);
+    expect(appAtomRegistry.get(factoryInboxSelectionAtom)).toMatchObject({
+      environmentId: null,
+      projectId: null,
+      section: "work",
+      filter: "closed",
+      workReturn: null,
+    });
+    expect(returnToFactoryWork()).toBeNull();
+  });
+
+  it.each([
+    ["changing scope", () => selectFactoryScope(null, null)],
+    ["choosing a section", () => selectFactorySection("overview")],
+    ["opening issues elsewhere", () => openFactoryIssues(environmentId, projectId)],
+  ])("abandons the pending return when %s", (_name, leave) => {
+    setup({ section: "work" });
+    openFactoryWorkReview({ environmentId, projectId: reviewProject, section: "briefs", work });
+
+    leave();
+
+    expect(appAtomRegistry.get(factoryInboxSelectionAtom).workReturn).toBeNull();
+    expect(returnToFactoryWork()).toBeNull();
+  });
+});
+
+describe("Factory Work view", () => {
+  const pagesKey = factoryWorkPagesKey({ environmentId, projectId: null, kind: null });
+  const otherKey = factoryWorkPagesKey({ environmentId, projectId: null, kind: "brief" });
+
+  it("keeps loaded cursors per scope and kind, without duplicates and within the page bound", () => {
+    setup();
+    for (let index = 0; index < FACTORY_WORK_MAX_PAGES + 2; index += 1) {
+      loadMoreFactoryWork(pagesKey, environmentId, `cursor-${index}`);
+      loadMoreFactoryWork(pagesKey, environmentId, `cursor-${index}`);
+    }
+    const view = appAtomRegistry.get(factoryWorkViewAtom);
+
+    expect(loadedFactoryWorkCursors(view, pagesKey, environmentId)).toHaveLength(
+      FACTORY_WORK_MAX_PAGES - 1,
+    );
+    expect(loadedFactoryWorkCursors(view, otherKey, environmentId)).toEqual([]);
+
+    loadMoreFactoryWork(otherKey, environmentId, "brief-cursor");
+    expect(
+      loadedFactoryWorkCursors(appAtomRegistry.get(factoryWorkViewAtom), pagesKey, environmentId),
+    ).toEqual([]);
+    resetFactoryWorkPages(otherKey);
+    expect(
+      loadedFactoryWorkCursors(appAtomRegistry.get(factoryWorkViewAtom), otherKey, environmentId),
+    ).toEqual([]);
+  });
+
+  it("returns to the same history page for the same item and starts another at executions", () => {
+    setup();
+    selectFactoryWorkHistory("work-a", { section: "runs", threadId: ThreadId.make("thread") });
+    moveFactoryWorkHistoryPage("work-a", "history-cursor");
+    const view = appAtomRegistry.get(factoryWorkViewAtom);
+
+    expect(factoryWorkHistoryFor(view, "work-a")).toMatchObject({
+      selection: { section: "runs" },
+      cursors: ["history-cursor"],
+    });
+    expect(factoryWorkHistoryFor(view, "work-b")).toEqual({
+      work: "work-b",
+      selection: { section: "executions" },
+      cursors: [],
+    });
+    moveFactoryWorkHistoryPage("work-a", null);
+    expect(
+      factoryWorkHistoryFor(appAtomRegistry.get(factoryWorkViewAtom), "work-a").cursors,
+    ).toEqual([]);
   });
 });

@@ -105,7 +105,17 @@ vi.mock(import("../../state/session"), () => ({
     new Set(state.readable ? [EnvironmentId.make(state.environmentId)] : []),
 }));
 vi.mock(import("../settings/SettingsScopeContext"), () => ({
-  useSettingsScope: (() => ({ scope: state.scope, groups: [] })) as never,
+  useSettingsScope: (() => ({
+    scope: state.scope,
+    groups: [
+      {
+        projectKey: "acme",
+        memberProjects: [
+          { environmentId: state.environmentId, id: "project", physicalProjectKey: "checkout" },
+        ],
+      },
+    ],
+  })) as never,
 }));
 vi.mock(import("./FactoryOverviewPage"), () => ({ FactoryOverviewPage: () => null }));
 
@@ -325,6 +335,14 @@ it("reads prerequisites only when expanded, resets on selection change and retur
   await expect
     .element(screen.getByRole("list", { name: "Direct prerequisites" }))
     .not.toBeInTheDocument();
+  await userEvent.click(
+    screen.getByRole("button", { name: "Open exact native review / start / resume" }),
+  );
+  expect(JSON.parse(String(state.navigations.at(-1)?.search.workReturn))).toMatchObject({
+    work: JSON.stringify(blocker),
+    workFrom: subject,
+    view: "board",
+  });
   await userEvent.click(screen.getByRole("button", { name: "Return to previous selection" }));
   expect(state.navigations.at(-1)?.search).toMatchObject({
     view: "board",

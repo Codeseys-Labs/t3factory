@@ -161,6 +161,12 @@ describe("factory scope narrowing", () => {
     const saved = {
       project: project.projectKey,
       work,
+      workFrom: JSON.stringify({
+        version: 1,
+        environmentId: serverId,
+        kind: "issue",
+        id: "subject",
+      }),
       workKind: "brief" as const,
       view: "board" as const,
       workGroup: "project" as const,
@@ -174,6 +180,7 @@ describe("factory scope narrowing", () => {
     expect(parseFactoryWorkReturn(native.workReturn)).toEqual(saved);
     expect(validateFactorySearch(saved)).toMatchObject({
       work,
+      workFrom: saved.workFrom,
       view: "board",
       workGroup: "project",
     });

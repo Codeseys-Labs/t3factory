@@ -54,6 +54,8 @@ const edgeKey = (edge: FactoryReadinessEdge): Projection.IssueKey => ({
 });
 const edgeOrder = (edge: FactoryReadinessEdge) =>
   edge.status === "present" ? 0 : edge.status === "removed-at-source" ? 2 : 1;
+const currentlyObserved = (edge: FactoryReadinessEdge) =>
+  edge.status === "present" && edge.resolution !== "unverified";
 const make = Effect.gen(function* () {
   const projection = yield* Projection.FactoryWorkProjection;
   const identity = yield* ServerEnvironmentIdentity;
@@ -125,7 +127,7 @@ const make = Effect.gen(function* () {
     const retained = ordered.slice(0, FACTORY_WORK_PREREQUISITES_MAX);
     const links = yield* projection.issueRoots(
       environmentId,
-      retained.filter((edge) => edge.status === "present").map(edgeKey),
+      retained.filter(currentlyObserved).map(edgeKey),
     );
     return {
       status: "observed",
@@ -135,10 +137,9 @@ const make = Effect.gen(function* () {
       readiness,
       prerequisites: retained.map((edge) => ({
         edge,
-        link:
-          edge.status !== "present"
-            ? { kind: "not-current" as const }
-            : (links.get(Projection.issueKeyId(edgeKey(edge))) ?? { kind: "none" as const }),
+        link: !currentlyObserved(edge)
+          ? { kind: "not-current" as const }
+          : (links.get(Projection.issueKeyId(edgeKey(edge))) ?? { kind: "none" as const }),
       })),
       omittedCount: ordered.length - retained.length,
       fetchedAt: yield* fetchedAt(),

@@ -234,7 +234,7 @@ function prerequisiteNode(
         : link.kind === "none"
           ? "No retained Work in this environment"
           : link.kind === "not-current"
-            ? "Not linked: the source does not currently list this blocker"
+            ? "Not linked: this blocker was not verified in the latest source observation"
             : unresolvedLabels[link.reason],
   };
 }

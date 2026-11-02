@@ -90,6 +90,7 @@ const returnScope = Schema.fromJsonString(
     machine: Schema.optional(Schema.String),
     checkout: Schema.optional(Schema.String),
     work: Schema.String,
+    workFrom: Schema.optional(Schema.String),
     workKind: Schema.optional(FactoryWorkKind),
     view: Schema.optional(Schema.Literals(["list", "table", "board"])),
     workGroup: Schema.optional(Schema.Literals(["origin", "project"])),

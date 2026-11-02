@@ -610,6 +610,7 @@ function FactoryWorkDetail(props: {
                       machine: search.machine,
                       checkout: search.checkout,
                       work: JSON.stringify(reference),
+                      workFrom: search.workFrom,
                       workKind: search.workKind,
                       view: search.view,
                       workGroup: search.workGroup,

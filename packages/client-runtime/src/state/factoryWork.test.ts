@@ -264,7 +264,7 @@ describe("Factory Work prerequisites", () => {
         "acme/app#2",
         "unknown",
         null,
-        "Not linked: the source does not currently list this blocker",
+        "Not linked: this blocker was not verified in the latest source observation",
       ],
       ["acme/app#5", "clear", "Blocker 5", "Retained Work lineage has a cycle; not linked"],
     ]);

@@ -398,6 +398,12 @@ it.effect(
       );
       assert.equal(result.omittedCount, 0);
 
+      edges = [edge("Acme/Other", 5, { resolution: "unverified", title: null })];
+      const unverified = yield* work.readPrerequisites({ ref: ref("issue", "issue-root") });
+      assert.equal(unverified.status, "observed");
+      if (unverified.status !== "observed") return;
+      assert.deepEqual(unverified.prerequisites[0]?.link, { kind: "not-current" });
+
       edges = Array.from({ length: 520 }, (_, index) => edge("acme/bulk", index + 1));
       const capped = yield* work.readPrerequisites({ ref: ref("issue", "issue-root") });
       assert.equal(capped.status === "observed" && capped.prerequisites.length, 500);

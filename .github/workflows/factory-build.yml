@@ -79,6 +79,7 @@ jobs:
             /scripts/package.json
             /scripts/factory-check.ts
             /scripts/factory-build.ts
+            /scripts/desktop-smoke-cleanup.ts
             /apps/desktop/package.json
             /apps/desktop/src/app/DesktopDistribution.ts
           sparse-checkout-cone-mode: false
@@ -160,6 +161,7 @@ jobs:
             /scripts/package.json
             /scripts/factory-check.ts
             /scripts/factory-build.ts
+            /scripts/desktop-smoke-cleanup.ts
             /apps/desktop/package.json
             /apps/desktop/src/app/DesktopDistribution.ts
           sparse-checkout-cone-mode: false
@@ -231,11 +233,12 @@ jobs:
           compression-level: 0
 
       - name: Upload package record
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: factory-package-record-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/factory-package-record
-          if-no-files-found: error
+          if-no-files-found: ignore
 
       - name: Upload smoke diagnostics
         if: failure()
@@ -264,6 +267,7 @@ jobs:
             /scripts/package.json
             /scripts/factory-check.ts
             /scripts/factory-build.ts
+            /scripts/desktop-smoke-cleanup.ts
             /apps/desktop/package.json
             /apps/desktop/src/app/DesktopDistribution.ts
           sparse-checkout-cone-mode: false

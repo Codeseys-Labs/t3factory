@@ -7,6 +7,7 @@ import * as NodeUtil from "node:util";
 import * as NodeZlib from "node:zlib";
 
 import { FACTORY_PREVIEW_IDENTITY } from "../apps/desktop/src/app/DesktopDistribution.ts";
+import { cleanupSmokeDirectory } from "./desktop-smoke-cleanup.ts";
 import {
   type ArtifactDigest,
   CHECK_LANES,
@@ -1230,7 +1231,7 @@ function runSmoke(options: { package: string; sha256: string; artifactsDir: stri
     if (result.status !== 0) throw new Error(`Desktop launch smoke failed for ${zip}`);
     console.log(`Smoke passed for ${NodePath.basename(zip)} (${digest}).`);
   } finally {
-    NodeFS.rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+    cleanupSmokeDirectory(dir);
   }
 }
 

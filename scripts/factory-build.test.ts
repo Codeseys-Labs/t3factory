@@ -1,8 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off - Builds ZIP fixtures shaped like GitHub artifact downloads.
 import * as NodeCrypto from "node:crypto";
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeZlib from "node:zlib";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   CHECK_JOB_NAMES,
@@ -15,6 +16,12 @@ import {
   type ValidationRequest,
 } from "./factory-build.ts";
 import { CHECK_LANES } from "./factory-check.ts";
+import { cleanupSmokeDirectory } from "./desktop-smoke-cleanup.ts";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs")>();
+  return { ...fs, rmSync: vi.fn(fs.rmSync) };
+});
 
 const repository = "owner/factory";
 const candidateSha = "a".repeat(40);
@@ -256,6 +263,22 @@ it("isolates the Windows package smoke from the installed profile and inherited 
     LOCALAPPDATA: NodePath.join(home, "AppData", "Local"),
   });
   expect(Object.keys(env).filter((key) => /^(T3CODE_|VITE_|ELECTRON_)/i.test(key))).toEqual([]);
+});
+
+it("preserves the smoke result when Windows keeps its extracted files locked", () => {
+  using _remove = vi.spyOn(NodeFS, "rmSync").mockImplementation(() => {
+    throw Object.assign(new Error("file is locked"), { code: "EBUSY" });
+  });
+  using _warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  expect(() => cleanupSmokeDirectory("owned-smoke-directory")).not.toThrow();
+  const smokeFailure = new Error("seeded thread did not render");
+  expect(() => {
+    try {
+      throw smokeFailure;
+    } finally {
+      cleanupSmokeDirectory("owned-smoke-directory");
+    }
+  }).toThrow(smokeFailure);
 });
 
 describe("reusesResourceMonitor", () => {

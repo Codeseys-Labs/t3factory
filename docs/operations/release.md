@@ -119,6 +119,9 @@ validation run, attempt and manifest digest, the packaging receipt and its diges
 build toolchains with the Windows prerequisites, and the ZIP's SHA-256. Inputs and receipts are
 dispatcher-declared; the manifest is not an attestation or signature.
 
+Re-run all build jobs, not only failed jobs: provenance and package artifacts belong to one run
+attempt and cannot be combined with an earlier attempt.
+
 ### Rollout
 
 The workflow files change nothing on GitHub by themselves. After the locally verified change is

@@ -8,6 +8,7 @@ import * as NodePath from "node:path";
 import * as NodeTimersPromises from "node:timers/promises";
 import * as NodeUtil from "node:util";
 import { _electron, type ElectronApplication } from "playwright-core";
+import { cleanupSmokeDirectory } from "./desktop-smoke-cleanup.ts";
 
 // A snapshot from an older build on purpose: the packaged server must migrate it forward, as it
 // does for every upgrading user. It holds one project and two threads, nothing else.
@@ -93,5 +94,5 @@ try {
     await Promise.race([closed, NodeTimersPromises.setTimeout(10_000, undefined, { ref: false })]);
     child.kill("SIGKILL");
   }
-  NodeFS.rmSync(home, { recursive: true, force: true, maxRetries: 5 });
+  cleanupSmokeDirectory(home);
 }

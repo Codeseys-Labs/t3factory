@@ -129,6 +129,7 @@ import { UsageRouteScreen } from "./features/usage/UsageRouteScreen";
 import { SettingsAboutRouteScreen } from "./features/settings/SettingsAboutRouteScreen";
 import { SettingsNotificationsRouteScreen } from "./features/settings/SettingsNotificationsRouteScreen";
 import { FactoryRouteScreen } from "./features/factory/FactoryRouteScreen";
+import { FactoryWorkDetailRouteScreen } from "./features/factory/FactoryWorkDetailRouteScreen";
 import {
   FactoryBranchPickerRouteScreen,
   FactoryModelPickerRouteScreen,
@@ -390,6 +391,10 @@ const SETTINGS_SCREENS = {
     screen: FactoryRouteScreen,
     linking: "settings/factory-issues",
     options: { ...SETTINGS_PAGE_OPTIONS, title: "Factory" },
+  }),
+  SettingsFactoryWork: createNativeStackScreen({
+    screen: FactoryWorkDetailRouteScreen,
+    options: { ...SETTINGS_PAGE_OPTIONS, title: "Work" },
   }),
   SettingsFactoryBranch: createNativeStackScreen({
     screen: FactoryBranchPickerRouteScreen,

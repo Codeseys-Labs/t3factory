@@ -5,7 +5,9 @@ import {
   type ProjectId,
   type ScheduledTaskId,
 } from "@t3tools/contracts";
-import { Pressable, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { Pressable, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -27,14 +29,22 @@ import { FactoryBriefsRouteScreen } from "./FactoryBriefsRouteScreen";
 import { FactoryIssuesRouteScreen } from "./FactoryIssuesRouteScreen";
 import { FactoryOrchestratorPanel } from "./FactoryOrchestratorPanel";
 import {
+  FACTORY_LARGE_TEXT_SCALE,
+  FactoryWorkSection,
+  type FactoryWorkRoutes,
+} from "./FactoryWorkSection";
+import {
   consumeFactoryWorkflowTarget,
+  returnToFactoryWork,
   selectFactoryScope,
+  selectFactorySection,
   updateFactoryInboxSelection,
   useFactoryInboxSelection,
   type FactorySection,
 } from "./factory-inbox-state";
 
 const SECTIONS: ReadonlyArray<{ readonly value: FactorySection; readonly label: string }> = [
+  { value: "work", label: "Work" },
   { value: "overview", label: "Overview" },
   { value: "issues", label: "Issues" },
   { value: "briefs", label: "Briefs" },
@@ -230,6 +240,8 @@ function EnvironmentOverview({
 
 export function FactoryRouteScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NativeStackNavigationProp<FactoryWorkRoutes>>();
+  const { fontScale } = useWindowDimensions();
   const selection = useFactoryInboxSelection();
   const { environments, isReady } = useEnvironments();
   const projects = useProjects().filter((project) => !project.isScratch);
@@ -353,11 +365,41 @@ export function FactoryRouteScreen() {
             }}
           />
         </SettingsSection>
-        <SegmentedControl<FactorySection>
-          options={SECTIONS}
-          selected={selection.section}
-          onSelect={(section) => updateFactoryInboxSelection({ section, taskId: null })}
-        />
+        {fontScale < FACTORY_LARGE_TEXT_SCALE ? (
+          <SegmentedControl<FactorySection>
+            options={SECTIONS}
+            selected={selection.section}
+            onSelect={selectFactorySection}
+          />
+        ) : (
+          <SettingsSection>
+            <ScopePicker
+              label="Section"
+              value={SECTIONS.find((entry) => entry.value === selection.section)?.label ?? ""}
+              actions={SECTIONS.map<MenuAction>((entry) => ({
+                id: entry.value,
+                title: entry.label,
+                state: entry.value === selection.section ? "on" : undefined,
+              }))}
+              onSelect={(id) => {
+                const section = SECTIONS.find((entry) => entry.value === id);
+                if (section) selectFactorySection(section.value);
+              }}
+            />
+          </SettingsSection>
+        )}
+        {selection.workReturn !== null &&
+        (selection.section === "issues" || selection.section === "briefs") ? (
+          <Button
+            icon="chevron.left"
+            label="Back to Work"
+            accessibilityHint="Restores the Work scope and reopens the item you were reviewing"
+            onPress={() => {
+              const work = returnToFactoryWork();
+              if (work !== null) navigation.navigate("SettingsFactoryWork", { work });
+            }}
+          />
+        ) : null}
       </View>
       {!isReady ? (
         <Text className="p-5 text-foreground-muted">Loading environments…</Text>
@@ -366,6 +408,12 @@ export function FactoryRouteScreen() {
           <EmptyState variant="plain" title="Scope unavailable" detail={invalid} />
           <Button label="Show all projects" onPress={() => selectFactoryScope(null, null)} />
         </View>
+      ) : selection.section === "work" ? (
+        <FactoryWorkSection
+          environmentId={selection.environmentId}
+          projectId={selection.projectId}
+          environments={scopedEnvironments}
+        />
       ) : selection.section === "workflows" ? (
         <FactoryScheduledTasksScreen
           key={sectionKey}

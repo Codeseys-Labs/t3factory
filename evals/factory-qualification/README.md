@@ -39,6 +39,67 @@ The JSON includes seed file contents; it does not materialize or execute them.
 Large-file and lifecycle recipes need a hydrator/service sandbox as recorded in
 each specification's missing prerequisites.
 
+### Offline native adapter
+
+`native.ts` supports only `repair-cache-expiry` and `native-parent-child-review`.
+It creates a new external standalone Git repository from the selected **committed**
+catalog seed, with sibling `repo/`, `evidence/`, and `export/` directories. The
+output's parent must already exist; existing output and evaluation artifacts are
+never overwritten. No dependencies, remotes, hook templates, setup, or T3 launch
+are involved. From the repository root, with the pinned toolchain:
+
+```powershell
+vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/native.ts hydrate --case repair-cache-expiry --out C:/evidence/cache-sample-1
+vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/native.ts evaluate --sample C:/evidence/cache-sample-1 --result-commit <exact-result-SHA>
+```
+
+Both hydration and evaluation of `native-parent-child-review` require
+`--include-holdout`. This published holdout remains exposed. Successful hydration
+returns `blocked` with `stage: "hydrated"` and exits 2; it only prepares a seed.
+Evaluation reads the catalog at the receipt's recorded source commit, so later
+catalog edits do not redefine an existing sample. Missing source objects block it.
+Evaluation exports Git objects at the
+seed and supplied result commits, checks every path/mode/blob for ownership, and
+runs fixed Node `node:test` probes against each export. Cache additionally runs
+`tests/cache.test.ts`; it must contain passing tests. Commands come from this
+adapter, never package scripts or captured argv. A trusted runner collects structured
+Node test events from separate test processes; candidate stdout cannot supply test
+counts. Fixed probes must complete all named assertions. Test processes use a minimal
+environment and Node permissions restricting reads and denying subprocess/network
+access. These probes are mechanical checks, not a security sandbox or model evidence.
+
+Optional `evidence/capture.json` contains `subject` and `reviewer`, each with
+`taskStatus`, `run`, and `checkpoint` artifact references; plus `review`,
+`subjectProtocol`, `reviewerProtocol`, `reviewTreeBefore`, and `reviewTreeAfter`.
+Every reference has `path` (relative to evidence), `sha256`, `sourceKind`, and
+`complete: true`. Task results use `mcp_result`; raw run/checkpoint objects use
+`service_snapshot`; protocols use `native_protocol` NDJSON; the structured reviewer
+response uses `review_response`; before/after Git porcelain status uses
+`process_output`. The reviewer response binds `reviewerTaskId`, `reviewerThreadId`,
+`reviewerTerminalRunId`, `reviewedSubjectTuple` (`taskId`, `childThreadId`,
+`terminalRunId`, `baseCommit`, `resultCommit`), `verdict`, and `findings`.
+Only an approval with no findings and unchanged clean reviewer evidence passes
+record consistency. Current service schemas decode task/run/checkpoint records;
+their IDs, checkpoint root nodes, selected models/options, and resolved checkpoint refs must agree.
+Continuation ancestry is not established by these consistency checks.
+
+**This slice cannot produce a passing native sample.** Hashes check byte consistency,
+not authenticity or attestation. Raw provider model/session identity, service/build
+provenance, historical parent/child operations and sequence coverage, reviewer session
+independence, candidate before-fix regression provenance, and absence of product
+acceptance/publication remain unverified. Their gates stay `missing`, even when
+supplied records are internally consistent. Missing capture blocks; malformed,
+truncated, mismatched, rejected, or dirty-review capture fails. A subsequent parent
+stage must collect and validate these records through normal T3 execution; creation
+of a top-level parent requires a separate explicit user request.
+
+`evidence/evaluation/` retains raw process output, trusted probe source, file
+manifests, and `outcome.json`. Evaluation exits 1 for `fail`, 2 for `blocked`, and
+3 for `infrastructure_error`; import/permission/spawn failures cannot satisfy the
+expected seed assertion failure. A machine evaluator has a null task tuple and
+cannot replace the subject's checkpoint. Self-tests and handcrafted repairs do not
+establish native qualification. Catalog readiness labels remain unchanged.
+
 For historical `test-signal` references, hydrate the exact source objects and use
 the runner's [offline preflight](../test-signal/README.md#offline-fixture-preflight)
 with the case's original reference ID and inspected context paths. Require a fresh

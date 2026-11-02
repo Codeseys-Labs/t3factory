@@ -1580,7 +1580,7 @@
       "No publication, live data, undeclared files, invented tests or acceptance."
     ],
     "transitions": [
-      "sandbox seeded -> native action recorded -> artifact assertions evaluated -> accepted or blocked"
+      "sandbox seeded -> native action recorded -> artifact assertions evaluated -> sample graded; product acceptance remains a separate action"
     ],
     "execution": {
       "readiness": "unrunnable-driver",
@@ -1608,12 +1608,12 @@
         },
         {
           "artifact": "lifecycle.json",
-          "assertion": "Persist task-cancelled, no successful result, no replacement, no late checkpoint accepted.",
+          "assertion": "Persist the actual service-observed cancellation and terminal run state, including interrupted when that is the stop result. No replacement or successful result may be accepted; retain late output and any diagnostic interruption checkpoint without treating it as successful work.",
           "gate": "lifecycle"
         },
         {
           "artifact": "checkpoint.json",
-          "assertion": "Require actual service-observed taskId, terminalRunId, baseCommit and resultCommit; git cat-file verifies both commits and the result tree contains the submitted files. Null or summary-only evidence fails.",
+          "assertion": "Bind the cancelled subject's taskId, childRunId, terminalRunId and frozen baseCommit to service records. Preserve nullable resultCommit/checkpoint fields and resolve any recorded checkpoint to that subject run; do not substitute an evaluator checkpoint. A diagnostic interruption checkpoint is not a successful result. Missing stop-state or summary-only evidence blocks grading.",
           "gate": "checkpoint"
         },
         {
@@ -1722,7 +1722,7 @@
       "No publication, live data, undeclared files, invented tests or acceptance."
     ],
     "transitions": [
-      "sandbox seeded -> native action recorded -> artifact assertions evaluated -> accepted or blocked"
+      "sandbox seeded -> native action recorded -> artifact assertions evaluated -> sample graded; product acceptance remains a separate action"
     ],
     "execution": {
       "readiness": "unrunnable-driver",
@@ -1746,7 +1746,7 @@
         },
         {
           "artifact": "review.json",
-          "assertion": "Reviewer is independent and bound to producer terminalRunId/resultCommit; rejection blocks acceptance.",
+          "assertion": "Reviewer is independent and bound to producer taskId/terminalRunId/resultCommit; rejection blocks a passing sample. No Factory acceptance or publication is performed.",
           "gate": "review"
         },
         {
@@ -1791,10 +1791,10 @@
     "scenario": "Repair the seeded cache-expiry behavior in an actual sandbox repository.",
     "expectedActions": ["Fix expiry at the boundary in src/cache.ts; add a focused regression."],
     "forbiddenActions": [
-      "No test deletion, expected-value weakening, unowned edits, paid external calls or publication."
+      "No test deletion, expected-value weakening, unowned edits, publication or subject-initiated paid external services beyond the predeclared native agent route."
     ],
     "transitions": [
-      "sandbox seeded -> native action recorded -> artifact assertions evaluated -> accepted or blocked"
+      "sandbox seeded -> native action recorded -> artifact assertions evaluated -> sample graded; product acceptance remains a separate action"
     ],
     "execution": {
       "readiness": "unrunnable-driver",

@@ -255,9 +255,12 @@ const factoryCases = () =>
 
 it("validates authored Factory responses against the current service contracts", () => {
   const cases = factoryCases();
+  const base = buildBase(template, { model: "claude-sonnet-5-5", keepUserInstructions: false });
+  const offered = new Set(base.t3.map((tool) => normalizeToolName(tool.name)));
   assert.equal(cases.length, 14);
   assert.equal(new Set(cases.map((entry) => entry.id)).size, cases.length);
   for (const entry of cases) {
+    for (const call of entry.expect.calls ?? []) assert.isTrue(offered.has(call.tool), call.tool);
     for (const [tool, rows] of Object.entries(entry.setup.mockResponses!)) {
       for (const row of rows) {
         if (tool === "factory_read_work_prerequisites") decodePrerequisites(row.result);
@@ -277,6 +280,26 @@ it.each([
     id: "work-prerequisites-follow-retained",
     good: "#12 is blocked by #9 and #4. Chain: #12 ← #9 ← #3. Nothing was started.",
     bad: "#12 is blocked by #9 and #4. Chain: #12 ← #3 ← #9. Nothing was started.",
+  },
+  {
+    id: "work-prerequisites-follow-retained",
+    good: "Issue 12 is blocked by [#9](https://github.com/acme/app/issues/9) and #4. Issue 9 is blocked by #3.",
+    bad: "#12 is blocked by #9 and #4. #9 is **not blocked by #3**.",
+  },
+  {
+    id: "work-prerequisites-not-modeled-brief",
+    good: "The brief is retained; prerequisites are **not modeled** here. That does not mean it has no dependencies.",
+    bad: "Prerequisites are not modeled here; this brief has no dependencies.",
+  },
+  {
+    id: "work-prerequisites-owner-unavailable",
+    good: "Readiness is unknown because the owner is ambiguous. It is **not accepted**.",
+    bad: "Readiness is unknown because the owner is ambiguous. **It is accepted.**",
+  },
+  {
+    id: "work-prerequisites-ready-control",
+    good: "The item is **ready** on source evidence. Artifact acceptance and publication remain separate.",
+    bad: "The item is **not ready**. Artifact acceptance and publication remain separate.",
   },
   {
     id: "work-prerequisites-not-modeled-brief",
@@ -355,6 +378,9 @@ it.each([
   for (const tool of [
     "Write",
     "Bash",
+    "Monitor",
+    "Workflow",
+    "run_scheduled_task_now",
     "delegate_task",
     "factory_start_issue",
     "factory_prepare_delivery",
@@ -563,6 +589,97 @@ it.effect("answers argument-specific fixtures without falling back to the root p
     }).pipe(Effect.exit);
     assert.equal(ambiguous._tag, "Failure");
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect("keeps Codex cell errors graded and records the proxy's returned model", () =>
+  Effect.gen(function* () {
+    const model = "gpt-6-luna";
+    const base = {
+      ...buildBase(template, { model, keepUserInstructions: false }),
+      codex: { input: [], reasoning: { effort: "low" } },
+      nativeTools: [{ name: "exec", description: "Code cell" }],
+    };
+    const testCase = {
+      ...childCase,
+      setup: { role: "top" as const },
+      expect: { finalTextMust: ["Done"] },
+    };
+    const replay = (
+      code: string,
+      returnedModel: string | undefined,
+      maxSteps = 2,
+      fixture: McpToolUseCase = testCase,
+    ) => {
+      let step = 0;
+      const http = HttpClient.make((request) =>
+        Effect.sync(() => {
+          const response = {
+            model: returnedModel,
+            output:
+              step++ === 0
+                ? [{ type: "custom_tool_call", call_id: "cell-1", name: "exec", input: code }]
+                : [{ type: "message", content: [{ type: "output_text", text: "Done." }] }],
+            usage: {
+              input_tokens: 10,
+              output_tokens: 2,
+              input_tokens_details: { cached_tokens: 0 },
+            },
+          };
+          return HttpClientResponse.fromWeb(
+            request,
+            new Response(`data: ${JSON.stringify({ type: "response.completed", response })}\n\n`),
+          );
+        }),
+      );
+      return runSample(
+        fixture,
+        {
+          apiKey: "",
+          model,
+          shellModel: "claude-haiku-5-5",
+          effort: "low",
+          maxSteps,
+          proxy: { url: "https://proxy.invalid/v1", headers: {} },
+        },
+        base,
+        {
+          usage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+          shellUsage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+        },
+      ).pipe(Effect.provideService(HttpClient.HttpClient, http));
+    };
+    for (const code of ["const = ;", "await new Promise(() => {});", "while (true) {}"]) {
+      const run = yield* replay(code, "served-model");
+      assert.equal(run.stopReason, "end_turn");
+      assert.equal(run.calls[0]!.failed, true);
+      assert.include(run.calls[0]!.output!, "ModelCodeError:");
+      assert.include(JSON.stringify(run.transcript), "ModelCodeError:");
+      assert.deepEqual(run.usage.models, ["served-model"]);
+      assert.deepEqual(failed(testCase.expect, run), []);
+      const unfinished = yield* replay(code, undefined, 1);
+      assert.equal(unfinished.stopReason, "max_steps");
+      assert.isNotEmpty(failed(testCase.expect, unfinished));
+      assert.isUndefined(unfinished.usage.models);
+    }
+    const fixtureError = yield* replay(
+      "await tools.mcp__t3_code__factory_read_work_prerequisites({});",
+      undefined,
+      2,
+      {
+        ...testCase,
+        setup: {
+          role: "top",
+          mockResponses: {
+            factory_read_work_prerequisites: [
+              { args: {}, result: {} },
+              { args: {}, result: {} },
+            ],
+          },
+        },
+      },
+    ).pipe(Effect.exit);
+    assert.equal(fixtureError._tag, "Failure");
+  }).pipe(Effect.provide(NodeServices.layer)),
 );
 
 it("rebuilds the template from this checkout and sends a child T3's task prompt", () => {

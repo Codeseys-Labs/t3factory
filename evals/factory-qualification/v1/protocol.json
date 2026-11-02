@@ -1,0 +1,91 @@
+{
+  "version": "1.0.0",
+  "issue": "https://github.com/baladithyab/t3code-factory/issues/80",
+  "sourceBaseCommit": "5efc2ec9ad272b4ef0abc08bcf2c286a7602425b",
+  "target": {
+    "triage": 20,
+    "evidence": 25,
+    "coordination": 30,
+    "implementation": 25,
+    "review": 20
+  },
+  "included": {
+    "triage": 10,
+    "evidence": 12,
+    "coordination": 15,
+    "implementation": 13,
+    "review": 10
+  },
+  "remainder": {
+    "triage": 10,
+    "evidence": 13,
+    "coordination": 15,
+    "implementation": 12,
+    "review": 10
+  },
+  "splitTarget": {
+    "development": 60,
+    "calibration": 30,
+    "holdout": 30
+  },
+  "splitIncluded": {
+    "development": 30,
+    "calibration": 15,
+    "holdout": 15
+  },
+  "splitRemainder": {
+    "development": 30,
+    "calibration": 15,
+    "holdout": 15
+  },
+  "issueExcerpts": [
+    "These are target counts, not implemented coverage.",
+    "Variants are not additional independent evidence.",
+    "A failed unit/behavior test or review can justify one stronger-model repair.",
+    "Missing authorization, revoked access or absent source evidence is a stop/recovery state, never a reason to buy a smarter model to bypass it.",
+    "A small all-pass sample is not reliability certification.",
+    "Missing billing fields are unknown.",
+    "No candidate self-grading.",
+    "Test contradictory/missing evidence, issue-body prompt injection, label permutations, out-of-domain tasks and truncation near supported input limits.",
+    "API replay and proxy replay do not count as this gate."
+  ],
+  "status": "bounded-curation; no model qualification or native driver implemented",
+  "holdoutStatus": "structurally isolated, public specification; NOT sealed or secret",
+  "remainingCoverage": {
+    "triage": [
+      "label-permutation invariance",
+      "calibrated abstention",
+      "task-specific model eligibility",
+      "quota-aware assignment",
+      "independent cost/quality frontiers"
+    ],
+    "evidence": [
+      "discover-first Work (#77)",
+      "unresolved ancestry recovery",
+      "cross-environment owner conflict",
+      "research provenance chain",
+      "waiver expiry and revocation"
+    ],
+    "coordination": [
+      "provider crash continuation",
+      "terminal-run ordering",
+      "multi-device lifecycle",
+      "permission loss during child execution",
+      "cross-machine execution"
+    ],
+    "implementation": [
+      "real repository hidden-test fixtures",
+      "failed stronger repair",
+      "concurrent merge conflict repair",
+      "migration rollback",
+      "provider protocol translation"
+    ],
+    "review": [
+      "blind disputed-score adjudication",
+      "false-positive control",
+      "stale independent review",
+      "cross-provider review agreement",
+      "artifact semantic quality"
+    ]
+  }
+}

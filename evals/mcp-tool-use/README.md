@@ -23,6 +23,7 @@ pnpm mcp-tool-use --provider openrouter --model openai/gpt-6.1-sol --case work-p
 - Cost: the existing non-device suite costs about $9 on Sonnet and $17 on Opus. The 16 device cases at 3 samples each cost about $5.70–5.90 on Opus and $2.90–3.40 on Sonnet (main's text–#25661), including the Haiku shell simulator; dry runs cost $0. Results record token costs for the agent and shell simulator. Codex proxy charges are outside that total; only its shell simulator is priced here, about $0.60–0.70 for the device cases.
 - OpenRouter summaries use `usage.cost` when the API reports it, with the fraction of responses carrying cost for agent and shell separately. Missing charges are unknown; a partial reported sum is not the total run cost. Direct Claude prices above are never applied to OpenRouter. The OpenRouter dashboard remains the billing record.
 - A rate limit or overload (429, 529 or another 5xx) is retried with backoff for up to about 4 minutes. A sample that still fails gets an `error` in `results.jsonl`, is left out of every pass rate, and is listed in the summary; the tokens it spent still count toward the cost.
+- Invalid, stalled or time-limited Codex code cells return a tool error inside the sample. The model can recover within its step budget; unfinished work remains graded. Fixture and provider failures still abort. Codex proxy summaries record returned model IDs when supplied; missing identity remains unverified.
 
 ## Add a case
 
@@ -33,7 +34,7 @@ Cases are JSON lines in `cases/`, one file per area. The case schema in `run.ts`
 - `setup`: the fake thread, its `world` (repo, branch, files, PRs, pages), `priorTurns`, and `mocks` for tool results.
 - `expect`: the checks, such as `calls`, `callsMustNot`, `maxCalls`, `order`, `textMust`, and `linked`. Device cases also use `device` to check every child brief, forbid raw UI commands, bound failed device actions per user turn, and require artifact paths in completed final answers.
 
-Use `expect.finalTextMust` and `finalTextMustNot` for conclusions that must appear in the completed answer. Both require `end_turn` and a final answer; interim planning text and truncated answers earn no credit. These regexes are not early-stop checks.
+Use `expect.finalTextMust` and `finalTextMustNot` for conclusions that must appear in the completed answer. Both require `end_turn` and a final answer; interim planning text and truncated answers earn no credit. These regexes are not early-stop checks. They read link labels without URLs and strip bold/code delimiters. They are wording heuristics, not semantic judges: independently review sampled answers before using scores to choose a model.
 
 For tools whose result depends on the requested subject, use `setup.mockResponses` instead of a static `mocks` payload:
 
@@ -80,7 +81,7 @@ Check that the case builds with `--dry-run --case <id>`. Then run it on the text
 | `ready-control`, `accepted-source-control`                      | Complete source evidence can report ready, while artifact acceptance and publication remain separate.                                                                                     |
 | `raw-issue-control`                                             | Project/issue coordinates without a retained Work ref still support ordinary raw readiness inspection.                                                                                    |
 
-All ids have the `work-prerequisites-` prefix. Every scenario checks tool routing and rejects shell execution, file writes, delegation, starts and publication preparation. Completed-answer checks test evidence and conclusions with alternative phrasings; they do not require a prescribed sentence. The grader tests exercise correct reports, misleading reports, wrong refs, truncated answers and unauthorized actions. Fixture tests validate responses against current contract schemas, reject mismatched version/environment/kind/id and overlapping selectors, and preserve legacy mocks.
+All ids have the `work-prerequisites-` prefix. Every scenario checks tool routing and rejects shell execution (including Monitor), file writes, delegation/Workflow, scheduled-task execution, starts and publication preparation. This routing policy is stricter than inspect-only authorization: a read-only shell detour is a routing failure, not evidence of unauthorized mutation. Completed-answer checks test evidence and conclusions with alternative phrasings; they do not require a prescribed sentence. The grader tests exercise correct reports, misleading reports, wrong refs, truncated answers and forbidden routes. Fixture tests validate responses against current contract schemas, check required tools are advertised, reject mismatched version/environment/kind/id and overlapping selectors, and preserve legacy mocks.
 
 Offline checks through the existing runner (use the checkout's pinned Node 26.12.1 and pnpm 12.14.0):
 

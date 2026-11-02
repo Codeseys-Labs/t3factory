@@ -10,6 +10,8 @@ Write or run an eval when a change affects what a model sees or does: agent inst
 | [thread-titles](thread-titles/) | Whether generated thread titles name the right subject.                                              |
 | [test-signal](test-signal/)     | Whether a cheap model running the test-signal check flags low-signal tests.                          |
 
+[Factory qualification](factory-qualification/) curates role-specific scenarios across these runners and future native drivers. Its readiness labels distinguish runnable replays from specifications and missing fixtures; it does not qualify a model by itself.
+
 ## Run an eval
 
 1. Run `vp i` at the repo root.

@@ -436,6 +436,7 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
         "factory_start_orchestrator",
         "factory_assign_orchestrator",
         "factory_read_work_prerequisites",
+        "factory_read_issue_readiness",
       ].includes(tool.name),
     ),
   );
@@ -1473,10 +1474,13 @@ export const gradeSample = (expect: McpToolUseCase["expect"], run: SampleRun) =>
   for (const p of expect.textMust ?? []) add(`textMust /${p}/`, test(p, run.text));
   for (const p of expect.textMustNot ?? []) add(`textMustNot /${p}/`, !test(p, run.text));
   const completed = run.stopReason === "end_turn" && run.finalText !== undefined;
+  const finalText = (run.finalText ?? "")
+    .replace(/\[([^\]]+)\]\([^\s)]+\)/g, "$1")
+    .replace(/\*\*|__|`/g, "");
   for (const p of expect.finalTextMust ?? [])
-    add(`finalTextMust /${p}/`, completed && test(p, run.finalText!));
+    add(`finalTextMust /${p}/`, completed && test(p, finalText));
   for (const p of expect.finalTextMustNot ?? [])
-    add(`finalTextMustNot /${p}/`, completed && !test(p, run.finalText!));
+    add(`finalTextMustNot /${p}/`, completed && !test(p, finalText));
   const isLinked = (url: string) => (run.linked ?? []).some((at) => matches(url, at));
   for (const url of expect.linked ?? []) add(`linked ${url}`, isLinked(url));
   checks.push(...gradeDevice(expect.device, run));
@@ -1516,6 +1520,8 @@ const codexRequest = (base: Base, input: ReadonlyArray<Block>) => ({
   input: [...(base.codex?.input ?? []), ...input],
 });
 
+class ModelCodeError extends Error {}
+
 /** The bridge only accepts serialized data. Model code never receives host objects/functions. */
 export const executeCodex = async (
   code: string,
@@ -1533,7 +1539,13 @@ export const executeCodex = async (
     { __bridge: bridge, __catalog: JSON.stringify(catalog), __storeJson: JSON.stringify(saved) },
     { codeGeneration: { strings: false, wasm: false }, microtaskMode: "afterEvaluate" },
   );
-  const run = (source: string) => NodeVM.runInContext(source, context, { timeout: 250 });
+  const run = (source: string) => {
+    try {
+      return NodeVM.runInContext(source, context, { timeout: 250 });
+    } catch (cause) {
+      throw new ModelCodeError(String(cause));
+    }
+  };
   run(`((bridge, catalog) => {
     delete globalThis.__bridge; delete globalThis.__catalog;
     globalThis.ALL_TOOLS = catalog;
@@ -1546,9 +1558,9 @@ export const executeCodex = async (
   (async () => { ${code}\n })().then(() => { __done = true; }, e => { text(String(e)); __done = true; });`);
   // Unawaited calls still run, as they do in Codex, so they are answered and graded too.
   for (let count = 0; !context.__done || pending.length > 0; count++) {
-    if (count === 128) throw new Error("Code cell exceeded 128 tool calls.");
+    if (count === 128) throw new ModelCodeError("Code cell exceeded 128 tool calls.");
     const job = pending.shift();
-    if (!job) throw new Error("Code cell stalled without a tool call.");
+    if (!job) throw new ModelCodeError("Code cell stalled without a tool call.");
     const result = await answer(job.name, JSON.parse(job.input));
     context.__resolve = job.resolve;
     context.__result = JSON.stringify(result ?? null);
@@ -1571,6 +1583,7 @@ const codexCatalog = (base: Base) => [
 ];
 
 const CodexResponse = Schema.Struct({
+  model: Schema.optional(Schema.String),
   output: Schema.Array(AnyBlock),
   usage: Schema.Struct({
     input_tokens: Schema.Number,
@@ -1596,6 +1609,7 @@ const callCodex = Effect.fn("evaluateMcpToolUse.callCodex")(function* (
     return yield* Effect.die(new Error("Responses stream ended without response.completed."));
   const response = yield* decodeCodexResponse(completed.response);
   return {
+    model: response.model,
     raw: response.output,
     content: response.output.flatMap((item): Array<Block> => {
       if (item.type === "message" && Array.isArray(item.content))
@@ -1795,15 +1809,25 @@ export const runSample = Effect.fn("evaluateMcpToolUse.runSample")(function* (
           );
         };
         return yield* Effect.tryPromise(async () => {
-          const output =
-            use.name === "exec"
-              ? await executeCodex(
-                  valueText(use.input),
-                  codexCatalog(base),
-                  answer,
-                  sample.codeStore,
-                )
-              : await answer(use.name, use.input, false);
+          let output;
+          try {
+            output =
+              use.name === "exec"
+                ? await executeCodex(
+                    valueText(use.input),
+                    codexCatalog(base),
+                    answer,
+                    sample.codeStore,
+                  )
+                : await answer(use.name, use.input, false);
+          } catch (cause) {
+            if (!(cause instanceof ModelCodeError)) throw cause;
+            output = `ModelCodeError: ${cause.message}`;
+            if (own) {
+              own.failed = true;
+              own.output = output;
+            }
+          }
           const item = {
             type: use.name === "exec" ? "custom_tool_call_output" : "function_call_output",
             call_id: use.id,
@@ -1933,10 +1957,10 @@ export const summarize = (
         : `- Estimated cost $${cost.toFixed(2)}, $${(cost / rows.length).toFixed(3)} per sample.`,
     `- Agent tokens: ${agent.tokens}${openrouter ? `; OpenRouter cost ${reported("usage")}.` : codex ? "." : ` ($${agent.cost.toFixed(2)}).`}`,
     `- Shell simulator (${options.shellModel}) tokens: ${shell.tokens}${openrouter ? `; OpenRouter cost ${reported("shellUsage")}.` : ` (API-price estimate $${shell.cost.toFixed(2)}).`}`,
-    ...(openrouter
+    ...(openrouter || codex
       ? (["usage", "shellUsage"] as const).map((key) => {
           const models = [...new Set(rows.flatMap((row) => row[key].models ?? []))];
-          return `- Returned ${key === "usage" ? "agent" : "shell"} models: ${models.join(", ") || "not reported"}.`;
+          return `- Returned ${key === "usage" ? "agent" : "shell"} models: ${models.join(", ") || "not reported; identity unverified"}.`;
         })
       : []),
     ...(codex

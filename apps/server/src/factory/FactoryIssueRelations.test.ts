@@ -549,6 +549,16 @@ it.effect("repository resolution errors remain typed RPC failures", () =>
   ),
 );
 
+it.effect("an admitted read refuses a moved origin before any tracker request", () =>
+  Effect.gen(function* () {
+    const relations = yield* Relations.FactoryIssueRelations;
+    const error = yield* relations
+      .readAdmitted({ ...input, canonicalKey: "github.com/owner/admitted-elsewhere" })
+      .pipe(Effect.flip);
+    assert.equal(error.reason, "repository-changed");
+  }).pipe(Effect.provide(harness(() => Effect.die("Moved origin reached GitHub")))),
+);
+
 it.effect("a proven blocker outranks unknown tombstones on a complete listing", () =>
   Effect.gen(function* () {
     const store = yield* Store.FactoryIssueRelationStore;

@@ -6,6 +6,7 @@ import {
   type FactoryIssueError,
   type FactoryKnowledgeError,
   type FactoryFeedError,
+  type FactoryWorkError,
   type ProjectCoordinatorError,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -17,6 +18,7 @@ import * as Claims from "../../../factory/FactoryClaimsService.ts";
 import * as Acceptance from "../../../factory/FactoryAcceptanceService.ts";
 import * as Delivery from "../../../factory/FactoryDeliveryService.ts";
 import * as Knowledge from "../../../factory/FactoryKnowledgeService.ts";
+import * as Work from "../../../factory/FactoryWorkService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { DispatchModeLimit } from "../../../orchestration-v2/DispatchModeLimit.ts";
 import * as Coordinators from "../../../project/ProjectCoordinatorService.ts";
@@ -32,6 +34,7 @@ const failure = (
     | FactoryAcceptanceError
     | FactoryDeliveryError
     | FactoryKnowledgeError
+    | FactoryWorkError
     | ProjectCoordinatorError,
 ) =>
   new OrchestratorMcpFailure({
@@ -196,6 +199,14 @@ export const layer = McpToolAccess.toLayer(FactoryToolkit, {
       yield* readCaller();
       const relations = yield* Relations.FactoryIssueRelations;
       return yield* relations.readFrontier(input).pipe(Effect.mapError(failure));
+    }),
+  ),
+  factory_read_work_prerequisites: McpToolAccess.reads((input) =>
+    Effect.gen(function* () {
+      yield* readCaller();
+      return yield* (yield* Work.FactoryWorkService)
+        .readPrerequisites(input)
+        .pipe(Effect.mapError(failure));
     }),
   ),
   factory_start_issue: McpToolAccess.startsThreads(

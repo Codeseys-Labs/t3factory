@@ -54,6 +54,8 @@ import {
   FactoryWorkReadResult,
   FactoryWorkHistoryInput,
   FactoryWorkHistoryResult,
+  FactoryWorkPrerequisitesInput,
+  FactoryWorkPrerequisitesResult,
 } from "./factoryWork.ts";
 import {
   FactoryKnowledgeAcceptInput,
@@ -516,6 +518,7 @@ export const WS_METHODS = {
   factoryListWork: "factory.listWork",
   factoryReadWork: "factory.readWork",
   factoryReadWorkHistory: "factory.readWorkHistory",
+  factoryReadWorkPrerequisites: "factory.readWorkPrerequisites",
   factoryReadIssue: "factory.readIssue",
   factoryAcceptCommit: "factory.acceptCommit",
   factoryReadAcceptance: "factory.readAcceptance",
@@ -2076,6 +2079,11 @@ const WsFactoryReadWorkHistoryRpc = Rpc.make(WS_METHODS.factoryReadWorkHistory, 
   success: FactoryWorkHistoryResult,
   error: Schema.Union([FactoryWorkError, EnvironmentAuthorizationError]),
 });
+const WsFactoryReadWorkPrerequisitesRpc = Rpc.make(WS_METHODS.factoryReadWorkPrerequisites, {
+  payload: FactoryWorkPrerequisitesInput,
+  success: FactoryWorkPrerequisitesResult,
+  error: Schema.Union([FactoryWorkError, EnvironmentAuthorizationError]),
+});
 
 const WsFactoryListIssuesRpc = Rpc.make(WS_METHODS.factoryListIssues, {
   payload: FactoryIssueListInput,
@@ -2292,6 +2300,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsFactoryListWorkRpc,
   WsFactoryReadWorkRpc,
   WsFactoryReadWorkHistoryRpc,
+  WsFactoryReadWorkPrerequisitesRpc,
   WsFactoryListIssuesRpc,
   WsFactoryReadIssueRpc,
   WsFactoryStartIssueRpc,

@@ -1,7 +1,9 @@
 import * as Schema from "effect/Schema";
 import { EnvironmentId, IsoDateTime, ProjectId, ThreadId } from "./baseSchemas.ts";
 import { PositiveInt } from "./baseSchemas.ts";
+import { FactoryRepository } from "./factory.ts";
 import { FactoryFeedSourceId } from "./factoryFeeds.ts";
+import { FactoryReadiness, FactoryReadinessEdge } from "./factoryReadiness.ts";
 import { FactoryResearchProtocolId } from "./factoryResearch.ts";
 
 export const FactoryWorkKind = Schema.Literals(["issue", "feed", "brief", "protocol"]);
@@ -97,6 +99,63 @@ export const FactoryWorkHistoryResult = Schema.Struct({
   fetchedAt: IsoDateTime,
 });
 export type FactoryWorkHistoryResult = typeof FactoryWorkHistoryResult.Type;
+export const FactoryWorkPrerequisitesInput = Schema.Struct({ ref: FactoryWorkRef });
+export type FactoryWorkPrerequisitesInput = typeof FactoryWorkPrerequisitesInput.Type;
+/** Source edges beyond this are counted in `omittedCount`, never silently dropped. */
+export const FACTORY_WORK_PREREQUISITES_MAX = 500;
+/**
+ * Where a direct blocker leads in this environment. `retained` names the stable root Work ref and
+ * its admission project. Only edges the latest source listing reports are looked up, so a
+ * tombstoned or inaccessible locator is never matched to local Work.
+ */
+export const FactoryWorkPrerequisiteLink = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("retained"), ref: FactoryWorkRef, projectId: ProjectId }),
+  Schema.Struct({ kind: Schema.Literal("none") }),
+  Schema.Struct({
+    kind: Schema.Literal("unresolved"),
+    reason: Schema.Literals(["cycle", "missing-ancestry", "bound-exhausted"]),
+  }),
+  Schema.Struct({ kind: Schema.Literal("not-current") }),
+]);
+export type FactoryWorkPrerequisiteLink = typeof FactoryWorkPrerequisiteLink.Type;
+export const FactoryWorkPrerequisite = Schema.Struct({
+  edge: FactoryReadinessEdge,
+  link: FactoryWorkPrerequisiteLink,
+});
+export type FactoryWorkPrerequisite = typeof FactoryWorkPrerequisite.Type;
+/** Direct source blockers only; sub-issues and execution lineage are separate relations. */
+export const FactoryWorkPrerequisitesResult = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("not-modeled"),
+    kind: Schema.Literals(["feed", "brief", "protocol"]),
+    fetchedAt: IsoDateTime,
+  }),
+  Schema.Struct({
+    status: Schema.Literal("owner-unavailable"),
+    reason: Schema.Literals([
+      "ambiguous-owner",
+      "missing-project",
+      "missing-repository",
+      "unsupported-provider",
+      "repository-changed",
+      "read-failed",
+    ]),
+    fetchedAt: IsoDateTime,
+  }),
+  Schema.Struct({
+    status: Schema.Literal("observed"),
+    reviewProjectId: ProjectId,
+    repository: FactoryRepository,
+    issueNumber: PositiveInt,
+    readiness: FactoryReadiness.mapFields(({ edges: _edges, ...fields }) => fields),
+    prerequisites: Schema.Array(FactoryWorkPrerequisite).check(
+      Schema.isMaxLength(FACTORY_WORK_PREREQUISITES_MAX),
+    ),
+    omittedCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    fetchedAt: IsoDateTime,
+  }),
+]);
+export type FactoryWorkPrerequisitesResult = typeof FactoryWorkPrerequisitesResult.Type;
 export class FactoryWorkError extends Schema.TaggedError<FactoryWorkError>()("FactoryWorkError", {
   reason: Schema.Literals([
     "invalid-cursor",

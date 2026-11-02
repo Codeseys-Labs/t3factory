@@ -30,6 +30,7 @@ export function FactoryPage() {
             checkout: next.checkout,
             taskId: undefined,
             work: undefined,
+            workFrom: undefined,
             reviewId: undefined,
             reviewIssue: undefined,
             reviewFeed: undefined,

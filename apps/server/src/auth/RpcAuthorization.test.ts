@@ -81,6 +81,17 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("keeps Work reads, including source prerequisites, on orchestration read scope", () => {
+    for (const method of [
+      WS_METHODS.factoryListWork,
+      WS_METHODS.factoryReadWork,
+      WS_METHODS.factoryReadWorkHistory,
+      WS_METHODS.factoryReadWorkPrerequisites,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+    }
+  });
+
   it("rejects unknown RPC method names", () => {
     for (const method of ["server.notRegistered", "toString", "constructor"]) {
       expect(() => requiredScopeForRpcMethod(method)).toThrow(

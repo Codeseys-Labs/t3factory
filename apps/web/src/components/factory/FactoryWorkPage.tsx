@@ -42,6 +42,7 @@ import {
   FactoryWorkTable,
 } from "./FactoryWorkCollectionViews";
 import { FactoryOverviewPage } from "./FactoryOverviewPage";
+import { FactoryWorkPrerequisites } from "./FactoryWorkPrerequisites";
 
 const ownerMessages: Record<FactoryWorkOwnerStatus, string> = {
   current: "Current page. Refresh to observe changes.",
@@ -159,7 +160,7 @@ function FactoryWorkWorkspace() {
   const select = (reference: FactoryWorkRef) => {
     void navigate({
       to: "/factory",
-      search: { ...search, work: JSON.stringify(reference) },
+      search: { ...search, work: JSON.stringify(reference), workFrom: undefined },
       resetScroll: false,
     });
   };
@@ -403,7 +404,8 @@ function FactoryWorkDetail(props: {
   const { reference, status } = props;
   const search = useSearch({ from: "/_chat/factory" });
   const navigate = useNavigate();
-  const { groups } = useSettingsScope();
+  const { groups, scope } = useSettingsScope();
+  const returnTo = parseFactoryWorkSelection(search.workFrom);
   const { environments } = useEnvironments();
   const environment = environments.find(
     (candidate) => candidate.environmentId === reference.environmentId,
@@ -475,7 +477,7 @@ function FactoryWorkDetail(props: {
           onClick={() => {
             void navigate({
               to: "/factory",
-              search: { ...search, work: undefined },
+              search: { ...search, work: undefined, workFrom: undefined },
               resetScroll: false,
             });
           }}
@@ -483,6 +485,21 @@ function FactoryWorkDetail(props: {
           Close detail
         </Button>
       </div>
+      {returnTo !== null ? (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            void navigate({
+              to: "/factory",
+              search: { ...search, work: JSON.stringify(returnTo), workFrom: undefined },
+              resetScroll: false,
+            });
+          }}
+        >
+          Return to previous selection
+        </Button>
+      ) : null}
       <p className="text-xs text-muted-foreground break-all">
         Environment {reference.environmentId} · {reference.kind} · {reference.id}
       </p>
@@ -657,6 +674,27 @@ function FactoryWorkDetail(props: {
             Project coordinator is project context, not historical item-coordinator provenance.
             Inspecting Work does not launch, reconcile, accept or publish.
           </p>
+          <FactoryWorkPrerequisites
+            reference={reference}
+            status={status}
+            withinFilter={(link) =>
+              (search.workKind === undefined || search.workKind === link.ref.kind) &&
+              (scope.kind !== "project" && scope.kind !== "checkout"
+                ? true
+                : scope.members.some(
+                    (candidate) =>
+                      candidate.environmentId === link.ref.environmentId &&
+                      candidate.id === link.projectId,
+                  ))
+            }
+            onOpen={(next) => {
+              void navigate({
+                to: "/factory",
+                search: { ...search, work: JSON.stringify(next), workFrom: search.work },
+                resetScroll: false,
+              });
+            }}
+          />
           <FactoryWorkHistory reference={reference} />
         </>
       )}

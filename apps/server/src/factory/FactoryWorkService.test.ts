@@ -2,7 +2,11 @@ import { assert, it } from "@effect/vitest";
 import {
   EnvironmentId,
   ProjectId,
+  FactoryIssueError,
   FactoryWorkError,
+  SourceControlProviderKind,
+  type FactoryIssueReadinessReadResult,
+  type FactoryReadinessEdge,
   type FactoryWorkRef,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -10,20 +14,26 @@ import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
+import * as Relations from "./FactoryIssueRelations.ts";
 import * as Work from "./FactoryWorkService.ts";
 
 const environmentId = EnvironmentId.make("owner-environment");
 const owner = ProjectId.make("owner-project");
 const observer = ProjectId.make("observer-checkout");
 const at = "2026-10-25T00:00:00.000Z";
-const layer = Work.layer.pipe(
-  Layer.provideMerge(
-    Layer.mergeAll(
-      Sqlite.layerMemory,
-      Layer.succeed(ServerEnvironmentIdentity, { getEnvironmentId: Effect.succeed(environmentId) }),
+const layerWith = (relations: Partial<Relations.FactoryIssueRelations["Service"]>) =>
+  Work.layer.pipe(
+    Layer.provideMerge(
+      Layer.mergeAll(
+        Sqlite.layerMemory,
+        Layer.succeed(ServerEnvironmentIdentity, {
+          getEnvironmentId: Effect.succeed(environmentId),
+        }),
+        Layer.mock(Relations.FactoryIssueRelations)(relations),
+      ),
     ),
-  ),
-);
+  );
+const layer = layerWith({});
 const ref = (kind: FactoryWorkRef["kind"], id: string): FactoryWorkRef => ({
   version: 1,
   environmentId,
@@ -260,3 +270,202 @@ it.effect("bounds summaries and detail before decoding unrelated rows", () =>
     assert.instanceOf(yield* Effect.flip(work.list({ cursor: "bad" })), FactoryWorkError);
   }).pipe(Effect.provide(layer)),
 );
+
+const edge = (
+  repository: string,
+  number: number,
+  fields: Partial<FactoryReadinessEdge> = {},
+): FactoryReadinessEdge => ({
+  targetId: number,
+  targetHost: "github.com",
+  targetRepository: repository,
+  targetNumber: number,
+  targetUrl: `https://github.com/${repository}/issues/${number}`,
+  title: `Blocker ${number}`,
+  state: "open",
+  stateReason: null,
+  closedAt: null,
+  resolution: "open",
+  status: "present",
+  firstObservedAt: at,
+  lastObservedAt: at,
+  fingerprint: `edge-${number}`,
+  override: null,
+  ...fields,
+});
+const observed = (edges: readonly FactoryReadinessEdge[]): FactoryIssueReadinessReadResult => ({
+  repository: {
+    provider: SourceControlProviderKind.make("github"),
+    host: "github.com",
+    repository: "test/repo",
+    canonicalKey: "github.com/test/repo",
+    url: "https://github.com/test/repo",
+  },
+  issueNumber: 1,
+  readiness: {
+    status: "blocked",
+    reasons: ["open-blocker", "cycle"],
+    basis: null,
+    edges,
+    overrides: [],
+    complete: true,
+    listedCount: edges.length,
+    summaryTotal: edges.length,
+    observedAt: at,
+  },
+});
+const launch = (
+  threadId: string,
+  canonicalKey: string,
+  issueNumber: number,
+  options: { readonly previous?: string; readonly project?: string; readonly current?: boolean },
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const intent = {
+      projectId: options.project ?? owner,
+      createdAt: at,
+      previousThreadId: options.previous ?? null,
+      issue: { number: issueNumber, title: threadId, body: "", state: "open", url: "" },
+    };
+    yield* sql`INSERT INTO factory_issue_launches (thread_id, canonical_key, issue_number, request_command_id, intent_json, origin_key, superseded, accepted)
+      VALUES (${threadId}, ${canonicalKey}, ${issueNumber}, ${threadId}, ${JSON.stringify(intent)}, ${threadId}, ${options.current ? 0 : 1}, 1)`;
+  });
+
+it.effect(
+  "maps source blockers to stable retained roots across projects without guessing through malformed ancestry",
+  () => {
+    const calls: unknown[] = [];
+    let edges: readonly FactoryReadinessEdge[] = [];
+    return Effect.gen(function* () {
+      yield* seed;
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE factory_issue_launches SET intent_json = json_set(intent_json, '$.projectId', ${observer}) WHERE thread_id = 'issue-retry'`;
+      yield* launch("other-root", "github.com/acme/other", 5, { project: "other-project" });
+      yield* launch("other-retry", "github.com/acme/other", 5, {
+        previous: "other-root",
+        project: observer,
+        current: true,
+      });
+      yield* launch("ported-root", "ghe.example.com/acme/ported", 6, { current: true });
+      yield* launch("cycle-a", "github.com/acme/cycle", 7, { previous: "cycle-b", current: true });
+      yield* launch("cycle-b", "github.com/acme/cycle", 7, { previous: "cycle-a" });
+      yield* launch("orphan", "github.com/acme/orphan", 8, { previous: "gone", current: true });
+      for (let index = 0; index < 40; index++)
+        yield* launch(`deep-${index}`, "github.com/acme/deep", 9, {
+          ...(index === 0 ? {} : { previous: `deep-${index - 1}` }),
+          current: index === 39,
+        });
+      edges = [
+        edge("acme/other", 50, { status: "inaccessible", resolution: "inaccessible", title: null }),
+        edge("acme/gone", 51, { status: "removed-at-source", resolution: "unverified" }),
+        edge("Acme/Other", 5),
+        edge("Acme/Ported", 6, { targetHost: "GHE.example.com:8443" }),
+        edge("acme/unadmitted", 4),
+        edge("acme/cycle", 7),
+        edge("acme/orphan", 8),
+        edge("acme/deep", 9),
+      ];
+      const work = yield* Work.FactoryWorkService;
+      const result = yield* work.readPrerequisites({ ref: ref("issue", "issue-root") });
+      assert.deepEqual(calls, [
+        { projectId: observer, issueNumber: 1, canonicalKey: "github.com/test/repo" },
+      ]);
+      assert.equal(result.status, "observed");
+      if (result.status !== "observed") return;
+      assert.equal(result.reviewProjectId, observer);
+      assert.deepEqual(result.readiness.reasons, ["open-blocker", "cycle"]);
+      assert.equal("edges" in result.readiness, false);
+      assert.deepEqual(
+        result.prerequisites.map(({ edge, link }) => [edge.targetNumber, link]),
+        [
+          [
+            5,
+            {
+              kind: "retained",
+              ref: ref("issue", "other-root"),
+              projectId: ProjectId.make("other-project"),
+            },
+          ],
+          [6, { kind: "retained", ref: ref("issue", "ported-root"), projectId: owner }],
+          [4, { kind: "none" }],
+          [7, { kind: "unresolved", reason: "cycle" }],
+          [8, { kind: "unresolved", reason: "missing-ancestry" }],
+          [9, { kind: "unresolved", reason: "bound-exhausted" }],
+          [50, { kind: "not-current" }],
+          [51, { kind: "not-current" }],
+        ],
+      );
+      assert.equal(result.omittedCount, 0);
+
+      edges = Array.from({ length: 520 }, (_, index) => edge("acme/bulk", index + 1));
+      const capped = yield* work.readPrerequisites({ ref: ref("issue", "issue-root") });
+      assert.equal(capped.status === "observed" && capped.prerequisites.length, 500);
+      assert.equal(capped.status === "observed" && capped.omittedCount, 20);
+    }).pipe(
+      Effect.provide(
+        layerWith({
+          readAdmitted: (input) =>
+            Effect.sync(() => {
+              calls.push(input);
+              return observed(edges);
+            }),
+        }),
+      ),
+    );
+  },
+);
+
+it.effect("reports not-modeled, unavailable owners and foreign refs without a tracker read", () => {
+  let calls = 0;
+  return Effect.gen(function* () {
+    yield* seed;
+    yield* launch("amb-root", "github.com/acme/amb", 3, {});
+    yield* launch("amb-x", "github.com/acme/amb-x", 3, { previous: "amb-root", current: true });
+    yield* launch("amb-y", "github.com/acme/amb-y", 3, { previous: "amb-root", current: true });
+    yield* launch("deleted-root", "github.com/test/repo", 2, {
+      project: "deleted-project",
+      current: true,
+    });
+    const work = yield* Work.FactoryWorkService;
+    for (const [kind, id] of [
+      ["feed", "feed-one"],
+      ["brief", "brief-one"],
+      ["protocol", "protocol"],
+    ] as const)
+      assert.deepInclude(yield* work.readPrerequisites({ ref: ref(kind, id) }), {
+        status: "not-modeled",
+        kind,
+      });
+    assert.deepInclude(yield* work.readPrerequisites({ ref: ref("issue", "amb-root") }), {
+      status: "owner-unavailable",
+      reason: "ambiguous-owner",
+    });
+    const foreign = { ...ref("issue", "issue-root"), environmentId: EnvironmentId.make("other") };
+    assert.equal(
+      (yield* Effect.flip(work.readPrerequisites({ ref: foreign }))).reason,
+      "wrong-environment",
+    );
+    assert.equal(
+      (yield* Effect.flip(work.readPrerequisites({ ref: ref("brief", "missing") }))).reason,
+      "missing-work",
+    );
+    assert.equal(calls, 0);
+    assert.deepInclude(yield* work.readPrerequisites({ ref: ref("issue", "deleted-root") }), {
+      status: "owner-unavailable",
+      reason: "missing-project",
+    });
+  }).pipe(
+    Effect.provide(
+      layerWith({
+        // The real read resolves the project first and fails here before any tracker request.
+        readAdmitted: () =>
+          Effect.sync(() => {
+            calls++;
+          }).pipe(
+            Effect.andThen(Effect.fail(new FactoryIssueError({ reason: "missing-project" }))),
+          ),
+      }),
+    ),
+  );
+});

@@ -13,6 +13,7 @@ import {
   type FactoryWorkListResult,
   type FactoryWorkReadResult,
   type FactoryWorkHistoryResult,
+  type FactoryWorkPrerequisiteLink,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -193,8 +194,78 @@ export class FactoryWorkProjection extends Context.Service<
       environmentId: EnvironmentId,
       input: FactoryWorkHistoryInput,
     ) => Effect.Effect<Omit<FactoryWorkHistoryResult, "fetchedAt">, FactoryWorkError>;
+    /** The current review launch of an issue root; `projectId` is null unless exactly one is current. */
+    readonly issueOwner: (reference: FactoryWorkRef) => Effect.Effect<IssueOwner, FactoryWorkError>;
+    /** Current admissions for source locators, resolved to their stable root Work refs. */
+    readonly issueRoots: (
+      environmentId: EnvironmentId,
+      keys: readonly IssueKey[],
+    ) => Effect.Effect<ReadonlyMap<string, FactoryWorkPrerequisiteLink>, FactoryWorkError>;
   }
 >()("t3/persistence/FactoryWorkProjection") {}
+
+export interface IssueKey {
+  readonly canonicalKey: string;
+  readonly issueNumber: number;
+}
+export interface IssueOwner extends IssueKey {
+  readonly projectId: ProjectId | null;
+}
+export const issueKeyId = (key: IssueKey) => JSON.stringify([key.canonicalKey, key.issueNumber]);
+// Restart chains are short; a longer one is reported as unresolved rather than walked further.
+const RESTART_ROOT_DEPTH = 32;
+const ROOT_LOOKUP_CHUNK = 100;
+const decodeOwners = Schema.decodeUnknownEffect(
+  Schema.Array(
+    Schema.Struct({
+      projectId: Schema.NullOr(Schema.String),
+      canonicalKey: Schema.String,
+      issueNumber: Schema.Number,
+    }),
+  ),
+);
+const AncestryRow = Schema.Struct({
+  start: Schema.String,
+  threadId: Schema.String,
+  previousThreadId: Schema.NullOr(Schema.String),
+  projectId: Schema.NullOr(Schema.String),
+  canonicalKey: Schema.String,
+  issueNumber: Schema.Number,
+  valid: Schema.Number,
+  depth: Schema.Number,
+});
+type AncestryRow = typeof AncestryRow.Type;
+const decodeAncestry = Schema.decodeUnknownEffect(Schema.Array(AncestryRow));
+function rootLink(
+  environmentId: EnvironmentId,
+  key: IssueKey,
+  path: readonly AncestryRow[],
+): FactoryWorkPrerequisiteLink {
+  const seen = new Set<string>();
+  for (const [depth, row] of path.entries()) {
+    if (
+      row.depth !== depth ||
+      row.canonicalKey !== key.canonicalKey ||
+      row.issueNumber !== key.issueNumber ||
+      row.valid !== 1
+    )
+      return { kind: "unresolved", reason: "missing-ancestry" };
+    if (seen.has(row.threadId)) return { kind: "unresolved", reason: "cycle" };
+    seen.add(row.threadId);
+    if (row.previousThreadId === null)
+      return row.projectId === null || row.projectId.length === 0
+        ? { kind: "unresolved", reason: "missing-ancestry" }
+        : {
+            kind: "retained",
+            ref: { version: 1, environmentId, kind: "issue", id: row.threadId },
+            projectId: ProjectId.make(row.projectId),
+          };
+    if (seen.has(row.previousThreadId)) return { kind: "unresolved", reason: "cycle" };
+  }
+  return path.length > RESTART_ROOT_DEPTH
+    ? { kind: "unresolved", reason: "bound-exhausted" }
+    : { kind: "unresolved", reason: "missing-ancestry" };
+}
 
 const launchMetadata = `l.thread_id, l.superseded, l.accepted,
   ${json("l.intent_json", "projectId")} AS projectId,
@@ -384,6 +455,72 @@ const make = Effect.gen(function* () {
           : null,
     };
   }, Effect.mapError(failure));
-  return FactoryWorkProjection.of({ list, read, history });
+  const issueOwner = Effect.fn("FactoryWorkProjection.issueOwner")(function* (
+    reference: FactoryWorkRef,
+  ) {
+    const row = yield* loadRow({ ref: reference }, false);
+    const root = (yield* decodeOwners(
+      yield* sql`SELECT NULL AS projectId, canonical_key AS canonicalKey, issue_number AS issueNumber
+        FROM factory_issue_launches WHERE thread_id = ${row.id}`,
+    ))[0];
+    if (root === undefined) return yield* new FactoryWorkError({ reason: "missing-work" });
+    const owners = yield* decodeOwners(
+      yield* sql`${launchesFor(reference)}
+        SELECT l.projectId, i.canonical_key AS canonicalKey, i.issue_number AS issueNumber
+        FROM launches l JOIN factory_issue_launches i ON i.thread_id = l.thread_id
+        WHERE l.superseded = 0 LIMIT 2`,
+    );
+    const owner = owners.length === 1 ? owners[0] : undefined;
+    // A current launch for another locator is malformed lineage, not this item's owner.
+    const owned =
+      owner?.projectId &&
+      owner.canonicalKey === root.canonicalKey &&
+      owner.issueNumber === root.issueNumber
+        ? ProjectId.make(owner.projectId)
+        : null;
+    return { canonicalKey: root.canonicalKey, issueNumber: root.issueNumber, projectId: owned };
+  }, Effect.mapError(failure));
+  const issueRoots = Effect.fn("FactoryWorkProjection.issueRoots")(function* (
+    environmentId: EnvironmentId,
+    keys: readonly IssueKey[],
+  ) {
+    const unique = [...new Map(keys.map((key) => [issueKeyId(key), key])).values()];
+    const links = new Map<string, FactoryWorkPrerequisiteLink>();
+    for (let offset = 0; offset < unique.length; offset += ROOT_LOOKUP_CHUNK) {
+      const chunk = unique.slice(offset, offset + ROOT_LOOKUP_CHUNK);
+      // Seeds use the (canonical_key, issue_number) current-admission index; each step is a
+      // primary-key lookup and the depth column bounds the walk even through a cycle.
+      const rows = yield* decodeAncestry(
+        yield* sql`WITH RECURSIVE ancestry(start, threadId, previousThreadId, projectId, canonicalKey, issueNumber, valid, depth) AS (
+          SELECT thread_id, thread_id, ${sql.literal(intent("previousThreadId"))}, ${sql.literal(intent("projectId"))},
+            canonical_key, issue_number, json_valid(intent_json), 0
+          FROM factory_issue_launches WHERE superseded = 0
+            AND (canonical_key, issue_number) IN (VALUES ${Statement.join(
+              ", ",
+              false,
+            )(chunk.map((key) => sql`(${key.canonicalKey}, ${key.issueNumber})`))})
+          UNION ALL SELECT a.start, l.thread_id, ${sql.literal(json("l.intent_json", "previousThreadId"))},
+            ${sql.literal(json("l.intent_json", "projectId"))}, l.canonical_key, l.issue_number,
+            json_valid(l.intent_json), a.depth + 1
+          FROM ancestry a JOIN factory_issue_launches l ON l.thread_id = a.previousThreadId
+          WHERE a.depth < ${RESTART_ROOT_DEPTH}
+        ) SELECT * FROM ancestry ORDER BY start, depth`,
+      );
+      const paths = new Map<string, AncestryRow[]>();
+      for (const row of rows) {
+        const path = paths.get(row.start) ?? [];
+        path.push(row);
+        paths.set(row.start, path);
+      }
+      for (const path of paths.values()) {
+        const seed = path[0];
+        if (seed === undefined) continue;
+        const key = { canonicalKey: seed.canonicalKey, issueNumber: seed.issueNumber };
+        links.set(issueKeyId(key), rootLink(environmentId, key, path));
+      }
+    }
+    return links;
+  }, Effect.mapError(failure));
+  return FactoryWorkProjection.of({ list, read, history, issueOwner, issueRoots });
 });
 export const layer = Layer.effect(FactoryWorkProjection, make);

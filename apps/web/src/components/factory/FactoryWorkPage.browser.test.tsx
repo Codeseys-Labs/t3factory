@@ -7,6 +7,9 @@ const state = vi.hoisted(() => ({
   search: {} as Record<string, unknown>,
   list: null as unknown,
   detail: null as unknown,
+  prerequisites: null as unknown,
+  prerequisiteReads: 0,
+  navigations: [] as { search: Record<string, unknown> }[],
   environment: null as unknown,
   scope: null as unknown,
   environmentId: "",
@@ -20,6 +23,9 @@ const state = vi.hoisted(() => ({
 vi.mock(import("@tanstack/react-router"), async (original) => ({
   ...(await original()),
   useSearch: (() => state.search) as never,
+  useNavigate: (() => (options: { search: Record<string, unknown> }) => {
+    state.navigations.push(options);
+  }) as never,
 }));
 vi.mock(import("../../state/factory"), async () => {
   const { Atom } = await import("effect/reactivity");
@@ -33,6 +39,7 @@ vi.mock(import("../../state/factory"), async () => {
     factoryEnvironment: {
       readWork: () => ({ kind: "detail" }),
       readWorkHistory: ({ input }: { input: unknown }) => ({ kind: "history", input }),
+      readWorkPrerequisites: () => ({ kind: "prerequisites" }),
       start: { permissionAtom },
       admitFeedCandidate: { permissionAtom },
       startKnowledgeTask: { permissionAtom },
@@ -59,29 +66,35 @@ vi.mock(import("../../state/query"), () => ({
       kind: string;
       input?: { section: string; cursor?: string };
     },
-  ) => ({
-    data:
-      query === null
-        ? null
-        : query.kind === "detail"
-          ? state.detail
-          : {
-              entries: [
-                {
-                  id: query.input?.cursor ? "attempt-second-page" : "history-first-page",
-                  threadId: ThreadId.make("thread"),
-                  runId: "run",
-                  label: query.input?.cursor ? "Second attempt page" : "Retained execution",
-                  state: "idle",
-                  pin: null,
-                  superseded: false,
-                },
-              ],
-              nextCursor: query.input?.cursor ? null : "next-history-page",
-            },
-    error: null,
-    isPending: false,
-  })) as never,
+  ) => {
+    if (query?.kind === "prerequisites") {
+      state.prerequisiteReads++;
+      return { data: state.prerequisites, error: null, isPending: false };
+    }
+    return {
+      data:
+        query === null
+          ? null
+          : query.kind === "detail"
+            ? state.detail
+            : {
+                entries: [
+                  {
+                    id: query.input?.cursor ? "attempt-second-page" : "history-first-page",
+                    threadId: ThreadId.make("thread"),
+                    runId: "run",
+                    label: query.input?.cursor ? "Second attempt page" : "Retained execution",
+                    state: "idle",
+                    pin: null,
+                    superseded: false,
+                  },
+                ],
+                nextCursor: query.input?.cursor ? null : "next-history-page",
+              },
+      error: null,
+      isPending: false,
+    };
+  }) as never,
 }));
 vi.mock(import("../../state/entities"), () => ({ useProjects: () => [] }));
 vi.mock(import("../../state/environments"), () => ({
@@ -110,6 +123,8 @@ function setup() {
   state.listeners.clear();
   state.version = 0;
   state.targets = [];
+  state.navigations = [];
+  state.prerequisiteReads = 0;
   const environmentId = EnvironmentId.make("owner");
   const reference = { version: 1, environmentId, kind: "brief", id: "brief" };
   const item = {
@@ -133,7 +148,11 @@ function setup() {
     environmentId,
     label: "Owner",
     connection: { phase: "connected" },
-    serverConfig: { environment: { capabilities: { factoryWork: true, factoryKnowledge: true } } },
+    serverConfig: {
+      environment: {
+        capabilities: { factoryWork: true, factoryWorkPrerequisites: true, factoryKnowledge: true },
+      },
+    },
   };
   state.scope = { kind: "global", environmentIds: [environmentId], members: [] };
   state.list = {
@@ -216,4 +235,101 @@ it("switches List, Table and Board over the same pages without clearing selectio
     }
   }
   expect(new Set(state.targets).size).toBe(1);
+});
+
+it("reads prerequisites only when expanded, resets on selection change and returns from an off-filter link", async () => {
+  setup();
+  const environmentId = EnvironmentId.make(state.environmentId);
+  const subject = JSON.stringify({ version: 1, environmentId, kind: "issue", id: "issue-root" });
+  const blocker = { version: 1 as const, environmentId, kind: "issue" as const, id: "other-root" };
+  const at = "2026-11-01T00:00:00.000Z";
+  state.search = { project: "acme", view: "board", workGroup: "project", work: subject };
+  state.scope = {
+    kind: "project",
+    environmentIds: [environmentId],
+    members: [{ environmentId, id: ProjectId.make("project"), physicalProjectKey: "checkout" }],
+  };
+  state.prerequisites = {
+    status: "observed",
+    reviewProjectId: ProjectId.make("project"),
+    repository: {
+      provider: "github",
+      host: "github.com",
+      repository: "acme/app",
+      canonicalKey: "github.com/acme/app",
+      url: "https://github.com/acme/app",
+    },
+    issueNumber: 1,
+    readiness: {
+      status: "blocked",
+      reasons: ["open-blocker"],
+      basis: null,
+      overrides: [],
+      complete: true,
+      listedCount: 1,
+      summaryTotal: 1,
+      observedAt: at,
+    },
+    prerequisites: [
+      {
+        edge: {
+          targetId: 9,
+          targetHost: "github.com",
+          targetRepository: "acme/other",
+          targetNumber: 9,
+          targetUrl: "https://github.com/acme/other/issues/9",
+          title: "Admitted elsewhere",
+          state: "open",
+          stateReason: null,
+          closedAt: null,
+          resolution: "open",
+          status: "present",
+          firstObservedAt: at,
+          lastObservedAt: at,
+          fingerprint: "edge",
+          override: null,
+        },
+        link: { kind: "retained", ref: blocker, projectId: ProjectId.make("other-project") },
+      },
+    ],
+    omittedCount: 0,
+    fetchedAt: at,
+  };
+  await using screen = await render(<FactoryWorkPage />, { router: "/factory" });
+  await expect.element(screen.getByText("Selected work", { exact: true })).toBeVisible();
+  expect(state.prerequisiteReads).toBe(0);
+
+  await userEvent.click(screen.getByRole("button", { name: "Show prerequisites", exact: true }));
+  await expect
+    .element(screen.getByRole("img", { name: /Diagram of 1 direct prerequisites/ }))
+    .toBeVisible();
+  expect(state.prerequisiteReads).toBeGreaterThan(0);
+  await userEvent.click(
+    screen.getByRole("button", { name: "Open retained Work (outside current filter)" }),
+  );
+  const opened = state.navigations.at(-1)?.search ?? {};
+  expect(opened).toMatchObject({
+    project: "acme",
+    view: "board",
+    workGroup: "project",
+    work: JSON.stringify(blocker),
+    workFrom: subject,
+  });
+
+  await publish(() => {
+    state.search = opened;
+  });
+  await expect
+    .element(screen.getByRole("button", { name: "Show prerequisites", exact: true }))
+    .toHaveAttribute("aria-expanded", "false");
+  await expect
+    .element(screen.getByRole("list", { name: "Direct prerequisites" }))
+    .not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Return to previous selection" }));
+  expect(state.navigations.at(-1)?.search).toMatchObject({
+    view: "board",
+    workGroup: "project",
+    work: subject,
+    workFrom: undefined,
+  });
 });

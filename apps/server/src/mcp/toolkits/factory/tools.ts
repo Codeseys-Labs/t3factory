@@ -35,6 +35,8 @@ import {
   FactoryResearchRunLaunchResult,
   FactoryResearchEvidenceRecordInput,
   FactoryResearchEvidenceRecordResult,
+  FactoryWorkPrerequisitesInput,
+  FactoryWorkPrerequisitesResult,
   OrchestratorMcpFailure,
   ProjectCoordinatorEnsureInput,
   ProjectCoordinatorAssignInput,
@@ -52,6 +54,7 @@ import * as Claims from "../../../factory/FactoryClaimsService.ts";
 import * as Acceptance from "../../../factory/FactoryAcceptanceService.ts";
 import * as Delivery from "../../../factory/FactoryDeliveryService.ts";
 import * as Knowledge from "../../../factory/FactoryKnowledgeService.ts";
+import * as Work from "../../../factory/FactoryWorkService.ts";
 import * as Threads from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as Coordinators from "../../../project/ProjectCoordinatorService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -198,6 +201,20 @@ const frontier = Tool.make("factory_read_issue_frontier", {
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
+const workPrerequisites = Tool.make("factory_read_work_prerequisites", {
+  ...shared,
+  dependencies: [
+    Work.FactoryWorkService,
+    Threads.ThreadManagementService,
+    McpInvocationContext.McpInvocationContext,
+  ],
+  description:
+    "Read the direct source blockers of one retained Work item in this environment, with the item's derived readiness. Each blocker links to its stable root Work ref when this environment retains an admission for it (follow that ref with this tool), says none when no admission exists here, or says unresolved or not-current instead of guessing. Feed, brief and protocol Work returns not-modeled: blockers are not observed for them, which does not mean they have none. Readiness is evidence, not permission to start work; this read never starts work, applies overrides or changes the issue host.",
+  parameters: FactoryWorkPrerequisitesInput,
+  success: FactoryWorkPrerequisitesResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
 const start = Tool.make("factory_start_issue", {
   ...shared,
   description:
@@ -329,6 +346,7 @@ export const FactoryToolkit = Toolkit.make(
   read,
   readiness,
   frontier,
+  workPrerequisites,
   start,
   getOrchestrator,
   startOrchestrator,

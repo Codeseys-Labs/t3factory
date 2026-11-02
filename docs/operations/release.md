@@ -21,6 +21,7 @@ accepting workflow files from upstream. Workflows that can still start:
 | Role                             | Workflows                                                                      |
 | -------------------------------- | ------------------------------------------------------------------------------ |
 | Manual validation                | `factory-check.yml`, dispatch only                                             |
+| Manual packaging                 | `factory-build.yml`, dispatch only, run artifacts only                         |
 | Housekeeping, not CI or delivery | `pr-size.yml`, `pr-vouch.yml`, `issue-labels.yml`, `stale-needs-more-info.yml` |
 | Manual tooling                   | `mobile-showcase-screenshots.yml`, screenshots as run artifacts only           |
 
@@ -66,8 +67,57 @@ Node.js or pnpm other than the candidate's pins. It uploads `factory-check-manif
 `factory-check-manifest.json` (`t3factory.check-manifest/v1`) and its SHA-256, binding repository,
 workflow path, ref and revision, run ID and attempt, candidate, ref and base, pinned and per-lane
 toolchain, requested lanes and results, the local receipt and its digest, and the SHA-256 of every
-evidence artifact. Evidence is per attempt, so re-run all jobs rather than failed jobs. No workflow
-consumes the manifest; promoting a validated candidate to a build is a separate, explicit step.
+evidence artifact. Evidence is per attempt, so re-run all jobs rather than failed jobs. Only a
+dispatched [`factory-build.yml`](#package-a-validated-candidate) consumes the manifest.
+
+### Package a validated candidate
+
+`factory-build.yml` builds the unsigned Windows x64 portable `T3Factory (Preview)` ZIP for a
+candidate that `factory-check.yml` validated. It only uploads run artifacts: no signing,
+installer, npm, relay, store or release step, and no publishing credential. Publication is separate
+and must consume this artifact, never rebuild it.
+
+1. Validate from the trusted branch with every lane requested, including `lane_windows=true`.
+   Note the run ID, its current attempt, its head SHA and the digest in
+   `factory-check-manifest.json.sha256`. Re-running the validation makes the earlier attempt stale.
+2. Record a packaging receipt on Windows x64, in a clean worktree at the candidate:
+
+   ```sh
+   build() { vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 -- node scripts/factory-build.ts "$@"; }
+   evidence=(--receipt ../factory-package/receipt.json --repository baladithyab/t3code-factory --base "$BASE")
+   build record "${evidence[@]}" --kind check-changed -- vp run check:changed "$BASE"
+   build record "${evidence[@]}" --kind test -- vp test run <focused test files>
+   build record "${evidence[@]}" --kind package -- vp run dist:desktop:artifact --distribution factory-preview --output-dir ../factory-package/zip
+   build record "${evidence[@]}" --kind smoke -- node scripts/factory-build.ts smoke --package ../factory-package/zip/<zip> --sha256 <its SHA-256>
+   build finalize --receipt ../factory-package/receipt.json --ref feat/t3factory
+   ```
+
+   `package` probes the [Windows prerequisites](development.md#windows-installer-prerequisites)
+   itself and refuses to run without Spectre-mitigated x64 libraries on the newest MSVC toolset, or
+   with `T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR` enabled. It needs an empty output directory outside the
+   worktree and records the ZIP's SHA-256. `smoke` checks that digest, unpacks the ZIP and opens a
+   seeded thread against temporary T3, home and Windows profile directories. It clears inherited
+   T3, Vite and Electron overrides before launch. Like any preview launch, it registers the
+   `t3factory` handler. A ZIP from another commit,
+   or one built with a reused or non-Spectre resource monitor, does not qualify.
+
+3. Run the printed `gh workflow run factory-build.yml` command from the same trusted branch after
+   filling in the validation values.
+
+`Verify` reads the run, its attempt's jobs and its manifest artifact from the GitHub API with a
+read-only token. It refuses unless the run is this repository's `factory-check.yml`, dispatched from
+the same branch at this workflow's revision or an ancestor; the named attempt is current and
+succeeded with exactly one successful job per lane and shard; exactly one unexpired manifest
+artifact matches its API digest and holds only the manifest and its digest; and that manifest
+hashes to the dispatched digest, passed, and names the same candidate, ref, base and toolchain with
+every lane requested and successful. It then validates both local receipts. `Package` builds on
+`windows-2025` from a credential-free candidate checkout, adds the Spectre libraries if the image
+lacks them, builds the resource monitor, and smokes the ZIP. `Manifest` re-hashes the uploaded
+`factory-package-a<attempt>` on a fresh runner and uploads `factory-build-manifest-a<attempt>`
+(`t3factory.build-manifest/v1`), binding the candidate, ref and base, both workflow revisions, the
+validation run, attempt and manifest digest, the packaging receipt and its digest, the pinned and
+build toolchains with the Windows prerequisites, and the ZIP's SHA-256. Inputs and receipts are
+dispatcher-declared; the manifest is not an attestation or signature.
 
 ### Rollout
 
@@ -82,7 +132,7 @@ published to `feat/t3factory`, a maintainer:
    refs still carry their automatic triggers.
 3. Decides housekeeping workflows separately.
 4. Configures required status checks or rulesets separately, if wanted. Nothing dispatches
-   `factory-check.yml` automatically.
+   `factory-check.yml` or `factory-build.yml` automatically.
 
 To roll back, re-enable the recorded workflows and switch the default branch back to `main`.
 

@@ -40,10 +40,10 @@ export const UNSUPPORTED_LANES = [
 export const COMMAND_KINDS = ["check-changed", "test", "build-desktop"] as const;
 type CommandKind = (typeof COMMAND_KINDS)[number];
 
-const SHA_PATTERN = /^[0-9a-f]{40}$/;
-const DIGEST_PATTERN = /^[0-9a-f]{64}$/;
+export const SHA_PATTERN = /^[0-9a-f]{40}$/;
+export const DIGEST_PATTERN = /^[0-9a-f]{64}$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
-const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+export const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 export interface ToolchainPins {
   readonly node: string;
@@ -129,10 +129,10 @@ export interface CheckRunContext {
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const sha256 = (bytes: Uint8Array | string) =>
+export const sha256 = (bytes: Uint8Array | string) =>
   NodeCrypto.createHash("sha256").update(bytes).digest("hex");
 
-function unknownKeys(value: Record<string, unknown>, allowed: ReadonlyArray<string>) {
+export function unknownKeys(value: Record<string, unknown>, allowed: ReadonlyArray<string>) {
   return Object.keys(value).filter((key) => !allowed.includes(key));
 }
 
@@ -296,7 +296,10 @@ export function validateReceipt(
     : { receipt: parsed as unknown as LocalReceipt, sha256: digest, errors };
 }
 
-function laneShardErrors(lane: CheckLane, records: ReadonlyArray<LaneRecord>): string[] {
+export function laneShardErrors(
+  lane: string,
+  records: ReadonlyArray<{ readonly shard: LaneRecord["shard"] }>,
+): string[] {
   if (records.length === 0) return [`lane ${lane} produced no lane record`];
   const total = records[0]!.shard.total;
   const indexes = new Set(records.map((record) => record.shard.index));
@@ -459,11 +462,11 @@ export function evaluateCheckRun(input: {
   return manifest;
 }
 
-function git(cwd: string, args: ReadonlyArray<string>) {
+export function git(cwd: string, args: ReadonlyArray<string>) {
   return NodeChildProcess.execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 }
 
-function gitSucceeds(cwd: string, args: ReadonlyArray<string>) {
+export function gitSucceeds(cwd: string, args: ReadonlyArray<string>) {
   return NodeChildProcess.spawnSync("git", args, { cwd, stdio: "ignore" }).status === 0;
 }
 
@@ -527,7 +530,7 @@ export function resolveCandidate(
   return { sha: candidateSha, ref: candidateRef, refKind: ref.kind, refSha: ref.sha };
 }
 
-function pnpmVersion(cwd: string) {
+export function pnpmVersion(cwd: string) {
   const result = NodeChildProcess.spawnSync("vp", ["env", "exec", "--", "pnpm", "--version"], {
     cwd,
     encoding: "utf8",
@@ -539,18 +542,18 @@ function pnpmVersion(cwd: string) {
   return version;
 }
 
-function writeJson(file: string, value: unknown) {
+export function writeJson(file: string, value: unknown) {
   NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
   NodeFS.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function requireEnv(name: string) {
+export function requireEnv(name: string) {
   const value = process.env[name];
   if (value === undefined) throw new Error(`${name} is not set`);
   return value;
 }
 
-function listFiles(dir: string): string[] {
+export function listFiles(dir: string): string[] {
   if (!NodeFS.existsSync(dir)) return [];
   return NodeFS.readdirSync(dir, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
@@ -687,18 +690,53 @@ function runManifest(options: { evidence: string; out: string }) {
   if (manifest.status !== "passed") process.exitCode = 1;
 }
 
-function isInside(root: string, file: string) {
+export function isInside(root: string, file: string) {
   const relative = NodePath.relative(root, file);
   return relative === "" || (!relative.startsWith("..") && !NodePath.isAbsolute(relative));
 }
 
-function requireCleanCandidate(root: string, expectedHead?: string) {
+export function requireCleanCandidate(root: string, expectedHead?: string) {
   const head = git(root, ["rev-parse", "HEAD"]);
   if (expectedHead && head !== expectedHead)
     throw new Error(`HEAD moved from ${expectedHead} to ${head}`);
   const status = git(root, ["status", "--porcelain", "--untracked-files=all"]);
   if (status) throw new Error(`Worktree is not clean:\n${status}`);
   return head;
+}
+
+/** Runs one command in `cwd`, teeing its output to `logFile`, and digests that output. */
+export async function runLogged(argv: ReadonlyArray<string>, cwd: string, logFile: string) {
+  NodeFS.mkdirSync(NodePath.dirname(logFile), { recursive: true });
+  const log = NodeFS.createWriteStream(logFile);
+  const started = performance.now();
+  const child = NodeChildProcess.spawn(argv[0]!, argv.slice(1), {
+    cwd,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  for (const [stream, sink] of [
+    [child.stdout, process.stdout],
+    [child.stderr, process.stderr],
+  ] as const) {
+    stream.on("data", (chunk: Buffer) => {
+      log.write(chunk);
+      sink.write(chunk);
+    });
+  }
+  const exited = Promise.withResolvers<number>();
+  child.on("error", exited.reject);
+  child.on("close", (code) => exited.resolve(code ?? 1));
+  const flushed = Promise.withResolvers<void>();
+  const exitCode = await exited.promise.finally(() => {
+    log.end(flushed.resolve);
+    return flushed.promise;
+  });
+  const output = NodeFS.readFileSync(logFile);
+  return {
+    exitCode,
+    durationMs: Math.round(performance.now() - started),
+    outputBytes: output.byteLength,
+    outputSha256: sha256(output),
+  };
 }
 
 async function runRecord(options: {
@@ -751,32 +789,8 @@ async function runRecord(options: {
   }
   const commands = existing?.commands ?? [];
   const logFile = `${receiptFile}.logs/${String(commands.length + 1).padStart(2, "0")}-${options.kind}.log`;
-  NodeFS.mkdirSync(NodePath.dirname(logFile), { recursive: true });
-  const log = NodeFS.createWriteStream(logFile);
-  const started = performance.now();
-  const child = NodeChildProcess.spawn(options.argv[0]!, options.argv.slice(1), {
-    cwd: root,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  for (const [stream, sink] of [
-    [child.stdout, process.stdout],
-    [child.stderr, process.stderr],
-  ] as const) {
-    stream.on("data", (chunk: Buffer) => {
-      log.write(chunk);
-      sink.write(chunk);
-    });
-  }
-  const exited = Promise.withResolvers<number>();
-  child.on("error", exited.reject);
-  child.on("close", (code) => exited.resolve(code ?? 1));
-  const flushed = Promise.withResolvers<void>();
-  const exitCode = await exited.promise.finally(() => {
-    log.end(flushed.resolve);
-    return flushed.promise;
-  });
+  const result = await runLogged(options.argv, root, logFile);
   requireCleanCandidate(root, head);
-  const output = NodeFS.readFileSync(logFile);
   const receipt: LocalReceipt = {
     schema: RECEIPT_SCHEMA,
     evidence: "dispatcher-declared",
@@ -789,19 +803,14 @@ async function runRecord(options: {
     recordedAt: new Date().toISOString(),
     commands: [
       ...commands,
-      {
-        kind: options.kind as CommandKind,
-        argv: [...options.argv],
-        exitCode,
-        durationMs: Math.round(performance.now() - started),
-        outputBytes: output.byteLength,
-        outputSha256: sha256(output),
-      },
+      { kind: options.kind as CommandKind, argv: [...options.argv], ...result },
     ],
   };
   writeJson(receiptFile, receipt);
-  console.log(`Recorded ${options.kind} (exit ${exitCode}) in ${receiptFile}; output ${logFile}`);
-  if (exitCode !== 0) process.exitCode = exitCode;
+  console.log(
+    `Recorded ${options.kind} (exit ${result.exitCode}) in ${receiptFile}; output ${logFile}`,
+  );
+  if (result.exitCode !== 0) process.exitCode = result.exitCode;
 }
 
 function runFinalize(options: { receipt: string; ref: string }) {

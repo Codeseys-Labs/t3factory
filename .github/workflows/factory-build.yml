@@ -1,0 +1,306 @@
+# Packages one exact, already validated T3Factory candidate as the unsigned Windows x64 portable
+# T3Factory (Preview) ZIP. Dispatch-only and artifact-only: nothing triggers it, and it signs,
+# publishes, deploys and releases nothing. It holds no publishing credential; only Verify reads
+# the GitHub API, with a read-only token. Control scripts come from this workflow's revision
+# (`github.workflow_sha`); the candidate is checked out and built separately, without persisted
+# credentials, secrets or caches.
+#
+# Verify refuses to package unless the named factory-check run is the current, successful attempt
+# of the trusted control lineage, every lane passed, and its manifest artifact matches the
+# dispatched digest, and the local packaging receipt is valid for the candidate. See
+# docs/operations/release.md, "Package a validated candidate".
+name: Factory Build
+run-name: Factory build ${{ inputs.candidate_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact 40-character candidate commit SHA
+        required: true
+        type: string
+      base_sha:
+        description: Exact 40-character base commit SHA that validation used
+        required: true
+        type: string
+      candidate_ref:
+        description: Branch or tag of this repository that contains candidate_sha
+        required: true
+        type: string
+      validation_run_id:
+        description: ID of the factory-check run that validated candidate_sha
+        required: true
+        type: string
+      validation_run_attempt:
+        description: That run's current (latest) attempt
+        required: true
+        type: string
+      validation_control_sha:
+        description: Workflow revision (head SHA) that factory-check run used
+        required: true
+        type: string
+      validation_manifest_sha256:
+        description: SHA-256 of that attempt's factory-check-manifest.json
+        required: true
+        type: string
+      package_receipt_sha256:
+        description: SHA-256 of the local packaging receipt bytes
+        required: true
+        type: string
+      package_receipt_b64:
+        description: Base64 of the local packaging receipt (at most 16 KiB decoded)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: factory-build-${{ inputs.candidate_sha }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify validation and packaging evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: control
+          persist-credentials: false
+          sparse-checkout: |
+            /package.json
+            /scripts/package.json
+            /scripts/factory-check.ts
+            /scripts/factory-build.ts
+            /apps/desktop/package.json
+            /apps/desktop/src/app/DesktopDistribution.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Validate SHAs
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+          VALIDATION_CONTROL_SHA: ${{ inputs.validation_control_sha }}
+        run: |
+          for sha in "$CANDIDATE_SHA" "$BASE_SHA" "$VALIDATION_CONTROL_SHA"; do
+            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::candidate_sha, base_sha and validation_control_sha must be 40-character lowercase SHAs"
+              exit 1
+            fi
+          done
+
+      # Every branch and tag, to prove candidate reachability and control-revision ancestry.
+      - name: Checkout candidate history
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+          sparse-checkout: |
+            /package.json
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node.js
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: control/package.json
+          cache: false
+          run-install: false
+
+      - name: Verify validation run and packaging receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          VALIDATION_RUN_ID: ${{ inputs.validation_run_id }}
+          VALIDATION_RUN_ATTEMPT: ${{ inputs.validation_run_attempt }}
+          VALIDATION_CONTROL_SHA: ${{ inputs.validation_control_sha }}
+          VALIDATION_MANIFEST_SHA256: ${{ inputs.validation_manifest_sha256 }}
+          PACKAGE_RECEIPT_SHA256: ${{ inputs.package_receipt_sha256 }}
+          PACKAGE_RECEIPT_B64: ${{ inputs.package_receipt_b64 }}
+        run: node control/scripts/factory-build.ts verify --candidate-dir candidate --out "$RUNNER_TEMP/factory-build-provenance"
+
+      - name: Upload provenance
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-build-provenance-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-build-provenance
+          if-no-files-found: error
+
+  package:
+    name: Package Windows x64 ZIP
+    needs: verify
+    runs-on: windows-2025
+    timeout-minutes: 90
+    env:
+      # Build the resource monitor here with the Spectre-mitigated toolset; never reuse one.
+      T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR: "false"
+    defaults:
+      run:
+        shell: bash
+        working-directory: candidate
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: control
+          persist-credentials: false
+          sparse-checkout: |
+            /scripts/package.json
+            /scripts/factory-check.ts
+            /scripts/factory-build.ts
+            /apps/desktop/package.json
+            /apps/desktop/src/app/DesktopDistribution.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: candidate/package.json
+          cache: false
+          run-install: false
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      # The desktop build preflight requires them on the newest MSVC toolset; add them if the image lacks them.
+      - name: Ensure MSVC Spectre-mitigated libraries
+        shell: pwsh
+        run: |
+          $probe = node ../control/scripts/factory-build.ts prerequisites | ConvertFrom-Json
+          if ($probe.spectreLibraries) { exit 0 }
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $installer = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\setup.exe'
+          $arguments = @('modify', '--installPath', "`"$install`"", '--add', 'Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre', '--quiet', '--norestart', '--nocache')
+          $process = Start-Process -FilePath $installer -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -notin 0, 3010) { throw "Visual Studio Installer exited $($process.ExitCode)" }
+
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+
+      - name: Ensure Electron runtime is installed
+        run: vp run --filter @t3tools/desktop ensure:electron
+
+      - name: Build T3Factory (Preview) ZIP
+        run: vp run dist:desktop:artifact --platform win --arch x64 --distribution factory-preview --output-dir "$RUNNER_TEMP/factory-package"
+
+      - name: Record package
+        id: record
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: node ../control/scripts/factory-build.ts package-record --candidate-dir . --package-dir "$RUNNER_TEMP/factory-package" --out "$RUNNER_TEMP/factory-package-record/package.json"
+
+      - name: Smoke the ZIP
+        env:
+          PACKAGE_ZIP: ${{ steps.record.outputs.zip }}
+          PACKAGE_SHA256: ${{ steps.record.outputs.sha256 }}
+        run: node ../control/scripts/factory-build.ts smoke --package "$PACKAGE_ZIP" --sha256 "$PACKAGE_SHA256" --artifacts-dir "$RUNNER_TEMP/factory-smoke"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-package-a${{ github.run_attempt }}
+          path: ${{ steps.record.outputs.zip }}
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload package record
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-package-record-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-package-record
+          if-no-files-found: error
+
+      - name: Upload smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-diagnostics-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-smoke
+          if-no-files-found: ignore
+
+  # Re-hashes the uploaded package on a fresh runner, away from the candidate's build.
+  manifest:
+    name: Manifest
+    if: ${{ always() }}
+    needs: [verify, package]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout control scripts
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: control
+          persist-credentials: false
+          sparse-checkout: |
+            /package.json
+            /scripts/package.json
+            /scripts/factory-check.ts
+            /scripts/factory-build.ts
+            /apps/desktop/package.json
+            /apps/desktop/src/app/DesktopDistribution.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node.js
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: control/package.json
+          cache: false
+          run-install: false
+
+      # Only this attempt's evidence: a partial re-run cannot reuse an earlier attempt's package.
+      - name: Download evidence
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: factory-*-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-evidence
+
+      - name: Build artifact manifest
+        env:
+          FACTORY_INPUTS: ${{ toJSON(inputs) }}
+          FACTORY_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          status=0
+          node control/scripts/factory-build.ts manifest --evidence "$RUNNER_TEMP/factory-evidence" --out "$RUNNER_TEMP/factory-build-manifest" || status=$?
+          {
+            echo '```json'
+            jq '{status, failures, candidate, baseSha, validation: (.validation | {run, manifest: .manifest.sha256}), package: (.package | {files})}' "$RUNNER_TEMP/factory-build-manifest/factory-build-manifest.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Upload artifact manifest
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: factory-build-manifest-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/factory-build-manifest
+          if-no-files-found: error

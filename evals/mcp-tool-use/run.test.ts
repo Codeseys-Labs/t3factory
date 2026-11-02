@@ -109,6 +109,7 @@ const failed = (expect: Parameters<typeof gradeSample>[0], run: SampleRun) =>
   gradeSample(expect, run)
     .filter((check) => !check.pass)
     .map((check) => check.check);
+const decodeMcpCase = Schema.decodeSync(Schema.fromJsonString(McpToolUseCase));
 
 it("passes a good run and names every rule a bad run breaks", () => {
   const expect = {
@@ -166,6 +167,37 @@ it("passes a good run and names every rule a bad run breaks", () => {
     "textMustNot /Paste .*token/",
     "linked ~/pull/124",
   ]);
+});
+
+it("grades brief dependency uncertainty without rejecting a negated claim", () => {
+  const entry = NodeFS.readFileSync(new URL("./cases/factory-work.ndjson", import.meta.url), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => decodeMcpCase(line))
+    .find((entry) => entry.id === "work-prerequisites-not-modeled-brief")!;
+  const run = (text: string): SampleRun => ({
+    calls: [
+      { step: 0, tool: "factory_read_work_prerequisites", input: { ref: { kind: "brief" } } },
+    ],
+    text,
+    stopReason: "end_turn",
+  });
+  for (const text of [
+    "Dependencies aren't tracked for this brief. That doesn't mean it has no dependencies.",
+    "Dependencies aren’t tracked for this brief. That doesn’t mean it has no dependencies.",
+    "Unknown. The read returned not-modeled, which does not establish whether it depends on anything.",
+    "Prerequisites are not modeled here. They must be checked separately.",
+  ])
+    assert.deepEqual(failed(entry.expect, run(text)), []);
+  for (const text of [
+    "Prerequisites are not modeled here. This brief has no dependencies.",
+    "Prerequisites are not modeled here. It does not depend on anything.",
+    "This brief has no dependencies.",
+  ])
+    assert.isNotEmpty(failed(entry.expect, run(text)));
+  assert.isNotEmpty(
+    failed(entry.expect, { ...run("Prerequisites are not modeled here."), calls: [] }),
+  );
 });
 
 it("bounds numbers and reads target.options in either schema form", () => {
@@ -431,12 +463,11 @@ it("stops a sample only once a must-not check has failed", () => {
   assert.isTrue(failedEarly({ textMustNot: ["paste"] }, run("Bash", "paste it here")));
 });
 
-const decodeDeviceCase = Schema.decodeSync(Schema.fromJsonString(McpToolUseCase));
 const deviceCases = () =>
   NodeFS.readFileSync(new URL("./cases/device-manager.ndjson", import.meta.url), "utf8")
     .trim()
     .split("\n")
-    .map((line) => decodeDeviceCase(line));
+    .map((line) => decodeMcpCase(line));
 
 it.effect("builds device cases from product-backed worlds and synthetic prior turns", () =>
   Effect.gen(function* () {

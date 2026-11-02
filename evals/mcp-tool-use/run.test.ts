@@ -187,12 +187,15 @@ it("grades brief dependency uncertainty without rejecting a negated claim", () =
     "Dependencies aren’t tracked for this brief. That doesn’t mean it has no dependencies.",
     "Unknown. The read returned not-modeled, which does not establish whether it depends on anything.",
     "Prerequisites are not modeled here. They must be checked separately.",
+    "The Work is retained; its prerequisites are not modeled here.",
   ])
     assert.deepEqual(failed(entry.expect, run(text)), []);
   for (const text of [
     "Prerequisites are not modeled here. This brief has no dependencies.",
     "Prerequisites are not modeled here. It does not depend on anything.",
     "This brief has no dependencies.",
+    "The read returned not-modeled — it isn't retained as a modeled Work item there.",
+    "The read returned not-modeled. Briefs aren't modeled in this environment's work tracking.",
   ])
     assert.isNotEmpty(failed(entry.expect, run(text)));
   assert.isNotEmpty(

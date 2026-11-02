@@ -209,7 +209,7 @@ const workPrerequisites = Tool.make("factory_read_work_prerequisites", {
     McpInvocationContext.McpInvocationContext,
   ],
   description:
-    "Read the direct source blockers of one retained Work item in this environment, with the item's derived readiness. Each blocker links to its stable root Work ref when this environment retains an admission for it (follow that ref with this tool), says none when no admission exists here, or says unresolved or not-current instead of guessing. Feed, brief and protocol Work returns not-modeled: blockers are not observed for them, which does not mean they have none. Readiness is evidence, not permission to start work; this read never starts work, applies overrides or changes the issue host.",
+    "Read the direct source blockers of one retained Work item in this environment, with the item's derived readiness. Each blocker links to its stable root Work ref when this environment retains an admission for it (follow that ref with this tool), says none when no admission exists here, or says unresolved or not-current instead of guessing. Feed, brief and protocol Work returns not-modeled: the Work is retained, but this read does not model its prerequisite relations. This does not say whether dependencies exist or are recorded elsewhere. Readiness is evidence, not permission to start work; this read never starts work, applies overrides or changes the issue host.",
   parameters: FactoryWorkPrerequisitesInput,
   success: FactoryWorkPrerequisitesResult,
 })

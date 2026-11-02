@@ -2130,7 +2130,9 @@ const main = Effect.gen(function* () {
     const response = yield* client.get("https://openrouter.ai/api/v1/models");
     if (response.status !== 200)
       return yield* Effect.die(new Error(`OpenRouter catalog HTTP ${response.status}`));
-    const catalog = yield* response.json.pipe(Schema.decodeUnknownEffect(OpenRouterCatalog));
+    const catalog = yield* response.json.pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(OpenRouterCatalog)),
+    );
     yield* Effect.try(() => validateOpenRouterModels(catalog, flags.model, flags["shell-model"]));
   }
   const config: Config = {

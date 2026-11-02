@@ -15,6 +15,7 @@ pnpm mcp-tool-use --provider openrouter --model openai/gpt-6.1-sol --case work-p
 
 - `ANTHROPIC_API_KEY` in the repo root `.env` pays for Claude models and the Haiku shell simulator.
 - Codex models (`gpt-*` in `MODELS` in `run.ts`) go through a CLIProxyAPI server, set up as the `vibeproxy` model provider in `~/.codex/config.toml`. Keep the proxy under about 12 samples in flight across all runs.
+- Budget models also use the existing paths: `--model claude-haiku-5-5` for Claude replay, and `--model gpt-6-luna` or `gpt-6.1-terra` for Codex capture replay through CLIProxyAPI. The configured account/proxy must support the selected model; an evaluator model id does not establish entitlement or native-agent qualification. No product provider entry or credential requirement is added.
 - `--provider openrouter` uses only `OPENROUTER_API_KEY`, for both the agent and shell simulator, through OpenRouter's [Messages endpoint](https://openrouter.ai/docs/api/api-reference/anthropic-messages/create-messages). Pass the exact catalog id with `--model publisher/model`; `--shell-model` defaults to `anthropic/claude-haiku-5.5` and accepts another qualified id. Before paid calls, the runner checks both ids against the live public catalog and requires tool support for the agent. An unsupported model or request fails without substitution. Catalog tool support does not prove support for every Messages feature.
 - Every OpenRouter model replays the same Claude capture and local ToolSearch/tool-reference pipeline, including OpenAI models. These are comparisons within a Claude capture replay, not evidence of each model's native harness behavior. Results record provider, requested agent and shell models, returned models in usage, harness, template, source commit, and effort. Use the same ids, template, cases, samples, and effort on both source versions for a paired comparison.
 - Flags: `--case <ids>`, `--cases <file.ndjson>`, `--samples <n>` (default 2, and a 3rd when the first 2 disagree), `--concurrency <n>` (samples in flight, default 8), `--max-steps <n>`, `--effort <level>`, `--dry-run` (prints request bodies, no model calls), and `--context` (prints the size of T3's text and schemas, no key needed).
@@ -32,7 +33,68 @@ Cases are JSON lines in `cases/`, one file per area. The case schema in `run.ts`
 - `setup`: the fake thread, its `world` (repo, branch, files, PRs, pages), `priorTurns`, and `mocks` for tool results.
 - `expect`: the checks, such as `calls`, `callsMustNot`, `maxCalls`, `order`, `textMust`, and `linked`. Device cases also use `device` to check every child brief, forbid raw UI commands, bound failed device actions per user turn, and require artifact paths in completed final answers.
 
+Use `expect.finalTextMust` and `finalTextMustNot` for conclusions that must appear in the completed answer. Both require `end_turn` and a final answer; interim planning text and truncated answers earn no credit. These regexes are not early-stop checks.
+
+For tools whose result depends on the requested subject, use `setup.mockResponses` instead of a static `mocks` payload:
+
+```json
+{
+  "mockResponses": {
+    "factory_read_work_prerequisites": [
+      {
+        "args": {
+          "ref": {
+            "version": 1,
+            "environmentId": "env-acme",
+            "kind": "brief",
+            "id": "brief-pricing"
+          }
+        },
+        "result": {
+          "status": "not-modeled",
+          "kind": "brief",
+          "fetchedAt": "2026-11-02T12:00:00.000Z"
+        }
+      }
+    ]
+  }
+}
+```
+
+Selectors use the same partial argument matching as `expect.calls`, including dotted paths. Include every identity field when matching a Work ref. Exactly one row must match. Unmatched arguments return an eval error and fail the graded sample, so wrong model references remain in the pass-rate denominator. Ambiguous matches abort as fixture errors and stay outside pass rates. Neither falls back to `mocks`, a default tool result, or the shell simulator. Tools without a response table keep the existing static-mock behavior. Matching rows are reusable, not a call sequence.
+
 Check that the case builds with `--dry-run --case <id>`. Then run it on the text before your fix, where it must fail, and on the text after, where it must pass.
+
+## Factory Work cases
+
+`cases/factory-work.ndjson` contains 14 authored scenarios (11 guards, 3 controls) for [#79](https://github.com/baladithyab/t3code-factory/issues/79), grounded in [#76](https://github.com/baladithyab/t3code-factory/issues/76) and the current Work/readiness contracts. They use synthetic Acme identities and argument-selected responses, with no product API addition.
+
+| Cases                                                           | Evidence checked                                                                                                                                                                          |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `follow-retained`                                               | Subject #12 has blockers #9 and #4; following the returned stable root in another project reveals #9's different blocker #3. Raw readiness/frontier reads cannot replace Work navigation. |
+| `not-modeled-brief`, `not-modeled-feed`, `not-modeled-protocol` | Retained Work remains present; this read does not model its prerequisites or establish absence of dependencies.                                                                           |
+| `owner-unavailable`, `repository-changed`                       | Ambiguous ownership and a changed repository leave readiness unavailable.                                                                                                                 |
+| `partial-listing`, `stale-observation`                          | Empty partial results and an old ready snapshot followed by a failed refresh cannot establish current readiness.                                                                          |
+| `closed-unaccepted`                                             | Closing a blocker as not planned does not resolve it as accepted.                                                                                                                         |
+| `not-current`, `unresolved-root`                                | Inaccessible evidence and missing ancestry do not authorize guessed retained links.                                                                                                       |
+| `ready-control`, `accepted-source-control`                      | Complete source evidence can report ready, while artifact acceptance and publication remain separate.                                                                                     |
+| `raw-issue-control`                                             | Project/issue coordinates without a retained Work ref still support ordinary raw readiness inspection.                                                                                    |
+
+All ids have the `work-prerequisites-` prefix. Every scenario checks tool routing and rejects shell execution, file writes, delegation, starts and publication preparation. Completed-answer checks test evidence and conclusions with alternative phrasings; they do not require a prescribed sentence. The grader tests exercise correct reports, misleading reports, wrong refs, truncated answers and unauthorized actions. Fixture tests validate responses against current contract schemas, reject mismatched version/environment/kind/id and overlapping selectors, and preserve legacy mocks.
+
+Offline checks through the existing runner (use the checkout's pinned Node 26.12.1 and pnpm 12.14.0):
+
+```sh
+cd evals
+pnpm mcp-tool-use --cases mcp-tool-use/cases/factory-work.ndjson --dry-run
+pnpm mcp-tool-use --model gpt-6.1-sol --cases mcp-tool-use/cases/factory-work.ndjson --dry-run
+pnpm mcp-tool-use --context
+pnpm mcp-tool-use --model gpt-6.1-sol --context
+```
+
+Dry runs build all 14 requests per harness without calling a model or proxy; `--context` reports the harness's shared instruction/schema size, not per-case execution. Codex paid replays still use the existing CLIProxyAPI configuration. No paid before/after samples are supplied by this increment. Preserve the #79 provider failure record; a later paired run must retain errors and raw transcripts rather than retry a failure into a passing record.
+
+These cases measure bounded read-tool decisions and English report checks, not general semantic honesty. They do not exercise live Factory services, real CLI agents, native UI, orchestration, acceptance, publishing, cost efficiency or model reliability. Schema-valid authored fixtures are not real-service qualification; a dry run is not a model result. Small API replays cannot rank budget models or establish native-harness reliability.
 
 ## Device manager cases
 

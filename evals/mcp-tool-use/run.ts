@@ -71,9 +71,12 @@ import {
 } from "./devices.ts";
 /** Agent models by id, with the display name a harness gives them. */
 const MODELS = {
+  "claude-haiku-5-5": "Haiku 5.5",
   "claude-sonnet-5-5": "Sonnet 5.5",
   "claude-opus-5-5": "Opus 5.5",
   "gpt-6.1-sol": "GPT-6.1 Sol",
+  "gpt-6-luna": "GPT-6 Luna",
+  "gpt-6.1-terra": "GPT-6.1 Terra",
   "gpt-6-astra": "GPT-6 Astra",
 } as const;
 type Model = string;
@@ -197,6 +200,9 @@ const McpToolUseExpect = Schema.Struct({
   /** Case-sensitive regexes on the agent's visible text. */
   textMust: Schema.optional(Schema.Array(Schema.String)),
   textMustNot: Schema.optional(Schema.Array(Schema.String)),
+  /** Regexes on the completed final answer only; interim text earns no credit. */
+  finalTextMust: Schema.optional(Schema.Array(Schema.String)),
+  finalTextMustNot: Schema.optional(Schema.Array(Schema.String)),
   /** Each entry matches a PR URL linked at the end, as `args` values match. */
   linked: Schema.optional(Schema.Array(Schema.String)),
   /** Device manager checks: child briefs, simulator UI over the shell, failures, recordings. */
@@ -280,6 +286,18 @@ export const McpToolUseCase = Schema.Struct({
      * device tool, a T3 `DeviceError` (`{"_tag": ..., "cause": null}`) fails it inside T3.
      */
     mocks: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+    /** Argument-selected results. Exactly one row must match; never fall back to `mocks`. */
+    mockResponses: Schema.optional(
+      Schema.Record(
+        Schema.String,
+        Schema.Array(
+          Schema.Struct({
+            args: Schema.Record(Schema.String, Schema.Unknown),
+            result: Schema.Unknown,
+          }),
+        ).check(Schema.isMinLength(1)),
+      ),
+    ),
     /** Regexes on one part of a shell command. A match wins over the shell simulator. */
     shellMocks: Schema.optional(
       Schema.Array(Schema.Struct({ match: Schema.String, output: Schema.String })),
@@ -1329,7 +1347,17 @@ const answerToolCall = Effect.fn("evaluateMcpToolUse.answerToolCall")(function* 
     if (found.length === 0) return toolResult(call.id, "No matching deferred tools found");
     return loadTools(tools, call.id, found);
   }
-  const mock = testCase.setup.mocks?.[name];
+  const responses = testCase.setup.mockResponses?.[name];
+  const selected = responses?.filter(({ args }) => matches(args, input));
+  if (selected?.length === 0)
+    return failed(`EvalFixtureMismatch: no response for ${name} ${valueText(input)}.`);
+  if (selected !== undefined && selected.length !== 1)
+    return yield* Effect.die(
+      new Error(
+        `Expected one mock response for ${name} ${valueText(input)}; matched ${selected.length}.`,
+      ),
+    );
+  const mock = selected === undefined ? testCase.setup.mocks?.[name] : selected[0]!.result;
   // T3 answers device calls from the world. A mock that is a T3 device error fails inside T3.
   const failure = deviceFailure(mock);
   const fromWorld = mock === undefined || mock === "default" || failure !== undefined;
@@ -1410,6 +1438,8 @@ export const gradeSample = (expect: McpToolUseCase["expect"], run: SampleRun) =>
   const checks: Array<{ readonly check: string; readonly pass: boolean }> = [];
   const add = (check: string, pass: boolean) => checks.push({ check, pass });
   const calls = run.calls.map((call) => ({ ...call, input: withOptionsObject(call.input) }));
+  if (calls.some((call) => call.failed && call.output?.startsWith("EvalFixtureMismatch:")))
+    add("fixtureArguments", false);
   const count = (tool: string) => calls.filter((call) => call.tool === tool).length;
   // `tool` may list alternatives, as in "link_pull_request|watch_pull_request".
   const found = ({ tool, args = {} }: McpToolUseCall) =>
@@ -1442,6 +1472,11 @@ export const gradeSample = (expect: McpToolUseCase["expect"], run: SampleRun) =>
     add(`shellMustNot /${p}/`, !shell.some((c) => test(p, c)));
   for (const p of expect.textMust ?? []) add(`textMust /${p}/`, test(p, run.text));
   for (const p of expect.textMustNot ?? []) add(`textMustNot /${p}/`, !test(p, run.text));
+  const completed = run.stopReason === "end_turn" && run.finalText !== undefined;
+  for (const p of expect.finalTextMust ?? [])
+    add(`finalTextMust /${p}/`, completed && test(p, run.finalText!));
+  for (const p of expect.finalTextMustNot ?? [])
+    add(`finalTextMustNot /${p}/`, completed && !test(p, run.finalText!));
   const isLinked = (url: string) => (run.linked ?? []).some((at) => matches(url, at));
   for (const url of expect.linked ?? []) add(`linked ${url}`, isLinked(url));
   checks.push(...gradeDevice(expect.device, run));
@@ -1449,7 +1484,7 @@ export const gradeSample = (expect: McpToolUseCase["expect"], run: SampleRun) =>
 };
 
 // Checks that can only go from pass to fail as a sample goes on.
-const SETTLED = /^(notCalls|callsMustNot|shellMustNot|maxCalls|textMustNot) /;
+const SETTLED = /^(fixtureArguments$|(notCalls|callsMustNot|shellMustNot|maxCalls|textMustNot) )/;
 /** True once the sample has failed for good, so the rest of it cannot change the result. */
 export const failedEarly = (expect: McpToolUseCase["expect"], run: SampleRun) =>
   gradeSample(expect, run).some((check) => !check.pass && SETTLED.test(check.check));

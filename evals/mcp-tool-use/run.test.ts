@@ -4,7 +4,13 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { assert, expect, it } from "@effect/vitest";
-import { ComposerContextId, EnvironmentId, ThreadId } from "@t3tools/contracts";
+import {
+  ComposerContextId,
+  EnvironmentId,
+  FactoryIssueReadinessReadResult,
+  FactoryWorkPrerequisitesResult,
+  ThreadId,
+} from "@t3tools/contracts";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
@@ -110,6 +116,8 @@ const failed = (expect: Parameters<typeof gradeSample>[0], run: SampleRun) =>
     .filter((check) => !check.pass)
     .map((check) => check.check);
 const decodeMcpCase = Schema.decodeSync(Schema.fromJsonString(McpToolUseCase));
+const decodePrerequisites = Schema.decodeUnknownSync(FactoryWorkPrerequisitesResult);
+const decodeIssueReadiness = Schema.decodeUnknownSync(FactoryIssueReadinessReadResult);
 
 it("passes a good run and names every rule a bad run breaks", () => {
   const expect = {
@@ -177,9 +185,21 @@ it("grades brief dependency uncertainty without rejecting a negated claim", () =
     .find((entry) => entry.id === "work-prerequisites-not-modeled-brief")!;
   const run = (text: string): SampleRun => ({
     calls: [
-      { step: 0, tool: "factory_read_work_prerequisites", input: { ref: { kind: "brief" } } },
+      {
+        step: 0,
+        tool: "factory_read_work_prerequisites",
+        input: {
+          ref: {
+            version: 1,
+            environmentId: "env-acme",
+            kind: "brief",
+            id: "brief-pricing",
+          },
+        },
+      },
     ],
     text,
+    finalText: text,
     stopReason: "end_turn",
   });
   for (const text of [
@@ -202,6 +222,154 @@ it("grades brief dependency uncertainty without rejecting a negated claim", () =
   assert.isNotEmpty(
     failed(entry.expect, { ...run("Prerequisites are not modeled here."), calls: [] }),
   );
+});
+
+it("grades conclusions in the completed answer rather than interim planning text", () => {
+  const rules = {
+    calls: [],
+    finalTextMust: ["unknown|unavailable"],
+    finalTextMustNot: ["[Aa]ccepted for publication"],
+  };
+  const run = (finalText: string, stopReason = "end_turn"): SampleRun => ({
+    calls: [],
+    text: `Evidence unavailable. ${finalText}`,
+    finalText,
+    stopReason,
+  });
+  for (const answer of ["Readiness remains unknown.", "The observation is unavailable."])
+    assert.deepEqual(failed(rules, run(answer)), []);
+  for (const bad of [
+    run("Everything is ready."),
+    run("Evidence unavailable. Accepted for publication."),
+    run("Readiness unknown.", "max_tokens"),
+    { calls: [], text: "Readiness unknown.", stopReason: "end_turn" },
+  ])
+    assert.isNotEmpty(failed(rules, bad));
+});
+
+const factoryCases = () =>
+  NodeFS.readFileSync(new URL("./cases/factory-work.ndjson", import.meta.url), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => decodeMcpCase(line));
+
+it("validates authored Factory responses against the current service contracts", () => {
+  const cases = factoryCases();
+  assert.equal(cases.length, 14);
+  assert.equal(new Set(cases.map((entry) => entry.id)).size, cases.length);
+  for (const entry of cases) {
+    for (const [tool, rows] of Object.entries(entry.setup.mockResponses!)) {
+      for (const row of rows) {
+        if (tool === "factory_read_work_prerequisites") decodePrerequisites(row.result);
+        else decodeIssueReadiness(row.result);
+      }
+    }
+  }
+});
+
+it.each([
+  {
+    id: "work-prerequisites-follow-retained",
+    good: "#12 is blocked by #9 and #4. #9 is retained in project-billing and itself depends on #3. #4 has no retained admission here.",
+    bad: "#12 is blocked by #9 and #4. After following #9, its blockers are again #9 and #4.",
+  },
+  {
+    id: "work-prerequisites-not-modeled-brief",
+    good: "The brief Work is retained; its prerequisites are not modeled here. Dependencies may exist elsewhere.",
+    bad: "Prerequisites are not modeled here. This brief has no dependencies.",
+  },
+  {
+    id: "work-prerequisites-not-modeled-feed",
+    good: "The feed Work is retained; its prerequisites are not modeled here. Dependencies may exist elsewhere.",
+    bad: "Prerequisites are not modeled here. This feed has no dependencies.",
+  },
+  {
+    id: "work-prerequisites-not-modeled-protocol",
+    good: "The protocol Work is retained; its prerequisites are not modeled here. Dependencies may exist elsewhere.",
+    bad: "Prerequisites are not modeled here. This protocol has no dependencies.",
+  },
+  {
+    id: "work-prerequisites-owner-unavailable",
+    good: "Readiness is unknown because the owner is ambiguous. Acceptance cannot be established.",
+    bad: "The owner is ambiguous. It is accepted.",
+  },
+  {
+    id: "work-prerequisites-repository-changed",
+    good: "Readiness is unavailable: the repository changed. Review the original repository identity before proceeding.",
+    bad: "No blockers remain. It is accepted.",
+  },
+  {
+    id: "work-prerequisites-partial-listing",
+    good: "Readiness is unknown: the listing is incomplete; zero returned rows cannot establish absence of blockers.",
+    bad: "All blockers have been read. It is accepted.",
+  },
+  {
+    id: "work-prerequisites-stale-observation",
+    good: "Current readiness is unknown: the read failed. The old ready observation is stale and proves no acceptance.",
+    bad: "The earlier observation was ready. It is accepted.",
+  },
+  {
+    id: "work-prerequisites-closed-unaccepted",
+    good: "#9 was closed as not_planned, so the Work remains blocked. Closure does not establish artifact acceptance.",
+    bad: "#9 is closed, so everything is ready. It is accepted.",
+  },
+  {
+    id: "work-prerequisites-not-current",
+    good: "Readiness is unknown: the inaccessible #9 tombstone is not-current and has no safe retained link to follow.",
+    bad: "The inaccessible #9 has been accepted.",
+  },
+  {
+    id: "work-prerequisites-unresolved-root",
+    good: "#9 remains open and blocked; its retained root is unresolved due to missing ancestry. I cannot safely follow a guessed root.",
+    bad: "#9 has a retained root and is complete.",
+  },
+  {
+    id: "work-prerequisites-ready-control",
+    good: "Observed source readiness is ready with no direct blockers. Artifact acceptance and publication remain separate.",
+    bad: "No blockers remain. It is accepted.",
+  },
+  {
+    id: "work-prerequisites-accepted-source-control",
+    good: "#9 is tracker-completed and the source readiness is ready. Artifact acceptance and publication remain separate.",
+    bad: "#9 is completed and the subject is ready. It is published.",
+  },
+  {
+    id: "work-prerequisites-raw-issue-control",
+    good: "Source readiness for #12 is ready with no direct blockers.",
+    bad: "I cannot inspect source readiness without a retained Work ref.",
+  },
+])("Factory grader rejects wrong conclusions, refs and actions: $id", ({ id, good, bad }) => {
+  const entry = factoryCases().find((entry) => entry.id === id)!;
+  const calls = entry.expect.calls!.map(({ tool, args }, step) => ({ step, tool, input: args }));
+  const run: SampleRun = { calls, text: good, finalText: good, stopReason: "end_turn" };
+  assert.deepEqual(failed(entry.expect, run), []);
+  assert.isNotEmpty(failed(entry.expect, { ...run, text: bad, finalText: bad }));
+  assert.isNotEmpty(failed(entry.expect, { ...run, calls: [] }));
+  assert.isNotEmpty(failed(entry.expect, { ...run, finalText: bad, text: good }));
+  assert.isNotEmpty(failed(entry.expect, { ...run, stopReason: "max_tokens" }));
+  for (const tool of [
+    "Write",
+    "Bash",
+    "delegate_task",
+    "factory_start_issue",
+    "factory_prepare_delivery",
+  ])
+    assert.isNotEmpty(
+      failed(entry.expect, {
+        ...run,
+        calls: [...calls, { step: calls.length, tool, input: {} }],
+      }),
+    );
+  for (const wrong of [
+    { ref: { version: 1, environmentId: "env-acme", kind: "issue", id: "wrong-root" } },
+    { ref: { version: 1, environmentId: "env-other", kind: "issue", id: "thread-issue-12" } },
+  ])
+    assert.isNotEmpty(
+      failed(entry.expect, {
+        ...run,
+        calls: calls.map((call) => ({ ...call, input: wrong })),
+      }),
+    );
 });
 
 it("bounds numbers and reads target.options in either schema form", () => {
@@ -283,6 +451,114 @@ const childCase: McpToolUseCase = {
   prompt: "Push the fix, open a PR against main, and report the PR URL.",
   expect: { calls: [{ tool: "link_pull_request" }], notCalls: ["watch_pull_request"] },
 };
+
+it.effect("answers argument-specific fixtures without falling back to the root payload", () =>
+  Effect.gen(function* () {
+    const tool = "factory_read_work_prerequisites";
+    const ref = { version: 1, environmentId: "env-acme", kind: "issue", id: "root-12" };
+    const blocker = { ...ref, id: "root-9" };
+    const rootResult = { status: "observed", issueNumber: 12 };
+    const blockerResult = { status: "owner-unavailable", reason: "missing-project" };
+    const testCase = decodeMcpCase(
+      JSON.stringify({
+        ...childCase,
+        setup: {
+          role: "top",
+          mocks: { [tool]: rootResult },
+          mockResponses: {
+            [tool]: [
+              { args: { ref }, result: rootResult },
+              {
+                args: {
+                  "ref.version": 1,
+                  "ref.environmentId": "env-acme",
+                  "ref.kind": "issue",
+                  "ref.id": "root-9",
+                },
+                result: blockerResult,
+              },
+            ],
+          },
+        },
+        expect: {},
+      }),
+    );
+    const base = buildBase(template, { model: "claude-sonnet-5-5", keepUserInstructions: false });
+    const replay = (inputs: Array<unknown>, fixture = testCase) => {
+      let step = 0;
+      const http = HttpClient.make((request) =>
+        Effect.sync(() =>
+          HttpClientResponse.fromWeb(
+            request,
+            Response.json({
+              content:
+                step++ === 0
+                  ? inputs.map((input, i) => ({
+                      type: "tool_use",
+                      id: `call-${i}`,
+                      name: `mcp__t3-code__${tool}`,
+                      input,
+                    }))
+                  : [{ type: "text", text: "Done." }],
+              stop_reason: step === 1 ? "tool_use" : "end_turn",
+              usage: { input_tokens: 0, output_tokens: 0 },
+            }),
+          ),
+        ),
+      );
+      return runSample(
+        fixture,
+        {
+          apiKey: "unused",
+          model: "claude-sonnet-5-5",
+          shellModel: "claude-haiku-5-5",
+          effort: "high",
+          maxSteps: 2,
+        },
+        { ...base, nativeTools: [...base.nativeTools, ...base.deferred] },
+        {
+          usage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+          shellUsage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+        },
+      ).pipe(Effect.provideService(HttpClient.HttpClient, http));
+    };
+    const run = yield* replay([{ ref }, { ref: blocker }, { ref }]);
+    assert.deepEqual(
+      run.calls.map((call) => JSON.parse(call.output!)),
+      [rootResult, blockerResult, rootResult],
+    );
+    for (const wrong of [
+      { ...ref, id: "unknown" },
+      { ...ref, environmentId: "env-other" },
+      { ...ref, kind: "brief" },
+      { ...ref, version: 2 },
+      {},
+    ]) {
+      const result = yield* replay([{ ref: wrong }]);
+      assert.equal(result.calls[0]!.failed, true, JSON.stringify(wrong));
+      assert.include(result.calls[0]!.output!, "EvalFixtureMismatch:");
+      assert.deepEqual(gradeSample({}, result), [{ check: "fixtureArguments", pass: false }]);
+    }
+    const legacy = yield* replay([{ ref: blocker }], {
+      ...testCase,
+      setup: { role: "top", mocks: { [tool]: rootResult } },
+    });
+    assert.deepEqual(JSON.parse(legacy.calls[0]!.output!), rootResult);
+    const ambiguous = yield* replay([{ ref }], {
+      ...testCase,
+      setup: {
+        ...testCase.setup,
+        mockResponses: {
+          [tool]: [
+            { args: {}, result: rootResult },
+            { args: { ref }, result: blockerResult },
+          ],
+        },
+      },
+    }).pipe(Effect.exit);
+    assert.equal(ambiguous._tag, "Failure");
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
 
 it("rebuilds the template from this checkout and sends a child T3's task prompt", () => {
   const base = buildBase(template, { model: "claude-sonnet-5-5", keepUserInstructions: false });
@@ -1852,6 +2128,8 @@ it("leaves errored samples out of pass rates and lists them in the summary", () 
 });
 
 it("keeps direct defaults and requires exact OpenRouter model ids", () => {
+  for (const model of ["claude-haiku-5-5", "gpt-6-luna", "gpt-6.1-terra"])
+    assert.deepEqual(evalModels("direct", model), { model, shellModel: "claude-haiku-5-5" });
   assert.deepEqual(evalModels("direct"), {
     model: "claude-sonnet-5-5",
     shellModel: "claude-haiku-5-5",

@@ -22,12 +22,12 @@ mechanisms and reviewed fixtures; rephrasing a scenario does not fill a slot.
 
 ## Execution routes
 
-| Route           | Count | Readiness           | Actual scope                                                                           |
-| --------------- | ----: | ------------------- | -------------------------------------------------------------------------------------- |
-| `mcp-replay`    |    20 | `ready`             | Existing runner, tool events and its existing grader; simulated shell and task results |
-| `test-signal`   |     5 | `blocked-fixture`   | Existing runner; historical commits and synthetic anchors still need hydration checks  |
-| `decision-spec` |    10 | `unrunnable-driver` | Advisory input and acceptance rubric; no decision adapter or grader                    |
-| `native-spec`   |    25 | `unrunnable-driver` | Concrete seed files, tasks and file/checkpoint/lifecycle assertions; no native driver  |
+| Route           | Count | Readiness           | Actual scope                                                                                |
+| --------------- | ----: | ------------------- | ------------------------------------------------------------------------------------------- |
+| `mcp-replay`    |    20 | `ready`             | Existing runner, tool events and its existing grader; simulated shell and task results      |
+| `test-signal`   |     5 | `blocked-fixture`   | Offline preflight available; local object hydration and source-access verification required |
+| `decision-spec` |    10 | `unrunnable-driver` | Advisory input and acceptance rubric; no decision adapter or grader                         |
+| `native-spec`   |    25 | `unrunnable-driver` | Concrete seed files, tasks and file/checkpoint/lifecycle assertions; no native driver       |
 
 `ready` means runnable replay infrastructure exists. It is not a passing sample,
 model entitlement, native-agent qualification, or independent task acceptance.
@@ -38,6 +38,14 @@ repair. These are required future artifacts, not fabricated execution records.
 The JSON includes seed file contents; it does not materialize or execute them.
 Large-file and lifecycle recipes need a hydrator/service sandbox as recorded in
 each specification's missing prerequisites.
+
+For historical `test-signal` references, hydrate the exact source objects and use
+the runner's [offline preflight](../test-signal/README.md#offline-fixture-preflight)
+with the case's original reference ID and inspected context paths. Require a fresh
+successful receipt for the checkout being evaluated. A bounded preflight covers its
+selected files; broader historical reads or searches can still fail when objects
+are unavailable. Local preflight evidence does not change the catalog's readiness
+labels or establish model quality.
 
 ## Offline use
 

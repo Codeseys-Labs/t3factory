@@ -188,6 +188,7 @@ it("grades brief dependency uncertainty without rejecting a negated claim", () =
     "Unknown. The read returned not-modeled, which does not establish whether it depends on anything.",
     "Prerequisites are not modeled here. They must be checked separately.",
     "The Work is retained; its prerequisites are not modeled here.",
+    "No prerequisites are modeled for this brief. This does not rule out dependencies elsewhere.",
   ])
     assert.deepEqual(failed(entry.expect, run(text)), []);
   for (const text of [

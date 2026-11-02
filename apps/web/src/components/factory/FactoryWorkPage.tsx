@@ -35,7 +35,11 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { factoryScopeSearchForMember } from "./factoryScope";
 import { safeExternalUrl } from "./factoryIssues.logic";
 import { parseFactoryIssueViewMode } from "./factoryIssues.views";
-import { parseFactoryWorkBoardGrouping } from "./factoryWork.views";
+import {
+  FACTORY_WORK_MAX_PAGES,
+  moveFactoryWorkPage,
+  parseFactoryWorkBoardGrouping,
+} from "./factoryWork.views";
 import {
   FactoryWorkBoard,
   FactoryWorkItemConditions,
@@ -165,25 +169,37 @@ function FactoryWorkWorkspace() {
     });
   };
   const pager = (owner: FactoryWorkOwner) => (
-    <div className="flex gap-2">
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={(cursors.get(owner.environmentId)?.length ?? 1) < 2}
-        onClick={() => movePage(owner.environmentId, null)}
-      >
-        Previous page
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={owner.status !== "current" || !owner.page?.nextCursor}
-        onClick={() => {
-          if (owner.page?.nextCursor) movePage(owner.environmentId, owner.page.nextCursor);
-        }}
-      >
-        Next page
-      </Button>
+    <div className="space-y-1">
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={(cursors.get(owner.environmentId)?.length ?? 1) < 2}
+          onClick={() => movePage(owner.environmentId, null)}
+        >
+          Previous page
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={
+            owner.status !== "current" ||
+            !owner.page?.nextCursor ||
+            (cursors.get(owner.environmentId)?.length ?? 1) >= FACTORY_WORK_MAX_PAGES
+          }
+          onClick={() => {
+            if (owner.page?.nextCursor) movePage(owner.environmentId, owner.page.nextCursor);
+          }}
+        >
+          Next page
+        </Button>
+      </div>
+      {(cursors.get(owner.environmentId)?.length ?? 1) >= FACTORY_WORK_MAX_PAGES ? (
+        <p className="text-xs text-muted-foreground">
+          Reached the {FACTORY_WORK_MAX_PAGES}-page limit for this owner. Go back or narrow the
+          scope to inspect other work.
+        </p>
+      ) : null}
     </div>
   );
   const layout = parseFactoryIssueViewMode(search.view);
@@ -194,7 +210,7 @@ function FactoryWorkWorkspace() {
     setCursors((previous) => {
       const map = new Map(previous);
       const history = previous.get(id) ?? [undefined];
-      map.set(id, next === null ? history.slice(0, -1) : [...history, next].slice(-32));
+      map.set(id, moveFactoryWorkPage(history, next));
       return map;
     });
   return (
@@ -210,7 +226,7 @@ function FactoryWorkWorkspace() {
           </p>
         </div>
         <Button size="sm" variant="outline" onClick={refresh}>
-          Refresh Work
+          Refresh collection
         </Button>
       </div>
       <ToggleGroup
@@ -418,6 +434,7 @@ function FactoryWorkDetail(props: {
         })
       : null,
   );
+  const history = useFactoryWorkHistory(reference, status);
   const data = selectFactoryWorkDetail(
     status,
     query.error === null && !query.isPending ? query.data : null,
@@ -471,19 +488,32 @@ function FactoryWorkDetail(props: {
         >
           Selected work
         </h3>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            void navigate({
-              to: "/factory",
-              search: { ...search, work: undefined, workFrom: undefined },
-              resetScroll: false,
-            });
-          }}
-        >
-          Close detail
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={status !== "current" || query.isPending || history.query.isPending}
+            onClick={() => {
+              query.refresh();
+              history.query.refresh();
+            }}
+          >
+            Refresh selected work
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              void navigate({
+                to: "/factory",
+                search: { ...search, work: undefined, workFrom: undefined },
+                resetScroll: false,
+              });
+            }}
+          >
+            Close detail
+          </Button>
+        </div>
       </div>
       {returnTo !== null ? (
         <Button
@@ -696,29 +726,39 @@ function FactoryWorkDetail(props: {
               });
             }}
           />
-          <FactoryWorkHistory reference={reference} />
+          <FactoryWorkHistory reference={reference} history={history} />
         </>
       )}
     </section>
   );
 }
 
-function FactoryWorkHistory(props: { readonly reference: FactoryWorkRef }) {
+function useFactoryWorkHistory(reference: FactoryWorkRef, status: FactoryWorkOwnerStatus) {
   const [selection, setSelection] = useState<
     Omit<FactoryWorkHistoryInput, "ref" | "cursor" | "limit">
   >({ section: "executions" });
   const [cursors, setCursors] = useState<readonly (string | undefined)[]>([undefined]);
   const query = useEnvironmentQuery(
-    factoryEnvironment.readWorkHistory({
-      environmentId: props.reference.environmentId,
-      input: { ref: props.reference, ...selection, cursor: cursors.at(-1), limit: 25 },
-    }),
+    status === "current"
+      ? factoryEnvironment.readWorkHistory({
+          environmentId: reference.environmentId,
+          input: { ref: reference, ...selection, cursor: cursors.at(-1), limit: 25 },
+        })
+      : null,
   );
   const data = query.error === null && !query.isPending ? query.data : null;
   const select = (next: typeof selection) => {
     setSelection(next);
     setCursors([undefined]);
   };
+  return { selection, cursors, setCursors, query, data, select };
+}
+
+function FactoryWorkHistory(props: {
+  readonly reference: FactoryWorkRef;
+  readonly history: ReturnType<typeof useFactoryWorkHistory>;
+}) {
+  const { selection, cursors, setCursors, query, data, select } = props.history;
   return (
     <div className="space-y-3">
       <h4 className="font-medium">{selection.section} · bounded metadata</h4>
@@ -806,22 +846,28 @@ function FactoryWorkHistory(props: { readonly reference: FactoryWorkRef }) {
           size="sm"
           variant="outline"
           disabled={cursors.length < 2}
-          onClick={() => setCursors((previous) => previous.slice(0, -1))}
+          onClick={() => setCursors((previous) => moveFactoryWorkPage(previous, null))}
         >
           Previous history page
         </Button>
         <Button
           size="sm"
           variant="outline"
-          disabled={!data?.nextCursor}
+          disabled={!data?.nextCursor || cursors.length >= FACTORY_WORK_MAX_PAGES}
           onClick={() => {
             if (data?.nextCursor)
-              setCursors((previous) => [...previous, data.nextCursor ?? undefined].slice(-32));
+              setCursors((previous) => moveFactoryWorkPage(previous, data.nextCursor ?? null));
           }}
         >
           Next history page
         </Button>
       </div>
+      {cursors.length >= FACTORY_WORK_MAX_PAGES ? (
+        <p className="text-xs text-muted-foreground">
+          Reached the {FACTORY_WORK_MAX_PAGES}-page history limit. Go back or choose another history
+          section to inspect other records.
+        </p>
+      ) : null}
     </div>
   );
 }

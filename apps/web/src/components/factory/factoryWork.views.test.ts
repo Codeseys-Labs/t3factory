@@ -1,10 +1,25 @@
 import { EnvironmentId, ProjectId, type FactoryWorkSummary } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { groupFactoryWorkForBoard, moveFactoryWorkFocus } from "./factoryWork.views";
+import {
+  groupFactoryWorkForBoard,
+  moveFactoryWorkFocus,
+  moveFactoryWorkPage,
+} from "./factoryWork.views";
 
 const laptop = EnvironmentId.make("laptop");
 const server = EnvironmentId.make("server");
+
+it("bounds pagination without discarding the way back to the first page", () => {
+  let cursors: readonly (string | undefined)[] = [undefined];
+  for (let page = 1; page <= 34; page++) cursors = moveFactoryWorkPage(cursors, `page-${page}`);
+  expect(cursors).toHaveLength(32);
+  expect(cursors[0]).toBeUndefined();
+  expect(cursors.at(-1)).toBe("page-31");
+  for (let page = 0; page < 31; page++) cursors = moveFactoryWorkPage(cursors, null);
+  expect(cursors).toEqual([undefined]);
+  expect(moveFactoryWorkPage(cursors, null)).toEqual([undefined]);
+});
 
 function entry(
   kind: FactoryWorkSummary["ref"]["kind"],

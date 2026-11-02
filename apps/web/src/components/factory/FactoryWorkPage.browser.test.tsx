@@ -9,6 +9,9 @@ const state = vi.hoisted(() => ({
   detail: null as unknown,
   prerequisites: null as unknown,
   prerequisiteReads: 0,
+  detailRevision: 0,
+  detailPending: false,
+  historyRevision: 0,
   navigations: [] as { search: Record<string, unknown> }[],
   environment: null as unknown,
   scope: null as unknown,
@@ -76,14 +79,21 @@ vi.mock(import("../../state/query"), () => ({
         query === null
           ? null
           : query.kind === "detail"
-            ? state.detail
+            ? {
+                ...(state.detail as object),
+                snapshot: state.detailRevision ? "Updated brief." : "Review this brief.",
+              }
             : {
                 entries: [
                   {
                     id: query.input?.cursor ? "attempt-second-page" : "history-first-page",
                     threadId: ThreadId.make("thread"),
                     runId: "run",
-                    label: query.input?.cursor ? "Second attempt page" : "Retained execution",
+                    label: query.input?.cursor
+                      ? state.historyRevision
+                        ? "Updated second attempt page"
+                        : "Second attempt page"
+                      : "Retained execution",
                     state: "idle",
                     pin: null,
                     superseded: false,
@@ -92,7 +102,16 @@ vi.mock(import("../../state/query"), () => ({
                 nextCursor: query.input?.cursor ? null : "next-history-page",
               },
       error: null,
-      isPending: false,
+      isPending: query?.kind === "detail" && state.detailPending,
+      refresh: () => {
+        if (query?.kind === "detail") {
+          state.detailRevision++;
+          state.detailPending = true;
+        }
+        if (query?.kind === "history") state.historyRevision++;
+        state.version++;
+        state.listeners.forEach((listener) => listener());
+      },
     };
   }) as never,
 }));
@@ -135,6 +154,9 @@ function setup() {
   state.targets = [];
   state.navigations = [];
   state.prerequisiteReads = 0;
+  state.detailRevision = 0;
+  state.detailPending = false;
+  state.historyRevision = 0;
   const environmentId = EnvironmentId.make("owner");
   const reference = { version: 1, environmentId, kind: "brief", id: "brief" };
   const item = {
@@ -192,26 +214,37 @@ it("retains selected history through collection paging but removes protected det
   await userEvent.click(screen.getByRole("button", { name: "Next history page", exact: true }));
   await expect.element(screen.getByText(/Second attempt page/)).toBeVisible();
 
+  await userEvent.click(screen.getByRole("button", { name: "Refresh selected work", exact: true }));
+  await expect.element(screen.getByText("Loading selected work…", { exact: true })).toBeVisible();
+  await publish(() => {
+    state.detailPending = false;
+  });
+  await expect.element(screen.getByText("Updated brief.", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText(/Updated second attempt page/)).toBeVisible();
+  await expect
+    .element(screen.getByRole("button", { name: "Previous history page", exact: true }))
+    .toBeEnabled();
+
   await act(() => {
     state.loading = true;
     state.version++;
     state.listeners.forEach((listener) => listener());
   });
-  await expect.element(screen.getByText(/Second attempt page/)).toBeVisible();
+  await expect.element(screen.getByText(/Updated second attempt page/)).toBeVisible();
   await act(() => {
     state.loading = false;
     state.version++;
     state.listeners.forEach((listener) => listener());
   });
-  await expect.element(screen.getByText(/Second attempt page/)).toBeVisible();
+  await expect.element(screen.getByText(/Updated second attempt page/)).toBeVisible();
 
   await act(() => {
     state.readable = false;
     state.version++;
     state.listeners.forEach((listener) => listener());
   });
-  await expect.element(screen.getByText(/Second attempt page/)).not.toBeInTheDocument();
-  await expect.element(screen.getByText("Review this brief.")).not.toBeInTheDocument();
+  await expect.element(screen.getByText(/Updated second attempt page/)).not.toBeInTheDocument();
+  await expect.element(screen.getByText("Updated brief.")).not.toBeInTheDocument();
 });
 
 it("switches List, Table and Board over the same pages without clearing selection or detail", async () => {

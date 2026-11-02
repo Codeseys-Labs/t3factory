@@ -14,6 +14,13 @@ export const FACTORY_WORK_ORIGIN_LABELS: Record<FactoryWorkKind, string> = {
 };
 const ORIGIN_ORDER: readonly FactoryWorkKind[] = ["issue", "feed", "brief", "protocol"];
 
+export const FACTORY_WORK_MAX_PAGES = 32;
+
+export function moveFactoryWorkPage(cursors: readonly (string | undefined)[], next: string | null) {
+  if (next === null) return cursors.length > 1 ? cursors.slice(0, -1) : cursors;
+  return cursors.length < FACTORY_WORK_MAX_PAGES ? [...cursors, next] : cursors;
+}
+
 export interface FactoryWorkEntry {
   readonly item: FactoryWorkSummary;
   readonly stale: boolean;

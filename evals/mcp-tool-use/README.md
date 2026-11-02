@@ -1,6 +1,6 @@
 # MCP tool use
 
-Replays small fake threads on Claude and Codex models and checks how they use T3's MCP tools: delegation, PR linking, previews, scheduling, and more. Each case reproduces a real mistake an agent made in T3 Code.
+Replays small fake threads on Claude, Codex, and OpenRouter models and checks how they use T3's MCP tools: delegation, PR linking, previews, scheduling, and more. Each case reproduces a real mistake an agent made in T3 Code.
 
 The model sees what it sees in T3 Code. A trimmed capture of a real harness turn supplies the harness prompt and native tools. T3's instructions, tool descriptions, and schemas come from this checkout. A cheap model plays the shell, so nothing runs on your machine.
 
@@ -10,13 +10,17 @@ The model sees what it sees in T3 Code. A trimmed capture of a real harness turn
 cd evals
 pnpm mcp-tool-use --case review-round-uses-thread-send --samples 1 --out runs/check
 pnpm mcp-tool-use --model claude-opus-5-5 --out runs/opus
+pnpm mcp-tool-use --provider openrouter --model openai/gpt-6.1-sol --case work-prerequisites-follow-retained --samples 1 --out runs/openrouter-sol
 ```
 
 - `ANTHROPIC_API_KEY` in the repo root `.env` pays for Claude models and the Haiku shell simulator.
 - Codex models (`gpt-*` in `MODELS` in `run.ts`) go through a CLIProxyAPI server, set up as the `vibeproxy` model provider in `~/.codex/config.toml`. Keep the proxy under about 12 samples in flight across all runs.
+- `--provider openrouter` uses only `OPENROUTER_API_KEY`, for both the agent and shell simulator, through OpenRouter's [Messages endpoint](https://openrouter.ai/docs/api/api-reference/anthropic-messages/create-messages). Pass the exact catalog id with `--model publisher/model`; `--shell-model` defaults to `anthropic/claude-haiku-5.5` and accepts another qualified id. Before paid calls, the runner checks both ids against the live public catalog and requires tool support for the agent. An unsupported model or request fails without substitution. Catalog tool support does not prove support for every Messages feature.
+- Every OpenRouter model replays the same Claude capture and local ToolSearch/tool-reference pipeline, including OpenAI models. These are comparisons within a Claude capture replay, not evidence of each model's native harness behavior. Results record provider, requested agent and shell models, returned models in usage, harness, template, source commit, and effort. Use the same ids, template, cases, samples, and effort on both source versions for a paired comparison.
 - Flags: `--case <ids>`, `--cases <file.ndjson>`, `--samples <n>` (default 2, and a 3rd when the first 2 disagree), `--concurrency <n>` (samples in flight, default 8), `--max-steps <n>`, `--effort <level>`, `--dry-run` (prints request bodies, no model calls), and `--context` (prints the size of T3's text and schemas, no key needed).
 - `--baseline <results.jsonl> --stop-on-regression` stops as soon as a case that passed every baseline sample fails. Use it to test one copy change against a baseline run.
 - Cost: the existing non-device suite costs about $9 on Sonnet and $17 on Opus. The 16 device cases at 3 samples each cost about $5.70–5.90 on Opus and $2.90–3.40 on Sonnet (main's text–#25661), including the Haiku shell simulator; dry runs cost $0. Results record token costs for the agent and shell simulator. Codex proxy charges are outside that total; only its shell simulator is priced here, about $0.60–0.70 for the device cases.
+- OpenRouter summaries use `usage.cost` when the API reports it, with the fraction of responses carrying cost for agent and shell separately. Missing charges are unknown; a partial reported sum is not the total run cost. Direct Claude prices above are never applied to OpenRouter. The OpenRouter dashboard remains the billing record.
 - A rate limit or overload (429, 529 or another 5xx) is retried with backoff for up to about 4 minutes. A sample that still fails gets an `error` in `results.jsonl`, is left out of every pass rate, and is listed in the summary; the tokens it spent still count toward the cost.
 
 ## Add a case

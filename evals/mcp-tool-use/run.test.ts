@@ -6,12 +6,14 @@ import * as Schema from "effect/Schema";
 import { assert, expect, it } from "@effect/vitest";
 import { ComposerContextId, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
+import { HttpClient, HttpClientResponse } from "effect/http";
 
 import {
   buildBase,
   buildMessages,
   failedEarly,
   executeCodex,
+  evalModels,
   gradeSample,
   makeSample,
   ranCalls,
@@ -19,6 +21,10 @@ import {
   mockOutput,
   normalizeToolInput,
   normalizeToolName,
+  modelTarget,
+  openRouterProxy,
+  redactModelError,
+  runSample,
   type SampleRun,
   shellOutput,
   shellRequest,
@@ -26,6 +32,7 @@ import {
   t3SystemAppend,
   t3SubagentContext,
   withDevices,
+  validateOpenRouterModels,
 } from "./run.ts";
 import { briefRoute, gradeDevice, shellInvocations } from "./device-grading.ts";
 import { taskPrompt } from "../../apps/server/src/mcp/delegatedTaskModes.ts";
@@ -1808,6 +1815,154 @@ it("leaves errored samples out of pass rates and lists them in the summary", () 
   // Errored samples' tokens still count: 3 rows of 10 input tokens each.
   assert.include(summary, "input 30");
 });
+
+it("keeps direct defaults and requires exact OpenRouter model ids", () => {
+  assert.deepEqual(evalModels("direct"), {
+    model: "claude-sonnet-5-5",
+    shellModel: "claude-haiku-5-5",
+  });
+  assert.deepEqual(evalModels("direct", "gpt-6.1-sol"), {
+    model: "gpt-6.1-sol",
+    shellModel: "claude-haiku-5-5",
+  });
+  assert.deepEqual(evalModels("openrouter", "openai/gpt-6.1-sol"), {
+    model: "openai/gpt-6.1-sol",
+    shellModel: "anthropic/claude-haiku-5.5",
+  });
+  assert.throws(() => evalModels("openrouter", "gpt-6.1-sol"), /fully qualified/);
+  assert.throws(
+    () => evalModels("openrouter", "openai/gpt-6.1-sol", "claude-haiku-5-5"),
+    /publisher\/model/,
+  );
+  const catalog = {
+    data: [
+      { id: "openai/gpt-6.1-sol", supported_parameters: ["tools"] },
+      { id: "anthropic/claude-haiku-5.5" },
+    ],
+  };
+  validateOpenRouterModels(catalog, "openai/gpt-6.1-sol", "anthropic/claude-haiku-5.5");
+  assert.throws(
+    () => validateOpenRouterModels(catalog, "openai/missing", "anthropic/claude-haiku-5.5"),
+    /absent/,
+  );
+  assert.throws(
+    () =>
+      validateOpenRouterModels(catalog, "anthropic/claude-haiku-5.5", "anthropic/claude-haiku-5.5"),
+    /tool support/,
+  );
+  assert.equal(modelTarget("direct-test-key").url, "https://api.anthropic.com/v1/messages");
+  assert.equal(modelTarget("direct-test-key").headers["x-api-key"], "direct-test-key");
+  assert.equal(
+    modelTarget("", { url: "https://proxy.invalid/v1", headers: {} }, true).url,
+    "https://proxy.invalid/v1/responses",
+  );
+  assert.equal(
+    redactModelError("Bearer example-private-key / example-private-key", [
+      "Bearer example-private-key",
+    ]),
+    "[redacted] / [redacted]",
+  );
+});
+
+it.effect("routes agent and shell through OpenRouter in the same Claude capture replay", () =>
+  Effect.gen(function* () {
+    const model = "openai/gpt-6.1-sol";
+    const shellModel = "anthropic/claude-haiku-5.5";
+    const base = buildBase(template, { model, keepUserInstructions: false });
+    assert.include(
+      base.system.map((block) => String(block.text)).join("\n"),
+      `The exact model ID is ${model}.`,
+    );
+    const requests: Array<{
+      url: string;
+      headers: Readonly<Record<string, string>>;
+      model: string;
+    }> = [];
+    const responses = [
+      {
+        model,
+        content: [
+          {
+            type: "tool_use",
+            id: "shell-1",
+            name: "mcp__host__term_Bash",
+            input: { command: "git status" },
+          },
+        ],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 10, output_tokens: 5, cost: 0.001 },
+      },
+      {
+        model: shellModel,
+        content: [{ type: "text", text: "On branch main" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 3, output_tokens: 2, cost: 0.0001 },
+      },
+      {
+        model,
+        content: [{ type: "text", text: "The working tree is clean." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      },
+    ];
+    const http = HttpClient.make((request) =>
+      Effect.sync(() => {
+        if (request.body._tag !== "Uint8Array") throw new Error("Expected JSON body");
+        const body = JSON.parse(new TextDecoder().decode(request.body.body)) as { model: string };
+        requests.push({ url: request.url, headers: request.headers, model: body.model });
+        const response = responses[requests.length - 1];
+        assert.isDefined(response);
+        return HttpClientResponse.fromWeb(request, Response.json(response));
+      }),
+    );
+    const usage = {
+      usage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+      shellUsage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+    };
+    const testCase: McpToolUseCase = {
+      ...childCase,
+      id: "openrouter-transport",
+      setup: { role: "top" },
+      prompt: "Check git status",
+      expect: {},
+    };
+    const run = yield* runSample(
+      testCase,
+      {
+        apiKey: "",
+        proxy: openRouterProxy("example-private-key"),
+        model,
+        shellModel,
+        effort: "high",
+        maxSteps: 2,
+      },
+      base,
+      usage,
+    ).pipe(Effect.provideService(HttpClient.HttpClient, http));
+    assert.deepEqual(
+      requests.map((request) => request.model),
+      [model, shellModel, model],
+    );
+    for (const request of requests) {
+      assert.equal(request.url, "https://openrouter.ai/api/v1/messages");
+      assert.equal(request.headers.authorization, "Bearer example-private-key");
+      assert.notProperty(request.headers, "x-api-key");
+    }
+    assert.equal(run.stopReason, "end_turn");
+    assert.deepEqual(run.usage.models, [model]);
+    assert.deepEqual(run.shellUsage.models, [shellModel]);
+    const summary = summarize(
+      [{ ...testCase, role: "top", pass: true, usage: run.usage, shellUsage: run.shellUsage }],
+      { header: "OpenRouter Claude replay", provider: "openrouter", model, shellModel },
+    );
+    assert.include(summary, "$0.001000 (1/2 responses reported cost");
+    assert.include(summary, "$0.000100 (1/1 responses reported cost");
+    assert.include(summary, `Returned agent models: ${model}.`);
+    assert.include(summary, `Returned shell models: ${shellModel}.`);
+    assert.notInclude(summary, "API-price estimate");
+    assert.notInclude(summary, "Estimated cost");
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
 
 it.each(["couldn't", "couldn’t", "can’t"])(
   "accepts a typographic apostrophe in FAIL-AFTER-hub's disclosure: %s",

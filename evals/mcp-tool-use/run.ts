@@ -76,10 +76,9 @@ const MODELS = {
   "gpt-6.1-sol": "GPT-6.1 Sol",
   "gpt-6-astra": "GPT-6 Astra",
 } as const;
-type Model = keyof typeof MODELS;
+type Model = string;
 /** GPT models replay a Codex capture through CLIProxyAPI, the rest a Claude Code capture. */
-const isCodex = (model: Model): model is Extract<Model, `gpt-${string}`> =>
-  model.startsWith("gpt-");
+const isCodex = (model: Model) => model.startsWith("gpt-");
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 // USD per million tokens. Cache writes use the 5-minute rate.
 const PRICES = {
@@ -88,12 +87,42 @@ const PRICES = {
   "claude-opus-5-5": { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 },
 };
 type PricedModel = keyof typeof PRICES;
+const isPricedModel = (model: string): model is PricedModel => Object.hasOwn(PRICES, model);
+type EvalProvider = "direct" | "openrouter";
+type Proxy = { readonly url: string; readonly headers: Readonly<Record<string, string>> };
+/** OpenRouter uses the same Messages replay for every model, including the shell simulator. */
+export const openRouterProxy = (apiKey: string): Proxy => ({
+  url: "https://openrouter.ai/api/v1",
+  headers: { Authorization: `Bearer ${apiKey}` },
+});
+
+export const evalModels = (provider: EvalProvider, model?: string, shellModel?: string) => {
+  if (provider === "openrouter") {
+    const qualified = (id: string) => /^[\w-]+\/[^\s/]+$/.test(id);
+    if (!model || !qualified(model))
+      throw new Error("--provider openrouter needs a fully qualified --model (publisher/model).");
+    const shell = shellModel ?? "anthropic/claude-haiku-5.5";
+    if (!qualified(shell)) throw new Error("OpenRouter --shell-model must be publisher/model.");
+    return { model, shellModel: shell };
+  }
+  const agent = model ?? "claude-sonnet-5-5";
+  const shell = shellModel ?? "claude-haiku-5-5";
+  if (!Object.hasOwn(MODELS, agent)) throw new Error(`Unknown direct model: ${agent}`);
+  if (!isPricedModel(shell)) throw new Error(`Unknown direct shell model: ${shell}`);
+  return { model: agent, shellModel: shell };
+};
+
+export const redactModelError = (message: string, secrets: ReadonlyArray<string>) =>
+  secrets
+    .flatMap((value) => [value, value.replace(/^Bearer /i, "")])
+    .filter(Boolean)
+    .reduce((redacted, value) => redacted.replaceAll(value, "[redacted]"), message);
 const T3_PREFIX = "mcp__t3-code__";
 const RUNTIME_MARKER = "<runtime_info>";
 const TOOL_LOADED = "Tool loaded.";
 const DEFERRED_LIST =
   /(The following deferred tools are now available via ToolSearch\.[^\n]*\n)((?:[^\n]+\n)*)/;
-const MODEL_LINE = /You are powered by the model named .+?\. The exact model ID is [\w.-]+\./;
+const MODEL_LINE = /You are powered by the model named .+?\. The exact model ID is [\w./:-]+\./;
 // API keys can be billed differently for requests that open with Claude Code's identity line,
 // so every copy of it becomes a neutral line. The rest of the captured prompt is unchanged.
 const IDENTITY =
@@ -103,7 +132,12 @@ const NEUTRAL_IDENTITY = "You are an AI coding agent running in the user's termi
 type Block = { readonly type: string; readonly [key: string]: unknown };
 type ApiMessage = { readonly role: "user" | "assistant"; readonly content: ReadonlyArray<Block> };
 type ApiTool = { readonly name: string; readonly [key: string]: unknown };
-type Usage = Record<keyof (typeof PRICES)[PricedModel], number>;
+type Usage = Record<keyof (typeof PRICES)[PricedModel], number> & {
+  reportedCost?: number;
+  costedCalls?: number;
+  calls?: number;
+  models?: Array<string>;
+};
 type Call = {
   readonly step: number;
   readonly tool: string;
@@ -295,6 +329,7 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const Count = Schema.optional(Schema.NullOr(Schema.Number));
 const ApiResponse = Schema.Struct({
+  model: Schema.optional(Schema.String),
   content: Schema.Array(AnyBlock),
   stop_reason: Schema.NullOr(Schema.String),
   usage: Schema.Struct({
@@ -302,6 +337,7 @@ const ApiResponse = Schema.Struct({
     output_tokens: Schema.Number,
     cache_creation_input_tokens: Count,
     cache_read_input_tokens: Count,
+    cost: Count,
   }),
 });
 
@@ -311,6 +347,14 @@ const addUsage = (total: Usage, usage: typeof ApiResponse.Type.usage) => {
   total.output += usage.output_tokens;
   total.cacheWrite += usage.cache_creation_input_tokens ?? 0;
   total.cacheRead += usage.cache_read_input_tokens ?? 0;
+  total.calls = (total.calls ?? 0) + 1;
+  if (usage.cost !== undefined && usage.cost !== null) {
+    total.reportedCost = (total.reportedCost ?? 0) + usage.cost;
+    total.costedCalls = (total.costedCalls ?? 0) + 1;
+  }
+};
+const recordModel = (usage: Usage, model: string | undefined) => {
+  if (model !== undefined) usage.models = [...new Set([...(usage.models ?? []), model])];
 };
 
 const text = (value: string): Block => ({ type: "text", text: value });
@@ -367,12 +411,16 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
   HtmlToolkit,
 ]
   .flatMap((toolkit): ReadonlyArray<Tool.Any> => Object.values(toolkit.tools))
-  .concat([
-    FactoryToolkit.tools.factory_get_orchestrator,
-    FactoryToolkit.tools.factory_start_orchestrator,
-    FactoryToolkit.tools.factory_assign_orchestrator,
-    FactoryToolkit.tools.factory_read_work_prerequisites,
-  ]);
+  .concat(
+    Object.values(FactoryToolkit.tools).filter((tool) =>
+      [
+        "factory_get_orchestrator",
+        "factory_start_orchestrator",
+        "factory_assign_orchestrator",
+        "factory_read_work_prerequisites",
+      ].includes(tool.name),
+    ),
+  );
 const t3Tools: ReadonlyArray<ApiTool> = t3SourceTools.map((tool) => ({
   name: `${T3_PREFIX}${tool.name}`,
   description: Tool.getDescription(tool) ?? "",
@@ -524,7 +572,8 @@ export const buildBase = (
   const names = [...nativeDeferred, ...t3.map((tool) => tool.name)].toSorted().join("\n");
   const { model } = options;
   const append = options.nativeSubagent ? "" : t3SystemAppend(model, options.deviceAccess);
-  const modelLine = `You are powered by the model named ${MODELS[model]}. The exact model ID is ${model}.`;
+  const name = Object.hasOwn(MODELS, model) ? MODELS[model as keyof typeof MODELS] : model;
+  const modelLine = `You are powered by the model named ${name}. The exact model ID is ${model}.`;
   const joined = systemTexts.join("\n");
   // The capture's home directory names its user. Cases use `/home/user` paths instead.
   const cwd = /Primary working directory: (\S+)/.exec(joined)?.[1] ?? "/home/user/app";
@@ -1209,10 +1258,10 @@ export const mockOutput = (sample: Sample, command: string) =>
 type Config = {
   readonly apiKey: string;
   readonly model: Model;
-  readonly proxy?: { readonly url: string; readonly headers: Readonly<Record<string, string>> };
+  readonly proxy?: Proxy;
   readonly effort: string;
   readonly maxSteps: number;
-  readonly shellModel: PricedModel;
+  readonly shellModel: string;
 };
 
 /**
@@ -1240,6 +1289,7 @@ const simulate = Effect.fn("evaluateMcpToolUse.simulate")(function* (
       config.apiKey ? undefined : config.proxy,
     );
     addUsage(sample.shellUsage, response.usage);
+    recordModel(sample.shellUsage, response.model);
     output = shellOutput(response.content);
   }
   if (call.tool === "Bash" && output === "") output = "(Bash completed with no output)";
@@ -1546,6 +1596,16 @@ const RETRY = Schedule.min([Schedule.exponential("2 seconds"), Schedule.spaced("
   Schedule.jittered,
 );
 
+export const modelTarget = (apiKey: string, proxy?: Proxy, responses = false) => ({
+  url: `${proxy?.url ?? "https://api.anthropic.com/v1"}/${responses ? "responses" : "messages"}`,
+  headers: {
+    ...(apiKey ? { "x-api-key": apiKey } : {}),
+    "anthropic-version": "2023-06-01",
+    "anthropic-beta": "advanced-tool-use-2025-11-20",
+    ...proxy?.headers,
+  },
+});
+
 const postModel = Effect.fn("evaluateMcpToolUse.postModel")(function* (
   apiKey: string,
   body: unknown,
@@ -1563,16 +1623,9 @@ const postModel = Effect.fn("evaluateMcpToolUse.postModel")(function* (
       times: 8,
     }),
   );
-  const response = yield* HttpClientRequest.post(
-    `${proxy?.url ?? "https://api.anthropic.com/v1"}/${responses ? "responses" : "messages"}`,
-  ).pipe(
-    HttpClientRequest.setHeaders({
-      ...(apiKey ? { "x-api-key": apiKey } : {}),
-      "anthropic-version": "2023-06-01",
-      // Claude Code sends this beta for `defer_loading` tools and `tool_reference` results.
-      "anthropic-beta": "advanced-tool-use-2025-11-20",
-      ...proxy?.headers,
-    }),
+  const target = modelTarget(apiKey, proxy, responses);
+  const response = yield* HttpClientRequest.post(target.url).pipe(
+    HttpClientRequest.setHeaders(target.headers),
     HttpClientRequest.bodyJson(body),
     Effect.flatMap(client.execute),
   );
@@ -1623,7 +1676,7 @@ export const ranCalls = (
  * Runs one sample until the model ends its turn, uses up its steps, or fails a check that no
  * later step can undo. Tokens add up in `spent`, so a sample that errors still reports them.
  */
-const runSample = Effect.fn("evaluateMcpToolUse.runSample")(function* (
+export const runSample = Effect.fn("evaluateMcpToolUse.runSample")(function* (
   testCase: McpToolUseCase,
   config: Config,
   base: Base,
@@ -1647,8 +1700,9 @@ const runSample = Effect.fn("evaluateMcpToolUse.runSample")(function* (
   for (let step = 0; step < maxSteps; step++) {
     const response = input
       ? yield* callCodex(config, codexRequest(base, input))
-      : yield* callModel(config.apiKey, requestBody(sample, config.effort, messages));
+      : yield* callModel(config.apiKey, requestBody(sample, config.effort, messages), config.proxy);
     addUsage(usage, response.usage);
+    recordModel(usage, "model" in response ? response.model : undefined);
     if ("raw" in response) {
       input?.push(...response.raw);
       transcript.push(...response.raw);
@@ -1771,8 +1825,9 @@ const groups = <A>(rows: ReadonlyArray<A>, key: (row: A) => string) =>
 const USAGE_KEYS = ["input", "output", "cacheWrite", "cacheRead"] as const;
 /** Token totals and their cost in USD at one model's prices. Proxy runs have no price. */
 const spend = (usages: ReadonlyArray<Usage>, model: PricedModel | undefined) => {
-  const total = (key: keyof Usage) => usages.reduce((sum, usage) => sum + usage[key], 0);
-  const price = (key: keyof Usage) => (model ? PRICES[model][key] : 0);
+  const total = (key: (typeof USAGE_KEYS)[number]) =>
+    usages.reduce((sum, usage) => sum + usage[key], 0);
+  const price = (key: (typeof USAGE_KEYS)[number]) => (model ? PRICES[model][key] : 0);
   const cost = USAGE_KEYS.reduce((sum, key) => sum + total(key) * price(key), 0) / 1e6;
   return { cost, tokens: USAGE_KEYS.map((key) => `${key} ${total(key)}`).join(", ") };
 };
@@ -1780,19 +1835,31 @@ const spend = (usages: ReadonlyArray<Usage>, model: PricedModel | undefined) => 
 /** Markdown report. With a baseline, each case shows its earlier pass rate and the change. */
 export const summarize = (
   rows: Array<ResultRow>,
-  options: { readonly header: string; readonly shellModel: PricedModel; readonly model: Model },
+  options: {
+    readonly header: string;
+    readonly shellModel: string;
+    readonly model: Model;
+    readonly provider?: EvalProvider;
+  },
   before?: Map<string, number>,
 ) => {
   const codex = isCodex(options.model);
+  const openrouter = options.provider === "openrouter";
   const agent = spend(
     rows.map((row) => row.usage),
-    codex ? undefined : options.model,
+    !openrouter && isPricedModel(options.model) ? options.model : undefined,
   );
   const shell = spend(
     rows.map((row) => row.shellUsage),
-    options.shellModel,
+    !openrouter && isPricedModel(options.shellModel) ? options.shellModel : undefined,
   );
   const cost = agent.cost + shell.cost;
+  const reported = (key: "usage" | "shellUsage") => {
+    const costed = rows.reduce((sum, row) => sum + (row[key].costedCalls ?? 0), 0);
+    const calls = rows.reduce((sum, row) => sum + (row[key].calls ?? 0), 0);
+    const usd = rows.reduce((sum, row) => sum + (row[key].reportedCost ?? 0), 0);
+    return `${costed > 0 ? `$${usd.toFixed(6)}` : "unavailable"} (${costed}/${calls} responses reported cost; unreported charges are unknown)`;
+  };
   const table = (title: string, key: (row: ResultRow) => string, compare = false) => [
     `## ${title}\n`,
     compare ? "| Group | Pass | Baseline | Delta |" : "| Group | Pass |",
@@ -1824,11 +1891,19 @@ export const summarize = (
     `- ${options.header}`,
     `- Pass: ${percent(passRate(rows))} of ${finished} samples.`,
     ...(errors.length > 0 ? [errorNote] : []),
-    codex
-      ? "- Cost: not applicable (subscription through proxy)."
-      : `- Estimated cost $${cost.toFixed(2)}, $${(cost / rows.length).toFixed(3)} per sample.`,
-    `- Agent tokens: ${agent.tokens}${codex ? "." : ` ($${agent.cost.toFixed(2)}).`}`,
-    `- Shell simulator (${options.shellModel}) tokens: ${shell.tokens} (API-price estimate $${shell.cost.toFixed(2)}).`,
+    openrouter
+      ? "- Cost: OpenRouter API-reported amounts below; partial coverage is not a total run cost."
+      : codex
+        ? "- Cost: not applicable (subscription through proxy)."
+        : `- Estimated cost $${cost.toFixed(2)}, $${(cost / rows.length).toFixed(3)} per sample.`,
+    `- Agent tokens: ${agent.tokens}${openrouter ? `; OpenRouter cost ${reported("usage")}.` : codex ? "." : ` ($${agent.cost.toFixed(2)}).`}`,
+    `- Shell simulator (${options.shellModel}) tokens: ${shell.tokens}${openrouter ? `; OpenRouter cost ${reported("shellUsage")}.` : ` (API-price estimate $${shell.cost.toFixed(2)}).`}`,
+    ...(openrouter
+      ? (["usage", "shellUsage"] as const).map((key) => {
+          const models = [...new Set(rows.flatMap((row) => row[key].models ?? []))];
+          return `- Returned ${key === "usage" ? "agent" : "shell"} models: ${models.join(", ") || "not reported"}.`;
+        })
+      : []),
     ...(codex
       ? [
           "- Code-mode tools use case mocks and a simulated machine. Native subagent prompts and asynchronous notifications are approximate.",
@@ -1848,7 +1923,8 @@ const PositiveIntOrZero = Schema.FiniteFromString.check(
   Schema.isGreaterThanOrEqualTo(0),
 );
 const Flags = Schema.Struct({
-  model: Schema.Literals(Object.keys(MODELS) as Array<Model>),
+  provider: Schema.Literals(["direct", "openrouter"]),
+  model: Schema.optional(Schema.String),
   template: Schema.String,
   cases: Schema.optional(Schema.Array(Schema.String)),
   out: Schema.optional(Schema.String),
@@ -1858,7 +1934,7 @@ const Flags = Schema.Struct({
   concurrency: PositiveInt,
   "max-steps": Schema.optional(PositiveInt),
   effort: Schema.optional(Schema.Literals(EFFORTS)),
-  "shell-model": Schema.Literals(Object.keys(PRICES) as Array<PricedModel>),
+  "shell-model": Schema.optional(Schema.String),
   "user-instructions": Schema.Literals(["keep", "drop"]),
   "dry-run": Schema.Boolean,
   "stop-on-regression": Schema.Boolean,
@@ -1881,10 +1957,32 @@ const decodeBaselineRow = Schema.decodeUnknownEffect(
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const string = { type: "string" } as const;
 
+const OpenRouterCatalog = Schema.Struct({
+  data: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      supported_parameters: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ),
+});
+export const validateOpenRouterModels = (
+  catalog: typeof OpenRouterCatalog.Type,
+  model: string,
+  shellModel: string,
+) => {
+  for (const id of new Set([model, shellModel])) {
+    const entry = catalog.data.find((entry) => entry.id === id);
+    if (!entry) throw new Error(`OpenRouter model is absent from the live catalog: ${id}`);
+    if (id === model && !entry.supported_parameters?.includes("tools"))
+      throw new Error(`OpenRouter catalog does not advertise tool support for ${id}`);
+  }
+};
+
 const main = Effect.gen(function* () {
   const { values } = NodeUtil.parseArgs({
     options: {
-      model: { ...string, default: "claude-sonnet-5-5" },
+      provider: { ...string, default: "direct" },
+      model: string,
       template: string,
       cases: { ...string, multiple: true },
       out: string,
@@ -1897,7 +1995,7 @@ const main = Effect.gen(function* () {
       // Unset: 6 for Claude, 10 for Codex, whose code-mode cells take more steps.
       "max-steps": string,
       effort: string,
-      "shell-model": { ...string, default: "claude-haiku-5-5" },
+      "shell-model": string,
       // T3's text must work for every user, so the captured CLAUDE.md is dropped by default.
       "user-instructions": { ...string, default: "drop" },
       "dry-run": { type: "boolean", default: false },
@@ -1907,7 +2005,11 @@ const main = Effect.gen(function* () {
       context: { type: "boolean", default: false },
     },
   });
-  const flags = yield* decodeFlags({ template: "", ...values });
+  const decoded = yield* decodeFlags({ template: "", ...values });
+  const models = yield* Effect.try(() =>
+    evalModels(decoded.provider, decoded.model, decoded["shell-model"]),
+  );
+  const flags = { ...decoded, model: models.model, "shell-model": models.shellModel };
   if (flags.context) {
     process.stdout.write(`${t3ContextReport(flags.model)}\n`);
     return;
@@ -2014,17 +2116,27 @@ const main = Effect.gen(function* () {
     }
     return;
   }
-  const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
+  const openrouter = flags.provider === "openrouter";
+  const keyName = openrouter ? "OPENROUTER_API_KEY" : "ANTHROPIC_API_KEY";
+  const key = process.env[keyName] ?? "";
+  const apiKey = openrouter ? "" : key;
   const out = flags.out;
-  if ((!apiKey && !codex) || out === undefined) {
-    const message =
-      "Set ANTHROPIC_API_KEY and pass --out <directory>. ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL are never used.";
+  if ((!key && (openrouter || !codex)) || out === undefined) {
+    const message = `Set ${keyName} and pass --out <directory>. ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL are never used.`;
     return yield* Effect.die(new Error(message));
+  }
+  if (openrouter) {
+    const client = yield* HttpClient.HttpClient;
+    const response = yield* client.get("https://openrouter.ai/api/v1/models");
+    if (response.status !== 200)
+      return yield* Effect.die(new Error(`OpenRouter catalog HTTP ${response.status}`));
+    const catalog = yield* response.json.pipe(Schema.decodeUnknownEffect(OpenRouterCatalog));
+    yield* Effect.try(() => validateOpenRouterModels(catalog, flags.model, flags["shell-model"]));
   }
   const config: Config = {
     apiKey,
     model: flags.model,
-    ...(codex ? { proxy: proxyConfig() } : {}),
+    ...(openrouter ? { proxy: openRouterProxy(key) } : codex ? { proxy: proxyConfig() } : {}),
     effort,
     maxSteps: flags["max-steps"] ?? (codex ? 10 : 6),
     shellModel: flags["shell-model"],
@@ -2047,11 +2159,21 @@ const main = Effect.gen(function* () {
   const inFlight = yield* Semaphore.make(flags.concurrency);
   const runOne = (testCase: McpToolUseCase) => {
     const { id, kind, pattern } = testCase;
-    const identity = { id, kind, pattern, role: testCase.setup.role };
+    const identity = {
+      id,
+      kind,
+      pattern,
+      role: testCase.setup.role,
+      provider: openrouter ? "openrouter" : codex ? "cli-proxy" : "anthropic",
+      model: config.model,
+      shellModel: config.shellModel,
+      harness,
+      template: path.basename(templatePath),
+      commit,
+      effort,
+    };
     const usage = { usage: emptyUsage(), shellUsage: emptyUsage() };
-    const privateValues = [config.apiKey, ...Object.values(config.proxy?.headers ?? {})]
-      .flatMap((value) => [value, value.replace(/^Bearer /i, "")])
-      .filter(Boolean);
+    const privateValues = [config.apiKey, ...Object.values(config.proxy?.headers ?? {})];
     return runSample(testCase, config, baseFor(testCase), usage).pipe(
       inFlight.withPermits(1),
       Effect.matchCause({
@@ -2060,10 +2182,7 @@ const main = Effect.gen(function* () {
           ...identity,
           ...usage,
           pass: false,
-          error: privateValues.reduce(
-            (message, value) => message.replaceAll(value, "[redacted]"),
-            Cause.pretty(cause),
-          ),
+          error: redactModelError(Cause.pretty(cause), privateValues),
         }),
         onSuccess: (sample) => {
           const checks = gradeSample(testCase.expect, sample);
@@ -2109,7 +2228,7 @@ const main = Effect.gen(function* () {
     { concurrency: flags.concurrency, discard: true },
   ).pipe(Effect.ignore);
   const samples = flags.samples === undefined ? "2-3 (adaptive)" : flags.samples;
-  const header = `Commit \`${commit}\`, ${flags.model} at ${effort} effort, user instructions ${flags["user-instructions"]}, ${samples} samples per case, template \`${path.basename(templatePath)}\``;
+  const header = `Commit \`${commit}\`, provider ${openrouter ? "openrouter" : codex ? "cli-proxy" : "anthropic"}, ${flags.model} at ${effort} effort, ${harness} capture replay, user instructions ${flags["user-instructions"]}, ${samples} samples per case, template \`${path.basename(templatePath)}\``;
   const finished = new Set(rows.map((row) => row.id)).size;
   const stopped =
     regressions.length === 0
@@ -2123,6 +2242,7 @@ const main = Effect.gen(function* () {
       header: [header, t3ContextReport(flags.model), ...stopped].join("\n"),
       shellModel: config.shellModel,
       model: config.model,
+      provider: flags.provider,
     },
     flags.baseline === undefined ? undefined : baseline,
   );

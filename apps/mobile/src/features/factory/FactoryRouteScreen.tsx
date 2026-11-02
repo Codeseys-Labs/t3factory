@@ -5,7 +5,7 @@ import {
   type ProjectId,
   type ScheduledTaskId,
 } from "@t3tools/contracts";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, usePreventRemove } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -243,6 +243,17 @@ export function FactoryRouteScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<FactoryWorkRoutes>>();
   const { fontScale } = useWindowDimensions();
   const selection = useFactoryInboxSelection();
+  const reviewingWork =
+    selection.workReturn !== null &&
+    (selection.section === "issues" || selection.section === "briefs");
+  const backToWork = () => {
+    const work = returnToFactoryWork();
+    if (work !== null) navigation.navigate("SettingsFactoryWork", { work });
+  };
+  usePreventRemove(reviewingWork, ({ data }) => {
+    if (data.action.type === "GO_BACK" || data.action.type === "POP") backToWork();
+    else navigation.dispatch(data.action);
+  });
   const { environments, isReady } = useEnvironments();
   const projects = useProjects().filter((project) => !project.isScratch);
   const selectedEnvironment =
@@ -388,16 +399,12 @@ export function FactoryRouteScreen() {
             />
           </SettingsSection>
         )}
-        {selection.workReturn !== null &&
-        (selection.section === "issues" || selection.section === "briefs") ? (
+        {reviewingWork ? (
           <Button
             icon="chevron.left"
             label="Back to Work"
             accessibilityHint="Restores the Work scope and reopens the item you were reviewing"
-            onPress={() => {
-              const work = returnToFactoryWork();
-              if (work !== null) navigation.navigate("SettingsFactoryWork", { work });
-            }}
+            onPress={backToWork}
           />
         ) : null}
       </View>

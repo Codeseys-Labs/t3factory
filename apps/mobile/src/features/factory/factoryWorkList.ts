@@ -21,6 +21,7 @@ import { AsyncResult } from "effect/reactivity";
 export const FACTORY_WORK_PAGE_LIMIT = 25;
 /** Bounds how many keyset pages one owner keeps mounted; a refresh starts again from the first. */
 export const FACTORY_WORK_MAX_PAGES = 8;
+export const FACTORY_WORK_HISTORY_MAX_PAGES = 32;
 
 export const FACTORY_WORK_KINDS: ReadonlyArray<{
   readonly value: FactoryWorkKind | "all";
@@ -275,7 +276,7 @@ export function resolveFactoryWorkReview(input: {
     kind: "open",
     section: target.kind === "issue" ? "issues" : "briefs",
     projectId: detail.reviewProjectId,
-    label: target.kind === "issue" ? `Review issue #${target.issueNumber}` : "Review brief",
+    label: target.kind === "issue" ? `Find #${target.issueNumber} in Issues` : "Review brief",
     operateNote: input.canOperate
       ? null
       : "Starting or resuming needs operate permission in this environment. Review stays read-only.",

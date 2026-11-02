@@ -1,4 +1,4 @@
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { StackActions, useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import {
@@ -15,6 +15,7 @@ import {
   type ProjectId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { use } from "react";
 import { Linking, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -40,6 +41,7 @@ import {
 import { safeFactoryIssueUrl } from "./factoryIssues";
 import {
   FACTORY_WORK_KIND_LABELS,
+  FACTORY_WORK_HISTORY_MAX_PAGES,
   FACTORY_WORK_OWNER_MESSAGES,
   FACTORY_WORK_PAGE_LIMIT,
   factoryWorkAccess,
@@ -70,24 +72,30 @@ function Line(props: { readonly label: string; readonly value: string }) {
   );
 }
 
+function workHistoryQuery(
+  reference: FactoryWorkRef,
+  history: ReturnType<typeof factoryWorkHistoryFor>,
+) {
+  return factoryEnvironment.readWorkHistory({
+    environmentId: reference.environmentId,
+    input: {
+      ref: reference,
+      ...history.selection,
+      cursor: history.cursors.at(-1),
+      limit: FACTORY_WORK_PAGE_LIMIT,
+    },
+  });
+}
+
 function WorkHistory(props: { readonly reference: FactoryWorkRef; readonly work: string }) {
   const { reference, work } = props;
   const view = useFactoryWorkView();
   const openThread = useOpenFactoryThread();
   const history = factoryWorkHistoryFor(view, work);
-  const query = useEnvironmentQuery(
-    factoryEnvironment.readWorkHistory({
-      environmentId: reference.environmentId,
-      input: {
-        ref: reference,
-        ...history.selection,
-        cursor: history.cursors.at(-1),
-        limit: FACTORY_WORK_PAGE_LIMIT,
-      },
-    }),
-  );
+  const query = useEnvironmentQuery(workHistoryQuery(reference, history));
   const data = query.error === null ? query.data : null;
   const section = history.selection.section;
+  const pageLimitReached = history.cursors.length + 1 >= FACTORY_WORK_HISTORY_MAX_PAGES;
   return (
     <SettingsSection title={HISTORY_TITLES[section]}>
       <View className="gap-3 px-4 py-3">
@@ -188,12 +196,18 @@ function WorkHistory(props: { readonly reference: FactoryWorkRef; readonly work:
           <Button
             label="Next page"
             accessibilityLabel="Next history page"
-            disabled={!data?.nextCursor}
+            disabled={!data?.nextCursor || pageLimitReached}
             onPress={() => {
               if (data?.nextCursor) moveFactoryWorkHistoryPage(work, data.nextCursor);
             }}
           />
         </View>
+        {data?.nextCursor && pageLimitReached ? (
+          <Text className="text-xs text-foreground-muted">
+            History page limit reached. Earlier pages remain available; choose a narrower history
+            section to inspect more.
+          </Text>
+        ) : null}
       </View>
     </SettingsSection>
   );
@@ -363,6 +377,8 @@ function WorkDetail(props: {
 }
 
 export function FactoryWorkDetailRouteScreen() {
+  const registry = use(RegistryContext);
+  const view = useFactoryWorkView();
   const route = useRoute<RouteProp<FactoryWorkRoutes, "SettingsFactoryWork">>();
   const insets = useSafeAreaInsets();
   const work = route.params?.work;
@@ -402,7 +418,7 @@ export function FactoryWorkDetailRouteScreen() {
     body = (
       <EmptyState
         variant="plain"
-        title="Can't inspect"
+        title={status === "loading" ? "Loading work" : "Can't inspect"}
         detail={FACTORY_WORK_OWNER_MESSAGES[status]}
       />
     );
@@ -447,7 +463,11 @@ export function FactoryWorkDetailRouteScreen() {
               icon="arrow.clockwise"
               accessibilityLabel="Refresh work details"
               disabled={status !== "current" || query.isPending}
-              onPress={query.refresh}
+              onPress={() => {
+                query.refresh();
+                if (work !== undefined)
+                  registry.refresh(workHistoryQuery(reference, factoryWorkHistoryFor(view, work)));
+              }}
             />
           </View>
         ) : null}

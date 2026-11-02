@@ -12,7 +12,7 @@ import { Atom } from "effect/reactivity";
 
 import { appAtomRegistry } from "../../state/atom-registry";
 import { FACTORY_DEFAULT_RUNTIME_MODE, type FactoryIssueFilter } from "./factoryIssues";
-import { FACTORY_WORK_MAX_PAGES } from "./factoryWorkList";
+import { FACTORY_WORK_HISTORY_MAX_PAGES, FACTORY_WORK_MAX_PAGES } from "./factoryWorkList";
 
 export type FactorySection =
   | "work"
@@ -283,12 +283,13 @@ export function selectFactoryWorkHistory(
 export function moveFactoryWorkHistoryPage(work: string, next: string | null): void {
   appAtomRegistry.update(factoryWorkViewAtom, (current) => {
     const history = factoryWorkHistoryFor(current, work);
+    if (next !== null && history.cursors.length + 1 >= FACTORY_WORK_HISTORY_MAX_PAGES)
+      return current;
     return {
       ...current,
       history: {
         ...history,
-        cursors:
-          next === null ? history.cursors.slice(0, -1) : [...history.cursors, next].slice(-32),
+        cursors: next === null ? history.cursors.slice(0, -1) : [...history.cursors, next],
       },
     };
   });

@@ -63,7 +63,7 @@ function OwnerHeader(props: { readonly owner: FactoryWorkOwnerView; readonly lab
       <Text className="text-base font-t3-medium text-foreground">{props.label}</Text>
       <Text
         className={
-          owner.status === "current"
+          owner.status === "current" || owner.status === "loading"
             ? "text-xs text-foreground-muted"
             : "text-sm text-danger-foreground"
         }
@@ -150,10 +150,14 @@ function WorkRow(props: {
       : null,
   ].filter((entry): entry is string => entry !== null);
   const kind = FACTORY_WORK_KIND_LABELS[item.ref.kind];
+  const projectRole =
+    item.ref.kind === "brief" || item.ref.kind === "protocol"
+      ? "Authoring project"
+      : "Admission project";
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${item.title}. ${kind}. Admission project ${props.projectLabel}.`}
+      accessibilityLabel={`${item.title}. ${kind}. ${projectRole} ${props.projectLabel}.`}
       accessibilityHint={stale ? "Refresh this environment to inspect" : "Opens work details"}
       accessibilityState={{ selected: props.selected, disabled: stale }}
       disabled={stale}
@@ -166,7 +170,7 @@ function WorkRow(props: {
     >
       <Text className="text-base text-foreground">{item.title}</Text>
       <Text className="text-xs text-foreground-muted">
-        {kind} · Admission project {props.projectLabel} ·{" "}
+        {kind} · {projectRole} {props.projectLabel} ·{" "}
         {new Date(item.createdAt).toLocaleDateString()}
       </Text>
       {conditions.map((condition) => (

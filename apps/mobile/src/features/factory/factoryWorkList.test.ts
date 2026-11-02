@@ -204,7 +204,7 @@ describe("resolveFactoryWorkReview", () => {
       kind: "open",
       section: "issues",
       projectId: reviewer,
-      label: "Review issue #7",
+      label: "Find #7 in Issues",
       operateNote: null,
     });
     expect(review(detail({ kind: "brief", briefId: "b" }), { canOperate: false })).toMatchObject({

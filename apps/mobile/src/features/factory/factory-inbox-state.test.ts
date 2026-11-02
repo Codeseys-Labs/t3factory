@@ -327,5 +327,20 @@ describe("Factory Work view", () => {
     expect(
       factoryWorkHistoryFor(appAtomRegistry.get(factoryWorkViewAtom), "work-a").cursors,
     ).toEqual([]);
+    for (let page = 1; page <= 34; page += 1) {
+      moveFactoryWorkHistoryPage("work-a", `page-${page}`);
+    }
+    expect(
+      factoryWorkHistoryFor(appAtomRegistry.get(factoryWorkViewAtom), "work-a").cursors,
+    ).toEqual(Array.from({ length: 31 }, (_, index) => `page-${index + 1}`));
+    for (let page = 31; page > 0; page -= 1) {
+      expect(
+        factoryWorkHistoryFor(appAtomRegistry.get(factoryWorkViewAtom), "work-a").cursors.at(-1),
+      ).toBe(`page-${page}`);
+      moveFactoryWorkHistoryPage("work-a", null);
+    }
+    expect(
+      factoryWorkHistoryFor(appAtomRegistry.get(factoryWorkViewAtom), "work-a").cursors,
+    ).toEqual([]);
   });
 });

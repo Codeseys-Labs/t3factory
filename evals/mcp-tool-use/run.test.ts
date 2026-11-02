@@ -274,6 +274,11 @@ it.each([
     bad: "#12 is blocked by #9 and #4. After following #9, its blockers are again #9 and #4.",
   },
   {
+    id: "work-prerequisites-follow-retained",
+    good: "#12 is blocked by #9 and #4. Chain: #12 ← #9 ← #3. Nothing was started.",
+    bad: "#12 is blocked by #9 and #4. Chain: #12 ← #3 ← #9. Nothing was started.",
+  },
+  {
     id: "work-prerequisites-not-modeled-brief",
     good: "The brief Work is retained; its prerequisites are not modeled here. Dependencies may exist elsewhere.",
     bad: "Prerequisites are not modeled here. This brief has no dependencies.",

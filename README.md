@@ -1,9 +1,15 @@
 # T3 Factory
 
-T3 Factory (`t3factory`) is a fork of [T3 Code](https://github.com/pingdotgg/t3code) for
-project-scoped issue and feed intake, scheduled agent prompts, and an explicit project orchestrator.
-It retains T3 Code's provider-backed threads and web, Electron desktop, and native mobile clients.
+T3 Factory (`t3factory`) evolves [T3 Code](https://github.com/pingdotgg/t3code) into one
+product for software, research, and knowledge work. Start a thread with an outcome,
+coordinate people, agents, tools, and compute, then review evidence and authorize delivery.
+**T3 Factory is the application, not a feature inside T3 Code.** Its product identity
+and branding apply across web, Electron desktop, and native mobile.
 Upstream T3 Code is developed by T3 Tools; its attribution and license remain unchanged.
+
+This describes the product direction, not a claim that every designed flow is implemented.
+The [design library](./docs/factory/design/README.md) contains editable source assets,
+the Figma/FigJam entry points, and the standalone/optional Linear design contract.
 
 Open **Factory** for Overview, Issues, Sources, Workflows, and Orchestrator. Use **Sessions** or
 **New thread** for ordinary conversations. The [Factory guide](./docs/user/source-control.md#factory)

@@ -1,0 +1,262 @@
+{
+  "origin": "T3Factory design research 2026-11-02, rounds 05\u201307",
+  "changes": "Application wordmark changed to T3 Factory in current SVGs and shared renderer. Original review byte hashes refer to pre-branding source. This package does not assert new native Figma acceptance.",
+  "files": [
+    {
+      "path": "round-05/build/build_f5_diagrams.py",
+      "originalSha256": "d1e52207e75ba6926f51f75f88fd68411a0ffe132b91f1bc82a3aeefebd34da0"
+    },
+    {
+      "path": "round-05/build/build_workspace.py",
+      "originalSha256": "8538d923a4e4a6d86e5557164b4531b38f12c5030d2922fdcc014585a5f0633f"
+    },
+    {
+      "path": "round-05/build/council_collections.py",
+      "originalSha256": "d5c24ad258ee2a93b8c19c935d41d6e28ade5c0b940f61a0b0a0694ba7a0bf14"
+    },
+    {
+      "path": "round-05/build/council_desktop.py",
+      "originalSha256": "1d4158bdfd6fc5381ba001d630d2fc528f5915451e3576c8533141a285b5a726"
+    },
+    {
+      "path": "round-05/build/council_evidence.py",
+      "originalSha256": "740cb4bcee084c504c97d7d164eb1152943ad518cbe4fda2574706b0acc0202d"
+    },
+    {
+      "path": "round-05/build/council_parent.py",
+      "originalSha256": "02dca2279f28a5cb3a0aff958b5ee5e573ffa26e12037d658ed1a3bb3174e735"
+    },
+    {
+      "path": "round-05/build/council_workflows.py",
+      "originalSha256": "d329b29354363abfe9f3868312a7ee992af78c8efcca643a63b209530b12afd0"
+    },
+    {
+      "path": "round-05/build/delivery_graph.py",
+      "originalSha256": "d27f5d7a7422d8bee13f1bbd966e4c63d827de787ef9b61d8344c1103a7300eb"
+    },
+    {
+      "path": "round-05/build/native_svg.py",
+      "originalSha256": "2e1dc96d144faf2281032474ed01861cc0a2c9306e3c31cc8395cfa501c75fe3"
+    },
+    {
+      "path": "round-05/build/operations_graph.py",
+      "originalSha256": "d9a00198262513616a19a9b4df3c2089f3fd838efd0d0fed20989074aa9b3163"
+    },
+    {
+      "path": "round-05/build/workspace_graph.py",
+      "originalSha256": "ffe62802dbc58188f914be6f26188d821817cb538e3eb624c47755e6f3700e2c"
+    },
+    {
+      "path": "round-05/spec/base.json",
+      "originalSha256": "8658d3448eb30c98b79b3c5a26566baca215fd9f1bfdbb0cb938826934b714e7"
+    },
+    {
+      "path": "round-05/spec/collections.json",
+      "originalSha256": "e0006edc65ec1d01872dc8b4af7dfebbfe53e659ce852e89b10282878ae09ebb"
+    },
+    {
+      "path": "round-05/spec/delivery.json",
+      "originalSha256": "e814fd11cd48faf8c4829d4d09d723e1af421792e5701b8bdcc5443f853bd623"
+    },
+    {
+      "path": "round-05/spec/diagram-contract.json",
+      "originalSha256": "a4e59820baa7989097fea602ff84837d7be405e3ab0bb4867858c77e569e3579"
+    },
+    {
+      "path": "round-05/spec/experience-contract.md",
+      "originalSha256": "fdbccbf454b6110e5219fb089e56aa9c940fd9ccf80604359b73ebc639ff1e35"
+    },
+    {
+      "path": "round-05/spec/figjam.md",
+      "originalSha256": "b284e2ee19aeb2197664eef48ced440104a644bd71c5dc61d629ebc0f9c3a76e"
+    },
+    {
+      "path": "round-05/spec/operations.json",
+      "originalSha256": "d5e8cc25834ed55389a499008444df5ea9b521415d248812e0ef0216c647e0bc"
+    },
+    {
+      "path": "round-05/spec/parent.json",
+      "originalSha256": "bf0918844e82e3daafd80666b7299bfd0befe19232affa4749d372dbfaa5cc36"
+    },
+    {
+      "path": "round-05/spec/prototype-constraints.md",
+      "originalSha256": "ed0cc8fef91f79034f2307afc89ef3ba852ce044179f44fc47dd556e5d0c830f"
+    },
+    {
+      "path": "round-05/spec/sourceowners.json",
+      "originalSha256": "62dd4356ccd57622a331bf63ecf9e40693b2814a340139a181f5cc4aa063a7e8"
+    },
+    {
+      "path": "round-05/spec/triggers.json",
+      "originalSha256": "6c29ea1fa89db327ae468cea4737ddc0241e8ed5e8ffcb95594493ddfef388d3"
+    },
+    {
+      "path": "round-05/spec/workflows.json",
+      "originalSha256": "dada44efab2a31e40fb6bb0a32b97f52cf88a41615949981cf40141c27692f59"
+    },
+    {
+      "path": "round-04/build/svgkit.py",
+      "originalSha256": "59c351a841145bb25f709cf2450c0c86e6f6d845a3e792c85871d878a5d630d3"
+    },
+    {
+      "path": "round-04/build/build_diagrams.py",
+      "originalSha256": "a8f4861b07116df81b8b2af68c2baff83e03890e263f09da03a251506dd7fc33"
+    },
+    {
+      "path": "round-04/build/render.py",
+      "originalSha256": "ef475b1d304f31f226b0c4d52308f304435859abe98ce0d7d49b644cb7d82b9c"
+    },
+    {
+      "path": "round-04/build/fonts/Inter-Bold.ttf",
+      "originalSha256": "288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f"
+    },
+    {
+      "path": "round-04/build/fonts/Inter-Medium.ttf",
+      "originalSha256": "97ad806f526e41546d46365bb3a393145f75b7b1568913db74549ad8b8dba872"
+    },
+    {
+      "path": "round-04/build/fonts/Inter-Regular.ttf",
+      "originalSha256": "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82"
+    },
+    {
+      "path": "round-04/build/fonts/Inter-SemiBold.ttf",
+      "originalSha256": "78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3"
+    },
+    {
+      "path": "round-07-optional-linear/build/build_optional_linear.py",
+      "originalSha256": "29bc779ddeb58cf991191669f551fbd918ecf48c409120b78c9d307f215b7521"
+    },
+    {
+      "path": "round-07-optional-linear/parent-build/refine.py",
+      "originalSha256": "bc04caf69c044add8fb3a7394b8d014c52c4d53371486fd8ba260f8c3e599f3d"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-01.svg",
+      "originalSha256": "2febcb173788ffebe633ad75c09c0d4bf6b8d062babc29eed9679fe5bfd7ac6c"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-02.svg",
+      "originalSha256": "895080a1b9b649e7e9b420073da229fc3c38fcc1d3935e20f09bfec655b7f380"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-03.svg",
+      "originalSha256": "5ff752f40584a310aacfcdafa78d58cb9af95094e1474450e6529a54b05d7ffc"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-04.svg",
+      "originalSha256": "3f988676db5423f335125c7de7bc7a40c3ec1ae8adc606cd869a157062296885"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-05.svg",
+      "originalSha256": "c3ceb2cad5415ccbb7303cbc443e6a2447bb6622c1fb9af44ae7090955d75c92"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-06.svg",
+      "originalSha256": "4b12316f93754670c43dd9e47bbdbffb06f80e7ae828392b2221df772af9e50d"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-07.svg",
+      "originalSha256": "1cbc178d99aab25f3b2e533d2e65640d27d03010a1791c9e693ced1448dea957"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-08.svg",
+      "originalSha256": "f03ba6c06378dffad8212de454fe37bbd3d1efe60dfbed0aaf0b21bb8cd0d479"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-09.svg",
+      "originalSha256": "8fc540221d5e478094b7d174920880d9a90cc98674e5afe2569f2e79e0bac20c"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-10.svg",
+      "originalSha256": "231ba47b4acdd57146f22989beb65e64e4b52c77e84d3c7ecc73b89a48de9cc8"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-11.svg",
+      "originalSha256": "0b32c00d65a678b17fbe1e780e09ff6f470541c2fc6c744d065f376ea5d3ca66"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-12.svg",
+      "originalSha256": "58d3f057b3a944fdd81a8b846632c89fb9a77f35c691d70c7432554308509fcc"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-13.svg",
+      "originalSha256": "12684be07eaac9437e56ba30dae601f9ea4bb5c147efae10371bf6b737cecc90"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-14.svg",
+      "originalSha256": "344ffd660da7d2b7ee2142015d3136b1706e062b76d864e278a16c7ff66dc0c5"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-15.svg",
+      "originalSha256": "c11fe30a70ff05c13a5f88186e398bbca791c7f03c3b496235f26326a930219c"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-16.svg",
+      "originalSha256": "c9f01d92ea6eb53b60930d4d563c41490f1c83f77d09d82286997a9c456a3a26"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-17.svg",
+      "originalSha256": "942972bc44a4428af47e40022a124fbd32f6d1d5f8d52c319facef5ea58bdbce"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-18.svg",
+      "originalSha256": "63cb9d1efc1e1303db6d33672640650ffe5f277409f7ce06f7eb2b6c16aa2908"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-19.svg",
+      "originalSha256": "67bfec05ce9061aec39020dc282dab2d9a11afed53e795c6fa12a416f83ff674"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-20.svg",
+      "originalSha256": "b0b23f172e0182ce19bf1f9ca024b03d70ee3d860a68c463a389fbc059a9d3ba"
+    },
+    {
+      "path": "round-07-optional-linear/refined/screens/R7F-22.svg",
+      "originalSha256": "9cb1c41d692e8677cc32520919f7a7ad0660b373b934e49794b9daacacaa2fd1"
+    },
+    {
+      "path": "round-07-optional-linear/refined/action-regions.json",
+      "originalSha256": "ac355849c993593ab163b37b4020dda1cd5c16451a62510ac83e30ca5656cdf7"
+    },
+    {
+      "path": "round-07-optional-linear/refined/edges.json",
+      "originalSha256": "7ef375a19f013230b5ec756e72899cb9126b73f397cb5053ac916525f084120e"
+    },
+    {
+      "path": "round-07-optional-linear/refined/wiring-ledger.json",
+      "originalSha256": "143e0c0d5e858e1e82137515d025e7b9929978ae961d408fb4b2de69dbff605d"
+    },
+    {
+      "path": "round-07-optional-linear/refined/native-bindings.json",
+      "originalSha256": "719196268618ea004418e6e4cb54b24ab4e80354494604b1a4f7189ef864c469"
+    },
+    {
+      "path": "round-07-optional-linear/refined/design-decisions.md",
+      "originalSha256": "1892c86f19ee484c29709ec2c987b7b23fd29bf5abf7b52f05dddd44618e8a31"
+    },
+    {
+      "path": "round-06-linear/decision.md",
+      "originalSha256": "027ea3bd35b84a8553872906d559059daf075ae1d253acf29c783f39a57fb87f"
+    },
+    {
+      "path": "round-06-linear/sync-contract/decision.md",
+      "originalSha256": "285385daef3e9d7d08d71c1275b7e97f2462ef562c933932b3c8474a655f3ce0"
+    },
+    {
+      "path": "round-06-linear/sync-contract/mapping.json",
+      "originalSha256": "c27f5c7d85b702f894c6884fdc51714cd0320d2cf75ae16eaa3eb897c36e0a8d"
+    },
+    {
+      "path": "round-06-linear/ux-comparison/decision.md",
+      "originalSha256": "1c58574d3413c1f160b9ea0785e3eb247b3175a3817892bdf7b77b44369a714c"
+    },
+    {
+      "path": "round-05/screens/F5-FLOW.svg",
+      "originalSha256": "9c3a0f944db84217ad8b117c556a4cca0f318a60033fafcc04d9cf3975ca9918"
+    },
+    {
+      "path": "round-05/screens/F5-DATA.svg",
+      "originalSha256": "366e5d947872286fda04dd1fbd9c5ae9885e1f734782343ab73fe63f52dd38c3"
+    }
+  ]
+}

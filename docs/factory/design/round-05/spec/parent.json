@@ -1,0 +1,3245 @@
+{
+  "schema": "t3factory-workspace-scenes/1",
+  "scenes": [
+    {
+      "id": "F5-P-COORDINATOR",
+      "title": "Project coordinator · ordinary thread",
+      "shell": {
+        "mode": "thread",
+        "section": "Coordinator",
+        "breadcrumb": "Coordinator",
+        "navTargets": {},
+        "threadKind": "coordinator"
+      },
+      "tag": "Proposed Factory · fictional fixtures",
+      "caption": "Read-only project coordinator example using the same ordinary T3 conversation and composer as native threads. It does not create a task, move a source or imply a second agent console.",
+      "state": {
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "nativeExecution": "idle",
+        "threadPurpose": "project coordinator",
+        "sourceMutation": false
+      },
+      "regions": [
+        {
+          "id": "native-message-user",
+          "kind": "card",
+          "box": [432, 140, 736, 150],
+          "props": {
+            "style": "panel",
+            "lines": [
+              {
+                "t": "You",
+                "x": 20,
+                "y": 28,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              },
+              {
+                "t": "Check the configured project workflows. Do not launch any work.",
+                "x": 20,
+                "y": 62,
+                "s": 16,
+                "w": 400,
+                "c": "FG",
+                "wrap": 696,
+                "lh": 24
+              }
+            ]
+          }
+        },
+        {
+          "id": "native-message-assistant",
+          "kind": "text",
+          "box": [432, 320, 736, 126],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Claude · Fable",
+                "x": 0,
+                "y": 26,
+                "s": 14,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "I’ll inspect the project configuration and explain the available execution targets before any launch.",
+                "x": 0,
+                "y": 66,
+                "s": 16,
+                "w": 400,
+                "c": "FG",
+                "wrap": 720,
+                "lh": 24
+              },
+              {
+                "t": "Project-scoped conversation · no task admitted",
+                "x": 0,
+                "y": 120,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "native-tool-card",
+          "kind": "card",
+          "box": [432, 478, 736, 104],
+          "props": {
+            "style": "panel",
+            "lines": [
+              {
+                "t": "Project context",
+                "x": 16,
+                "y": 28,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Factory · Workstation · acme/factory",
+                "x": 16,
+                "y": 58,
+                "s": 13,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Conversation only; source owners keep their records.",
+                "x": 16,
+                "y": 84,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "native-composer",
+          "kind": "composer",
+          "box": [416, 716, 768, 144],
+          "props": {
+            "style": "composer",
+            "lines": [
+              {
+                "t": "Send a follow-up…",
+                "x": 16,
+                "y": 36,
+                "s": 16,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Claude · Fable",
+                "x": 104,
+                "y": 117,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "native-attach",
+          "kind": "button",
+          "box": [432, 812, 40, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "+",
+            "size": 14
+          }
+        },
+        {
+          "id": "native-send",
+          "kind": "button",
+          "box": [1128, 812, 40, 32],
+          "props": {
+            "variant": "disabled",
+            "label": "↑",
+            "size": 14
+          }
+        },
+        {
+          "id": "native-context-environment",
+          "kind": "card",
+          "box": [1280, 116, 280, 148],
+          "props": {
+            "style": "panel",
+            "lines": [
+              {
+                "t": "Environment",
+                "x": 16,
+                "y": 29,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Workstation",
+                "x": 16,
+                "y": 67,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "Project coordinator",
+                "x": 16,
+                "y": 99,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Ordinary T3 thread",
+                "x": 16,
+                "y": 128,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "native-context-project",
+          "kind": "card",
+          "box": [1280, 280, 280, 180],
+          "props": {
+            "style": "panel",
+            "lines": [
+              {
+                "t": "Project context",
+                "x": 16,
+                "y": 29,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Factory",
+                "x": 16,
+                "y": 67,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "acme/factory",
+                "x": 16,
+                "y": 99,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Workflow definitions and source links",
+                "x": 16,
+                "y": 131,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 244,
+                "lh": 18
+              },
+              {
+                "t": "No separate Factory agent console",
+                "x": 16,
+                "y": 163,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "coordinator-return",
+          "kind": "button",
+          "box": [432, 76, 88, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Back",
+            "size": 14,
+            "link": {
+              "edge": "F5-PCE01",
+              "to": "F5-P-MORE",
+              "type": "back",
+              "effect": "return",
+              "allowedOrigins": ["F5-P-MORE"]
+            }
+          }
+        }
+      ],
+      "staticControls": [
+        "Native input, search, composer, source mutation and platform controls not linked in this read-only design study. No real operation is performed."
+      ]
+    },
+    {
+      "id": "F5-P-N0",
+      "title": "Work · narrow List",
+      "shell": {
+        "mode": "narrow",
+        "section": "Work",
+        "breadcrumb": "Work",
+        "navTargets": {}
+      },
+      "tag": "Proposed Factory · fictional fixtures",
+      "caption": "Proposed narrow adaptation of the native shell: sidebar closed, one List query, and a contextual sheet instead of squeezing an inspector beside the collection. Selection and planning/source/execution values do not change.",
+      "state": {
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "query": {
+          "environmentId": "env-ws",
+          "projectId": "project-factory",
+          "filter": "All planned",
+          "sort": "Planning stage",
+          "scope": "This project in Workstation only"
+        },
+        "view": "List",
+        "selection": {
+          "kind": "planned",
+          "environmentId": "env-ws",
+          "projectId": "project-factory",
+          "id": "plan-237"
+        },
+        "sourceRef": {
+          "provider": "github",
+          "repository": "acme/factory",
+          "number": 237,
+          "revision": 3
+        },
+        "source237Planned": true,
+        "planningStage": "Ready",
+        "nativeExecution": "none",
+        "retainedWorkRef": null,
+        "nativeThreadId": null,
+        "invocationRef": null,
+        "externalRunId": null,
+        "returnOrigin": "F5-C04",
+        "records": [
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-237"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 237,
+              "revision": 3
+            },
+            "planningStage": "Ready",
+            "sourceState": "Open",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-brief-14"
+            },
+            "sourceRef": {
+              "kind": "brief",
+              "id": "brief-14",
+              "revision": 2
+            },
+            "planningStage": "Ready",
+            "sourceState": "Draft",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-research-7"
+            },
+            "sourceRef": {
+              "kind": "research",
+              "id": "research-7",
+              "revision": 1
+            },
+            "planningStage": "Backlog",
+            "sourceState": "Sealed",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-issue-231"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 231,
+              "revision": 2
+            },
+            "planningStage": "In progress",
+            "sourceState": "Open",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-feed-8"
+            },
+            "sourceRef": {
+              "kind": "feed",
+              "sourceId": "rss-engineering",
+              "itemId": "item-8",
+              "revision": 1
+            },
+            "planningStage": "Backlog",
+            "sourceState": "Reviewed",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-brief-15"
+            },
+            "sourceRef": {
+              "kind": "brief",
+              "id": "brief-15",
+              "revision": 1
+            },
+            "planningStage": "Ready",
+            "sourceState": "Draft",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-note-4"
+            },
+            "sourceRef": {
+              "kind": "project-note",
+              "id": "note-4",
+              "revision": 1
+            },
+            "planningStage": "Done",
+            "sourceState": "Local",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-issue-229"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 229,
+              "revision": 1
+            },
+            "planningStage": "In progress",
+            "sourceState": "Open",
+            "executionLabel": "Not started"
+          }
+        ],
+        "viewport": "960px",
+        "detailSheet": false
+      },
+      "regions": [
+        {
+          "id": "work-query",
+          "kind": "text",
+          "box": [68, 112, 872, 54],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Work",
+                "x": 0,
+                "y": 24,
+                "s": 18,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "Factory · Workstation · All planned · 8 items",
+                "x": 0,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-research-7",
+          "kind": "row",
+          "box": [68, 190, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Compare incremental indexing",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "Research 7 · rev 1 · Sealed",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-feed-8",
+          "kind": "row",
+          "box": [68, 260, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Review filesystem watcher limits",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "RSS · item 8 · rev 1 · Reviewed",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-237",
+          "kind": "row",
+          "box": [68, 330, 872, 64],
+          "props": {
+            "style": "row-selected",
+            "lines": [
+              {
+                "t": "Keep the search index responsive in large repositories",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "GitHub #237 · rev 3 · Open",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ],
+            "link": {
+              "edge": "F5-PNE01",
+              "to": "F5-P-N1",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "narrow-plan-brief-14",
+          "kind": "row",
+          "box": [68, 400, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Clarify API error responses",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "Brief 14 · rev 2 · Draft",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-brief-15",
+          "kind": "row",
+          "box": [68, 470, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Document cancellation behavior",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "Brief 15 · rev 1 · Draft",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-issue-231",
+          "kind": "row",
+          "box": [68, 540, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Report cache warm-up progress",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "GitHub #231 · rev 2 · Open",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-issue-229",
+          "kind": "row",
+          "box": [68, 610, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Add a search recovery command",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "GitHub #229 · rev 1 · Open",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-note-4",
+          "kind": "row",
+          "box": [68, 680, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Refresh the project checklist",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "Project note · rev 1 · Local",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        }
+      ],
+      "staticControls": [
+        "Native input, search, composer, source mutation and platform controls not linked in this read-only design study. No real operation is performed."
+      ],
+      "canvas": {
+        "width": 960,
+        "height": 1060
+      }
+    },
+    {
+      "id": "F5-P-N1",
+      "title": "Work · narrow List · detail sheet",
+      "shell": {
+        "mode": "narrow",
+        "section": "Work",
+        "breadcrumb": "Work",
+        "navTargets": {}
+      },
+      "tag": "Proposed Factory · fictional fixtures",
+      "caption": "Proposed narrow adaptation of the native shell: sidebar closed, one List query, and a contextual sheet instead of squeezing an inspector beside the collection. Selection and planning/source/execution values do not change.",
+      "state": {
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "query": {
+          "environmentId": "env-ws",
+          "projectId": "project-factory",
+          "filter": "All planned",
+          "sort": "Planning stage",
+          "scope": "This project in Workstation only"
+        },
+        "view": "List",
+        "selection": {
+          "kind": "planned",
+          "environmentId": "env-ws",
+          "projectId": "project-factory",
+          "id": "plan-237"
+        },
+        "sourceRef": {
+          "provider": "github",
+          "repository": "acme/factory",
+          "number": 237,
+          "revision": 3
+        },
+        "source237Planned": true,
+        "planningStage": "Ready",
+        "nativeExecution": "none",
+        "retainedWorkRef": null,
+        "nativeThreadId": null,
+        "invocationRef": null,
+        "externalRunId": null,
+        "returnOrigin": "F5-C04",
+        "records": [
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-237"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 237,
+              "revision": 3
+            },
+            "planningStage": "Ready",
+            "sourceState": "Open",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-brief-14"
+            },
+            "sourceRef": {
+              "kind": "brief",
+              "id": "brief-14",
+              "revision": 2
+            },
+            "planningStage": "Ready",
+            "sourceState": "Draft",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-research-7"
+            },
+            "sourceRef": {
+              "kind": "research",
+              "id": "research-7",
+              "revision": 1
+            },
+            "planningStage": "Backlog",
+            "sourceState": "Sealed",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-issue-231"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 231,
+              "revision": 2
+            },
+            "planningStage": "In progress",
+            "sourceState": "Open",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-feed-8"
+            },
+            "sourceRef": {
+              "kind": "feed",
+              "sourceId": "rss-engineering",
+              "itemId": "item-8",
+              "revision": 1
+            },
+            "planningStage": "Backlog",
+            "sourceState": "Reviewed",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-brief-15"
+            },
+            "sourceRef": {
+              "kind": "brief",
+              "id": "brief-15",
+              "revision": 1
+            },
+            "planningStage": "Ready",
+            "sourceState": "Draft",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-note-4"
+            },
+            "sourceRef": {
+              "kind": "project-note",
+              "id": "note-4",
+              "revision": 1
+            },
+            "planningStage": "Done",
+            "sourceState": "Local",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-issue-229"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 229,
+              "revision": 1
+            },
+            "planningStage": "In progress",
+            "sourceState": "Open",
+            "executionLabel": "Not started"
+          }
+        ],
+        "viewport": "960px",
+        "detailSheet": true
+      },
+      "regions": [
+        {
+          "id": "work-query",
+          "kind": "text",
+          "box": [68, 112, 872, 54],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Work",
+                "x": 0,
+                "y": 24,
+                "s": 18,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "Factory · Workstation · All planned · 8 items",
+                "x": 0,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-research-7",
+          "kind": "row",
+          "box": [68, 190, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Compare incremental indexing",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "Research 7 · rev 1 · Sealed",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-feed-8",
+          "kind": "row",
+          "box": [68, 260, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Review filesystem watcher limits",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "RSS · item 8 · rev 1 · Reviewed",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-237",
+          "kind": "row",
+          "box": [68, 330, 872, 64],
+          "props": {
+            "style": "row-selected",
+            "lines": [
+              {
+                "t": "Keep the search index responsive in large repositories",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "GitHub #237 · rev 3 · Open",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-brief-14",
+          "kind": "row",
+          "box": [68, 400, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Clarify API error responses",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "Brief 14 · rev 2 · Draft",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-brief-15",
+          "kind": "row",
+          "box": [68, 470, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Document cancellation behavior",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "Brief 15 · rev 1 · Draft",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-issue-231",
+          "kind": "row",
+          "box": [68, 540, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Report cache warm-up progress",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "GitHub #231 · rev 2 · Open",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-issue-229",
+          "kind": "row",
+          "box": [68, 610, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Add a search recovery command",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "GitHub #229 · rev 1 · Open",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-plan-note-4",
+          "kind": "row",
+          "box": [68, 680, 872, 64],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Refresh the project checklist",
+                "x": 12,
+                "y": 25,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 20
+              },
+              {
+                "t": "Project note · rev 1 · Local",
+                "x": 12,
+                "y": 51,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 730,
+                "y": 39,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "narrow-detail-sheet",
+          "kind": "inspector",
+          "box": [526, 174, 414, 676],
+          "props": {
+            "style": "inspector",
+            "lines": [
+              {
+                "t": "GitHub #237",
+                "x": 20,
+                "y": 35,
+                "s": 16,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "Keep the search index responsive in large repositories",
+                "x": 20,
+                "y": 86,
+                "s": 18,
+                "w": 600,
+                "c": "FG",
+                "wrap": 374,
+                "lh": 26
+              },
+              {
+                "t": "Plan",
+                "x": 20,
+                "y": 196,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              },
+              {
+                "t": "plan-237 · Ready",
+                "x": 20,
+                "y": 225,
+                "s": 14,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "Source",
+                "x": 20,
+                "y": 280,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              },
+              {
+                "t": "acme/factory#237 · revision 3 · Open",
+                "x": 20,
+                "y": 310,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "Execution",
+                "x": 20,
+                "y": 365,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              },
+              {
+                "t": "Not started",
+                "x": 20,
+                "y": 394,
+                "s": 14,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "No native Work link or thread",
+                "x": 20,
+                "y": 425,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Planning and source status stay independent.",
+                "x": 20,
+                "y": 491,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 374,
+                "lh": 18
+              }
+            ]
+          }
+        },
+        {
+          "id": "close-sheet",
+          "kind": "button",
+          "box": [830, 190, 90, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Close",
+            "size": 14,
+            "link": {
+              "edge": "F5-PNE02",
+              "to": "F5-P-N0",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        }
+      ],
+      "staticControls": [
+        "Native input, search, composer, source mutation and platform controls not linked in this read-only design study. No real operation is performed."
+      ],
+      "canvas": {
+        "width": 960,
+        "height": 1060
+      }
+    },
+    {
+      "id": "F5-P-M1",
+      "title": "Work · phone List",
+      "shell": {
+        "mode": "phone",
+        "section": "Work",
+        "breadcrumb": "Work",
+        "navTargets": {}
+      },
+      "tag": "Proposed Factory · fictional fixtures",
+      "caption": "Read-only phone List of the same eight project items. Plan-237 is Ready, its source is Open, and CI run19541 is queued. This is a proposed compact adaptation, not mobile authoring or runtime proof.",
+      "state": {
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "query": {
+          "environmentId": "env-ws",
+          "projectId": "project-factory",
+          "filter": "All planned",
+          "sort": "Planning stage",
+          "scope": "This project in Workstation only"
+        },
+        "view": "List",
+        "selection": {
+          "kind": "planned",
+          "environmentId": "env-ws",
+          "projectId": "project-factory",
+          "id": "plan-237"
+        },
+        "sourceRef": {
+          "provider": "github",
+          "repository": "acme/factory",
+          "number": 237,
+          "revision": 3
+        },
+        "source237Planned": true,
+        "planningStage": "Ready",
+        "nativeExecution": "ci-queued",
+        "retainedWorkRef": null,
+        "nativeThreadId": null,
+        "invocationRef": "inv-f5-ci-01",
+        "externalRunId": "19541",
+        "returnOrigin": "F5-C14",
+        "sourceState": "Open",
+        "sourceRevision": 3,
+        "records": [
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-237"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 237,
+              "revision": 3
+            },
+            "planningStage": "Ready",
+            "sourceState": "Open",
+            "executionLabel": "CI queued"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-brief-14"
+            },
+            "sourceRef": {
+              "kind": "brief",
+              "id": "brief-14",
+              "revision": 2
+            },
+            "planningStage": "Ready",
+            "sourceState": "Draft",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-research-7"
+            },
+            "sourceRef": {
+              "kind": "research",
+              "id": "research-7",
+              "revision": 1
+            },
+            "planningStage": "Backlog",
+            "sourceState": "Sealed",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-issue-231"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 231,
+              "revision": 2
+            },
+            "planningStage": "In progress",
+            "sourceState": "Open",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-feed-8"
+            },
+            "sourceRef": {
+              "kind": "feed",
+              "sourceId": "rss-engineering",
+              "itemId": "item-8",
+              "revision": 1
+            },
+            "planningStage": "Backlog",
+            "sourceState": "Reviewed",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-brief-15"
+            },
+            "sourceRef": {
+              "kind": "brief",
+              "id": "brief-15",
+              "revision": 1
+            },
+            "planningStage": "Ready",
+            "sourceState": "Draft",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-note-4"
+            },
+            "sourceRef": {
+              "kind": "project-note",
+              "id": "note-4",
+              "revision": 1
+            },
+            "planningStage": "Done",
+            "sourceState": "Local",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-issue-229"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 229,
+              "revision": 1
+            },
+            "planningStage": "In progress",
+            "sourceState": "Open",
+            "executionLabel": "Not started"
+          }
+        ],
+        "viewport": "430px",
+        "readOnly": true
+      },
+      "regions": [
+        {
+          "id": "system-status",
+          "kind": "text",
+          "box": [16, 4, 398, 28],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "9:41",
+                "x": 4,
+                "y": 21,
+                "s": 12,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "100%",
+                "x": 350,
+                "y": 21,
+                "s": 11,
+                "w": 500,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-back",
+          "kind": "button",
+          "box": [8, 40, 44, 44],
+          "props": {
+            "variant": "ghost",
+            "label": "‹",
+            "size": 14
+          }
+        },
+        {
+          "id": "phone-project",
+          "kind": "text",
+          "box": [62, 41, 332, 46],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Factory",
+                "x": 0,
+                "y": 21,
+                "s": 16,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "Workstation",
+                "x": 0,
+                "y": 43,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-header-rule",
+          "kind": "rule",
+          "box": [0, 96, 430, 1],
+          "props": {
+            "style": "none",
+            "lines": []
+          }
+        },
+        {
+          "id": "phone-work-tab",
+          "kind": "button",
+          "box": [16, 830, 120, 44],
+          "props": {
+            "variant": "primary",
+            "label": "Work",
+            "size": 14,
+            "link": {
+              "edge": "F5-PME-WORK-LIST",
+              "to": "F5-P-M1",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "phone-footer-scope",
+          "kind": "text",
+          "box": [152, 833, 256, 44],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Project scope",
+                "x": 0,
+                "y": 22,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Factory · env-ws",
+                "x": 0,
+                "y": 42,
+                "s": 11,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-list-title",
+          "kind": "text",
+          "box": [16, 112, 398, 48],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Work",
+                "x": 0,
+                "y": 22,
+                "s": 18,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "All planned · 8 items · stage order",
+                "x": 0,
+                "y": 43,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-plan-research-7",
+          "kind": "row",
+          "box": [16, 174, 398, 68],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Compare incremental indexing",
+                "x": 12,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 374,
+                "lh": 19
+              },
+              {
+                "t": "Research 7 · rev 1 · Sealed",
+                "x": 12,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-plan-feed-8",
+          "kind": "row",
+          "box": [16, 246, 398, 68],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Review filesystem watcher limits",
+                "x": 12,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 374,
+                "lh": 19
+              },
+              {
+                "t": "RSS · item 8 · rev 1 · Reviewed",
+                "x": 12,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-plan-237",
+          "kind": "row",
+          "box": [16, 318, 398, 88],
+          "props": {
+            "style": "row-selected",
+            "lines": [
+              {
+                "t": "Keep the search index responsive in large repositories",
+                "x": 12,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 374,
+                "lh": 19
+              },
+              {
+                "t": "Ready · Open · CI queued",
+                "x": 12,
+                "y": 76,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ],
+            "link": {
+              "edge": "F5-PME01",
+              "to": "F5-P-M2",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "phone-plan-brief-14",
+          "kind": "row",
+          "box": [16, 410, 398, 68],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Clarify API error responses",
+                "x": 12,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 374,
+                "lh": 19
+              },
+              {
+                "t": "Brief 14 · rev 2 · Draft",
+                "x": 12,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-plan-brief-15",
+          "kind": "row",
+          "box": [16, 482, 398, 68],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Document cancellation behavior",
+                "x": 12,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 374,
+                "lh": 19
+              },
+              {
+                "t": "Brief 15 · rev 1 · Draft",
+                "x": 12,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-plan-issue-231",
+          "kind": "row",
+          "box": [16, 554, 398, 68],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Report cache warm-up progress",
+                "x": 12,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 374,
+                "lh": 19
+              },
+              {
+                "t": "GitHub #231 · rev 2 · Open",
+                "x": 12,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-plan-issue-229",
+          "kind": "row",
+          "box": [16, 626, 398, 68],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Add a search recovery command",
+                "x": 12,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 374,
+                "lh": 19
+              },
+              {
+                "t": "GitHub #229 · rev 1 · Open",
+                "x": 12,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-plan-note-4",
+          "kind": "row",
+          "box": [16, 698, 398, 68],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Refresh the project checklist",
+                "x": 12,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 374,
+                "lh": 19
+              },
+              {
+                "t": "Project note · rev 1 · Local",
+                "x": 12,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        }
+      ],
+      "staticControls": [
+        "Native input, search, composer, source mutation and platform controls not linked in this read-only design study. No real operation is performed."
+      ],
+      "canvas": {
+        "width": 430,
+        "height": 1180
+      }
+    },
+    {
+      "id": "F5-P-M2",
+      "title": "Work · phone item details",
+      "shell": {
+        "mode": "phone",
+        "section": "Work",
+        "breadcrumb": "Work",
+        "navTargets": {}
+      },
+      "tag": "Proposed Factory · fictional fixtures",
+      "caption": "Planning, source and execution stay separate on phone. This view reads a CI-owned invocation, not an agent thread; source authoring and acceptance are not inferred from status.",
+      "state": {
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "query": {
+          "environmentId": "env-ws",
+          "projectId": "project-factory",
+          "filter": "All planned",
+          "sort": "Planning stage",
+          "scope": "This project in Workstation only"
+        },
+        "view": "List",
+        "selection": {
+          "kind": "planned",
+          "environmentId": "env-ws",
+          "projectId": "project-factory",
+          "id": "plan-237"
+        },
+        "sourceRef": {
+          "provider": "github",
+          "repository": "acme/factory",
+          "number": 237,
+          "revision": 3
+        },
+        "source237Planned": true,
+        "planningStage": "Ready",
+        "nativeExecution": "ci-queued",
+        "retainedWorkRef": null,
+        "nativeThreadId": null,
+        "invocationRef": "inv-f5-ci-01",
+        "externalRunId": "19541",
+        "returnOrigin": "F5-C14",
+        "sourceState": "Open",
+        "sourceRevision": 3,
+        "records": [
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-237"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 237,
+              "revision": 3
+            },
+            "planningStage": "Ready",
+            "sourceState": "Open",
+            "executionLabel": "CI queued"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-brief-14"
+            },
+            "sourceRef": {
+              "kind": "brief",
+              "id": "brief-14",
+              "revision": 2
+            },
+            "planningStage": "Ready",
+            "sourceState": "Draft",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-research-7"
+            },
+            "sourceRef": {
+              "kind": "research",
+              "id": "research-7",
+              "revision": 1
+            },
+            "planningStage": "Backlog",
+            "sourceState": "Sealed",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-issue-231"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 231,
+              "revision": 2
+            },
+            "planningStage": "In progress",
+            "sourceState": "Open",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-feed-8"
+            },
+            "sourceRef": {
+              "kind": "feed",
+              "sourceId": "rss-engineering",
+              "itemId": "item-8",
+              "revision": 1
+            },
+            "planningStage": "Backlog",
+            "sourceState": "Reviewed",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-brief-15"
+            },
+            "sourceRef": {
+              "kind": "brief",
+              "id": "brief-15",
+              "revision": 1
+            },
+            "planningStage": "Ready",
+            "sourceState": "Draft",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-note-4"
+            },
+            "sourceRef": {
+              "kind": "project-note",
+              "id": "note-4",
+              "revision": 1
+            },
+            "planningStage": "Done",
+            "sourceState": "Local",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-issue-229"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 229,
+              "revision": 1
+            },
+            "planningStage": "In progress",
+            "sourceState": "Open",
+            "executionLabel": "Not started"
+          }
+        ],
+        "viewport": "430px",
+        "readOnly": true
+      },
+      "regions": [
+        {
+          "id": "system-status",
+          "kind": "text",
+          "box": [16, 4, 398, 28],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "9:41",
+                "x": 4,
+                "y": 21,
+                "s": 12,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "100%",
+                "x": 350,
+                "y": 21,
+                "s": 11,
+                "w": 500,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-back",
+          "kind": "button",
+          "box": [8, 40, 44, 44],
+          "props": {
+            "variant": "ghost",
+            "label": "‹",
+            "size": 14,
+            "link": {
+              "edge": "F5-PME02",
+              "to": "F5-P-M1",
+              "type": "navigate",
+              "effect": "return"
+            }
+          }
+        },
+        {
+          "id": "phone-project",
+          "kind": "text",
+          "box": [62, 41, 332, 46],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Factory",
+                "x": 0,
+                "y": 21,
+                "s": 16,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "Workstation",
+                "x": 0,
+                "y": 43,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-header-rule",
+          "kind": "rule",
+          "box": [0, 96, 430, 1],
+          "props": {
+            "style": "none",
+            "lines": []
+          }
+        },
+        {
+          "id": "phone-work-tab",
+          "kind": "button",
+          "box": [16, 830, 120, 44],
+          "props": {
+            "variant": "primary",
+            "label": "Work",
+            "size": 14,
+            "link": {
+              "edge": "F5-PME-WORK-F5-PME02",
+              "to": "F5-P-M1",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "phone-footer-scope",
+          "kind": "text",
+          "box": [152, 833, 256, 44],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Project scope",
+                "x": 0,
+                "y": 22,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Factory · env-ws",
+                "x": 0,
+                "y": 42,
+                "s": 11,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-item-title",
+          "kind": "text",
+          "box": [16, 114, 398, 114],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "GitHub #237",
+                "x": 0,
+                "y": 22,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              },
+              {
+                "t": "Keep the search index responsive in large repositories",
+                "x": 0,
+                "y": 59,
+                "s": 20,
+                "w": 600,
+                "c": "FG",
+                "wrap": 398,
+                "lh": 27
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-source-detail",
+          "kind": "card",
+          "box": [16, 246, 398, 242],
+          "props": {
+            "style": "panel",
+            "lines": [
+              {
+                "t": "Source and plan",
+                "x": 16,
+                "y": 29,
+                "s": 14,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "Plan item",
+                "x": 16,
+                "y": 70,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              },
+              {
+                "t": "plan-237 · Ready",
+                "x": 16,
+                "y": 98,
+                "s": 14,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "Source",
+                "x": 16,
+                "y": 139,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              },
+              {
+                "t": "acme/factory#237 · revision 3",
+                "x": 16,
+                "y": 169,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "Open on GitHub",
+                "x": 16,
+                "y": 201,
+                "s": 13,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-execution",
+          "kind": "card",
+          "box": [16, 508, 398, 190],
+          "props": {
+            "style": "panel",
+            "lines": [
+              {
+                "t": "Execution",
+                "x": 16,
+                "y": 29,
+                "s": 14,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "CI queued",
+                "x": 16,
+                "y": 69,
+                "s": 18,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "GitHub Actions · run19541",
+                "x": 16,
+                "y": 105,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "inv-f5-ci-01",
+                "x": 16,
+                "y": 139,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "No native T3 thread for this CI run",
+                "x": 16,
+                "y": 171,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-run-details",
+          "kind": "button",
+          "box": [16, 726, 398, 44],
+          "props": {
+            "variant": "primary",
+            "label": "Run details",
+            "size": 14,
+            "link": {
+              "edge": "F5-PME03",
+              "to": "F5-P-M3",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        }
+      ],
+      "staticControls": [
+        "Native input, search, composer, source mutation and platform controls not linked in this read-only design study. No real operation is performed."
+      ],
+      "canvas": {
+        "width": 430,
+        "height": 1180
+      }
+    },
+    {
+      "id": "F5-P-M3",
+      "title": "CI · phone run status",
+      "shell": {
+        "mode": "phone",
+        "section": "Work",
+        "breadcrumb": "Work",
+        "navTargets": {}
+      },
+      "tag": "Proposed Factory · fictional fixtures",
+      "caption": "Qualified queued-run detail. Full pins are retained; no completion, finding disposition, merge or release is inferred. Read-only phone navigation does not establish client parity.",
+      "state": {
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "query": {
+          "environmentId": "env-ws",
+          "projectId": "project-factory",
+          "filter": "All planned",
+          "sort": "Planning stage",
+          "scope": "This project in Workstation only"
+        },
+        "view": "List",
+        "selection": {
+          "kind": "planned",
+          "environmentId": "env-ws",
+          "projectId": "project-factory",
+          "id": "plan-237"
+        },
+        "sourceRef": {
+          "provider": "github",
+          "repository": "acme/factory",
+          "number": 237,
+          "revision": 3
+        },
+        "source237Planned": true,
+        "planningStage": "Ready",
+        "nativeExecution": "ci-queued",
+        "retainedWorkRef": null,
+        "nativeThreadId": null,
+        "invocationRef": "inv-f5-ci-01",
+        "externalRunId": "19541",
+        "returnOrigin": "F5-C14",
+        "sourceState": "Open",
+        "sourceRevision": 3,
+        "records": [
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-237"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 237,
+              "revision": 3
+            },
+            "planningStage": "Ready",
+            "sourceState": "Open",
+            "executionLabel": "CI queued"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-brief-14"
+            },
+            "sourceRef": {
+              "kind": "brief",
+              "id": "brief-14",
+              "revision": 2
+            },
+            "planningStage": "Ready",
+            "sourceState": "Draft",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-research-7"
+            },
+            "sourceRef": {
+              "kind": "research",
+              "id": "research-7",
+              "revision": 1
+            },
+            "planningStage": "Backlog",
+            "sourceState": "Sealed",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-issue-231"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 231,
+              "revision": 2
+            },
+            "planningStage": "In progress",
+            "sourceState": "Open",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-feed-8"
+            },
+            "sourceRef": {
+              "kind": "feed",
+              "sourceId": "rss-engineering",
+              "itemId": "item-8",
+              "revision": 1
+            },
+            "planningStage": "Backlog",
+            "sourceState": "Reviewed",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-brief-15"
+            },
+            "sourceRef": {
+              "kind": "brief",
+              "id": "brief-15",
+              "revision": 1
+            },
+            "planningStage": "Ready",
+            "sourceState": "Draft",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-note-4"
+            },
+            "sourceRef": {
+              "kind": "project-note",
+              "id": "note-4",
+              "revision": 1
+            },
+            "planningStage": "Done",
+            "sourceState": "Local",
+            "executionLabel": "Not started"
+          },
+          {
+            "planItemRef": {
+              "kind": "planned",
+              "environmentId": "env-ws",
+              "projectId": "project-factory",
+              "id": "plan-issue-229"
+            },
+            "sourceRef": {
+              "provider": "github",
+              "repository": "acme/factory",
+              "number": 229,
+              "revision": 1
+            },
+            "planningStage": "In progress",
+            "sourceState": "Open",
+            "executionLabel": "Not started"
+          }
+        ],
+        "viewport": "430px",
+        "readOnly": true
+      },
+      "regions": [
+        {
+          "id": "system-status",
+          "kind": "text",
+          "box": [16, 4, 398, 28],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "9:41",
+                "x": 4,
+                "y": 21,
+                "s": 12,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "100%",
+                "x": 350,
+                "y": 21,
+                "s": 11,
+                "w": 500,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-back",
+          "kind": "button",
+          "box": [8, 40, 44, 44],
+          "props": {
+            "variant": "ghost",
+            "label": "‹",
+            "size": 14,
+            "link": {
+              "edge": "F5-PME04",
+              "to": "F5-P-M2",
+              "type": "navigate",
+              "effect": "return"
+            }
+          }
+        },
+        {
+          "id": "phone-project",
+          "kind": "text",
+          "box": [62, 41, 332, 46],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Factory",
+                "x": 0,
+                "y": 21,
+                "s": 16,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "Workstation",
+                "x": 0,
+                "y": 43,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-header-rule",
+          "kind": "rule",
+          "box": [0, 96, 430, 1],
+          "props": {
+            "style": "none",
+            "lines": []
+          }
+        },
+        {
+          "id": "phone-work-tab",
+          "kind": "button",
+          "box": [16, 830, 120, 44],
+          "props": {
+            "variant": "primary",
+            "label": "Work",
+            "size": 14,
+            "link": {
+              "edge": "F5-PME-WORK-F5-PME04",
+              "to": "F5-P-M1",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "phone-footer-scope",
+          "kind": "text",
+          "box": [152, 833, 256, 44],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Project scope",
+                "x": 0,
+                "y": 22,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Factory · env-ws",
+                "x": 0,
+                "y": 42,
+                "s": 11,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-run-title",
+          "kind": "text",
+          "box": [16, 114, 398, 80],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Review change · v1",
+                "x": 0,
+                "y": 24,
+                "s": 20,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "CI queued · GitHub Actions",
+                "x": 0,
+                "y": 58,
+                "s": 14,
+                "w": 500,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-run-owner",
+          "kind": "card",
+          "box": [16, 212, 398, 218],
+          "props": {
+            "style": "panel",
+            "lines": [
+              {
+                "t": "Invocation",
+                "x": 16,
+                "y": 29,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              },
+              {
+                "t": "inv-f5-ci-01",
+                "x": 16,
+                "y": 59,
+                "s": 14,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "External owner",
+                "x": 16,
+                "y": 101,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              },
+              {
+                "t": "acme/factory · run19541",
+                "x": 16,
+                "y": 130,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "Input",
+                "x": 16,
+                "y": 170,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              },
+              {
+                "t": "plan-237 · issue237 revision3",
+                "x": 16,
+                "y": 201,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-pins",
+          "kind": "code",
+          "box": [16, 450, 398, 236],
+          "props": {
+            "style": "code",
+            "lines": [
+              {
+                "t": "Workflow SHA-256",
+                "x": 16,
+                "y": 28,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              },
+              {
+                "t": "e464ecf8079ddd35b1fa08327785bdd2",
+                "x": 16,
+                "y": 59,
+                "s": 12,
+                "w": 400,
+                "c": "FG",
+                "mono": true
+              },
+              {
+                "t": "324aea4511e47aba25b1696d265c019d",
+                "x": 16,
+                "y": 81,
+                "s": 12,
+                "w": 400,
+                "c": "FG",
+                "mono": true
+              },
+              {
+                "t": "Candidate commit",
+                "x": 16,
+                "y": 121,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              },
+              {
+                "t": "1dfb90f9bc2e41fdc47d1f40c081d95f66c30054",
+                "x": 16,
+                "y": 154,
+                "s": 12,
+                "w": 400,
+                "c": "FG",
+                "wrap": 366,
+                "lh": 19
+              },
+              {
+                "t": "No completion or acceptance recorded",
+                "x": 16,
+                "y": 207,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "phone-open-work-item",
+          "kind": "button",
+          "box": [16, 726, 398, 44],
+          "props": {
+            "variant": "secondary",
+            "label": "Open Work item",
+            "size": 14,
+            "link": {
+              "edge": "F5-PME05",
+              "to": "F5-P-M2",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        }
+      ],
+      "staticControls": [
+        "Native input, search, composer, source mutation and platform controls not linked in this read-only design study. No real operation is performed."
+      ],
+      "canvas": {
+        "width": 430,
+        "height": 1180
+      }
+    }
+  ],
+  "templates": {
+    "nativeThreadRegions": [
+      {
+        "id": "native-message-user",
+        "kind": "card",
+        "box": [432, 140, 736, 150],
+        "props": {
+          "style": "panel",
+          "lines": [
+            {
+              "t": "You",
+              "x": 20,
+              "y": 28,
+              "s": 12,
+              "w": 500,
+              "c": "MUT"
+            },
+            {
+              "t": "Review the candidate change against issue #237 and report findings with file and line evidence.",
+              "x": 20,
+              "y": 62,
+              "s": 16,
+              "w": 400,
+              "c": "FG",
+              "wrap": 696,
+              "lh": 24
+            }
+          ]
+        }
+      },
+      {
+        "id": "native-message-assistant",
+        "kind": "text",
+        "box": [432, 320, 736, 126],
+        "props": {
+          "style": "none",
+          "lines": [
+            {
+              "t": "Codex · working",
+              "x": 0,
+              "y": 26,
+              "s": 14,
+              "w": 600,
+              "c": "FG"
+            },
+            {
+              "t": "I’m inspecting the search-index changes and their source requirements.",
+              "x": 0,
+              "y": 66,
+              "s": 16,
+              "w": 400,
+              "c": "FG",
+              "wrap": 720,
+              "lh": 24
+            },
+            {
+              "t": "Reading candidate files…",
+              "x": 0,
+              "y": 120,
+              "s": 12,
+              "w": 400,
+              "c": "MUT"
+            }
+          ]
+        }
+      },
+      {
+        "id": "native-tool-card",
+        "kind": "card",
+        "box": [432, 478, 736, 104],
+        "props": {
+          "style": "panel",
+          "lines": [
+            {
+              "t": "Read files",
+              "x": 16,
+              "y": 28,
+              "s": 14,
+              "w": 500,
+              "c": "FG"
+            },
+            {
+              "t": "Search-index change and linked source revision",
+              "x": 16,
+              "y": 58,
+              "s": 13,
+              "w": 400,
+              "c": "MUT"
+            },
+            {
+              "t": "Review output is not available yet.",
+              "x": 16,
+              "y": 84,
+              "s": 12,
+              "w": 400,
+              "c": "MUT"
+            }
+          ]
+        }
+      },
+      {
+        "id": "native-composer",
+        "kind": "composer",
+        "box": [416, 716, 768, 144],
+        "props": {
+          "style": "composer",
+          "lines": [
+            {
+              "t": "Send a follow-up…",
+              "x": 16,
+              "y": 36,
+              "s": 16,
+              "w": 400,
+              "c": "MUT"
+            },
+            {
+              "t": "Codex · Luna",
+              "x": 104,
+              "y": 117,
+              "s": 12,
+              "w": 500,
+              "c": "MUT"
+            }
+          ]
+        }
+      },
+      {
+        "id": "native-attach",
+        "kind": "button",
+        "box": [432, 812, 40, 32],
+        "props": {
+          "variant": "ghost",
+          "label": "+",
+          "size": 14
+        }
+      },
+      {
+        "id": "native-send",
+        "kind": "button",
+        "box": [1128, 812, 40, 32],
+        "props": {
+          "variant": "disabled",
+          "label": "↑",
+          "size": 14
+        }
+      },
+      {
+        "id": "native-context-environment",
+        "kind": "card",
+        "box": [1280, 116, 280, 140],
+        "props": {
+          "style": "panel",
+          "lines": [
+            {
+              "t": "Environment",
+              "x": 16,
+              "y": 29,
+              "s": 14,
+              "w": 500,
+              "c": "FG"
+            },
+            {
+              "t": "Workstation · connected",
+              "x": 16,
+              "y": 65,
+              "s": 13,
+              "w": 400,
+              "c": "FG"
+            },
+            {
+              "t": "Isolated worktree",
+              "x": 16,
+              "y": 96,
+              "s": 12,
+              "w": 400,
+              "c": "MUT"
+            },
+            {
+              "t": "Provider start observed",
+              "x": 16,
+              "y": 124,
+              "s": 12,
+              "w": 400,
+              "c": "MUT"
+            }
+          ]
+        }
+      },
+      {
+        "id": "native-context-run",
+        "kind": "card",
+        "box": [1280, 272, 280, 264],
+        "props": {
+          "style": "panel",
+          "lines": [
+            {
+              "t": "Run context",
+              "x": 16,
+              "y": 29,
+              "s": 14,
+              "w": 500,
+              "c": "FG"
+            },
+            {
+              "t": "Review change · v1",
+              "x": 16,
+              "y": 65,
+              "s": 13,
+              "w": 500,
+              "c": "FG"
+            },
+            {
+              "t": "Manual · Mara",
+              "x": 16,
+              "y": 96,
+              "s": 12,
+              "w": 400,
+              "c": "MUT"
+            },
+            {
+              "t": "Issue #237 · revision 3",
+              "x": 16,
+              "y": 128,
+              "s": 12,
+              "w": 400,
+              "c": "MUT"
+            },
+            {
+              "t": "plan-237 · Ready",
+              "x": 16,
+              "y": 159,
+              "s": 12,
+              "w": 400,
+              "c": "MUT"
+            },
+            {
+              "t": "Candidate 1dfb90f9bc2e",
+              "x": 16,
+              "y": 190,
+              "s": 12,
+              "w": 400,
+              "c": "MUT"
+            },
+            {
+              "t": "inv-f5-factory-01",
+              "x": 16,
+              "y": 222,
+              "s": 12,
+              "w": 400,
+              "c": "MUT"
+            }
+          ]
+        }
+      },
+      {
+        "id": "native-context-changes",
+        "kind": "card",
+        "box": [1280, 552, 280, 104],
+        "props": {
+          "style": "panel",
+          "lines": [
+            {
+              "t": "Changes",
+              "x": 16,
+              "y": 28,
+              "s": 14,
+              "w": 500,
+              "c": "FG"
+            },
+            {
+              "t": "No review report yet",
+              "x": 16,
+              "y": 61,
+              "s": 13,
+              "w": 400,
+              "c": "MUT"
+            },
+            {
+              "t": "Source remains Open",
+              "x": 16,
+              "y": 88,
+              "s": 12,
+              "w": 400,
+              "c": "MUT"
+            }
+          ]
+        }
+      },
+      {
+        "id": "return-working-work",
+        "kind": "button",
+        "box": [432, 76, 156, 32],
+        "props": {
+          "variant": "secondary",
+          "label": "Return to Work",
+          "size": 14,
+          "link": {
+            "edge": "F5-WE21",
+            "to": "F5-C10",
+            "type": "navigate",
+            "effect": "return"
+          }
+        }
+      },
+      {
+        "id": "working-history-study",
+        "kind": "button",
+        "box": [1296, 676, 248, 32],
+        "props": {
+          "variant": "secondary",
+          "label": "Run history",
+          "size": 14,
+          "link": {
+            "edge": "F5-WE30",
+            "to": "F5-W11",
+            "type": "navigate",
+            "effect": "history-read"
+          }
+        }
+      },
+      {
+        "id": "thread-receipt",
+        "kind": "button",
+        "box": [1296, 724, 248, 32],
+        "props": {
+          "variant": "secondary",
+          "label": "Dispatch receipt",
+          "size": 14,
+          "link": {
+            "edge": "F5-PTE01",
+            "to": "F5-W07",
+            "type": "navigate",
+            "effect": "history-read"
+          }
+        }
+      }
+    ]
+  },
+  "notes": [
+    "Parent owns native common chrome and this actual ordinary timeline/composer body. It replaces author handoff labels before rendering; no app code or component-instance claim.",
+    "N0/N1 are960px proposed narrow adaptations. M1/M2/M3 are430px read-only CI status studies with44px linked targets, not Sources/Research authoring or mobile parity proof.",
+    "Common controls are static where not in these bounded fixture journeys. No actual provider, CI or mutation operation.",
+    "Coordinator is an ordinary project conversation, not another scheduler or Factory console."
+  ]
+}

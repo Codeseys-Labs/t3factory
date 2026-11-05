@@ -1,0 +1,1943 @@
+{
+  "schema": "t3factory-workspace-scenes/1",
+  "roots": { "toolchain": "F5-O-00", "attentionRecovery": "F5-O-10" },
+  "notes": [
+    "All project, detection, time, admission, owner, acknowledgement, fencing and replay values are illustrative design fixtures, not runtime observations. Native shell, Inter, 1600x1040 and existing renderer IR only.",
+    "operations_graph.integrate(scenes, base) derives full pins, exact-context evidence readers and read-only setup-diff copies after catalog/configuration assembly. It performs no IO and never changes source bindingSnapshot or execution identities. Parent owns loader, common shell, shared navigation and final verification.",
+    "Source basis: round-04/spec/round04-spec.md sections Gate evidence, Pause stop replay and attention; W4-02/03/12/13/14/15; round-04/spec/tools/scene_source.json; round-04/ground/toolchain-gates.md sections 0/1/3/5/6; round-04/ground/existing-capabilities.md sections 1/3/5/6; round-05/ground/t3-ui-baseline.md and current F5 workflow/native-thread scenes.",
+    "Optional mise, lefthook and betterleaks were not detected at the accepted source basis. No installer, guessed tool versions, generated hooks, copied vendor templates or live configuration operation is offered. Existing Vite+/AGENTS guidance stays intact. A future chosen change requires its actual reviewed repository diff and separate commit/push/host observation.",
+    "The accepted R4 delivery policy is a separate policy study, not a retroactive addition to the existing Review change v1 definition. The v1 digest never changes. Missing optional tooling does not silently become a new launch restriction; missing evidence remains a hold only where an explicitly selected policy requires that evidence.",
+    "Capacity control records belong to the separate illustrative env-ws/project-factory/ops-timer-study binding pinned to wf-review-change v1. They do not edit an existing trigger binding or add a run-level launch brake. Three prior admissions belong to window1; an explicit narrowed window2 authorizes at most one new distinct candidate before 17:00 UTC. Historical counts remain retained.",
+    "The remote recovery study is a separate invocation inv-f5-ops-remote-01 owned by env-ws/project-factory, with executor env-mac and native thread th-f5-ops-remote-01. It is not a state transition of inv-f5-factory-01 or inv-f5-ci-01. Its source/plan/Work references are linked inputs, not remote thread identity.",
+    "AB:65 attention requires owner-qualified source records, coverage/completeness, action routing and source-driven clearing. #65 acknowledgement/fencing and AB:66 replay/control records are proposed, not shipped. Unknown capabilities never produce a green verdict. The coordinator remains an ordinary native thread with no extra authority.",
+    "Read-only details use native Back with explicit allowedOrigins. Mutation receipts have no route back to earlier actionable records. Later external acknowledgement is a caption-band history-read, never an app action. Terminal receipts intentionally have no artificial rewind.",
+    "Parent checks deferred: JSON loading; integrate ordering; unique scene/region/edge IDs; qualified refs and immutable pins; valid destinations; native Back origins; transitive mutation safety; measured Inter text/geometry; native Figma import and actual-click paths. No builds, renders, tests, lint, formatters or app/external actions were run by this worker."
+  ],
+  "scenes": [
+    {
+      "id": "F5-O-00",
+      "title": "Project · Toolchain & checks",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Toolchain & checks",
+        "navTargets": {}
+      },
+      "tag": "Read-only proposal · illustrative detection",
+      "caption": "Source-grounded ownership summary, not a setup wizard or a clean verdict. Detection comes from the accepted source audit; no live scan, installation or host change occurs.",
+      "state": {
+        "operationsKind": "toolchain",
+        "readOnly": true,
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "toolDetection": {
+          "vitePlus": "configured",
+          "guidance": "configured",
+          "mise": "not-configured",
+          "lefthook": "not-configured",
+          "betterleaks": "not-configured",
+          "hostRequiredPolicy": "unknown"
+        }
+      },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "Toolchain & checks", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Factory · Workstation · repository configuration and external ownership",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-columns",
+          "kind": "row",
+          "box": [360, 194, 1200, 40],
+          "props": {
+            "style": "header",
+            "lines": [
+              { "t": "Configuration", "x": 16, "y": 26, "s": 12, "c": "MUT" },
+              { "t": "State", "x": 440, "y": 26, "s": 12, "c": "MUT" },
+              { "t": "Owner / evidence", "x": 700, "y": 26, "s": 12, "c": "MUT" }
+            ]
+          }
+        },
+        {
+          "id": "ops-vite",
+          "kind": "row",
+          "box": [360, 242, 1200, 82],
+          "props": {
+            "lines": [
+              { "t": "Vite+ and AGENTS.md", "x": 16, "y": 28, "s": 14, "w": 500 },
+              { "t": "Configured", "x": 440, "y": 28, "s": 14 },
+              { "t": "Repository maintainers", "x": 700, "y": 28, "s": 14 },
+              {
+                "t": "Detected guidance retained. Validation profile uses vp check.",
+                "x": 16,
+                "y": 60,
+                "s": 12,
+                "c": "MUT"
+              },
+              {
+                "t": "Read guidance and file ownership",
+                "x": 700,
+                "y": 60,
+                "s": 12,
+                "c": "BLUE_TEXT"
+              }
+            ],
+            "link": { "edge": "F5-OE-00-guidance", "to": "F5-O-01", "effect": "navigation" }
+          }
+        },
+        {
+          "id": "ops-mise",
+          "kind": "row",
+          "box": [360, 332, 1200, 82],
+          "props": {
+            "lines": [
+              { "t": "mise · optional toolchain pins", "x": 16, "y": 28, "s": 14 },
+              { "t": "Not configured", "x": 440, "y": 28, "s": 14, "c": "WARN" },
+              { "t": "Repository maintainers", "x": 700, "y": 28, "s": 14 },
+              {
+                "t": "No mise config was detected. Installed/resolved tools remain unknown.",
+                "x": 16,
+                "y": 60,
+                "s": 12,
+                "c": "MUT"
+              },
+              {
+                "t": "Config + lock + binary provenance, if adopted",
+                "x": 700,
+                "y": 60,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-hooks",
+          "kind": "row",
+          "box": [360, 422, 1200, 82],
+          "props": {
+            "lines": [
+              { "t": "lefthook · optional hook runner", "x": 16, "y": 28, "s": 14 },
+              { "t": "Not configured", "x": 440, "y": 28, "s": 14, "c": "WARN" },
+              { "t": "Repository maintainers", "x": 700, "y": 28, "s": 14 },
+              {
+                "t": "No lefthook config detected. Existing t3.json hooks stay unchanged.",
+                "x": 16,
+                "y": 60,
+                "s": 12,
+                "c": "MUT"
+              },
+              {
+                "t": "A commit or push never proves a hook ran",
+                "x": 700,
+                "y": 60,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-scanner",
+          "kind": "row",
+          "box": [360, 512, 1200, 82],
+          "props": {
+            "lines": [
+              { "t": "betterleaks · optional secret scanner", "x": 16, "y": 28, "s": 14 },
+              { "t": "Not configured", "x": 440, "y": 28, "s": 14, "c": "WARN" },
+              { "t": "Repository maintainers", "x": 700, "y": 28, "s": 14 },
+              {
+                "t": "No scan receipt. Not detected means not configured, never clean.",
+                "x": 16,
+                "y": 60,
+                "s": 12,
+                "c": "MUT"
+              },
+              {
+                "t": "Explicit range/config/version and complete scan",
+                "x": 700,
+                "y": 60,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-host",
+          "kind": "row",
+          "box": [360, 602, 1200, 82],
+          "props": {
+            "lines": [
+              { "t": "GitHub policy and hosted reviewers", "x": 16, "y": 28, "s": 14, "w": 500 },
+              { "t": "Requiredness unknown", "x": 440, "y": 28, "s": 14, "c": "WARN" },
+              { "t": "Host admins and reviewer service owners", "x": 700, "y": 28, "s": 14 },
+              {
+                "t": "Repo configuration is not host activation or current review coverage.",
+                "x": 16,
+                "y": 60,
+                "s": 12,
+                "c": "MUT"
+              },
+              {
+                "t": "Read policy and reviewer evidence",
+                "x": 700,
+                "y": 60,
+                "s": 12,
+                "c": "BLUE_TEXT"
+              }
+            ],
+            "link": { "edge": "F5-OE-00-host", "to": "F5-O-02", "effect": "navigation" }
+          }
+        },
+        {
+          "id": "ops-state-key",
+          "kind": "notice",
+          "box": [360, 708, 1200, 76],
+          "props": {
+            "lines": [
+              {
+                "t": "Configured is not executed. Missing means absent in a complete read. Unknown means not established.",
+                "x": 16,
+                "y": 28,
+                "s": 14
+              },
+              {
+                "t": "A selected policy may hold for missing evidence. Optional tooling is not silently made a prerequisite for Review change v1.",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-policy",
+          "kind": "button",
+          "box": [360, 818, 248, 32],
+          "props": {
+            "label": "Read accepted gate policy",
+            "link": { "edge": "F5-OE-00-policy", "to": "F5-O-03", "effect": "navigation" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5-O-01",
+      "title": "Toolchain · Repository guidance and changes",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Toolchain / Repository",
+        "navTargets": {}
+      },
+      "tag": "Read-only source record",
+      "caption": "Ground: toolchain-gates.md section 0 and existing-capabilities.md section 3. Native Vite+/AGENTS guidance remains. No guessed installation steps or new configuration bytes are supplied.",
+      "state": { "readOnly": true, "operationsKind": "repository" },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "Repository guidance and configuration", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Read the existing files before choosing any tooling change",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-guidance-source",
+          "kind": "code",
+          "box": [360, 194, 1200, 180],
+          "props": {
+            "lines": [
+              {
+                "t": "AGENTS.md:101 · package.json:29 · scripts/check-changed.ts:2-16",
+                "x": 16,
+                "y": 30,
+                "s": 12,
+                "c": "MUT"
+              },
+              {
+                "t": "Pre-push guidance: vp run check:changed. CI still runs the full test suites.",
+                "x": 16,
+                "y": 66,
+                "s": 14
+              },
+              {
+                "t": "The changed-check script can reuse a cached summary. That is not a fresh full build receipt.",
+                "x": 16,
+                "y": 102,
+                "s": 14
+              },
+              {
+                "t": "R5 project profile: AGENTS.md + Vite+ / vp check. The profile does not replace repository guidance.",
+                "x": 16,
+                "y": 142,
+                "s": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-optional-ownership",
+          "kind": "card",
+          "box": [360, 398, 1200, 168],
+          "props": {
+            "lines": [
+              {
+                "t": "Optional additions belong to a reviewed repository change",
+                "x": 16,
+                "y": 30,
+                "s": 18,
+                "w": 600
+              },
+              {
+                "t": "mise: actual config/lock and resolved binary provenance. lefthook: actual hook config and bypass limits.",
+                "x": 16,
+                "y": 68,
+                "s": 14
+              },
+              {
+                "t": "betterleaks: selected version, range, explicit config and scan completeness. No network validation is implied.",
+                "x": 16,
+                "y": 104,
+                "s": 14
+              },
+              {
+                "t": "Do not overwrite existing hooks or copy an unlicensed template. No files change in this read-only path.",
+                "x": 16,
+                "y": 140,
+                "s": 14,
+                "c": "WARN"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-config-lifecycle",
+          "kind": "card",
+          "box": [360, 590, 1200, 168],
+          "props": {
+            "lines": [
+              { "t": "Separate configuration states", "x": 16, "y": 30, "s": 18, "w": 600 },
+              {
+                "t": "Draft diff → reviewed local save → separately committed → separately pushed → host observation.",
+                "x": 16,
+                "y": 68,
+                "s": 14
+              },
+              {
+                "t": "Initialization reviews its actual proposed files. AGENTS.md and t3.json hooks remain unchanged.",
+                "x": 16,
+                "y": 104,
+                "s": 14
+              },
+              {
+                "t": "A local save cannot activate GitHub rules, subscribe a hosted reviewer or prove checks passed.",
+                "x": 16,
+                "y": 140,
+                "s": 14,
+                "c": "WARN"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-return",
+          "kind": "button",
+          "box": [360, 818, 132, 32],
+          "props": {
+            "label": "Back",
+            "link": {
+              "edge": "F5-OE-01-back",
+              "to": "F5-O-00",
+              "type": "back",
+              "effect": "return",
+              "allowedOrigins": ["F5-O-00"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5-O-02",
+      "title": "Toolchain · Host and reviewer ownership",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Toolchain / Host policy",
+        "navTargets": {}
+      },
+      "tag": "Read-only source record",
+      "caption": "Ground: toolchain-gates.md sections 0, 1 and 3. The accepted policy wants separately authorized hosted requests after local evidence. Existing automatic host/reviewer configuration is not silently changed to meet that policy.",
+      "state": {
+        "readOnly": true,
+        "operationsKind": "host-policy",
+        "hostPolicy": "unknown",
+        "sharedGuardCapability": "not-established"
+      },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "Host policy and reviewer ownership", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Configuration found in a repository is not proof of active host settings",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-coderabbit-source",
+          "kind": "row",
+          "box": [360, 194, 1200, 116],
+          "props": {
+            "lines": [
+              {
+                "t": "CodeRabbit · repository config detected",
+                "x": 16,
+                "y": 28,
+                "s": 14,
+                "w": 600
+              },
+              {
+                "t": ".coderabbit.config.ts:6-35 sets auto_review.enabled=true in the accepted source audit.",
+                "x": 16,
+                "y": 62,
+                "s": 14
+              },
+              {
+                "t": "TS-to-host evaluation is unverified. Reviewer owner must establish actual activation. No YAML replacement is guessed.",
+                "x": 16,
+                "y": 94,
+                "s": 14,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-reviewer-services",
+          "kind": "row",
+          "box": [360, 326, 1200, 138],
+          "props": {
+            "lines": [
+              {
+                "t": "Greptile / Codex / Claude managed review",
+                "x": 16,
+                "y": 28,
+                "s": 14,
+                "w": 600
+              },
+              {
+                "t": "Repository/account reviewer owners control subscriptions, permissions and budgets. Actual settings remain unknown here.",
+                "x": 16,
+                "y": 62,
+                "s": 14
+              },
+              {
+                "t": "Service versions remain unknown. Claude Action pins do not pin its installed CLI or model.",
+                "x": 16,
+                "y": 94,
+                "s": 14
+              },
+              {
+                "t": "Greptile confidence, Codex comments and a finished/neutral bot check are not an independent Ready verdict.",
+                "x": 16,
+                "y": 124,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-host-required",
+          "kind": "row",
+          "box": [360, 480, 1200, 138],
+          "props": {
+            "lines": [
+              {
+                "t": "GitHub required checks, approvals and rulesets",
+                "x": 16,
+                "y": 28,
+                "s": 14,
+                "w": 600
+              },
+              {
+                "t": "Host administrators own requiredness. No active ruleset snapshot is attached to this project summary.",
+                "x": 16,
+                "y": 62,
+                "s": 14
+              },
+              {
+                "t": "Requiredness is unknown, not advisory. A configured workflow cannot waive host protection.",
+                "x": 16,
+                "y": 94,
+                "s": 14,
+                "c": "WARN"
+              },
+              {
+                "t": "Read exact head/check source, active ruleset, review commit and full coverage at the decision.",
+                "x": 16,
+                "y": 124,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-independent-host",
+          "kind": "notice",
+          "box": [360, 642, 1200, 116],
+          "props": {
+            "style": "warning",
+            "lines": [
+              {
+                "t": "T3 binding pause does not disable independent host-owned rules",
+                "x": 16,
+                "y": 28,
+                "s": 14,
+                "w": 600
+              },
+              {
+                "t": "Existing push/PR CI and upstream tag/schedule release rules stay separate. No release authority is added.",
+                "x": 16,
+                "y": 62,
+                "s": 14
+              },
+              {
+                "t": "Only an explicitly supported shared guard could enforce one admission cap across owners. That capability is not established.",
+                "x": 16,
+                "y": 94,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-return",
+          "kind": "button",
+          "box": [360, 818, 132, 32],
+          "props": {
+            "label": "Back",
+            "link": {
+              "edge": "F5-OE-02-back",
+              "to": "F5-O-00",
+              "type": "back",
+              "effect": "return",
+              "allowedOrigins": ["F5-O-00"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5-O-03",
+      "title": "Toolchain · Accepted evidence policy",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Toolchain / Evidence policy",
+        "navTargets": {}
+      },
+      "tag": "Accepted policy study · proposed AB:66 guard",
+      "caption": "R4 accepted delivery policy, carried forward without modifying the R5 Review change v1 bytes or digest. A UI hold is not an implemented server guard. All receipt/coverage claims need actual evidence in a real implementation.",
+      "state": {
+        "readOnly": true,
+        "operationsKind": "evidence-policy",
+        "policyScope": "accepted R4 delivery policy, separate from frozen R5 review definition"
+      },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "Accepted gate policy and evidence limits", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Policy requirements, observed evidence and execution authority stay separate",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-policy-sequence",
+          "kind": "card",
+          "box": [360, 194, 1200, 142],
+          "props": {
+            "lines": [
+              {
+                "t": "Before hosted checks or review requests under this policy",
+                "x": 16,
+                "y": 30,
+                "s": 18,
+                "w": 600
+              },
+              {
+                "t": "Factory-executed exact-candidate local tests AND applicable build must pass. Required evidence is not waivable by a note.",
+                "x": 16,
+                "y": 68,
+                "s": 14
+              },
+              {
+                "t": "Complete secret-scan coverage and current independent full-required-scope review remain distinct requirements.",
+                "x": 16,
+                "y": 102,
+                "s": 14
+              },
+              {
+                "t": "A push is not a hosted request. Automatic review subscriptions require their own owner-reviewed configuration.",
+                "x": 16,
+                "y": 128,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-receipt-basis",
+          "kind": "card",
+          "box": [360, 356, 1200, 164],
+          "props": {
+            "lines": [
+              { "t": "What a receipt must bind", "x": 16, "y": 30, "s": 18, "w": 600 },
+              {
+                "t": "Owner-qualified subject, exact candidate/tree/range, comparison and target bases, actual command/input and worktree.",
+                "x": 16,
+                "y": 68,
+                "s": 14
+              },
+              {
+                "t": "Tool/binary provenance, resolved config/lock digests, HEAD before/after, dirty/untracked state and cache provenance.",
+                "x": 16,
+                "y": 102,
+                "s": 14
+              },
+              {
+                "t": "Started/finished/observed times, exit, complete coverage and raw source. Agent stdout is corroboration, not attestation.",
+                "x": 16,
+                "y": 136,
+                "s": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-evidence-unknowns",
+          "kind": "card",
+          "box": [360, 540, 1200, 190],
+          "props": {
+            "lines": [
+              { "t": "Unknown stays unknown", "x": 16, "y": 30, "s": 18, "w": 600 },
+              {
+                "t": "Zero findings with incomplete scanning is not clean. A skipped/rate-limited/budget-exhausted review is not full coverage.",
+                "x": 16,
+                "y": 68,
+                "s": 14
+              },
+              {
+                "t": "Keep all same-head attempts and old-head failures. A later listing cannot erase them or certify a different head.",
+                "x": 16,
+                "y": 102,
+                "s": 14
+              },
+              {
+                "t": "Host-required, workflow-required and advisory are separate. A dismissal needs evidence and current-head reassessment.",
+                "x": 16,
+                "y": 136,
+                "s": 14
+              },
+              {
+                "t": "Merge-group results do not certify a PR head. Missing required policy or an unavailable enforcing adapter holds the decision.",
+                "x": 16,
+                "y": 170,
+                "s": 12,
+                "c": "WARN"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-return",
+          "kind": "button",
+          "box": [360, 818, 132, 32],
+          "props": {
+            "label": "Back",
+            "link": {
+              "edge": "F5-OE-03-back",
+              "to": "F5-O-00",
+              "type": "back",
+              "effect": "return",
+              "allowedOrigins": ["F5-O-00"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5-O-10",
+      "title": "Project · Attention & recovery",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Attention & recovery",
+        "navTargets": {}
+      },
+      "tag": "Gated proposal · AB:65 / #65 / AB:66",
+      "caption": "Separate illustrative operations records, not a claim about the working #237 invocation. Owner coverage is Workstation only. Native approvals/questions stay in ordinary threads; the coordinator is not a new execution engine.",
+      "state": {
+        "operationsKind": "attention",
+        "readOnly": true,
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "coverage": { "owner": "env-ws", "complete": true, "remoteOwnerCoverage": "unknown" },
+        "attentionReasons": ["capacity-review", "remote-ownership-unknown"]
+      },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "Attention & recovery", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Factory · Workstation-owned records · 2 illustrative decisions",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-attention-prereqs",
+          "kind": "notice",
+          "box": [360, 194, 1200, 112],
+          "props": {
+            "style": "warning",
+            "lines": [
+              {
+                "t": "AB:65 prerequisites are not shipped aggregation",
+                "x": 16,
+                "y": 28,
+                "s": 14,
+                "w": 600
+              },
+              {
+                "t": "Requires owner-qualified source records, complete owner coverage, action routing and source-driven clearing.",
+                "x": 16,
+                "y": 60,
+                "s": 14
+              },
+              {
+                "t": "Mac-owned attention is unknown and omitted. A locally owned stop record can remain visible while its executor is offline.",
+                "x": 16,
+                "y": 92,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-attention-cap",
+          "kind": "row",
+          "box": [360, 330, 1200, 132],
+          "props": {
+            "lines": [
+              { "t": "Review the temporary admission bound", "x": 16, "y": 30, "s": 16, "w": 600 },
+              {
+                "t": "env-ws / project-factory / ops-timer-study · wf-review-change v1 · window1 cap 3/3",
+                "x": 16,
+                "y": 68,
+                "s": 14
+              },
+              {
+                "t": "Held before another automatic admission. Review scope, cap and expiry; explicit resume or disable clears this reason.",
+                "x": 16,
+                "y": 104,
+                "s": 12,
+                "c": "MUT"
+              }
+            ],
+            "link": { "edge": "F5-OE-10-cap", "to": "F5-O-20", "effect": "navigation" }
+          }
+        },
+        {
+          "id": "ops-attention-remote",
+          "kind": "row",
+          "box": [360, 482, 1200, 132],
+          "props": {
+            "lines": [
+              { "t": "Remote writer ownership is uncertain", "x": 16, "y": 30, "s": 16, "w": 600 },
+              {
+                "t": "env-ws / project-factory / inv-f5-ops-remote-01 · executor env-mac · writer epoch12",
+                "x": 16,
+                "y": 68,
+                "s": 14
+              },
+              {
+                "t": "Last observed 11:08 UTC. Unknown is not stopped. Inspect the exact writer before a scoped stop request.",
+                "x": 16,
+                "y": 104,
+                "s": 12,
+                "c": "MUT"
+              }
+            ],
+            "link": { "edge": "F5-OE-10-remote", "to": "F5-O-30", "effect": "navigation" }
+          }
+        },
+        {
+          "id": "ops-attention-clearing",
+          "kind": "card",
+          "box": [360, 638, 1200, 120],
+          "props": {
+            "lines": [
+              { "t": "Rows leave on their source facts", "x": 16, "y": 28, "s": 16, "w": 600 },
+              {
+                "t": "Routine red checks stay in the invocation while bounded repair continues. Settlement never clears evidence or ownership.",
+                "x": 16,
+                "y": 64,
+                "s": 14
+              },
+              {
+                "t": "A merge decision appears only when an actual pending delivery source exists. No merge decision is invented here.",
+                "x": 16,
+                "y": 98,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5-O-20",
+      "title": "Operations · Capacity review held",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Attention / Admission bound",
+        "navTargets": {}
+      },
+      "tag": "Gated proposal · AB:66 binding controls",
+      "caption": "Illustrative ops-timer-study is independent of configured product bindings. Cap/expiry are version-scoped admission controls, not a generic run pause, worker cancellation or spending guarantee. No definition bytes change.",
+      "state": {
+        "operationsKind": "capacity",
+        "phase": "held",
+        "bindingId": "ops-timer-study",
+        "controlRevision": 1,
+        "admissionWindow": "window1",
+        "admitted": 3,
+        "cap": 3,
+        "expiresAt": "2026-11-03T18:00:00Z",
+        "bindingState": "held-cap",
+        "definitionUnchanged": true
+      },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "Review the admission bound", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Temporary timer study · cap reached · no new automatic admission",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-cap-record",
+          "kind": "card",
+          "box": [360, 336, 1200, 174],
+          "props": {
+            "lines": [
+              {
+                "t": "Workstation owns this binding, not all project execution",
+                "x": 16,
+                "y": 30,
+                "s": 18,
+                "w": 600
+              },
+              {
+                "t": "Scope: new review candidates under ops-timer-study. Window1 admitted 3 of 3; expires 3 Nov, 18:00 UTC.",
+                "x": 16,
+                "y": 68,
+                "s": 14
+              },
+              {
+                "t": "Prior admission records: env-ws / project-factory / ops-window1-admission-01, -02 and -03.",
+                "x": 16,
+                "y": 102,
+                "s": 14
+              },
+              {
+                "t": "At cap or expiry: hold new automatic admissions until review and explicit resume, or disable this binding.",
+                "x": 16,
+                "y": 142,
+                "s": 14,
+                "c": "WARN"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-cap-survivors",
+          "kind": "card",
+          "box": [360, 530, 1200, 192],
+          "props": {
+            "lines": [
+              { "t": "What survives the hold or a pause", "x": 16, "y": 30, "s": 18, "w": 600 },
+              {
+                "t": "Queued messages, active writers, authorized corrections, already started hosted jobs and independent PR-watch wakes.",
+                "x": 16,
+                "y": 68,
+                "s": 14
+              },
+              {
+                "t": "Manual workflow review stays independent, subject to its own prerequisites and permission. No webhook Run now is invented.",
+                "x": 16,
+                "y": 102,
+                "s": 14
+              },
+              {
+                "t": "Independent GitHub-owned rules keep their own admission policy. No shared cross-owner guard is established.",
+                "x": 16,
+                "y": 136,
+                "s": 14
+              },
+              {
+                "t": "The ordinary coordinator thread continues. Neither cap nor pause cancels work or guarantees a budget stop.",
+                "x": 16,
+                "y": 170,
+                "s": 12,
+                "c": "WARN"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-cap-back",
+          "kind": "button",
+          "box": [360, 818, 132, 32],
+          "props": {
+            "label": "Back",
+            "link": {
+              "edge": "F5-OE-20-back",
+              "to": "F5-O-10",
+              "type": "back",
+              "effect": "return",
+              "allowedOrigins": ["F5-O-10"]
+            }
+          }
+        },
+        {
+          "id": "ops-cap-review",
+          "kind": "button",
+          "box": [1260, 818, 300, 32],
+          "props": {
+            "label": "Review a narrower admission",
+            "link": { "edge": "F5-OE-20-review", "to": "F5-O-21", "effect": "navigation" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5-O-21",
+      "title": "Operations · Review narrowed admission",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Admission bound / Review",
+        "navTargets": {}
+      },
+      "tag": "Gated proposal · AB:66",
+      "caption": "The narrowed control record does not change the frozen v1 definition, add delivery authority, reset history or replace an uncertain writer. Editing alone does not resume. This button records an illustrative explicit authorization only.",
+      "state": {
+        "operationsKind": "capacity",
+        "phase": "review",
+        "bindingId": "ops-timer-study",
+        "controlRevision": 2,
+        "admissionWindow": "window2",
+        "cap": 1,
+        "admitted": 0,
+        "expiresAt": "2026-11-03T17:00:00Z",
+        "bindingState": "draft-held",
+        "definitionUnchanged": true
+      },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "Review narrower scope before resuming", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Mara · proposed control revision2 · starts no invocation",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-cap-diff",
+          "kind": "code",
+          "box": [360, 336, 1200, 216],
+          "props": {
+            "lines": [
+              {
+                "t": "Binding control record diff · not a workflow-definition diff",
+                "x": 16,
+                "y": 28,
+                "s": 14,
+                "w": 600
+              },
+              {
+                "t": "- window1: all matching review candidates; cap 3/3; ends 18:00 UTC; held-cap",
+                "x": 16,
+                "y": 68,
+                "s": 14,
+                "c": "RED"
+              },
+              {
+                "t": "+ window2: one new distinct candidate for source github/acme/factory#237 rev3",
+                "x": 16,
+                "y": 106,
+                "s": 14,
+                "c": "GREEN"
+              },
+              {
+                "t": "+ cap 1 new admission; ends 17:00 UTC; target Factory; dispatch owner env-ws",
+                "x": 16,
+                "y": 144,
+                "s": 14,
+                "c": "GREEN"
+              },
+              {
+                "t": "Window1 remains retained at 3/3. Existing production slots and uncertain writers cannot be bypassed.",
+                "x": 16,
+                "y": 184,
+                "s": 14,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-cap-effects",
+          "kind": "notice",
+          "box": [360, 576, 1200, 148],
+          "props": {
+            "style": "warning",
+            "lines": [
+              {
+                "t": "Explicit resume makes only the reviewed future binding eligible",
+                "x": 16,
+                "y": 30,
+                "s": 16,
+                "w": 600
+              },
+              {
+                "t": "No invocation starts now. No cancelled execution resumes. No merge, release or hosted-review authority is added.",
+                "x": 16,
+                "y": 70,
+                "s": 14
+              },
+              {
+                "t": "A new candidate still needs ordinary source/admission checks and frozen input review. Durable operation is not selected.",
+                "x": 16,
+                "y": 108,
+                "s": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-cap-cancel",
+          "kind": "button",
+          "box": [360, 818, 160, 32],
+          "props": {
+            "label": "Cancel review",
+            "link": {
+              "edge": "F5-OE-21-cancel",
+              "to": "F5-O-20",
+              "type": "back",
+              "effect": "return",
+              "allowedOrigins": ["F5-O-20"]
+            }
+          }
+        },
+        {
+          "id": "ops-cap-resume",
+          "kind": "button",
+          "box": [1230, 818, 330, 32],
+          "props": {
+            "variant": "primary",
+            "label": "Save bound and explicitly resume",
+            "link": { "edge": "F5-OE-21-resume", "to": "F5-O-22", "effect": "configuration-change" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5-O-22",
+      "title": "Operations · Binding eligible",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Admission bound / Receipt",
+        "navTargets": {}
+      },
+      "tag": "Illustrative control receipt · AB:66",
+      "caption": "Explicit resume at 11:11 UTC makes only future window2 admissions eligible. No new invocation exists. There is no return to the held actionable snapshot. Pause below changes this binding only.",
+      "state": {
+        "operationsKind": "capacity",
+        "phase": "resumed",
+        "bindingId": "ops-timer-study",
+        "controlRevision": 2,
+        "admissionWindow": "window2",
+        "admitted": 0,
+        "cap": 1,
+        "expiresAt": "2026-11-03T17:00:00Z",
+        "bindingState": "enabled",
+        "invocationsStartedByControl": [],
+        "definitionUnchanged": true
+      },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "Future binding eligible", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Control receipt ops-control-02 · Mara · 11:11 UTC",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-resume-receipt",
+          "kind": "notice",
+          "box": [360, 336, 1200, 146],
+          "props": {
+            "lines": [
+              {
+                "t": "Window2 enabled · 0/1 new admissions · ends 17:00 UTC",
+                "x": 16,
+                "y": 30,
+                "s": 18,
+                "w": 600
+              },
+              {
+                "t": "Only a later authorized match may admit a new distinct candidate. This control created no invocation or native thread.",
+                "x": 16,
+                "y": 72,
+                "s": 14
+              },
+              {
+                "t": "Window1 remains 3/3. The cap attention reason cleared through reviewed scope and explicit resume, not settlement.",
+                "x": 16,
+                "y": 112,
+                "s": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-resume-survivors",
+          "kind": "card",
+          "box": [360, 506, 1200, 184],
+          "props": {
+            "lines": [
+              { "t": "Unchanged execution and authority", "x": 16, "y": 30, "s": 18, "w": 600 },
+              {
+                "t": "Active/queued work, corrections, hosted jobs, PR watches and the ordinary coordinator keep their own state.",
+                "x": 16,
+                "y": 70,
+                "s": 14
+              },
+              {
+                "t": "Manual runs remain independent. External host-owned triggers are not enabled, disabled or capped by this receipt.",
+                "x": 16,
+                "y": 108,
+                "s": 14
+              },
+              {
+                "t": "No global halt, cancellation, guaranteed spending stop or new delivery grant is implied.",
+                "x": 16,
+                "y": 148,
+                "s": 14,
+                "c": "WARN"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-pause",
+          "kind": "button",
+          "box": [360, 818, 230, 32],
+          "props": {
+            "label": "Pause this binding",
+            "link": { "edge": "F5-OE-22-pause", "to": "F5-O-23", "effect": "configuration-change" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5-O-23",
+      "title": "Operations · Binding paused",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Admission bound / Paused",
+        "navTargets": {}
+      },
+      "tag": "Illustrative binding pause receipt",
+      "caption": "Pause follows the existing future-dispatch meaning. No generic native run pause is invented. Resume is explicit, retains the same unexpired window and starts no work. This path does not rewind to an earlier receipt.",
+      "state": {
+        "operationsKind": "capacity",
+        "phase": "paused",
+        "bindingId": "ops-timer-study",
+        "controlRevision": 3,
+        "admissionWindow": "window2",
+        "admitted": 0,
+        "cap": 1,
+        "expiresAt": "2026-11-03T17:00:00Z",
+        "bindingState": "paused",
+        "definitionUnchanged": true
+      },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "This automatic binding is paused", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Control receipt ops-control-03 · Mara · 11:12 UTC",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-paused-receipt",
+          "kind": "notice",
+          "box": [360, 336, 1200, 150],
+          "props": {
+            "style": "warning",
+            "lines": [
+              {
+                "t": "Future automatic dispatch off · no active work cancelled",
+                "x": 16,
+                "y": 30,
+                "s": 18,
+                "w": 600
+              },
+              {
+                "t": "Window2 stays 0/1, expiry 17:00 UTC. Manual workflow review remains separately available under its prerequisites.",
+                "x": 16,
+                "y": 74,
+                "s": 14
+              },
+              {
+                "t": "Queued messages, active writers, authorized corrections, hosted jobs and independent PR watches can survive.",
+                "x": 16,
+                "y": 116,
+                "s": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-paused-boundary",
+          "kind": "card",
+          "box": [360, 510, 1200, 150],
+          "props": {
+            "lines": [
+              {
+                "t": "Pause is not halt, cancel or a spending stop",
+                "x": 16,
+                "y": 30,
+                "s": 18,
+                "w": 600
+              },
+              {
+                "t": "The remote writer retains ownership until its exact stop acknowledgement and fence. No replacement starts here.",
+                "x": 16,
+                "y": 74,
+                "s": 14
+              },
+              {
+                "t": "Independent platform rules need their own owner action. The ordinary coordinator thread is unaffected.",
+                "x": 16,
+                "y": 116,
+                "s": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-resume-paused",
+          "kind": "button",
+          "box": [360, 818, 284, 32],
+          "props": {
+            "label": "Explicitly resume same bound",
+            "link": { "edge": "F5-OE-23-resume", "to": "F5-O-24", "effect": "configuration-change" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5-O-24",
+      "title": "Operations · Binding resumed without execution",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Admission bound / Resumed",
+        "navTargets": {}
+      },
+      "tag": "Illustrative control receipt",
+      "caption": "Terminal current receipt. Explicit resume reverses future-dispatch pause, not cancellation. No invocation started, expiry extended, cap reset, host rule changed or definition digest replaced. Restart the study to inspect another branch.",
+      "state": {
+        "operationsKind": "capacity",
+        "phase": "resumed-final",
+        "bindingId": "ops-timer-study",
+        "controlRevision": 4,
+        "admissionWindow": "window2",
+        "admitted": 0,
+        "cap": 1,
+        "expiresAt": "2026-11-03T17:00:00Z",
+        "bindingState": "enabled",
+        "definitionUnchanged": true,
+        "invocationsStartedByControl": []
+      },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "Binding resumed, no work started", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Control receipt ops-control-04 · Mara · 11:13 UTC",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-final-control",
+          "kind": "card",
+          "box": [360, 336, 1200, 220],
+          "props": {
+            "lines": [
+              { "t": "Same bound, explicit reverse", "x": 16, "y": 30, "s": 18, "w": 600 },
+              {
+                "t": "Window2 remains 0/1 and ends at 17:00 UTC. Cap or expiry will hold future admissions for review again.",
+                "x": 16,
+                "y": 74,
+                "s": 14
+              },
+              {
+                "t": "Window1 remains retained at 3/3. Cancelled work does not resume and an uncertain writer cannot be replaced.",
+                "x": 16,
+                "y": 116,
+                "s": 14
+              },
+              {
+                "t": "The resume receipt clears only this binding's pause. Manual runs and independent host rules keep their own authority.",
+                "x": 16,
+                "y": 158,
+                "s": 14
+              },
+              {
+                "t": "No guaranteed budget stop. No production or delivery authority.",
+                "x": 16,
+                "y": 194,
+                "s": 14,
+                "c": "WARN"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5-O-30",
+      "title": "Recovery · Remote owner unknown",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Attention / Remote writer",
+        "navTargets": {}
+      },
+      "tag": "Gated proposal · #65",
+      "caption": "Separate later-operations fixture, not a remote child inferred from the manual #237 thread. Existing stoppedThere bookkeeping is insufficient. #65 must supply exact owner/run/epoch matching and an enforceable write fence.",
+      "state": {
+        "operationsKind": "recovery",
+        "phase": "unknown",
+        "writerState": "unknown",
+        "requestId": null,
+        "ack": null,
+        "fence": null,
+        "replacementAllowed": false
+      },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "Remote writer ownership is unknown", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Workstation-owned recovery record · Mac Studio offline · last observed 11:08 UTC",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-writer-identity",
+          "kind": "card",
+          "box": [360, 336, 1200, 186],
+          "props": {
+            "lines": [
+              { "t": "Exact scope for a stop request", "x": 16, "y": 30, "s": 18, "w": 600 },
+              {
+                "t": "InvocationRef: env-ws / project-factory / inv-f5-ops-remote-01",
+                "x": 16,
+                "y": 70,
+                "s": 14
+              },
+              {
+                "t": "Executor: env-mac · native thread th-f5-ops-remote-01 · run run-f5-ops-remote-01 · writer epoch12",
+                "x": 16,
+                "y": 108,
+                "s": 14
+              },
+              {
+                "t": "Ownership remains retained. Parent/provider completion and an offline connection do not prove this writer stopped.",
+                "x": 16,
+                "y": 148,
+                "s": 14,
+                "c": "WARN"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-stop-effects",
+          "kind": "notice",
+          "box": [360, 546, 1200, 178],
+          "props": {
+            "style": "warning",
+            "lines": [
+              { "t": "Request only this writer to stop", "x": 16, "y": 30, "s": 18, "w": 600 },
+              {
+                "t": "Creates a local request addressed to the exact executor/thread/run/epoch. Delivery and acknowledgement may be absent.",
+                "x": 16,
+                "y": 70,
+                "s": 14
+              },
+              {
+                "t": "No replacement, replay, retry elsewhere, duplicate stop request or production slot release while ownership is uncertain.",
+                "x": 16,
+                "y": 108,
+                "s": 14
+              },
+              {
+                "t": "External reviewer jobs, CI run19541 and the ordinary coordinator are outside this request's scope.",
+                "x": 16,
+                "y": 148,
+                "s": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-stop-back",
+          "kind": "button",
+          "box": [360, 818, 132, 32],
+          "props": {
+            "label": "Back",
+            "link": {
+              "edge": "F5-OE-30-back",
+              "to": "F5-O-10",
+              "type": "back",
+              "effect": "return",
+              "allowedOrigins": ["F5-O-10"]
+            }
+          }
+        },
+        {
+          "id": "ops-stop-request",
+          "kind": "button",
+          "box": [1280, 818, 280, 32],
+          "props": {
+            "variant": "primary",
+            "label": "Request this scoped stop",
+            "link": {
+              "edge": "F5-OE-30-request",
+              "to": "F5-O-31",
+              "effect": "configuration-change"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5-O-31",
+      "title": "Recovery · Stop requested, ownership retained",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Recovery / Stop requested",
+        "navTargets": {}
+      },
+      "tag": "Illustrative #65 local request receipt",
+      "caption": "Stop requested at 11:12 UTC is not stopped. The next caption link reads a separately issued later acknowledgement/fence record. It does not send or fabricate either observation. No return reopens the stop request.",
+      "state": {
+        "operationsKind": "recovery",
+        "phase": "stop-requested",
+        "writerState": "unknown",
+        "requestId": "stop-f5-ops-01",
+        "requestedAt": "2026-11-03T11:12:00Z",
+        "ack": null,
+        "fence": null,
+        "replacementAllowed": false
+      },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "Stop requested; the writer may still run", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Local owner env-ws · stop-f5-ops-01 · 11:12 UTC",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-pending-scope",
+          "kind": "card",
+          "box": [360, 336, 1200, 178],
+          "props": {
+            "lines": [
+              { "t": "Ownership stays with the exact writer", "x": 16, "y": 30, "s": 18, "w": 600 },
+              {
+                "t": "env-mac / th-f5-ops-remote-01 / run-f5-ops-remote-01 / writer epoch12",
+                "x": 16,
+                "y": 70,
+                "s": 14
+              },
+              {
+                "t": "Matched acknowledgement: missing. Established fence: missing. Stopped: not established.",
+                "x": 16,
+                "y": 110,
+                "s": 14,
+                "c": "WARN"
+              },
+              {
+                "t": "Offline, timeout, reconnect, permanently refused/gone links or stoppedThere alone cannot clear this state.",
+                "x": 16,
+                "y": 150,
+                "s": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-pending-attention",
+          "kind": "notice",
+          "box": [360, 538, 1200, 164],
+          "props": {
+            "style": "warning",
+            "lines": [
+              {
+                "t": "The locally owned attention reason remains",
+                "x": 16,
+                "y": 30,
+                "s": 18,
+                "w": 600
+              },
+              {
+                "t": "Only matched owner acknowledgement plus an established write fence permits Stopped for this scope.",
+                "x": 16,
+                "y": 70,
+                "s": 14
+              },
+              {
+                "t": "An explicit owner resolution may close attention without claiming termination. No such resolution is recorded here.",
+                "x": 16,
+                "y": 110,
+                "s": 14
+              },
+              {
+                "t": "No stop-again, replacement or replay is available. Completed/failed history and external execution remain unchanged.",
+                "x": 16,
+                "y": 144,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-pending-status",
+          "kind": "tag",
+          "box": [360, 746, 238, 28],
+          "props": { "label": "Ownership retained · unknown", "role": "warning", "size": 12 }
+        }
+      ],
+      "studyLinks": [
+        {
+          "id": "ops-later-ack",
+          "kind": "button",
+          "box": [1272, 960, 304, 36],
+          "props": {
+            "label": "Later acknowledgement + fence",
+            "size": 14,
+            "link": {
+              "edge": "F5-OE-31-later-ack",
+              "to": "F5-O-32",
+              "type": "navigate",
+              "effect": "history-read"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5-O-32",
+      "title": "Recovery · Matched acknowledgement and replay review",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Recovery / Acknowledged and fenced",
+        "navTargets": {}
+      },
+      "tag": "Conditional fixture · #65 / AB:66",
+      "caption": "Later observation reads an acknowledgement issued 11:15 and its established fence at 11:16. This conditional design assumes #65 and a complete retained snapshot. It is not present-runtime proof. Missing bytes or any uncertain writer holds replay.",
+      "state": {
+        "operationsKind": "recovery",
+        "phase": "acknowledged-fenced",
+        "writerState": "stopped",
+        "requestId": "stop-f5-ops-01",
+        "ack": {
+          "requestId": "stop-f5-ops-01",
+          "executor": "env-mac",
+          "threadId": "th-f5-ops-remote-01",
+          "runId": "run-f5-ops-remote-01",
+          "writerEpoch": 12,
+          "result": "cancelled",
+          "issuedAt": "2026-11-03T11:15:00Z",
+          "observedAt": "2026-11-03T11:16:00Z"
+        },
+        "fence": { "established": true, "epoch": 13, "rejectsWriterEpoch": 12 },
+        "replacementAllowed": false,
+        "snapshotAvailability": "illustrative-complete",
+        "replayScope": "evidence-only"
+      },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "Matched acknowledgement and fence", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Stopped applies only to the matched remote writer · read 11:16 UTC",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-matched-record",
+          "kind": "card",
+          "box": [360, 336, 1200, 150],
+          "props": {
+            "lines": [
+              {
+                "t": "stop-f5-ops-01 matches owner, executor, thread, run and epoch",
+                "x": 16,
+                "y": 30,
+                "s": 16,
+                "w": 600
+              },
+              {
+                "t": "env-mac / th-f5-ops-remote-01 / run-f5-ops-remote-01 / epoch12 acknowledged cancelled at 11:15.",
+                "x": 16,
+                "y": 70,
+                "s": 14
+              },
+              {
+                "t": "Established fence epoch13 rejects epoch12 writes. The local uncertain-stop attention reason clears on these facts.",
+                "x": 16,
+                "y": 110,
+                "s": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-replay-review",
+          "kind": "card",
+          "box": [360, 506, 1200, 166],
+          "props": {
+            "lines": [
+              {
+                "t": "Replay evidence only, with new identity",
+                "x": 16,
+                "y": 30,
+                "s": 18,
+                "w": 600
+              },
+              {
+                "t": "Freeze the exact version, inputs, candidate/base, configuration, policy and ordinary coordinator binding revision.",
+                "x": 16,
+                "y": 68,
+                "s": 14
+              },
+              {
+                "t": "All retained bytes must be available and match their recorded digests. Input reproducibility does not promise model output.",
+                "x": 16,
+                "y": 104,
+                "s": 14
+              },
+              {
+                "t": "New invocation and isolated native thread/worktree. Fresh receipts. No production admission or uncertain-writer replacement.",
+                "x": 16,
+                "y": 140,
+                "s": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-replay-authority",
+          "kind": "notice",
+          "box": [360, 692, 1200, 94],
+          "props": {
+            "style": "warning",
+            "lines": [
+              {
+                "t": "No acceptance, publication/merge grant, hosted approval, schedule enablement or credential is carried.",
+                "x": 16,
+                "y": 30,
+                "s": 14,
+                "w": 500
+              },
+              {
+                "t": "Existing delivery slots and negative/failed evidence remain. Replay is explicit and may incur local execution cost.",
+                "x": 16,
+                "y": 66,
+                "s": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-replay-launch",
+          "kind": "button",
+          "box": [1260, 818, 300, 32],
+          "props": {
+            "variant": "primary",
+            "label": "Replay evidence only",
+            "link": { "edge": "F5-OE-32-replay", "to": "F5-O-33", "effect": "dispatch" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "F5-O-33",
+      "title": "Recovery · Evidence-only replay accepted",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Recovery / Replay receipt",
+        "navTargets": {}
+      },
+      "tag": "Illustrative AB:66 dispatch receipt",
+      "caption": "Terminal current receipt. Explicit replay creates a distinct invocation, native thread and isolated worktree. No receipts or authority carry forward. No path reopens the replay preview or uncertain stop. Restart the study for another branch.",
+      "state": {
+        "operationsKind": "recovery",
+        "phase": "replay-accepted",
+        "writerState": "stopped-original-scope",
+        "invocationRef": "inv-f5-ops-replay-01",
+        "replayOf": "inv-f5-ops-remote-01",
+        "nativeThreadId": "th-f5-ops-replay-01",
+        "worktree": "../factory-ops-evidence-replay",
+        "dispatch": "accepted",
+        "providerState": "not-yet-observed",
+        "receipts": [],
+        "acceptance": null,
+        "deliveryGrant": null,
+        "hostedApproval": null,
+        "credentialsCarried": false,
+        "scheduleEnabledByReplay": false
+      },
+      "regions": [
+        {
+          "id": "ops-title",
+          "kind": "text",
+          "box": [360, 118, 1200, 58],
+          "props": {
+            "lines": [
+              { "t": "Evidence-only replay dispatch accepted", "y": 24, "s": 20, "w": 600 },
+              {
+                "t": "Mara · 11:18 UTC · provider start not yet observed",
+                "y": 50,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-replay-identities",
+          "kind": "card",
+          "box": [360, 336, 1200, 200],
+          "props": {
+            "lines": [
+              {
+                "t": "A new invocation, not a retry of the uncertain writer",
+                "x": 16,
+                "y": 30,
+                "s": 18,
+                "w": 600
+              },
+              {
+                "t": "InvocationRef: env-ws / project-factory / inv-f5-ops-replay-01",
+                "x": 16,
+                "y": 70,
+                "s": 14
+              },
+              {
+                "t": "replayOf: env-ws / project-factory / inv-f5-ops-remote-01",
+                "x": 16,
+                "y": 108,
+                "s": 14
+              },
+              {
+                "t": "Native thread: env-ws / th-f5-ops-replay-01 · isolated ../factory-ops-evidence-replay",
+                "x": 16,
+                "y": 146,
+                "s": 14
+              },
+              {
+                "t": "dispatch-f5-ops-replay-01 · message-f5-ops-replay-01 · no turn/native run observed yet",
+                "x": 16,
+                "y": 180,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ops-replay-empty-evidence",
+          "kind": "notice",
+          "box": [360, 560, 1200, 166],
+          "props": {
+            "lines": [
+              {
+                "t": "Fresh receipts: none · acceptance: none · delivery grant: none",
+                "x": 16,
+                "y": 30,
+                "s": 18,
+                "w": 600
+              },
+              {
+                "t": "Old receipts remain read-only comparison. They do not prove this new execution. No completion is inferred.",
+                "x": 16,
+                "y": 70,
+                "s": 14
+              },
+              {
+                "t": "No hosted approval, automatic-binding activation, credential, tracker mutation or production writer replacement.",
+                "x": 16,
+                "y": 108,
+                "s": 14
+              },
+              {
+                "t": "Failed, incomplete and no-improvement observations remain retained. Existing delivery keeps its original slot.",
+                "x": 16,
+                "y": 144,
+                "s": 12,
+                "c": "MUT"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

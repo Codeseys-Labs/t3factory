@@ -1,0 +1,677 @@
+[
+  {
+    "id": "R7F-01--nav-work",
+    "from": "R7F-01",
+    "to": "R7F-01",
+    "groupId": "R7F-01--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-01--create-local",
+    "from": "R7F-01",
+    "to": "R7F-02",
+    "groupId": "R7F-01--create-local",
+    "box": [1420, 176, 160, 32],
+    "kind": "navigate",
+    "effect": "Open local draft; no source connection required."
+  },
+  {
+    "id": "R7F-01--nav-intake",
+    "to": "R7F-15",
+    "groupId": "R7F-01--nav-intake",
+    "box": [416, 56, 76, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-01"
+  },
+  {
+    "id": "R7F-01--nav-more",
+    "to": "R7F-14",
+    "groupId": "R7F-01--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-01"
+  },
+  {
+    "id": "R7F-02--nav-work",
+    "from": "R7F-02",
+    "to": "R7F-01",
+    "groupId": "R7F-02--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-02--cancel-create-top",
+    "from": "R7F-02",
+    "to": "R7F-01",
+    "groupId": "R7F-02--cancel-create-top",
+    "box": [340, 176, 96, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-02--cancel-create",
+    "from": "R7F-02",
+    "to": "R7F-01",
+    "groupId": "R7F-02--cancel-create",
+    "box": [994, 700, 100, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-02--save-create-local",
+    "from": "R7F-02",
+    "to": "R7F-03",
+    "groupId": "R7F-02--save-create-local",
+    "box": [1106, 700, 194, 32],
+    "kind": "fixture-transition",
+    "effect": "Fictional local creation: plan-local-041, display L-041; no thread or invocation created."
+  },
+  {
+    "id": "R7F-02--nav-intake",
+    "to": "R7F-15",
+    "groupId": "R7F-02--nav-intake",
+    "box": [416, 56, 76, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-02"
+  },
+  {
+    "id": "R7F-02--nav-more",
+    "to": "R7F-14",
+    "groupId": "R7F-02--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-02"
+  },
+  {
+    "id": "R7F-03--row-l-041",
+    "from": "R7F-03",
+    "to": "R7F-03",
+    "groupId": "R7F-03--row-l-041",
+    "box": [340, 350, 700, 76],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-03--nav-intake",
+    "to": "R7F-15",
+    "groupId": "R7F-03--nav-intake",
+    "box": [416, 56, 76, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-03"
+  },
+  {
+    "id": "R7F-03--nav-more",
+    "to": "R7F-14",
+    "groupId": "R7F-03--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-03"
+  },
+  {
+    "id": "R7F-03--nav-work",
+    "to": "R7F-12",
+    "groupId": "R7F-03--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-03"
+  },
+  {
+    "id": "R7F-03--close-local-inspector",
+    "to": "R7F-12",
+    "groupId": "R7F-03--close-local-inspector",
+    "box": [1484, 190, 76, 32],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-03"
+  },
+  {
+    "id": "R7F-03--review-existing-link",
+    "to": "R7F-14",
+    "groupId": "R7F-03--review-existing-link",
+    "box": [1080, 759, 202, 32],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-03"
+  },
+  {
+    "id": "R7F-04--nav-work",
+    "from": "R7F-04",
+    "to": "R7F-04",
+    "groupId": "R7F-04--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-04--nav-intake",
+    "from": "R7F-04",
+    "to": "R7F-06",
+    "groupId": "R7F-04--nav-intake",
+    "box": [416, 56, 76, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-04--nav-more",
+    "from": "R7F-04",
+    "to": "R7F-07",
+    "groupId": "R7F-04--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-04--row-l-041",
+    "from": "R7F-04",
+    "to": "R7F-13",
+    "groupId": "R7F-04--row-l-041",
+    "box": [340, 410, 1240, 68],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-04--row-eng-237",
+    "from": "R7F-04",
+    "to": "R7F-05",
+    "groupId": "R7F-04--row-eng-237",
+    "box": [340, 478, 1240, 68],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-04--create-local",
+    "to": "R7F-18",
+    "groupId": "R7F-04--create-local",
+    "box": [1420, 176, 160, 32],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-04"
+  },
+  {
+    "id": "R7F-05--nav-work",
+    "from": "R7F-05",
+    "to": "R7F-04",
+    "groupId": "R7F-05--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-05--nav-intake",
+    "from": "R7F-05",
+    "to": "R7F-06",
+    "groupId": "R7F-05--nav-intake",
+    "box": [416, 56, 76, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-05--nav-more",
+    "from": "R7F-05",
+    "to": "R7F-07",
+    "groupId": "R7F-05--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-05--back-to-work",
+    "from": "R7F-05",
+    "to": "R7F-04",
+    "groupId": "R7F-05--back-to-work",
+    "box": [340, 176, 130, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-05--connection-scope",
+    "from": "R7F-05",
+    "to": "R7F-07",
+    "groupId": "R7F-05--connection-scope",
+    "box": [1036, 465, 190, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-05--edit-local-brief",
+    "from": "R7F-05",
+    "to": "R7F-19",
+    "groupId": "R7F-05--edit-local-brief",
+    "box": [340, 800, 174, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-06--nav-work",
+    "from": "R7F-06",
+    "to": "R7F-04",
+    "groupId": "R7F-06--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-06--nav-intake",
+    "from": "R7F-06",
+    "to": "R7F-06",
+    "groupId": "R7F-06--nav-intake",
+    "box": [416, 56, 76, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-06--nav-more",
+    "from": "R7F-06",
+    "to": "R7F-07",
+    "groupId": "R7F-06--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-07--nav-more",
+    "from": "R7F-07",
+    "to": "R7F-07",
+    "groupId": "R7F-07--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-07--spec-fixture-conflict",
+    "from": "R7F-07",
+    "to": "R7F-08",
+    "groupId": "R7F-07--spec-fixture-conflict",
+    "box": [1040, 977, 190, 28],
+    "kind": "spec-fixture",
+    "effect": "Independent opted-in scenario, outside product. Does not enable writes or submit a request."
+  },
+  {
+    "id": "R7F-07--spec-fixture-disconnected",
+    "from": "R7F-07",
+    "to": "R7F-09",
+    "groupId": "R7F-07--spec-fixture-disconnected",
+    "box": [1242, 977, 260, 28],
+    "kind": "spec-fixture",
+    "effect": "Independent prior-timeout scenario, outside product. Does not disconnect or retry a write."
+  },
+  {
+    "id": "R7F-08--nav-work",
+    "from": "R7F-08",
+    "to": "R7F-04",
+    "groupId": "R7F-08--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-08--nav-intake",
+    "from": "R7F-08",
+    "to": "R7F-06",
+    "groupId": "R7F-08--nav-intake",
+    "box": [416, 56, 76, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-08--nav-more",
+    "from": "R7F-08",
+    "to": "R7F-07",
+    "groupId": "R7F-08--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-08--recovery-back",
+    "from": "R7F-08",
+    "to": "R7F-04",
+    "groupId": "R7F-08--recovery-back",
+    "box": [340, 176, 130, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-08--use-linear-status",
+    "from": "R7F-08",
+    "to": "R7F-05",
+    "groupId": "R7F-08--use-linear-status",
+    "box": [848, 770, 146, 32],
+    "kind": "navigate",
+    "effect": "Fictional resolution accepts current In Review locally and discards this status draft; no outbound write."
+  },
+  {
+    "id": "R7F-09--nav-work",
+    "to": "R7F-16",
+    "groupId": "R7F-09--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-09"
+  },
+  {
+    "id": "R7F-09--nav-more",
+    "to": "R7F-17",
+    "groupId": "R7F-09--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-09"
+  },
+  {
+    "id": "R7F-09--recovery-back",
+    "to": "R7F-16",
+    "groupId": "R7F-09--recovery-back",
+    "box": [340, 176, 130, 32],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-09"
+  },
+  {
+    "id": "R7F-09--reconnect-review",
+    "to": "R7F-17",
+    "groupId": "R7F-09--reconnect-review",
+    "box": [848, 770, 156, 32],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-09"
+  },
+  {
+    "id": "R7F-10--nav-work",
+    "to": "R7F-22",
+    "groupId": "R7F-10--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-10"
+  },
+  {
+    "id": "R7F-10--cancel-link-top",
+    "to": "R7F-22",
+    "groupId": "R7F-10--cancel-link-top",
+    "box": [340, 176, 166, 32],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-10"
+  },
+  {
+    "id": "R7F-10--cancel-link",
+    "to": "R7F-22",
+    "groupId": "R7F-10--cancel-link",
+    "box": [966, 740, 100, 32],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-10"
+  },
+  {
+    "id": "R7F-10--confirm-existing-link",
+    "to": "R7F-13",
+    "groupId": "R7F-10--confirm-existing-link",
+    "box": [1078, 740, 222, 32],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-10"
+  },
+  {
+    "id": "R7F-11--nav-work",
+    "from": "R7F-11",
+    "to": "R7F-04",
+    "groupId": "R7F-11--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-11--nav-intake",
+    "from": "R7F-11",
+    "to": "R7F-06",
+    "groupId": "R7F-11--nav-intake",
+    "box": [416, 56, 76, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-11--nav-more",
+    "from": "R7F-11",
+    "to": "R7F-07",
+    "groupId": "R7F-11--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-11--back-to-work",
+    "from": "R7F-11",
+    "to": "R7F-04",
+    "groupId": "R7F-11--back-to-work",
+    "box": [340, 176, 130, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-11--connection-scope",
+    "from": "R7F-11",
+    "to": "R7F-07",
+    "groupId": "R7F-11--connection-scope",
+    "box": [764, 465, 190, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-11--edit-local-brief",
+    "from": "R7F-11",
+    "to": "R7F-19",
+    "groupId": "R7F-11--edit-local-brief",
+    "box": [340, 800, 174, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-12--row-l-041",
+    "from": "R7F-12",
+    "to": "R7F-03",
+    "groupId": "R7F-12--row-l-041",
+    "box": [340, 350, 1240, 76],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-12--nav-intake",
+    "to": "R7F-15",
+    "groupId": "R7F-12--nav-intake",
+    "box": [416, 56, 76, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-12"
+  },
+  {
+    "id": "R7F-12--nav-more",
+    "to": "R7F-14",
+    "groupId": "R7F-12--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-12"
+  },
+  {
+    "id": "R7F-12--nav-work",
+    "to": "R7F-12",
+    "groupId": "R7F-12--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-12"
+  },
+  {
+    "id": "R7F-13--nav-work",
+    "from": "R7F-13",
+    "to": "R7F-04",
+    "groupId": "R7F-13--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-13--nav-intake",
+    "from": "R7F-13",
+    "to": "R7F-06",
+    "groupId": "R7F-13--nav-intake",
+    "box": [416, 56, 76, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-13--nav-more",
+    "from": "R7F-13",
+    "to": "R7F-07",
+    "groupId": "R7F-13--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Retain local records; navigation has no execution effect."
+  },
+  {
+    "id": "R7F-13--back-to-work",
+    "from": "R7F-13",
+    "to": "R7F-04",
+    "groupId": "R7F-13--back-to-work",
+    "box": [340, 176, 130, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-13--connection-scope",
+    "from": "R7F-13",
+    "to": "R7F-07",
+    "groupId": "R7F-13--connection-scope",
+    "box": [1124, 710, 190, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-15--optional-sources",
+    "from": "R7F-15",
+    "to": "R7F-14",
+    "groupId": "R7F-15--optional-sources",
+    "box": [372, 516, 202, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-16--row-eng-237",
+    "from": "R7F-16",
+    "to": "R7F-09",
+    "groupId": "R7F-16--row-eng-237",
+    "box": [340, 478, 1240, 68],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-16--nav-work",
+    "to": "R7F-16",
+    "groupId": "R7F-16--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-16"
+  },
+  {
+    "id": "R7F-16--nav-more",
+    "to": "R7F-17",
+    "groupId": "R7F-16--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-16"
+  },
+  {
+    "id": "R7F-17--nav-work",
+    "to": "R7F-16",
+    "groupId": "R7F-17--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-17"
+  },
+  {
+    "id": "R7F-17--nav-more",
+    "to": "R7F-17",
+    "groupId": "R7F-17--nav-more",
+    "box": [610, 56, 70, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-17"
+  },
+  {
+    "id": "R7F-18--cancel-create-top",
+    "from": "R7F-18",
+    "to": "R7F-04",
+    "groupId": "R7F-18--cancel-create-top",
+    "box": [340, 176, 96, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-18--cancel-create",
+    "from": "R7F-18",
+    "to": "R7F-04",
+    "groupId": "R7F-18--cancel-create",
+    "box": [994, 700, 100, 32],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-18--save-create-local",
+    "from": "R7F-18",
+    "to": "R7F-20",
+    "groupId": "R7F-18--save-create-local",
+    "box": [1106, 700, 194, 32],
+    "kind": "fixture-transition",
+    "effect": ""
+  },
+  {
+    "id": "R7F-22--row-l-041",
+    "from": "R7F-22",
+    "to": "R7F-10",
+    "groupId": "R7F-22--row-l-041",
+    "box": [340, 410, 1240, 68],
+    "kind": "navigate",
+    "effect": ""
+  },
+  {
+    "id": "R7F-18--nav-work",
+    "to": "R7F-04",
+    "groupId": "R7F-18--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-18"
+  },
+  {
+    "id": "R7F-20--nav-work",
+    "to": "R7F-20",
+    "groupId": "R7F-20--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-20"
+  },
+  {
+    "id": "R7F-22--nav-work",
+    "to": "R7F-22",
+    "groupId": "R7F-22--nav-work",
+    "box": [340, 56, 72, 34],
+    "kind": "navigate",
+    "effect": "Bounded fictional navigation; no external operation.",
+    "from": "R7F-22"
+  }
+]

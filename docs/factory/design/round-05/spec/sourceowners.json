@@ -1,0 +1,2427 @@
+{
+  "schema": "t3factory-workspace-scenes/1",
+  "scenes": [
+    {
+      "id": "F5-P-MORE",
+      "title": "More",
+      "shell": {
+        "mode": "workspace",
+        "section": "More",
+        "breadcrumb": "More",
+        "navTargets": {}
+      },
+      "tag": "Read-only design fixture",
+      "caption": "Project directory. Back uses native history to restore the caller. Sources and coordination retain native owners; operational decisions are separately qualified illustrative records, not changes caused by opening this page.",
+      "state": {
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "readOnly": true,
+        "fixture": true,
+        "preservesCallerSnapshot": true,
+        "surface": "project-directory",
+        "returnPolicy": "captured-read-only-origin"
+      },
+      "regions": [
+        {
+          "id": "peo-more-title",
+          "kind": "text",
+          "box": [340, 116, 740, 60],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Project tools",
+                "x": 0,
+                "y": 24,
+                "s": 18,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "Sources, coordination and operations",
+                "x": 0,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-more-menu",
+          "kind": "menu",
+          "box": [340, 190, 720, 632],
+          "props": {
+            "style": "menu",
+            "lines": []
+          }
+        },
+        {
+          "id": "peo-more-issues",
+          "kind": "row",
+          "box": [352, 206, 696, 60],
+          "props": {
+            "link": {
+              "edge": "F5-PEO-01",
+              "to": "F5-P-ISSUES",
+              "type": "navigate",
+              "effect": "navigation"
+            },
+            "style": "menu",
+            "lines": [
+              {
+                "t": "Issues",
+                "x": 12,
+                "y": 22,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Own-repository issues and source revisions",
+                "x": 12,
+                "y": 44,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-more-briefs",
+          "kind": "row",
+          "box": [352, 270, 696, 60],
+          "props": {
+            "link": {
+              "edge": "F5-PEO-02",
+              "to": "F5-P-BRIEFS",
+              "type": "navigate",
+              "effect": "navigation"
+            },
+            "style": "menu",
+            "lines": [
+              {
+                "t": "Briefs",
+                "x": 12,
+                "y": 22,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Human-authored inputs and revision context",
+                "x": 12,
+                "y": 44,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-more-sources",
+          "kind": "row",
+          "box": [352, 334, 696, 60],
+          "props": {
+            "link": {
+              "edge": "F5-PEO-03",
+              "to": "F5-P-SOURCES",
+              "type": "navigate",
+              "effect": "navigation"
+            },
+            "style": "menu",
+            "lines": [
+              {
+                "t": "Sources",
+                "x": 12,
+                "y": 22,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Checkout-bound RSS / Atom items · desktop",
+                "x": 12,
+                "y": 44,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-more-research",
+          "kind": "row",
+          "box": [352, 398, 696, 60],
+          "props": {
+            "link": {
+              "edge": "F5-PEO-04",
+              "to": "F5-P-RESEARCH",
+              "type": "navigate",
+              "effect": "navigation"
+            },
+            "style": "menu",
+            "lines": [
+              {
+                "t": "Research",
+                "x": 12,
+                "y": 22,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Sealed protocols and review context · desktop",
+                "x": 12,
+                "y": 44,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-more-coordinator",
+          "kind": "row",
+          "box": [352, 462, 696, 60],
+          "props": {
+            "link": {
+              "edge": "F5-PEO-05",
+              "to": "F5-P-COORDINATOR",
+              "type": "navigate",
+              "effect": "navigation"
+            },
+            "style": "menu",
+            "lines": [
+              {
+                "t": "Coordinator",
+                "x": 12,
+                "y": 22,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Project coordination in an ordinary T3 thread",
+                "x": 12,
+                "y": 44,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-more-scheduled",
+          "kind": "row",
+          "box": [352, 526, 696, 60],
+          "props": {
+            "link": {
+              "edge": "F5-PEO-06",
+              "to": "F5-P-SETTINGS",
+              "type": "navigate",
+              "effect": "navigation"
+            },
+            "style": "menu",
+            "lines": [
+              {
+                "t": "Scheduled tasks",
+                "x": 12,
+                "y": 22,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Existing prompt scheduler in Settings",
+                "x": 12,
+                "y": 44,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-more-toolchain",
+          "kind": "row",
+          "box": [352, 590, 696, 60],
+          "props": {
+            "link": { "to": "F5-O-00", "type": "navigate", "effect": "navigation" },
+            "style": "menu",
+            "lines": [
+              { "t": "Toolchain & checks", "x": 12, "y": 22, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Repository and host ownership; unknown is not clean",
+                "x": 12,
+                "y": 44,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-more-operations",
+          "kind": "row",
+          "box": [352, 654, 696, 60],
+          "props": {
+            "link": { "to": "F5-O-10", "type": "navigate", "effect": "navigation" },
+            "style": "menu",
+            "lines": [
+              { "t": "Attention & recovery", "x": 12, "y": 22, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Capacity, writer ownership and evidence-only replay",
+                "x": 12,
+                "y": 44,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-more-divider",
+          "kind": "rule",
+          "box": [356, 750, 688, 1],
+          "props": {}
+        },
+        {
+          "id": "peo-more-close",
+          "kind": "button",
+          "box": [932, 774, 104, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "Back",
+            "size": 14,
+            "link": {
+              "edge": "F5-PEO-07",
+              "to": "F5-C00",
+              "type": "back",
+              "effect": "return",
+              "allowedOrigins": [
+                "F5-C00",
+                "F5-C01",
+                "F5-C02",
+                "F5-C03",
+                "F5-C04",
+                "F5-C05",
+                "F5-C06",
+                "F5-C07",
+                "F5-C08",
+                "F5-C09",
+                "F5-C10",
+                "F5-C11",
+                "F5-C12",
+                "F5-C13",
+                "F5-C14",
+                "F5-C15",
+                "F5-W00",
+                "F5-W01",
+                "F5-W02",
+                "F5-W03",
+                "F5-W04",
+                "F5-W05",
+                "F5-W06",
+                "F5-W09",
+                "F5-W10",
+                "F5-W11",
+                "F5-W12"
+              ]
+            }
+          }
+        }
+      ],
+      "staticControls": [
+        "Common native project tabs and project-menu invokers are drawn and wired by the parent. New workflow management stays in Workflows."
+      ]
+    },
+    {
+      "id": "F5-P-ISSUES",
+      "title": "Issues",
+      "shell": {
+        "mode": "workspace",
+        "section": "More",
+        "breadcrumb": "Issues",
+        "navTargets": {}
+      },
+      "tag": "Read-only design fixture",
+      "caption": "Source-owned GitHub preview. #237 remains Open at revision 3. Reading the issue does not plan, claim, admit, launch or close it; Back restores C00, C01 or the project menu.",
+      "state": {
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "readOnly": true,
+        "fixture": true,
+        "preservesCallerSnapshot": true,
+        "sourceOwner": "Issues",
+        "sourceRef": {
+          "provider": "github",
+          "repository": "acme/factory",
+          "number": 237,
+          "revision": 3
+        },
+        "selection": "github/acme/factory#237/rev3",
+        "sourceState": "Open"
+      },
+      "regions": [
+        {
+          "id": "peo-issues-back",
+          "kind": "button",
+          "box": [340, 112, 84, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "Back",
+            "size": 14,
+            "link": {
+              "edge": "F5-PEO-08",
+              "to": "F5-P-MORE",
+              "type": "back",
+              "effect": "return",
+              "allowedOrigins": ["F5-C00", "F5-C01", "F5-P-MORE"]
+            }
+          }
+        },
+        {
+          "id": "peo-issues-title",
+          "kind": "text",
+          "box": [440, 108, 1140, 60],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Issues",
+                "x": 0,
+                "y": 26,
+                "s": 18,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "acme/factory · own-repository issue inbox",
+                "x": 0,
+                "y": 52,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-issues-fixture",
+          "kind": "text",
+          "box": [340, 180, 1240, 28],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Read-only design fixture · fictional project data",
+                "x": 0,
+                "y": 18,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-issues-list-label",
+          "kind": "text",
+          "box": [340, 214, 520, 30],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Open issues · 3 shown",
+                "x": 0,
+                "y": 20,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-issues-issue237",
+          "kind": "row",
+          "box": [340, 252, 520, 100],
+          "props": {
+            "style": "row-selected",
+            "lines": [
+              {
+                "t": "Keep the search index responsive in large repositories",
+                "x": 16,
+                "y": 26,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 488,
+                "lh": 20
+              },
+              {
+                "t": "#237 · rev 3 · Open · Mara",
+                "x": 16,
+                "y": 86,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-issues-issue231",
+          "kind": "row",
+          "box": [340, 360, 520, 80],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Report cache warm-up progress",
+                "x": 16,
+                "y": 26,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 488,
+                "lh": 20
+              },
+              {
+                "t": "#231 · rev 2 · Open · Mara",
+                "x": 16,
+                "y": 66,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-issues-issue229",
+          "kind": "row",
+          "box": [340, 448, 520, 80],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Add a search recovery command",
+                "x": 16,
+                "y": 26,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 488,
+                "lh": 20
+              },
+              {
+                "t": "#229 · rev 1 · Open · Ilan",
+                "x": 16,
+                "y": 66,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-issues-list-scope",
+          "kind": "text",
+          "box": [340, 548, 520, 60],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Own-repository issues stay here.",
+                "x": 0,
+                "y": 20,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "RSS / Atom items are reviewed in Sources.",
+                "x": 0,
+                "y": 44,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-issues-issue-header",
+          "kind": "inspector",
+          "box": [880, 224, 700, 120],
+          "props": {
+            "style": "inspector",
+            "lines": [
+              {
+                "t": "GitHub #237 · Open · revision 3",
+                "x": 16,
+                "y": 26,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Keep the search index responsive in large repositories",
+                "x": 16,
+                "y": 58,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "acme/factory · source owner: Issues",
+                "x": 16,
+                "y": 104,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-issues-description",
+          "kind": "row",
+          "box": [880, 356, 700, 104],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Description",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Large repositories can block search while the index refreshes.",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Keep typing responsive and expose refresh progress.",
+                "x": 16,
+                "y": 74,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-issues-acceptance",
+          "kind": "row",
+          "box": [880, 472, 700, 128],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Acceptance context",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Search remains usable during refresh.",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Cancellation preserves the last complete index.",
+                "x": 16,
+                "y": 74,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Report errors without hiding stale results.",
+                "x": 16,
+                "y": 98,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-issues-revisions",
+          "kind": "row",
+          "box": [880, 612, 700, 104],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Revision context",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "rev 2 · Added cancellation and recovery details",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "rev 3 · Clarified responsiveness during incremental refresh",
+                "x": 16,
+                "y": 74,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-issues-source-boundary",
+          "kind": "text",
+          "box": [880, 736, 700, 72],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Source revision only · planning and execution remain in Work.",
+                "x": 0,
+                "y": 22,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 688,
+                "lh": 20
+              },
+              {
+                "t": "Reading this preview preserves the incoming Work snapshot.",
+                "x": 0,
+                "y": 48,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        }
+      ],
+      "staticControls": [
+        "Issue rows, Open filter and detail text are static source review. No edit, close, claim, Add to plan, admission or launch control is provided."
+      ]
+    },
+    {
+      "id": "F5-P-BRIEFS",
+      "title": "Briefs",
+      "shell": {
+        "mode": "workspace",
+        "section": "More",
+        "breadcrumb": "Briefs",
+        "navTargets": {}
+      },
+      "tag": "Read-only design fixture",
+      "caption": "Source-owned human brief preview. Brief 14 is Draft at revision 2. No authoring, sealing, planning, claim or execution change is modeled; native Back retains the inbound Work or menu context.",
+      "state": {
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "readOnly": true,
+        "fixture": true,
+        "preservesCallerSnapshot": true,
+        "sourceOwner": "Briefs",
+        "sourceRef": {
+          "kind": "brief",
+          "id": "brief-14",
+          "revision": 2
+        },
+        "selection": "brief-14/rev2",
+        "sourceState": "Draft"
+      },
+      "regions": [
+        {
+          "id": "peo-briefs-back",
+          "kind": "button",
+          "box": [340, 112, 84, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "Back",
+            "size": 14,
+            "link": {
+              "edge": "F5-PEO-09",
+              "to": "F5-P-MORE",
+              "type": "back",
+              "effect": "return",
+              "allowedOrigins": ["F5-C00", "F5-C01", "F5-P-MORE"]
+            }
+          }
+        },
+        {
+          "id": "peo-briefs-title",
+          "kind": "text",
+          "box": [440, 108, 1140, 60],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Briefs",
+                "x": 0,
+                "y": 26,
+                "s": 18,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "Factory · human-authored inputs",
+                "x": 0,
+                "y": 52,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-briefs-fixture",
+          "kind": "text",
+          "box": [340, 180, 1240, 28],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Read-only design fixture · fictional project data",
+                "x": 0,
+                "y": 18,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-briefs-list-label",
+          "kind": "text",
+          "box": [340, 214, 520, 30],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Project briefs · 2 shown",
+                "x": 0,
+                "y": 20,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-briefs-brief14",
+          "kind": "row",
+          "box": [340, 252, 520, 80],
+          "props": {
+            "style": "row-selected",
+            "lines": [
+              {
+                "t": "Clarify API error responses",
+                "x": 16,
+                "y": 26,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 488,
+                "lh": 20
+              },
+              {
+                "t": "Brief 14 · rev 2 · Draft · Mara",
+                "x": 16,
+                "y": 66,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-briefs-brief15",
+          "kind": "row",
+          "box": [340, 340, 520, 80],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Document cancellation behavior",
+                "x": 16,
+                "y": 26,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 488,
+                "lh": 20
+              },
+              {
+                "t": "Brief 15 · rev 1 · Draft · Ilan",
+                "x": 16,
+                "y": 66,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-briefs-list-scope",
+          "kind": "text",
+          "box": [340, 440, 520, 60],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Brief revisions remain human-authored source inputs.",
+                "x": 0,
+                "y": 20,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 508,
+                "lh": 20
+              },
+              {
+                "t": "This preview contains no source editor.",
+                "x": 0,
+                "y": 46,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-briefs-brief-header",
+          "kind": "inspector",
+          "box": [880, 224, 700, 96],
+          "props": {
+            "style": "inspector",
+            "lines": [
+              {
+                "t": "Brief 14 · Draft · revision 2",
+                "x": 16,
+                "y": 26,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Clarify API error responses",
+                "x": 16,
+                "y": 56,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Author · Mara",
+                "x": 16,
+                "y": 80,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-briefs-problem",
+          "kind": "row",
+          "box": [880, 332, 700, 104],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Problem",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Callers need to distinguish validation, permission and retryable errors.",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Use consistent response examples for each category.",
+                "x": 16,
+                "y": 74,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-briefs-scope",
+          "kind": "row",
+          "box": [880, 448, 700, 128],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Requested scope",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Document status, error code and a short recovery hint.",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Cover invalid input, denied access and temporary unavailability.",
+                "x": 16,
+                "y": 74,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Keep endpoint behavior and authorization unchanged.",
+                "x": 16,
+                "y": 98,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-briefs-review",
+          "kind": "row",
+          "box": [880, 588, 700, 104],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Review context",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "rev 1 · Initial error categories and examples",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "rev 2 · Added recovery guidance and scope limits",
+                "x": 16,
+                "y": 74,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-briefs-questions",
+          "kind": "row",
+          "box": [880, 704, 700, 104],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Open question",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Which temporary errors should include a retry hint?",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Draft input · no acceptance or implementation outcome recorded.",
+                "x": 16,
+                "y": 74,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        }
+      ],
+      "staticControls": [
+        "Brief rows and draft detail are static. No new/edit, seal, claim, Add to plan or run control. Supplementary brief prose is fictional review content."
+      ]
+    },
+    {
+      "id": "F5-P-RESEARCH",
+      "title": "Research",
+      "shell": {
+        "mode": "workspace",
+        "section": "More",
+        "breadcrumb": "Research",
+        "navTargets": {}
+      },
+      "tag": "Read-only design fixture",
+      "caption": "Desktop-only source-owned protocol preview. Research 7 is Sealed at revision 1; its source lifecycle is separate from project planning and execution. This fixture contains no findings or claim changes.",
+      "state": {
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "readOnly": true,
+        "fixture": true,
+        "preservesCallerSnapshot": true,
+        "sourceOwner": "Research",
+        "sourceRef": {
+          "kind": "research",
+          "id": "research-7",
+          "revision": 1
+        },
+        "selection": "research-7/rev1",
+        "sourceState": "Sealed",
+        "surface": "desktop-only",
+        "mobileAuthoring": false
+      },
+      "regions": [
+        {
+          "id": "peo-research-back",
+          "kind": "button",
+          "box": [340, 112, 84, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "Back",
+            "size": 14,
+            "link": {
+              "edge": "F5-PEO-10",
+              "to": "F5-P-MORE",
+              "type": "back",
+              "effect": "return",
+              "allowedOrigins": ["F5-C00", "F5-C01", "F5-P-MORE"]
+            }
+          }
+        },
+        {
+          "id": "peo-research-title",
+          "kind": "text",
+          "box": [440, 108, 1140, 60],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Research",
+                "x": 0,
+                "y": 26,
+                "s": 18,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "Factory · protocol review · desktop only",
+                "x": 0,
+                "y": 52,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-research-fixture",
+          "kind": "text",
+          "box": [340, 180, 1240, 28],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Read-only design fixture · fictional project data",
+                "x": 0,
+                "y": 18,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-research-list-label",
+          "kind": "text",
+          "box": [340, 214, 520, 30],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Project protocols · 1 shown",
+                "x": 0,
+                "y": 20,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-research-research7",
+          "kind": "row",
+          "box": [340, 252, 520, 80],
+          "props": {
+            "style": "row-selected",
+            "lines": [
+              {
+                "t": "Compare incremental indexing",
+                "x": 16,
+                "y": 26,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 488,
+                "lh": 20
+              },
+              {
+                "t": "Research 7 · rev 1 · Sealed · Ilan",
+                "x": 16,
+                "y": 66,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-research-list-scope",
+          "kind": "text",
+          "box": [340, 352, 520, 84],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Sealed protocol · read-only revision",
+                "x": 0,
+                "y": 20,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Desktop review study; mobile authoring is unavailable.",
+                "x": 0,
+                "y": 48,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 508,
+                "lh": 20
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-research-protocol-header",
+          "kind": "inspector",
+          "box": [880, 224, 700, 96],
+          "props": {
+            "style": "inspector",
+            "lines": [
+              {
+                "t": "Research 7 · Sealed · revision 1",
+                "x": 16,
+                "y": 26,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Compare incremental indexing",
+                "x": 16,
+                "y": 56,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Author · Ilan",
+                "x": 16,
+                "y": 80,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-research-question",
+          "kind": "row",
+          "box": [880, 332, 700, 104],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Research question",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "How do full and incremental refresh affect search responsiveness?",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Compare the same repository fixture and edit sequence.",
+                "x": 16,
+                "y": 74,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-research-protocol",
+          "kind": "row",
+          "box": [880, 448, 700, 128],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Protocol scope",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Record query behavior during refresh and cancellation.",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Observe retained results and recovery after an interrupted refresh.",
+                "x": 16,
+                "y": 74,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Keep repository data and search inputs fixed across comparisons.",
+                "x": 16,
+                "y": 98,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-research-evidence",
+          "kind": "row",
+          "box": [880, 588, 700, 104],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Evidence to review",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Query outcomes · refresh observations · cancellation record",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Protocol content only; no measured result is supplied in this fixture.",
+                "x": 16,
+                "y": 74,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-research-revision",
+          "kind": "row",
+          "box": [880, 704, 700, 104],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Source context",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "rev 1 · Sealed comparison protocol",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Findings do not automatically become implementation work.",
+                "x": 16,
+                "y": 74,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        }
+      ],
+      "staticControls": [
+        "Protocol row and sealed review text are static. No edit, unseal, claim, start, findings submission or planning action. Research protocol prose is fictional; no research execution or result is asserted."
+      ]
+    },
+    {
+      "id": "F5-P-SOURCES",
+      "title": "Sources",
+      "shell": {
+        "mode": "workspace",
+        "section": "More",
+        "breadcrumb": "Sources",
+        "navTargets": {}
+      },
+      "tag": "Read-only design fixture",
+      "caption": "Desktop-only, checkout-bound RSS/Atom preview of source rss-engineering, item-8 revision 1. Own-repository Issues are separate. Admission is an execution launch and is deliberately unavailable in this read-only study.",
+      "state": {
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "readOnly": true,
+        "fixture": true,
+        "preservesCallerSnapshot": true,
+        "sourceOwner": "Sources",
+        "sourceRef": {
+          "kind": "feed",
+          "sourceId": "rss-engineering",
+          "itemId": "item-8",
+          "revision": 1
+        },
+        "selection": "rss-engineering/item-8/rev1",
+        "sourceState": "Reviewed",
+        "checkout": "~/src/factory",
+        "surface": "desktop-only",
+        "mobileAuthoring": false
+      },
+      "regions": [
+        {
+          "id": "peo-sources-back",
+          "kind": "button",
+          "box": [340, 112, 84, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "Back",
+            "size": 14,
+            "link": {
+              "edge": "F5-PEO-11",
+              "to": "F5-P-MORE",
+              "type": "back",
+              "effect": "return",
+              "allowedOrigins": ["F5-P-MORE"]
+            }
+          }
+        },
+        {
+          "id": "peo-sources-title",
+          "kind": "text",
+          "box": [440, 108, 1140, 60],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Sources",
+                "x": 0,
+                "y": 26,
+                "s": 18,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "Factory · ~/src/factory · RSS / Atom · desktop only",
+                "x": 0,
+                "y": 52,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-sources-fixture",
+          "kind": "text",
+          "box": [340, 180, 1240, 28],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Read-only design fixture · fictional project data",
+                "x": 0,
+                "y": 18,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-sources-checkout-scope",
+          "kind": "row",
+          "box": [340, 224, 520, 80],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Engineering feed",
+                "x": 16,
+                "y": 26,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "rss-engineering · bound to ~/src/factory",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-sources-item8",
+          "kind": "row",
+          "box": [340, 316, 520, 80],
+          "props": {
+            "style": "row-selected",
+            "lines": [
+              {
+                "t": "Review filesystem watcher limits",
+                "x": 16,
+                "y": 26,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 488,
+                "lh": 20
+              },
+              {
+                "t": "RSS · item 8 · rev 1 · Reviewed",
+                "x": 16,
+                "y": 66,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-sources-list-scope",
+          "kind": "text",
+          "box": [340, 416, 520, 84],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Only this checkout’s RSS / Atom items.",
+                "x": 0,
+                "y": 20,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "acme/factory issues remain in Issues.",
+                "x": 0,
+                "y": 44,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Desktop review; no mobile authoring parity claimed.",
+                "x": 0,
+                "y": 68,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-sources-item-header",
+          "kind": "inspector",
+          "box": [880, 224, 700, 96],
+          "props": {
+            "style": "inspector",
+            "lines": [
+              {
+                "t": "RSS · item 8 · Reviewed · revision 1",
+                "x": 16,
+                "y": 26,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Review filesystem watcher limits",
+                "x": 16,
+                "y": 56,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "rss-engineering · Unassigned",
+                "x": 16,
+                "y": 80,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-sources-item-content",
+          "kind": "row",
+          "box": [880, 332, 700, 104],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Item summary",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Large checkouts may reach operating-system watcher limits.",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Review resource limits and how missed file changes are surfaced.",
+                "x": 16,
+                "y": 74,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-sources-provenance",
+          "kind": "row",
+          "box": [880, 448, 700, 128],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Source context",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Source · rss-engineering",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Item · item-8 · revision 1",
+                "x": 16,
+                "y": 74,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              },
+              {
+                "t": "Checkout · ~/src/factory · project-factory / env-ws",
+                "x": 16,
+                "y": 98,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-sources-review",
+          "kind": "row",
+          "box": [880, 588, 700, 80],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Review context",
+                "x": 16,
+                "y": 24,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Reviewed is the source state; it does not establish a launch.",
+                "x": 16,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 668,
+                "lh": 20
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-sources-admission-static",
+          "kind": "button",
+          "box": [896, 692, 184, 32],
+          "props": {
+            "variant": "disabled",
+            "label": "Admit and start",
+            "size": 14
+          }
+        },
+        {
+          "id": "peo-sources-admission-boundary",
+          "kind": "text",
+          "box": [880, 740, 700, 72],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "No-launch study · Admit and start is static and unavailable.",
+                "x": 16,
+                "y": 22,
+                "s": 12,
+                "w": 400,
+                "c": "WARN"
+              },
+              {
+                "t": "The existing action creates an isolated-worktree agent task.",
+                "x": 16,
+                "y": 48,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        }
+      ],
+      "staticControls": [
+        "Source/item rows and the disabled Admit and start control are static. Existing admission launches an isolated-worktree task; it is not relabeled Add to plan. No feed configuration, refresh, claim, admission, planner change or launch is available. Supplementary RSS summary is fictional."
+      ]
+    },
+    {
+      "id": "F5-P-SETTINGS",
+      "title": "Settings · Scheduled tasks",
+      "shell": {
+        "mode": "settings",
+        "section": "Settings",
+        "breadcrumb": "Settings / Scheduled tasks",
+        "navTargets": {}
+      },
+      "tag": "Read-only design fixture",
+      "caption": "Read-only study of the existing native prompt scheduler. Daily, paused and webhook rows retain distinct dispatch behavior. No run, enable, pause, edit or webhook invocation is wired.",
+      "state": {
+        "projectId": "project-factory",
+        "environmentId": "env-ws",
+        "readOnly": true,
+        "fixture": true,
+        "preservesCallerSnapshot": true,
+        "surface": "existing-scheduled-task-manager",
+        "manager": "native-prompt-scheduler",
+        "filter": "All tasks",
+        "projectFilter": "Factory",
+        "schedulerChanges": false,
+        "agentChanges": false,
+        "dispatchChanges": false
+      },
+      "regions": [
+        {
+          "id": "peo-settings-back",
+          "kind": "button",
+          "box": [340, 112, 84, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "Back",
+            "size": 14,
+            "link": {
+              "edge": "F5-PEO-12",
+              "to": "F5-P-MORE",
+              "type": "back",
+              "effect": "return",
+              "allowedOrigins": ["F5-P-MORE"]
+            }
+          }
+        },
+        {
+          "id": "peo-settings-title",
+          "kind": "text",
+          "box": [440, 108, 1140, 60],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Scheduled tasks",
+                "x": 0,
+                "y": 26,
+                "s": 18,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "Settings · existing prompt scheduler · Factory project filter",
+                "x": 0,
+                "y": 52,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-settings-fixture",
+          "kind": "text",
+          "box": [340, 180, 1240, 28],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Read-only design fixture · fictional project data",
+                "x": 0,
+                "y": 18,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-settings-project-filter",
+          "kind": "row",
+          "box": [340, 224, 224, 32],
+          "props": {
+            "style": "field",
+            "lines": [
+              {
+                "t": "Project: Factory",
+                "x": 12,
+                "y": 21,
+                "s": 12,
+                "w": 400,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-settings-task-filter",
+          "kind": "row",
+          "box": [576, 224, 212, 32],
+          "props": {
+            "style": "field",
+            "lines": [
+              {
+                "t": "Filter: All tasks",
+                "x": 12,
+                "y": 21,
+                "s": 12,
+                "w": 400,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-settings-search",
+          "kind": "row",
+          "box": [800, 224, 456, 32],
+          "props": {
+            "style": "field",
+            "lines": [
+              {
+                "t": "Search scheduled tasks",
+                "x": 12,
+                "y": 21,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-settings-count",
+          "kind": "text",
+          "box": [1280, 224, 300, 32],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "3 tasks · read-only fixture",
+                "x": 0,
+                "y": 21,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-settings-table-header",
+          "kind": "row",
+          "box": [340, 276, 1240, 36],
+          "props": {
+            "style": "header",
+            "lines": [
+              {
+                "t": "Task / prompt",
+                "x": 16,
+                "y": 23,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Trigger",
+                "x": 556,
+                "y": 23,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Status",
+                "x": 756,
+                "y": 23,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Last dispatch",
+                "x": 956,
+                "y": 23,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-settings-daily-row",
+          "kind": "row",
+          "box": [340, 312, 1240, 100],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Daily project summary",
+                "x": 16,
+                "y": 28,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Summarize recent project activity.",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Factory · project-associated prompt",
+                "x": 16,
+                "y": 80,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Daily · 09:00",
+                "x": 556,
+                "y": 28,
+                "s": 14,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "America/Los_Angeles",
+                "x": 556,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Enabled",
+                "x": 756,
+                "y": 28,
+                "s": 14,
+                "w": 400,
+                "c": "GREEN"
+              },
+              {
+                "t": "Today · accepted",
+                "x": 956,
+                "y": 28,
+                "s": 12,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "Dispatch receipt only",
+                "x": 956,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-settings-paused-row",
+          "kind": "row",
+          "box": [340, 412, 1240, 100],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Review open questions",
+                "x": 16,
+                "y": 28,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Collect unresolved project questions.",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Factory · project-associated prompt",
+                "x": 16,
+                "y": 80,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Daily · 16:00",
+                "x": 556,
+                "y": 28,
+                "s": 14,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "America/Los_Angeles",
+                "x": 556,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Paused",
+                "x": 756,
+                "y": 28,
+                "s": 14,
+                "w": 400,
+                "c": "WARN"
+              },
+              {
+                "t": "Yesterday · accepted",
+                "x": 956,
+                "y": 28,
+                "s": 12,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "No next scheduled dispatch",
+                "x": 956,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-settings-webhook-row",
+          "kind": "row",
+          "box": [340, 512, 1240, 100],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Incoming support note",
+                "x": 16,
+                "y": 28,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Summarize a matched incoming note.",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Factory · project-associated prompt",
+                "x": 16,
+                "y": 80,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Webhook",
+                "x": 556,
+                "y": 28,
+                "s": 14,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "Incoming matching event",
+                "x": 556,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Enabled",
+                "x": 756,
+                "y": 28,
+                "s": 14,
+                "w": 400,
+                "c": "GREEN"
+              },
+              {
+                "t": "No dispatch recorded",
+                "x": 956,
+                "y": 28,
+                "s": 12,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "Webhook has no Run now",
+                "x": 956,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-settings-selected-label",
+          "kind": "text",
+          "box": [340, 640, 1240, 32],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Incoming support note · webhook detail",
+                "x": 0,
+                "y": 22,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-settings-webhook-detail",
+          "kind": "row",
+          "box": [340, 684, 1240, 112],
+          "props": {
+            "style": "row",
+            "lines": [
+              {
+                "t": "Project filter",
+                "x": 16,
+                "y": 26,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Factory",
+                "x": 196,
+                "y": 26,
+                "s": 14,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "Event filter",
+                "x": 16,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "support.note.created",
+                "x": 196,
+                "y": 56,
+                "s": 14,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "Delivery handling",
+                "x": 16,
+                "y": 86,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Existing filter, dedupe and dispatch log behavior",
+                "x": 196,
+                "y": 86,
+                "s": 12,
+                "w": 400,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "peo-settings-manager-boundary",
+          "kind": "text",
+          "box": [340, 812, 1240, 56],
+          "props": {
+            "style": "none",
+            "lines": [
+              {
+                "t": "Read-only fixture · filters, task rows and webhook detail are static.",
+                "x": 0,
+                "y": 20,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Versioned workflow definitions and workflow triggers remain in Workflows.",
+                "x": 0,
+                "y": 44,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        }
+      ],
+      "staticControls": [
+        "Project, All tasks and search fields display a native-style manager filter state without editing or filtering. Task rows and the selected webhook detail are static; no Run now is provided on the webhook or elsewhere in this study. Daily Run now, when used in the existing app, is a one-off dispatch and does not enable a paused schedule. No agent/model/runtime/thread settings are edited or synthesized. Schedule times, prompt names, event filter and dispatch summaries are fictional fixtures."
+      ]
+    }
+  ],
+  "notes": [
+    "Exactly six source-owner/menu/Settings scenes, with twelve region-derived edges F5-PEO-01 through F5-PEO-12. No coordinator, ordinary thread, phone or app chrome scene is owned here. Parent owns F5-P-COORDINATOR and native menu entry controls. All frame bodies use x340..1580/y108..876 in the 1600x1040, app-height-900 contract. Plain text uses style:none; typography is Inter 14/12 with 18px section titles, and action buttons are 32px high.",
+    "All content is explicitly a read-only design fixture. No renderer, check, build, test, lint, formatter, Figma/browser/desktop/app action, repository/Git/provider/CI/secret action or external service operation was performed. These scenes establish static design data only, not runtime behavior, measured text fit, accessibility or native/mobile parity.",
+    "Source identities and visible row titles come from base.json and collections.json: GitHub acme/factory#237 rev3 Open; #231 rev2 Open; #229 rev1 Open; brief-14 rev2 Draft; brief-15 rev1 Draft; research-7 rev1 Sealed; rss-engineering/item-8 rev1 Reviewed. Fixture owners match collection labels: Mara, Ilan and Unassigned. Brief, protocol and RSS detail prose is supplementary fictional fixture text, not fetched source content or research findings.",
+    "The source previews carry SourceRefs only. They do not instantiate or reset PlanItemRefs, retained WorkRefs, claims, invocation records or native threads. Parent preserves the entire caller snapshot, including collection view, query, selected owner-qualified identity and pre/post-admission associations. #237 source detail does not assume whether plan-237 exists in its caller. Reading a source cannot undo planning or dispatch.",
+    "Inbound collection links: F5-CE63 and F5-CE66 open Issues from F5-C00 and F5-C01; F5-CE64 and F5-CE67 open Briefs; F5-CE65 and F5-CE68 open Research. F5-PEO-08/09/10 are type:back, effect:return with allowedOrigins C00/C01/More. Sources F5-PEO-11 and Settings F5-PEO-12 return only to More. No source page uses NavigateTo More, and each page has exactly one native Back control. The to:More value is a fallback for a missing origin, never a fixed destination overriding a captured C00/C01 origin.",
+    "More contains six actual navigation links: Issues, Briefs, Sources, Research, parent-owned Coordinator and Scheduled tasks in Settings. F5-PEO-07 Close is the only menu return. Its allowedOrigins enumerate existing collection/workflow workspace pages where the parent native header may open the menu. W07 accepted dispatch and W08 thread are excluded from the generic menu-close origins; no return crosses a mutation or dispatch. Parent captures read-only menu nesting after the current state is committed; Close restores that exact current state, not a prior actionable snapshot. C00 is only a missing-origin fallback.",
+    "All shell.navTargets are empty. The parent draws common native project tabs and supplies context-safe menu and Workflows navigation. No fixed Work tab is authored here, and no context-specific workflow return or initialization state is patched by this slice. New workflow management belongs Workflows; Scheduled tasks remains the existing native project-associated prompt scheduler, not a second workflow engine.",
+    "Issues remain own-repository forge records, Briefs human-authored revisioned input, Research a separately sealed protocol, and Sources checkout-bound RSS/Atom. Sources and Research are desktop-only reviews with no mobile authoring claim. A source status never substitutes for a project planning stage, provider progress, acceptance or delivery.",
+    "Existing Admit and start in Sources is preserved literally as a disabled static control without any edge. It is an execution launch creating an isolated-worktree task; the visible no-launch study boundary makes it unavailable. No Add to plan replacement, extra source action or planner/claim state is added.",
+    "Settings task names, prompt snippets, times, statuses, filter and receipt text are fictional static observations. Daily, paused daily and webhook are distinct. Accepted dispatch does not mean completed work; a paused schedule has no next scheduled dispatch. A webhook has no Run now. Existing webhook filtering, dedupe and dispatch logging are retained conceptually without enabling an endpoint, modifying an agent, changing dispatch, or claiming new webhook authority.",
+    "Grounding: round-05/brief.md; round-05/ground/t3-ui-baseline.md; round-05/ground/inspiration-patterns.md; round-05/spec/base.json; round-05/spec/experience-contract.md; collections.json and workflows.json body-region structure. The parent integrates shared native chrome, origin aliases and final geometry/render/click evidence. The menu-origin list assumes header entry on the named collection/workflow workspace pages only; additional parent-owned header contexts require their own captured read-only origin binding."
+  ]
+}

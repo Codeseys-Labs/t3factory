@@ -1,0 +1,13 @@
+!**/build/
+!**/build/*.py
+!**/build/fonts/
+!**/build/fonts/*
+**/__pycache__/
+**/*.png
+round-05/spec/scenes.json
+round-05/screens/*.json
+round-07-optional-linear/screens/
+round-07-optional-linear/build/*.json
+round-07-optional-linear/refined/scene-manifest.json
+round-07-optional-linear/refined/geometry-checks.json
+round-07-optional-linear/refined/text-measurements.json

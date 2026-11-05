@@ -1,0 +1,836 @@
+{
+  "contract": "t3factory-linear-sync-proposal",
+  "version": 1,
+  "status": "research_proposal_not_implemented",
+  "researchedOn": "2026-11-04",
+  "deploymentEnabled": false,
+  "allExampleIdsAreFictional": true,
+  "implementationQualification": {
+    "staticResearchOnly": true,
+    "authenticatedIntrospection": false,
+    "liveApiOperations": false,
+    "runtimeTests": false,
+    "figmaOrBrowserAutomation": false,
+    "gitOrProviderExecution": false
+  },
+  "evidence": {
+    "sdkRepositoryCommit": "9ba7b299eb5fb0036d14d2e8299e18e7c4bd13e3",
+    "sdkRepositoryPackageVersion": "101.1.0",
+    "versionCaveat": "Repository package version, not a verified installed or npm-latest version.",
+    "schemaUtf8Sha256": "dc0f838785760f8daa692e438fcd15071c5bc39c6997758d5c2d303364f98e56",
+    "designFile": "external-design-archive/round-05/refinement-01/final-desktop-design.md",
+    "designLines": [17, 19, 21, 23, 54, 55, 56, 57, 58],
+    "implementationRoot": "C:/Users/bbala_n314ugx/.t3/worktrees/t3code-factory/t3-5cf1b296",
+    "inspectedImplementation": [
+      {
+        "path": "packages/contracts/src/factory.ts",
+        "lines": [16, 83, 91, 125],
+        "finding": "Repository/numeric-issue/open-closed contract and local title-body revision; not Linear identity or server CAS."
+      },
+      {
+        "path": "apps/server/src/factory/FactoryOriginKey.ts",
+        "lines": [10, 14],
+        "finding": "Repository plus issue-number origin key; proposed Linear UUID key is new."
+      },
+      {
+        "path": "apps/server/src/factory/IssueTrackerProviderRegistry.ts",
+        "lines": [32, 37],
+        "finding": "Registry obtains issue adapters from source-control drivers."
+      },
+      {
+        "path": "apps/server/src/sourceControl/sourceControlDefinitions.ts",
+        "lines": [10, 16],
+        "finding": "Inspected built-in list contains no Linear driver."
+      }
+    ]
+  },
+  "sources": {
+    "graphql": "https://linear.app/developers/graphql",
+    "sdk": "https://linear.app/developers/sdk",
+    "sdkData": "https://linear.app/developers/sdk-fetching-and-modifying-data",
+    "schema": "https://github.com/linear/linear/blob/9ba7b299eb5fb0036d14d2e8299e18e7c4bd13e3/packages/sdk/src/schema.graphql",
+    "sdkPackage": "https://github.com/linear/linear/blob/9ba7b299eb5fb0036d14d2e8299e18e7c4bd13e3/packages/sdk/package.json",
+    "pagination": "https://linear.app/developers/pagination",
+    "filtering": "https://linear.app/developers/filtering",
+    "rateLimits": "https://linear.app/developers/rate-limiting",
+    "webhooks": "https://linear.app/developers/webhooks",
+    "sdkWebhooks": "https://linear.app/developers/sdk-webhooks",
+    "attachments": "https://linear.app/developers/attachments",
+    "oauth": "https://linear.app/developers/oauth-2-0-authentication",
+    "oauthActor": "https://linear.app/developers/oauth-actor-authorization",
+    "agentSetup": "https://linear.app/developers/agents",
+    "agentInteraction": "https://linear.app/developers/agent-interaction",
+    "githubSync": "https://linear.app/docs/github",
+    "jiraSync": "https://linear.app/docs/jira",
+    "issueProperties": "https://linear.app/docs/issue-property",
+    "deleteArchive": "https://linear.app/docs/delete-archive-issues"
+  },
+  "mvp": {
+    "connectionCardinality": {
+      "ownerEnvironments": 1,
+      "linearOrganizations": 1,
+      "selectedLinearTeams": 1,
+      "t3Projects": 1,
+      "optionalLinearProjectFilters": 1
+    },
+    "connectionModel": "self_managed_oauth_app_per_owner_environment",
+    "inbound": [
+      "existing_and_new_issue_source_snapshots",
+      "source_workflow_state",
+      "source_availability",
+      "observed_human_assignee_and_agent_delegate"
+    ],
+    "outbound": ["explicit_source_state_command", "opt_in_owned_backlink_attachment_upsert"],
+    "deferred": [
+      "issue_creation",
+      "comment_mirroring",
+      "title_description_edits",
+      "assignee_writes",
+      "labels_writes",
+      "relations_writes",
+      "delete_archive_propagation",
+      "automatic_status_from_plan_or_execution",
+      "AgentSession_execution",
+      "shared_hosted_webhook_relay",
+      "automatic_environment_failover",
+      "universal_sync_engine"
+    ],
+    "intakeCreatesPlanMembership": false,
+    "plannedItemCreation": "explicit_add_only",
+    "planRemovalDeletesSource": false,
+    "planRestoration": "explicit_restore_only",
+    "automaticExecutionFromLinearEvents": false,
+    "existingBuiltInSync": {
+      "provenanceField": "Issue.syncedWith",
+      "outboundStatePolicy": "held_by_default_until_explicit_owner_permission",
+      "reason": "A Linear state write may propagate through pre-existing native integrations. Empty syncedWith does not exclude PR status automation, team automation or human writers.",
+      "sources": ["githubSync", "jiraSync", "schema"]
+    }
+  },
+  "identity": {
+    "canonicalExternalKey": {
+      "format": "linear:{linearOrganizationId}:issue:{linearIssueId}",
+      "parts": ["linearOrganizationId", "linearIssueId"],
+      "displayOnly": ["identifier", "number", "url", "workspaceSlug", "teamName"]
+    },
+    "connection": {
+      "fields": [
+        "connectionId",
+        "ownerEnvironmentId",
+        "t3ProjectId",
+        "linearOrganizationId",
+        "selectedTeamId",
+        "optionalLinearProjectId",
+        "oauthClientId",
+        "appViewerId",
+        "connectionEpoch",
+        "credentialStoreRef"
+      ],
+      "credentialMaterialInArtifact": false
+    },
+    "localBindingUnique": ["ownerEnvironmentId", "t3ProjectId", "sourceRef"],
+    "plannedItemCardinality": "zero_or_one_retained_planned_item_per_local_binding_in_MVP",
+    "attachmentUnique": ["linearIssueId", "canonicalBacklinkUrl"],
+    "mappingNamespace": ["linearOrganizationId", "linearTeamId", "linearWorkflowStateId"],
+    "personIdentitiesKeptSeparate": [
+      "linearAssigneeUserId",
+      "linearDelegateUserId",
+      "linearAppViewerId",
+      "oauthInstallerUserId_if_known",
+      "t3OperatorId",
+      "workflowBindingOwnerId",
+      "providerAccount"
+    ],
+    "optionalPersonLink": {
+      "key": ["linearOrganizationId", "linearUserId", "t3PrincipalId"],
+      "policy": "explicit_verified_link_only",
+      "neverMatchBy": ["email", "displayName"],
+      "neededForMvpAssigneeRead": false
+    },
+    "entityMappings": [
+      {
+        "linear": "Organization.id",
+        "t3": "LinearConnection.linearOrganizationId",
+        "implementationStatus": "proposed"
+      },
+      {
+        "linear": "Team.id",
+        "t3": "connection_scope_and_state_map_namespace",
+        "notEquivalentTo": ["repository", "environment"]
+      },
+      {
+        "linear": "Project.id",
+        "t3": "optional_source_group_or_filter",
+        "notEquivalentTo": ["T3_environment_local_project"]
+      },
+      {
+        "linear": "Issue.id",
+        "t3": "sourceRef",
+        "implementationStatus": "proposed"
+      },
+      {
+        "linear": "WorkflowState.id",
+        "t3": "sourceSnapshot.state.id",
+        "notEquivalentTo": ["planningStage", "executionStatus"]
+      },
+      {
+        "linear": "Issue.assignee.id",
+        "t3": "sourceSnapshot.humanAssigneeUserId",
+        "direction": "read_only"
+      },
+      {
+        "linear": "Issue.delegate.id",
+        "t3": "sourceSnapshot.agentDelegateUserId",
+        "direction": "read_only"
+      },
+      {
+        "linear": "Attachment.id",
+        "t3": "optional_backlink_receipt",
+        "implementationStatus": "proposed"
+      },
+      {
+        "linear": "AgentSession.id",
+        "t3": null,
+        "reason": "Optional agent integration is excluded; never substitute issue, thread or invocation ID."
+      }
+    ],
+    "reconnect": "Replace credentials only after verifying original organization and team; preserve issue/source bindings.",
+    "ownerMigration": "Explicit quiesced handoff; unresolved writes hold writeback. A local fence cannot cancel an already-issued Linear request.",
+    "sources": ["graphql", "schema", "agentSetup", "attachments"]
+  },
+  "workflowStates": {
+    "purpose": "source_status_mapping_only",
+    "planningStageCoupling": "none",
+    "executionStatusCoupling": "none",
+    "discoveryFields": [
+      "id",
+      "team.id",
+      "name",
+      "type",
+      "position",
+      "archivedAt",
+      "updatedAt",
+      "inheritedFrom.id"
+    ],
+    "approvalKey": ["linearOrganizationId", "linearTeamId", "linearWorkflowStateId"],
+    "mappingRevision": "local_monotonic_revision_not_a_Linear_precondition",
+    "knownTypes": [
+      "triage",
+      "backlog",
+      "unstarted",
+      "started",
+      "completed",
+      "canceled",
+      "duplicate"
+    ],
+    "typeIsOpenString": true,
+    "normalization": "Approved known type maps to same named source category; retain exact state UUID and display name.",
+    "outboundTarget": "Explicit live approved state UUID belonging to issue's current selected team; no type-to-first-ID reverse mapping.",
+    "reservedDuplicate": {
+      "inbound": true,
+      "outbound": false,
+      "reason": "System-managed duplicate status; duplicate relation creation is deferred."
+    },
+    "unmapped": {
+      "triggers": [
+        "new_unapproved_state_id",
+        "missing_state",
+        "unknown_type",
+        "archived_target",
+        "deleted_target",
+        "team_mismatch",
+        "changed_type"
+      ],
+      "category": "unmapped",
+      "preserveRaw": true,
+      "holdStateWrites": true,
+      "changePlanningStage": false,
+      "autoCreateOrRenameState": false
+    },
+    "refreshOn": [
+      "setup",
+      "reconnect",
+      "before_write",
+      "unknown_state_observation",
+      "periodic_metadata_reconciliation"
+    ],
+    "rename": "Update display name; retain mapping when ID, team, type and availability still agree.",
+    "teamMove": "Retain Issue UUID; hold writes and mark out_of_scope until explicit scope/mapping reconfiguration.",
+    "sources": ["schema", "issueProperties", "graphql"]
+  },
+  "fieldOwnership": [
+    {
+      "fields": [
+        "title",
+        "description",
+        "assignee",
+        "priority",
+        "labels",
+        "dueDate",
+        "cycle",
+        "parent",
+        "relations",
+        "project",
+        "team"
+      ],
+      "owner": "Linear",
+      "direction": "Linear_to_T3",
+      "t3Behavior": "Read-only source snapshot; hydrate only fields needed by MVP. Keep local notes separate."
+    },
+    {
+      "fields": ["stateId"],
+      "owner": "Linear_canonical_observation",
+      "direction": "Linear_to_T3_and_explicit_T3_command_to_Linear",
+      "patchAllowlist": ["stateId"],
+      "automaticOutbound": false,
+      "conflictPolicy": "baseline_current_desired_per_field"
+    },
+    {
+      "fields": [
+        "planMembership",
+        "planningStage",
+        "localNotes",
+        "workflowBinding",
+        "invocation",
+        "thread",
+        "candidate",
+        "acceptance",
+        "delivery"
+      ],
+      "owner": "T3",
+      "direction": "local_only",
+      "inboundMutationForbidden": true
+    },
+    {
+      "fields": ["ownedAttachment.title", "ownedAttachment.subtitle", "ownedAttachment.metadata"],
+      "owner": "T3_after_opt_in",
+      "direction": "T3_to_Linear",
+      "overwriteHumanEdits": false,
+      "remoteDelete": "hold_until_explicit_reenable"
+    },
+    {
+      "fields": ["archivedAt", "trashed", "externalRemoval"],
+      "owner": "Linear",
+      "direction": "Linear_to_T3_availability",
+      "cascadeDelete": false
+    }
+  ],
+  "conditionalUpdate": {
+    "serverCas": "not_documented_in_inspected_public_contract",
+    "inspectedMutation": "issueUpdate(id: String!, input: IssueUpdateInput!): IssuePayload!",
+    "inputPreconditionFieldsFound": [],
+    "outputOnlyFieldNotCas": "IssuePayload.lastSyncId",
+    "httpIfMatchGuaranteeFound": false,
+    "genericIdempotencyKeyGuaranteeFound": false,
+    "exactlyOnceGuaranteeFound": false,
+    "localConcurrency": "Serialize issue commands and snapshot application; local transactional revision checks protect only local records.",
+    "preflight": "Compare live relevant fields and mapping with reviewed baseline before minimal patch.",
+    "residualRace": "Another Linear client can change state after preflight and be overwritten before readback; matching readback need not reveal loss.",
+    "strictNoLostUpdateRequirement": "Disable source-state writeback; use read-only Linear status and separately owned attachment until a documented conditional API exists.",
+    "sources": ["schema", "graphql", "sdkData"]
+  },
+  "outboundCommands": {
+    "requiredRecordFields": [
+      "commandId",
+      "connectionId",
+      "connectionEpoch",
+      "ownerEnvironmentId",
+      "linearOrganizationId",
+      "linearIssueId",
+      "linearTeamId",
+      "mappingRevision",
+      "reviewedSourceFingerprint",
+      "baseStateId",
+      "desiredStateId",
+      "t3OperatorId",
+      "createdAt",
+      "attempts",
+      "observedResult",
+      "outcome"
+    ],
+    "maxUnresolvedStateCommandsPerIssue": 1,
+    "preflightGuards": [
+      "same_connection_epoch",
+      "same_organization",
+      "same_selected_team",
+      "issue_accessible",
+      "not_archived_or_trashed_or_removed",
+      "mapping_current_and_approved",
+      "no_unapproved_native_sync_interaction",
+      "base_state_matches_live_state"
+    ],
+    "requestPatchFields": ["stateId"],
+    "doNotSend": [
+      "expectedUpdatedAt",
+      "expectedRevision",
+      "lastSyncId",
+      "clientMutationId",
+      "title",
+      "description",
+      "teamId",
+      "assigneeId",
+      "delegateId"
+    ],
+    "states": [
+      "queued",
+      "preflight",
+      "sending",
+      "confirmed",
+      "already_observed",
+      "outcome_unknown",
+      "desired_observed",
+      "conflict",
+      "held",
+      "discarded"
+    ],
+    "successRequirements": [
+      "no_relevant_GraphQL_errors",
+      "payload_success_true",
+      "correct_issue_identity",
+      "desired_state_observed"
+    ],
+    "alreadyObservedMeaning": "Desired state existed before send; no mutation attribution.",
+    "desiredObservedMeaning": "Desired state observed after ambiguous transport result; attribution and exactly-once remain unproven.",
+    "unknownOutcomePolicy": "Read and reconcile; no blind retry, inverse mutation, or automatic rollback.",
+    "unknownOutcomeRisk": "Old-value read does not prove earlier request cannot still commit; any renewed human command discloses uncertainty.",
+    "conflictRecord": [
+      "baseValue",
+      "currentValue",
+      "desiredValue",
+      "observedAt",
+      "linearUpdatedAt",
+      "origin",
+      "commandId"
+    ],
+    "resolutionOptions": [
+      "use_Linear_and_discard_intent",
+      "review_fresh_values_and_submit_new_command"
+    ],
+    "offlineIntent": "Keep as draft; require re-review after reconnect.",
+    "sourceContentChange": "Refresh current source but retain immutable snapshot pinned by existing work.",
+    "sources": ["schema", "graphql"]
+  },
+  "inboxAndEcho": {
+    "deliveryKey": ["connectionId", "webhookId", "Linear-Delivery"],
+    "deliveryOrderGuaranteed": false,
+    "receiptBeforeHttp200": true,
+    "atomicLocalCommit": ["verified_receipt", "reconciliation_work"],
+    "duplicatePayloadDifferentDeliveryId": "Canonical snapshot application remains value-idempotent.",
+    "payloadUse": "Invalidate and fetch canonical current issue; retain changed-field history as audit evidence.",
+    "perIssueApplySerialization": true,
+    "olderObservation": "Do not replace newer canonical observation with stale event data.",
+    "equalTimestampDifferentContent": "Re-fetch; do not choose by timestamp alone.",
+    "echoMatch": [
+      "issue_identity",
+      "expected_changed_fields",
+      "desired_field_values",
+      "local_command_record"
+    ],
+    "actorOnlySuppression": false,
+    "unrelatedFieldsInEcho": "Always ingest; do not drop the whole event.",
+    "inboundRefreshCreatesOutboundCommand": false,
+    "localDedupRetention": "Retain compact receipt and command outcomes for binding lifetime in MVP; raw payload retention is a separate operator policy.",
+    "sources": ["webhooks"]
+  },
+  "reconciliation": {
+    "pageSize": 50,
+    "pageArguments": ["first", "after"],
+    "pageInfo": ["endCursor", "hasNextPage"],
+    "allConnectionsPaginated": true,
+    "includeArchived": true,
+    "bootstrap": "Start durable ingress when available, record scan start, complete all scoped pages, then drain invalidations.",
+    "incrementalOrderBy": "updatedAt",
+    "incrementalBounds": {
+      "lower": "previous_completed_upper_bound_minus_overlap",
+      "upper": "captured_scan_upper_bound",
+      "inclusive": true,
+      "overlapSeconds": 600,
+      "overlapIsApiGuarantee": false
+    },
+    "watermarkCommit": "Only after all pages in the window are durably applied.",
+    "cursorFailure": "Restart same window and deduplicate by issue UUID and observed content.",
+    "snapshotIsolationGuaranteed": false,
+    "fullSweep": "Daily and on reconnect in polling-only mode; cannot establish deletion from absence alone.",
+    "missingBindingCheck": "Batched UUID lookups without old team/project filter; exceptional per-issue reads only as needed.",
+    "repairCadenceSeconds": {
+      "webhookModeIncremental": 900,
+      "pollingOnlyIncrementalWhileOnline": 300,
+      "fullSweep": 86400
+    },
+    "cadenceIsProposal": true,
+    "rateLimits": "Adapt to request and complexity budget, Retry-After and reset headers; inspect GraphQL errors including RATELIMITED.",
+    "partialFailure": "Keep completed watermark unchanged; show degraded freshness.",
+    "metadata": "Refresh approved state dictionary independently; do not assume a WorkflowState webhook.",
+    "sources": ["pagination", "filtering", "graphql", "rateLimits"]
+  },
+  "lifecycle": {
+    "availabilityStates": [
+      "live",
+      "archived",
+      "trashed",
+      "external_removed",
+      "missing_or_inaccessible",
+      "out_of_scope"
+    ],
+    "archiveObservation": "archivedAt",
+    "trashObservation": "trashed",
+    "removeObservation": "Authenticated Issue remove event is external-removal evidence, not proof of permanent deletion.",
+    "missingObservation": "No delete inference from list omission, permission error, null or partial query result.",
+    "onUnavailable": [
+      "retain_source_identity",
+      "retain_last_snapshot_as_stale",
+      "preserve_plan_and_execution_history",
+      "hold_outbound_commands"
+    ],
+    "restore": "Same issue UUID may become live; update availability without restoring plan membership or replaying old intent.",
+    "t3RemoveFromPlan": "Local membership only.",
+    "t3RestoreToPlan": "Explicit local command only.",
+    "automaticExternalRecreation": false,
+    "outboundDelete": false,
+    "outboundArchive": false,
+    "outboundUnarchive": false,
+    "sources": ["deleteArchive", "graphql", "schema"]
+  },
+  "oauth": {
+    "actor": "app",
+    "requestedScopes": ["read", "issues:create"],
+    "scopeEvidence": "Current OAuth docs describe issues:create as creation/update of issues and creation of attachments.",
+    "notRequested": ["write", "admin", "comments:create", "app:assignable", "app:mentionable"],
+    "pkce": "S256",
+    "csrfState": "Bind pending authorization to owner environment and installation intent.",
+    "tokenOwner": "owning_T3_environment_credential_store",
+    "persistIdentity": ["oauthClientId", "linearOrganizationId", "appViewerId"],
+    "refresh": "Serialize rotation; atomically replace access and refresh token; use returned expiry.",
+    "documentedAccessTokenHours": 24,
+    "documentedRefreshReplayGraceMinutes": 30,
+    "webhookProvisioning": "OAuth application configuration or workspace admin; actor=app cannot request admin.",
+    "userActorAlternative": "Separate per-user authorization model, not dynamic impersonation through one shared app token.",
+    "humanAssignee": "Read Linear user UUID; never replace with installer or app actor.",
+    "createAsUser": "Display attribution only on supported creates, not user authorization.",
+    "revoke": "Hold writeback and pending intents; same-tenant reauthorization required.",
+    "sources": ["oauth", "oauthActor", "agentSetup", "webhooks"]
+  },
+  "transport": {
+    "webhookRoute": "/integrations/linear/webhook",
+    "routeImplementationStatus": "proposed",
+    "publicHttpsRequired": true,
+    "localhostAcceptedForWebhook": false,
+    "tailnetOnlyReachableByLinear": false,
+    "browserSessionRequiredOnWebhook": false,
+    "normalT3RpcAuthMustRemain": true,
+    "signing": {
+      "algorithm": "HMAC-SHA256",
+      "input": "exact_raw_request_body",
+      "signatureHeader": "Linear-Signature",
+      "freshnessField": "webhookTimestamp",
+      "freshnessAt": "first_public_ingress_receipt",
+      "maxSkewMilliseconds": 60000,
+      "constantTimeComparison": true,
+      "validateSignatureLength": true
+    },
+    "ack": {
+      "httpStatus": 200,
+      "deadlineMilliseconds": 5000,
+      "after": "durable_inbox_commit",
+      "onStorageFailure": "non_200"
+    },
+    "documentedRetryDelaysSeconds": [60, 3600, 21600],
+    "documentedMaxRetries": 3,
+    "mayBeDisabledAfterFailure": true,
+    "reEnableAfterDisable": "Manual operator recovery plus GraphQL reconciliation.",
+    "installationModes": [
+      {
+        "mode": "public_remote_owner",
+        "webhooks": true,
+        "requirements": [
+          "stable_https",
+          "raw_body_preserved",
+          "signed_route_reachable_without_interactive_login",
+          "durable_inbox"
+        ]
+      },
+      {
+        "mode": "local_or_tailnet_only",
+        "webhooks": false,
+        "modeLabel": "polling_only",
+        "offline": "stale_until_reconnect"
+      },
+      {
+        "mode": "operator_provisioned_public_tunnel",
+        "webhooks": "conditional",
+        "requirements": [
+          "stable_url",
+          "route_forwards_Linear_POST_without_pairing",
+          "raw_body_preserved"
+        ],
+        "existingT3CapabilityVerified": false
+      },
+      {
+        "mode": "hosted_durable_relay",
+        "webhooks": "deferred",
+        "includedInMvp": false
+      }
+    ],
+    "scopeRouting": "Validate connection organization; enforce team/project selection but still reconcile bound issues moved out of scope.",
+    "queueReplay": "Replay authenticated internal receipt using original verifiedAt; do not re-apply public timestamp freshness to delayed local processing.",
+    "sources": ["webhooks", "sdkWebhooks"]
+  },
+  "attachment": {
+    "enabledByDefault": false,
+    "requiresExplicitOptIn": true,
+    "requiresConfiguredStableAuthorizedT3Url": true,
+    "canonicalUrlTemplate": "https://factory.example.test/environments/{environmentId}/projects/{projectId}/planned-items/{plannedItemId}",
+    "urlIsFictional": true,
+    "urlMustNeverContain": ["pairing_token", "access_token", "refresh_token", "filesystem_path"],
+    "mutation": "attachmentCreate",
+    "dedupKey": ["issueId", "url"],
+    "documentedSemantics": "Creating same issue-plus-URL attachment updates the existing attachment.",
+    "contentAllowlist": [
+      "plan_link",
+      "planning_stage",
+      "membership",
+      "last_observed_at",
+      "local_attachment_revision"
+    ],
+    "contentMustNotImply": [
+      "provider_start",
+      "execution_complete",
+      "candidate_acceptance",
+      "delivery_success"
+    ],
+    "extraSideEffects": {
+      "commentBody": false
+    },
+    "remoteTamperOrDeletion": "Hold publication; require explicit re-enable rather than auto-recreation.",
+    "unknownOutcome": "Read existing attachment; retain one in-flight operation; do not send newer revision until uncertainty is resolved.",
+    "lateOldWriteRisk": true,
+    "sources": ["attachments"]
+  },
+  "agentSession": {
+    "included": false,
+    "subscribeAgentSessionEvents": false,
+    "requestAssignableOrMentionable": false,
+    "conceptsSeparate": [
+      "OAuth_actor",
+      "human_assignee",
+      "agent_delegate",
+      "AgentSession",
+      "T3_thread",
+      "T3_invocation"
+    ],
+    "futureBindingKey": ["linearOrganizationId", "linearAgentSessionId"],
+    "futureAuthority": "Explicit T3 admission and workflow binding; issue status is never launch authority.",
+    "sources": ["agentSetup", "agentInteraction"]
+  },
+  "illustrativeExamples": {
+    "connection": {
+      "connectionId": "example-linear-connection",
+      "ownerEnvironmentId": "example-environment",
+      "t3ProjectId": "example-t3-project",
+      "linearOrganizationId": "10000000-0000-4000-8000-000000000001",
+      "selectedTeamId": "20000000-0000-4000-8000-000000000001",
+      "optionalLinearProjectId": null,
+      "liveConfigured": false
+    },
+    "sourceBinding": {
+      "sourceRef": "linear:10000000-0000-4000-8000-000000000001:issue:30000000-0000-4000-8000-000000000001",
+      "linearIssueId": "30000000-0000-4000-8000-000000000001",
+      "identifier": "ENG-42",
+      "teamId": "20000000-0000-4000-8000-000000000001",
+      "sourceStateId": "40000000-0000-4000-8000-000000000004",
+      "sourceStateType": "started",
+      "planItemRef": "example-plan-42",
+      "planningStage": "Ready",
+      "executionStatus": "not_started",
+      "deliveryStatus": "Held",
+      "note": "Independent axes are intentional; these values are design fixtures, not runtime facts."
+    },
+    "approvedTeamStates": [
+      {
+        "id": "40000000-0000-4000-8000-000000000001",
+        "teamId": "20000000-0000-4000-8000-000000000001",
+        "name": "Triage",
+        "type": "triage",
+        "sourceCategory": "triage",
+        "approved": true,
+        "outbound": true
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000002",
+        "teamId": "20000000-0000-4000-8000-000000000001",
+        "name": "Backlog",
+        "type": "backlog",
+        "sourceCategory": "backlog",
+        "approved": true,
+        "outbound": true
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000003",
+        "teamId": "20000000-0000-4000-8000-000000000001",
+        "name": "Todo",
+        "type": "unstarted",
+        "sourceCategory": "unstarted",
+        "approved": true,
+        "outbound": true
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000004",
+        "teamId": "20000000-0000-4000-8000-000000000001",
+        "name": "In Progress",
+        "type": "started",
+        "sourceCategory": "started",
+        "approved": true,
+        "outbound": true
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000005",
+        "teamId": "20000000-0000-4000-8000-000000000001",
+        "name": "In Review",
+        "type": "started",
+        "sourceCategory": "started",
+        "approved": true,
+        "outbound": true
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000006",
+        "teamId": "20000000-0000-4000-8000-000000000001",
+        "name": "Done",
+        "type": "completed",
+        "sourceCategory": "completed",
+        "approved": true,
+        "outbound": true
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000007",
+        "teamId": "20000000-0000-4000-8000-000000000001",
+        "name": "Canceled",
+        "type": "canceled",
+        "sourceCategory": "canceled",
+        "approved": true,
+        "outbound": true
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000008",
+        "teamId": "20000000-0000-4000-8000-000000000001",
+        "name": "Duplicate",
+        "type": "duplicate",
+        "sourceCategory": "duplicate",
+        "approved": true,
+        "outbound": false
+      }
+    ],
+    "unmappedExample": {
+      "id": "40000000-0000-4000-8000-000000000009",
+      "teamId": "20000000-0000-4000-8000-000000000001",
+      "name": "Awaiting Security",
+      "type": "started",
+      "sourceCategory": "unmapped",
+      "approved": false,
+      "outbound": false,
+      "reason": "Known type does not approve a new status ID."
+    },
+    "otherTeamCollision": {
+      "id": "40000000-0000-4000-8000-000000000010",
+      "teamId": "20000000-0000-4000-8000-000000000002",
+      "name": "In Progress",
+      "type": "started",
+      "activeTeamInMvp": false,
+      "reason": "Same label/type as Team A; never reuse Team A state ID."
+    },
+    "stateCommand": {
+      "commandId": "example-state-command",
+      "linearIssueId": "30000000-0000-4000-8000-000000000001",
+      "baseStateId": "40000000-0000-4000-8000-000000000004",
+      "desiredStateId": "40000000-0000-4000-8000-000000000005",
+      "mappingRevision": 1,
+      "patch": {
+        "stateId": "40000000-0000-4000-8000-000000000005"
+      },
+      "ifLiveStateIsDone": "conflict_hold",
+      "ifResponseLost": "outcome_unknown"
+    },
+    "casCounterexample": [
+      "T3 reads In Progress",
+      "Human sets Done",
+      "T3 writes In Review",
+      "Readback sees In Review",
+      "Human edit may be lost without any detectable precondition failure"
+    ],
+    "echoCounterexample": {
+      "incomingFields": ["stateId", "title"],
+      "matchedOwnFields": ["stateId"],
+      "required": "Reconcile and retain title; never ignore whole app-actor event."
+    }
+  },
+  "queryExamples": {
+    "statusDiscovery": "query States($teamId: ID!, $after: String) { workflowStates(first: 50, after: $after, includeArchived: true, filter: { team: { id: { eq: $teamId } } }) { nodes { id name type position archivedAt updatedAt team { id } inheritedFrom { id } } pageInfo { hasNextPage endCursor } } }",
+    "incremental": "query Issues($filter: IssueFilter!, $after: String) { issues(first: 50, after: $after, orderBy: updatedAt, includeArchived: true, filter: $filter) { nodes { id identifier url title description updatedAt archivedAt trashed priority team { id } project { id } state { id name type } assignee { id } delegate { id } } pageInfo { hasNextPage endCursor } } }",
+    "incrementalFilterExample": {
+      "team": {
+        "id": {
+          "eq": "20000000-0000-4000-8000-000000000001"
+        }
+      },
+      "updatedAt": {
+        "gte": "2026-11-04T17:50:00Z",
+        "lte": "2026-11-04T18:15:00Z"
+      }
+    },
+    "explicitStateMutation": "mutation SetSourceState($id: String!, $stateId: String!) { issueUpdate(id: $id, input: { stateId: $stateId }) { success issue { id updatedAt team { id } state { id name type } } } }",
+    "exampleQualification": "Schema-inspected illustrative operations, not executed against a workspace. Nested labels require their own cursor pagination if selected."
+  },
+  "acceptanceScenarios": [
+    {
+      "id": "duplicate_and_reordered_delivery",
+      "expected": "One local receipt per delivery key; no rollback or echo write."
+    },
+    {
+      "id": "ambiguous_status_mutation",
+      "expected": "Unknown outcome then observed reconciliation; no automatic stale retry."
+    },
+    {
+      "id": "human_edit_race",
+      "expected": "Residual race disclosed; no CAS claim."
+    },
+    {
+      "id": "state_deleted_recreated",
+      "expected": "Old UUID held; new UUID unapproved."
+    },
+    {
+      "id": "team_move",
+      "expected": "Same source identity, out-of-scope hold."
+    },
+    {
+      "id": "pagination_failure",
+      "expected": "No completed-watermark advance or delete inference."
+    },
+    {
+      "id": "sleep_past_retry_window",
+      "expected": "Stale indicator, repair sweep and no gap-free claim."
+    },
+    {
+      "id": "archive_trash_restore",
+      "expected": "Distinct availability; history retained; plan not auto-restored."
+    },
+    {
+      "id": "attachment_removed",
+      "expected": "Hold publication."
+    },
+    {
+      "id": "different_installer_assignee_actor",
+      "expected": "Identities remain separate."
+    },
+    {
+      "id": "done_while_delivery_held",
+      "expected": "Only source status changes."
+    },
+    {
+      "id": "native_sync_competitor",
+      "expected": "Default outbound status hold until explicit owner permission."
+    },
+    {
+      "id": "revoked_credentials",
+      "expected": "Hold writes; same-tenant reconnect."
+    }
+  ]
+}

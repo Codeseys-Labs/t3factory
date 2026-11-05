@@ -1,6 +1,12 @@
-# T3Factory vision
+# T3 Factory vision
 
-T3Factory extends T3 Code's promise: **launch a thread to settle an outcome**. It coordinates people, agents, models, tools, and compute, then brings back the decisions and results that deserve attention.
+T3 Factory evolves T3 Code into one product for software, research, and knowledge work: **launch a thread to settle an outcome**. It coordinates people, agents, models, tools, and compute, then brings back the decisions and results that deserve attention.
+
+**Factory is the application identity, not an optional feature underneath T3 Code.** Work, conversations, Intake, workflows, evidence, and connections are views within T3 Factory. A user should not need to enter a separate Factory mode to use the product. Linear is an optional source integration; local work remains useful without it.
+
+Use **T3 Factory** in the application shell, titles, onboarding, settings, and platform display names. Use `t3factory` for the repository/product slug. Keep T3 Code attribution and the pinned upstream reconstruction clearly labeled as upstream references. Historical captures retain their original branding. The [design library](design/README.md) records the current product design and its verification limits.
+
+Display branding does not authorize a mechanical rename of storage directories, bundle IDs, URL schemes, credentials, package names, or wire contracts. Those are compatibility identities with separate migration requirements. The existing runtime still contains legacy display names; this design decision is not evidence that a rebuilt desktop or mobile app has been rebranded.
 
 This is the product direction, reviewed on 2026-10-29, not a release capability checklist. [Sources and evidence](sources.md) distinguish inspected foundations from proposals. Active work belongs in the [vision tracker](https://github.com/baladithyab/t3code-factory/issues/2).
 

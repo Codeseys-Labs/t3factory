@@ -1,0 +1,4055 @@
+{
+  "schema": "t3factory-workspace-scenes/1",
+  "scenes": [
+    {
+      "id": "F5-T00",
+      "title": "Triggers · bindings",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Factory · Workflows · Triggers",
+        "navTargets": { "Work": "F5-C13", "Workflows": "F5-W03" }
+      },
+      "tag": "Proposed #63 · native T3 shell",
+      "caption": "Trigger bindings for pinned workflow versions: one source, one dispatch owner, one target each. Manual run and schedule stay distinct; enablement grants no merge/release authority.",
+      "state": {
+        "surface": "Workflows · Triggers",
+        "project": "project-factory",
+        "repository": "acme/factory",
+        "bindings": {
+          "manual": "available",
+          "newIssue": "Enabled",
+          "prReady": "Enabled",
+          "ciJob": "Enabled",
+          "custom": "Enabled",
+          "schedule": "Enabled"
+        },
+        "automaticDispatch": "inv-f5-auto-01 accepted (delivery d-7741)",
+        "ciTarget": "observed active",
+        "workBranch": "F5-C13 auto branch (plan-238)"
+      },
+      "regions": [
+        {
+          "id": "t00-title",
+          "kind": "text",
+          "box": [360, 128, 420, 30],
+          "props": { "lines": [{ "t": "Triggers", "x": 0, "y": 24, "s": 20, "w": 600, "c": "FG" }] }
+        },
+        {
+          "id": "t00-sub",
+          "kind": "text",
+          "box": [360, 158, 640, 20],
+          "props": {
+            "lines": [
+              {
+                "t": "Bindings · project-factory · repository acme/factory",
+                "x": 0,
+                "y": 15,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t00-new-trigger",
+          "kind": "button",
+          "box": [1436, 128, 124, 32],
+          "props": {
+            "variant": "primary",
+            "label": "New trigger…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE00",
+              "to": "F5-T01",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t00-history",
+          "kind": "button",
+          "box": [1292, 128, 136, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Event history…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE01",
+              "to": "F5-T07",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t00-head",
+          "kind": "text",
+          "box": [376, 206, 1184, 22],
+          "props": {
+            "lines": [
+              { "t": "Binding", "x": 0, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Source", "x": 284, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Workflow version", "x": 504, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Target", "x": 744, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Owner", "x": 844, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "State", "x": 1014, "y": 16, "s": 12, "w": 500, "c": "MUT" }
+            ]
+          }
+        },
+        { "id": "t00-head-rule", "kind": "rule", "box": [376, 229, 1184, 1] },
+        {
+          "id": "t00-row-manual",
+          "kind": "row",
+          "box": [360, 232, 1200, 76],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "Manual run", "x": 16, "y": 28, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Pinned version + candidate chosen at run review",
+                "x": 16,
+                "y": 52,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "Manual", "x": 300, "y": 28, "s": 14, "w": 400, "c": "MUT" },
+              { "t": "On demand", "x": 300, "y": 52, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "Any pinned version", "x": 520, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "pinned at run review", "x": 520, "y": 52, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "Factory / CI", "x": 760, "y": 28, "s": 14, "w": 400, "c": "FG" },
+              { "t": "Run reviewer", "x": 860, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "Always available", "x": 1030, "y": 28, "s": 12, "w": 500, "c": "MUT" }
+            ],
+            "link": {
+              "edge": "F5-TE02",
+              "to": "F5-W05",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t00-row-newissue",
+          "kind": "row",
+          "box": [360, 312, 1200, 76],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "New issue → Implement", "x": 16, "y": 28, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "issue opened · repo + state filter",
+                "x": 16,
+                "y": 52,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "Platform-native · GitHub", "x": 300, "y": 28, "s": 14, "w": 400, "c": "MUT" },
+              { "t": "issue opened", "x": 300, "y": 52, "s": 12, "w": 400, "c": "DIM" },
+              {
+                "t": "Implement issue · v1",
+                "x": 520,
+                "y": 28,
+                "s": 13,
+                "w": 500,
+                "c": "BLUE_TEXT"
+              },
+              { "t": "version 1 · pinned", "x": 520, "y": 52, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "Factory", "x": 760, "y": 28, "s": 14, "w": 400, "c": "FG" },
+              { "t": "T3 trigger service", "x": 860, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "Enabled", "x": 1030, "y": 28, "s": 12, "w": 500, "c": "GREEN" }
+            ],
+            "link": {
+              "edge": "F5-TE03",
+              "to": "F5-T02",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t00-row-prready",
+          "kind": "row",
+          "box": [360, 392, 1200, 76],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "PR ready → Review", "x": 16, "y": 28, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "ready_for_review · drafts excluded",
+                "x": 16,
+                "y": 52,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "Platform-native · GitHub", "x": 300, "y": 28, "s": 14, "w": 400, "c": "MUT" },
+              { "t": "PR status changed", "x": 300, "y": 52, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "Review change · v1", "x": 520, "y": 28, "s": 13, "w": 500, "c": "BLUE_TEXT" },
+              { "t": "version 1 · pinned", "x": 520, "y": 52, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "CI", "x": 760, "y": 28, "s": 14, "w": 400, "c": "FG" },
+              { "t": "T3 trigger service", "x": 860, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "Enabled", "x": 1030, "y": 28, "s": 12, "w": 500, "c": "GREEN" }
+            ],
+            "link": {
+              "edge": "F5-TE04",
+              "to": "F5-T03",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t00-row-cijob",
+          "kind": "row",
+          "box": [360, 472, 1200, 76],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "CI job failed → Diagnose", "x": 16, "y": 28, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "conclusion = failure · self-origin excluded",
+                "x": 16,
+                "y": 52,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "Platform-native · GitHub", "x": 300, "y": 28, "s": 14, "w": 400, "c": "MUT" },
+              { "t": "Actions job status", "x": 300, "y": 52, "s": 12, "w": 400, "c": "DIM" },
+              {
+                "t": "Diagnose CI failure · v1",
+                "x": 520,
+                "y": 28,
+                "s": 13,
+                "w": 500,
+                "c": "BLUE_TEXT"
+              },
+              { "t": "version 1 · pinned", "x": 520, "y": 52, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "Factory", "x": 760, "y": 28, "s": 14, "w": 400, "c": "FG" },
+              { "t": "T3 trigger service", "x": 860, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "Enabled", "x": 1030, "y": 28, "s": 12, "w": 500, "c": "GREEN" }
+            ],
+            "link": {
+              "edge": "F5-TE05",
+              "to": "F5-T04",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t00-row-custom",
+          "kind": "row",
+          "box": [360, 552, 1200, 76],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "Docs rebuild → Review", "x": 16, "y": 28, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "custom event + signed webhook",
+                "x": 16,
+                "y": 52,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "Custom event / webhook", "x": 300, "y": 28, "s": 14, "w": 400, "c": "MUT" },
+              { "t": "docs-rebuild-requested", "x": 300, "y": 52, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "Review change · v1", "x": 520, "y": 28, "s": 13, "w": 500, "c": "BLUE_TEXT" },
+              { "t": "version 1 · pinned", "x": 520, "y": 52, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "Factory", "x": 760, "y": 28, "s": 14, "w": 400, "c": "FG" },
+              { "t": "T3 trigger service", "x": 860, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "Enabled", "x": 1030, "y": 28, "s": 12, "w": 500, "c": "GREEN" }
+            ],
+            "link": {
+              "edge": "F5-TE06",
+              "to": "F5-T05",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t00-row-schedule",
+          "kind": "row",
+          "box": [360, 632, 1200, 76],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "Daily 09:00 → Review", "x": 16, "y": 28, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "cron 0 9 * * * · existing manager",
+                "x": 16,
+                "y": 52,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "Schedule · task-31", "x": 300, "y": 28, "s": 14, "w": 400, "c": "MUT" },
+              { "t": "ScheduledTasksManager", "x": 300, "y": 52, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "Review change · v1", "x": 520, "y": 28, "s": 13, "w": 500, "c": "BLUE_TEXT" },
+              { "t": "version 1 · pinned", "x": 520, "y": 52, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "Factory", "x": 760, "y": 28, "s": 14, "w": 400, "c": "FG" },
+              { "t": "ScheduledTasksManager", "x": 860, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "Enabled", "x": 1030, "y": 28, "s": 12, "w": 500, "c": "GREEN" }
+            ],
+            "link": {
+              "edge": "F5-TE07",
+              "to": "F5-T11",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t00-foot",
+          "kind": "text",
+          "box": [360, 728, 1200, 40],
+          "props": {
+            "lines": [
+              {
+                "t": "One dispatch per matching delivery; filtered, duplicate, rejected and self-origin deliveries never create a run.",
+                "x": 0,
+                "y": 22,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              {
+                "t": "Enablement grants dispatch authority for the pinned version only — merge and release stay separate explicit authority.",
+                "x": 0,
+                "y": 40,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        }
+      ],
+      "staticControls": [
+        "Row context menus (edit · duplicate · delete)",
+        "Owner reassignment",
+        "Search bindings"
+      ]
+    },
+    {
+      "id": "F5-T01",
+      "title": "New trigger · source catalog",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Factory · Workflows · Triggers · New trigger",
+        "navTargets": { "Work": "F5-C13", "Workflows": "F5-W03" }
+      },
+      "tag": "Proposed #63 · native T3 shell",
+      "caption": "Extensible source catalog: platform-native, integration, custom events and signed webhooks register through adapters. An event grants no broader authority than its binding.",
+      "state": {
+        "surface": "Workflows · Triggers · New trigger",
+        "catalogState": "adapter-extensible",
+        "newBindingDraft": "source not chosen"
+      },
+      "regions": [
+        {
+          "id": "t01-title",
+          "kind": "text",
+          "box": [360, 128, 420, 30],
+          "props": {
+            "lines": [{ "t": "New trigger", "x": 0, "y": 24, "s": 20, "w": 600, "c": "FG" }]
+          }
+        },
+        {
+          "id": "t01-sub",
+          "kind": "text",
+          "box": [360, 158, 760, 20],
+          "props": {
+            "lines": [
+              {
+                "t": "Choose a source · a binding dispatches one pinned workflow version",
+                "x": 0,
+                "y": 15,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t01-cancel",
+          "kind": "button",
+          "box": [1476, 128, 84, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Cancel",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE14",
+              "to": "F5-T00",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t01-head",
+          "kind": "text",
+          "box": [376, 206, 1184, 22],
+          "props": {
+            "lines": [
+              { "t": "Source kind", "x": 0, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Dispatch owner", "x": 244, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Mechanism · examples", "x": 464, "y": 16, "s": 12, "w": 500, "c": "MUT" }
+            ]
+          }
+        },
+        { "id": "t01-head-rule", "kind": "rule", "box": [376, 229, 1184, 1] },
+        {
+          "id": "t01-row-manual",
+          "kind": "row",
+          "box": [360, 232, 1200, 72],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "Manual run", "x": 16, "y": 28, "s": 14, "w": 500, "c": "FG" },
+              { "t": "Run reviewer", "x": 260, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              {
+                "t": "Runs a pinned version on demand through the run review (Factory or CI target)",
+                "x": 480,
+                "y": 28,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 880,
+                "lh": 16
+              }
+            ]
+          }
+        },
+        {
+          "id": "t01-btn-manual",
+          "kind": "button",
+          "box": [1428, 252, 104, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Open run…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE08",
+              "to": "F5-W05",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t01-row-schedule",
+          "kind": "row",
+          "box": [360, 308, 1200, 72],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "Schedule", "x": 16, "y": 28, "s": 14, "w": 500, "c": "FG" },
+              { "t": "ScheduledTasksManager", "x": 260, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              {
+                "t": "Existing manager prompts on a cron/interval — single dispatch owner, no second scheduler",
+                "x": 480,
+                "y": 28,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 880,
+                "lh": 16
+              }
+            ]
+          }
+        },
+        {
+          "id": "t01-btn-schedule",
+          "kind": "button",
+          "box": [1428, 328, 112, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Configure…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE09",
+              "to": "F5-T11",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t01-row-platform",
+          "kind": "row",
+          "box": [360, 384, 1200, 72],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "Platform-native event", "x": 16, "y": 28, "s": 14, "w": 500, "c": "FG" },
+              { "t": "T3 trigger service", "x": 260, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              {
+                "t": "GitHub subscriptions: issue opened · PR status changed · CI job status changed",
+                "x": 480,
+                "y": 28,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 880,
+                "lh": 16
+              }
+            ]
+          }
+        },
+        {
+          "id": "t01-btn-platform",
+          "kind": "button",
+          "box": [1428, 404, 112, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Configure…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE10",
+              "to": "F5-T02",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t01-row-integration",
+          "kind": "row",
+          "box": [360, 460, 1200, 72],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "Integration event", "x": 16, "y": 28, "s": 14, "w": 500, "c": "FG" },
+              { "t": "T3 trigger service", "x": 260, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              {
+                "t": "Registered adapters (Slack, Linear, …) publish mapped events through the same pipeline",
+                "x": 480,
+                "y": 28,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 880,
+                "lh": 16
+              }
+            ]
+          }
+        },
+        {
+          "id": "t01-btn-integration",
+          "kind": "button",
+          "box": [1428, 480, 112, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Configure…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE11",
+              "to": "F5-T05",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t01-row-custom",
+          "kind": "row",
+          "box": [360, 536, 1200, 72],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "Custom event", "x": 16, "y": 28, "s": 14, "w": 500, "c": "FG" },
+              { "t": "T3 trigger service", "x": 260, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              {
+                "t": "Named events from local tools and scripts, e.g. docs-rebuild-requested",
+                "x": 480,
+                "y": 28,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 880,
+                "lh": 16
+              }
+            ]
+          }
+        },
+        {
+          "id": "t01-btn-custom",
+          "kind": "button",
+          "box": [1428, 556, 112, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Configure…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE12",
+              "to": "F5-T05",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t01-row-webhook",
+          "kind": "row",
+          "box": [360, 612, 1200, 72],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "Custom webhook", "x": 16, "y": 28, "s": 14, "w": 500, "c": "FG" },
+              { "t": "T3 trigger service", "x": 260, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              {
+                "t": "Signed HTTPS deliveries decoded to named events; invalid signatures are rejected",
+                "x": 480,
+                "y": 28,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 880,
+                "lh": 16
+              }
+            ]
+          }
+        },
+        {
+          "id": "t01-btn-webhook",
+          "kind": "button",
+          "box": [1428, 632, 112, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Configure…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE13",
+              "to": "F5-T05",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t01-foot",
+          "kind": "text",
+          "box": [360, 706, 1200, 44],
+          "props": {
+            "lines": [
+              {
+                "t": "Event types are registered by adapters — adding a provider adds events; the catalog is not a fixed three-event enum.",
+                "x": 0,
+                "y": 22,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              {
+                "t": "Receipt of an event grants no broader authority: filters and input mapping stay project-scoped.",
+                "x": 0,
+                "y": 40,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        }
+      ],
+      "staticControls": ["Register adapter / provider flow", "Source search"]
+    },
+    {
+      "id": "F5-T02",
+      "title": "Binding · New issue → Implement issue v1",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Factory · Workflows · Triggers · New issue → Implement",
+        "navTargets": { "Work": "F5-C13", "Workflows": "F5-W03" }
+      },
+      "tag": "Proposed #63 · native T3 shell",
+      "caption": "Enabled new-issue binding: repo-scoped filter, pinned Implement issue v1, Factory target, mapped inputs. Preview shows a real match (issue #238) and a filtered non-match.",
+      "state": {
+        "binding": "new-issue → implement",
+        "source": "Platform-native · GitHub issue opened",
+        "filters": "repo acme/factory · state opened",
+        "workflow": "wf-implement-issue v1 fac52fcf…96fa9",
+        "target": "Factory",
+        "owner": "T3 trigger service",
+        "state": "Enabled",
+        "lastDispatch": "inv-f5-auto-01 accepted"
+      },
+      "regions": [
+        {
+          "id": "t02-title",
+          "kind": "text",
+          "box": [360, 128, 520, 30],
+          "props": {
+            "lines": [
+              { "t": "New issue → Implement", "x": 0, "y": 24, "s": 20, "w": 600, "c": "FG" }
+            ]
+          }
+        },
+        {
+          "id": "t02-sub",
+          "kind": "text",
+          "box": [360, 158, 640, 20],
+          "props": {
+            "lines": [
+              {
+                "t": "Binding · Implement issue v1 pinned · target Factory",
+                "x": 0,
+                "y": 15,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t02-tag",
+          "kind": "tag",
+          "box": [1472, 132, 88, 26],
+          "props": { "label": "Enabled", "size": 12, "role": "status" }
+        },
+        {
+          "id": "t02-f-name",
+          "kind": "card",
+          "box": [360, 200, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Binding name", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "New issue → Implement", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" }
+            ]
+          }
+        },
+        {
+          "id": "t02-f-source",
+          "kind": "card",
+          "box": [360, 272, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Source", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Platform-native · GitHub", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Event: issue opened (state = opened)",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t02-f-filters",
+          "kind": "card",
+          "box": [360, 344, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Filters", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "repository = acme/factory · state = opened · labels any",
+                "x": 16,
+                "y": 38,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Scope: project-factory (Workstation) — other repositories are filtered and logged",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 560,
+                "lh": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "t02-f-workflow",
+          "kind": "card",
+          "box": [360, 416, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Workflow (pinned)", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Implement issue · v1", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "digest fac52fcf0ec317cc8a1e8d88b4a0a5aac72f141dfad772cae970193f93096fa9 — pinned at the binding, not copied",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 560,
+                "lh": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "t02-f-target",
+          "kind": "card",
+          "box": [360, 488, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Target", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Factory", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Same version also runs on CI — target is chosen per binding",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t02-f-owner",
+          "kind": "card",
+          "box": [360, 560, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Dispatch owner", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "T3 trigger service", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "One dispatch per matching delivery — no second scheduler",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t02-mapping",
+          "kind": "code",
+          "box": [360, 648, 620, 130],
+          "props": {
+            "style": "code",
+            "lines": [
+              { "t": "Input mapping", "x": 16, "y": 24, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "issue.number → task ref (#238)",
+                "x": 16,
+                "y": 48,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              { "t": "issue.title  → brief title", "x": 16, "y": 68, "s": 13, "w": 400, "c": "FG" },
+              {
+                "t": "issue.body   → brief body (revision 1)",
+                "x": 16,
+                "y": 88,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "checkout     → default branch",
+                "x": 16,
+                "y": 108,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t02-preview",
+          "kind": "card",
+          "box": [1010, 200, 550, 330],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Preview · rule evaluation", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              { "t": "Matched", "x": 16, "y": 56, "s": 12, "w": 600, "c": "GREEN" },
+              {
+                "t": "Issue #238 opened · acme/factory",
+                "x": 16,
+                "y": 82,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "“Handle an interrupted index refresh” · rev 1",
+                "x": 16,
+                "y": 104,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "→ dispatch Implement issue v1 · Factory",
+                "x": 16,
+                "y": 128,
+                "s": 13,
+                "w": 500,
+                "c": "BLUE_TEXT"
+              },
+              {
+                "t": "Recorded: delivery d-7741 → queued inv-f5-auto-01",
+                "x": 16,
+                "y": 150,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "Not matched", "x": 16, "y": 196, "s": 12, "w": 600, "c": "RED" },
+              { "t": "Issue opened in acme/docs", "x": 16, "y": 222, "s": 14, "w": 400, "c": "FG" },
+              {
+                "t": "repository filter: no match → logged, no dispatch",
+                "x": 16,
+                "y": 246,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t02-effects",
+          "kind": "card",
+          "box": [1010, 558, 550, 222],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "What enablement does", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              {
+                "t": "Matching deliveries dispatch automatically — no per-event prompt.",
+                "x": 16,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              },
+              {
+                "t": "Pausing stops future dispatch only; active work continues.",
+                "x": 16,
+                "y": 96,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              },
+              {
+                "t": "Manual runs stay available independently of this binding.",
+                "x": 16,
+                "y": 136,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              },
+              {
+                "t": "No merge, tag or release authority is granted.",
+                "x": 16,
+                "y": 176,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              }
+            ]
+          }
+        },
+        {
+          "id": "t02-pause",
+          "kind": "button",
+          "box": [360, 806, 136, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Pause binding…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE16",
+              "to": "F5-T09",
+              "type": "navigate",
+              "effect": "configuration-change"
+            }
+          }
+        },
+        {
+          "id": "t02-history",
+          "kind": "button",
+          "box": [512, 806, 136, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Event history…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE17",
+              "to": "F5-T07",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t02-open-wf",
+          "kind": "button",
+          "box": [668, 806, 160, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "Open workflow v1…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE15",
+              "to": "F5-W03",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t02-review",
+          "kind": "button",
+          "box": [844, 806, 168, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "Activation review…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE18",
+              "to": "F5-T06",
+              "type": "navigate",
+              "effect": "history-read"
+            }
+          }
+        }
+      ],
+      "staticControls": [
+        "Save revision (requires re-review before activation)",
+        "Delete binding",
+        "Owner reassignment"
+      ]
+    },
+    {
+      "id": "F5-T03",
+      "title": "Binding · PR ready → Review change v1",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Factory · Workflows · Triggers · PR ready → Review",
+        "navTargets": { "Work": "F5-C13", "Workflows": "F5-W03" }
+      },
+      "tag": "Proposed #63 + AB:66 CI target · native T3 shell",
+      "caption": "PR-status binding pins Review change v1 to CI. Local Save never activates the host workflow — dispatch waits for committed, pushed, host-observed config.",
+      "state": {
+        "binding": "pr-ready → review",
+        "source": "Platform-native · GitHub PR status",
+        "filters": "repo · ready_for_review · draft excluded",
+        "workflow": "wf-review-change v1 e464ecf…019d",
+        "target": "CI",
+        "ciActivation": "observed active (host-confirmed)",
+        "state": "Enabled"
+      },
+      "regions": [
+        {
+          "id": "t03-title",
+          "kind": "text",
+          "box": [360, 128, 520, 30],
+          "props": {
+            "lines": [{ "t": "PR ready → Review", "x": 0, "y": 24, "s": 20, "w": 600, "c": "FG" }]
+          }
+        },
+        {
+          "id": "t03-sub",
+          "kind": "text",
+          "box": [360, 158, 640, 20],
+          "props": {
+            "lines": [
+              {
+                "t": "Binding · Review change v1 pinned · target CI",
+                "x": 0,
+                "y": 15,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t03-tag",
+          "kind": "tag",
+          "box": [1472, 132, 88, 26],
+          "props": { "label": "Enabled", "size": 12, "role": "status" }
+        },
+        {
+          "id": "t03-f-name",
+          "kind": "card",
+          "box": [360, 200, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Binding name", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "PR ready → Review", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" }
+            ]
+          }
+        },
+        {
+          "id": "t03-f-source",
+          "kind": "card",
+          "box": [360, 272, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Source", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Platform-native · GitHub", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Event: pull request status changed",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t03-f-filters",
+          "kind": "card",
+          "box": [360, 344, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Filters", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "repository = acme/factory · state = ready_for_review · draft excluded",
+                "x": 16,
+                "y": 38,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 18
+              },
+              {
+                "t": "Non-matching repositories and drafts are filtered and logged",
+                "x": 16,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t03-f-workflow",
+          "kind": "card",
+          "box": [360, 416, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Workflow (pinned)", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Review change · v1", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "digest e464ecf8079ddd35b1fa08327785bdd2324aea4511e47aba25b1696d265c019d — pinned at the binding",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 560,
+                "lh": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "t03-f-target",
+          "kind": "card",
+          "box": [360, 488, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Target", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "CI — portable adapter", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Shared CI config observed active (host-confirmed) — a local Save alone never activates it",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 560,
+                "lh": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "t03-f-owner",
+          "kind": "card",
+          "box": [360, 560, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Dispatch owner", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "T3 trigger service", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "One dispatch per matching delivery — a held delivery never silently falls back",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 560,
+                "lh": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "t03-mapping",
+          "kind": "code",
+          "box": [360, 648, 620, 130],
+          "props": {
+            "style": "code",
+            "lines": [
+              { "t": "Input mapping", "x": 16, "y": 24, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "pr.number   → review ref", "x": 16, "y": 48, "s": 13, "w": 400, "c": "FG" },
+              { "t": "pr.title    → brief title", "x": 16, "y": 68, "s": 13, "w": 400, "c": "FG" },
+              {
+                "t": "pr.head_sha → candidate commit",
+                "x": 16,
+                "y": 88,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              { "t": "checks      → context list", "x": 16, "y": 108, "s": 13, "w": 400, "c": "FG" }
+            ]
+          }
+        },
+        {
+          "id": "t03-preview",
+          "kind": "card",
+          "box": [1010, 200, 550, 290],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Preview · rule evaluation", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              { "t": "Matched", "x": 16, "y": 54, "s": 12, "w": 600, "c": "GREEN" },
+              {
+                "t": "PR #236 review requested · head 1dfb90f9bc2e",
+                "x": 16,
+                "y": 80,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "→ dispatch Review change v1 · CI",
+                "x": 16,
+                "y": 104,
+                "s": 13,
+                "w": 500,
+                "c": "BLUE_TEXT"
+              },
+              { "t": "Not matched", "x": 16, "y": 140, "s": 12, "w": 600, "c": "RED" },
+              { "t": "PR #236 changed to draft", "x": 16, "y": 164, "s": 14, "w": 400, "c": "FG" },
+              {
+                "t": "ready_for_review filter: no match → no dispatch",
+                "x": 16,
+                "y": 186,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "Held (earlier)", "x": 16, "y": 222, "s": 12, "w": 600, "c": "WARN" },
+              {
+                "t": "PR #230 ready 09:52 → held: CI target not observed",
+                "x": 16,
+                "y": 246,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t03-pending",
+          "kind": "button",
+          "box": [1010, 500, 168, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "Pending record…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE21",
+              "to": "F5-T10",
+              "type": "navigate",
+              "effect": "history-read"
+            }
+          }
+        },
+        {
+          "id": "t03-effects",
+          "kind": "card",
+          "box": [1010, 548, 550, 232],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "What enablement does", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              {
+                "t": "Deliveries dispatch to CI through the portable adapter; receipts link external run ids.",
+                "x": 16,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              },
+              {
+                "t": "Local Save alone never activates the host workflow — commit, push and host observation do.",
+                "x": 16,
+                "y": 102,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              },
+              {
+                "t": "One dispatch per matching delivery; a held delivery never silently falls back.",
+                "x": 16,
+                "y": 148,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              },
+              {
+                "t": "Enablement grants no merge, tag or release authority.",
+                "x": 16,
+                "y": 194,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              }
+            ]
+          }
+        },
+        {
+          "id": "t03-history",
+          "kind": "button",
+          "box": [360, 806, 136, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Event history…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE20",
+              "to": "F5-T07",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t03-open-wf",
+          "kind": "button",
+          "box": [512, 806, 160, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "Open workflow v1…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE19",
+              "to": "F5-W04",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        }
+      ],
+      "staticControls": [
+        "Pause binding… (pause flow modeled on the New issue binding → F5-T09)",
+        "Save revision (re-review required)"
+      ]
+    },
+    {
+      "id": "F5-T04",
+      "title": "Binding · CI job failed → Diagnose CI failure v1",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Factory · Workflows · Triggers · CI job failed → Diagnose",
+        "navTargets": { "Work": "F5-C13", "Workflows": "F5-W03" }
+      },
+      "tag": "Proposed #63 · native T3 shell",
+      "caption": "CI-job binding dispatches Diagnose CI failure v1 on job failure; self-originated runs (T3 dispatches) are ignored so triggers never re-trigger themselves.",
+      "state": {
+        "binding": "ci-job-failed → diagnose",
+        "source": "Platform-native · GitHub Actions job status",
+        "filters": "repo · conclusion failure · self-origin excluded",
+        "workflow": "wf-diagnose-ci v1 ee50d21…2f09",
+        "target": "Factory",
+        "state": "Enabled"
+      },
+      "regions": [
+        {
+          "id": "t04-title",
+          "kind": "text",
+          "box": [360, 128, 560, 30],
+          "props": {
+            "lines": [
+              { "t": "CI job failed → Diagnose", "x": 0, "y": 24, "s": 20, "w": 600, "c": "FG" }
+            ]
+          }
+        },
+        {
+          "id": "t04-sub",
+          "kind": "text",
+          "box": [360, 158, 640, 20],
+          "props": {
+            "lines": [
+              {
+                "t": "Binding · Diagnose CI failure v1 pinned · target Factory",
+                "x": 0,
+                "y": 15,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t04-tag",
+          "kind": "tag",
+          "box": [1472, 132, 88, 26],
+          "props": { "label": "Enabled", "size": 12, "role": "status" }
+        },
+        {
+          "id": "t04-f-name",
+          "kind": "card",
+          "box": [360, 200, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Binding name", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "CI job failed → Diagnose", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" }
+            ]
+          }
+        },
+        {
+          "id": "t04-f-source",
+          "kind": "card",
+          "box": [360, 272, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Source", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Platform-native · GitHub", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Event: Actions job status changed (workflow_run / check_run)",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t04-f-filters",
+          "kind": "card",
+          "box": [360, 344, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Filters", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "repository = acme/factory · conclusion = failure · self-origin = excluded",
+                "x": 16,
+                "y": 38,
+                "s": 14,
+                "w": 500,
+                "c": "FG",
+                "wrap": 560,
+                "lh": 18
+              },
+              {
+                "t": "Runs dispatched from T3 invocations are ignored — a trigger never re-triggers its own run",
+                "x": 16,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 560,
+                "lh": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "t04-f-workflow",
+          "kind": "card",
+          "box": [360, 416, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Workflow (pinned)", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Diagnose CI failure · v1", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "digest ee50d212f11bbd19b9a80053b1f366d4a5861d2f9e3b51a4191540bde14f2f09 — pinned at the binding",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 560,
+                "lh": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "t04-f-target",
+          "kind": "card",
+          "box": [360, 488, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Target", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Factory", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Same version also runs on CI — target is chosen per binding",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t04-f-owner",
+          "kind": "card",
+          "box": [360, 560, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Dispatch owner", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "T3 trigger service", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "One dispatch per matching delivery",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t04-mapping",
+          "kind": "code",
+          "box": [360, 648, 620, 130],
+          "props": {
+            "style": "code",
+            "lines": [
+              { "t": "Input mapping", "x": 16, "y": 24, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "run.id      → diagnostic ref",
+                "x": 16,
+                "y": 48,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              { "t": "job.name · step → focus", "x": 16, "y": 68, "s": 13, "w": 400, "c": "FG" },
+              {
+                "t": "run.head_sha → candidate commit",
+                "x": 16,
+                "y": 88,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "log_url     → evidence input",
+                "x": 16,
+                "y": 108,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t04-preview",
+          "kind": "card",
+          "box": [1010, 200, 550, 340],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Preview · rule evaluation", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              { "t": "Matched", "x": 16, "y": 56, "s": 12, "w": 600, "c": "GREEN" },
+              {
+                "t": "Actions run 19553 · job “build” failed",
+                "x": 16,
+                "y": 82,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "head 1dfb90f9bc2e · acme/factory",
+                "x": 16,
+                "y": 104,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "→ dispatch Diagnose CI failure v1 · Factory",
+                "x": 16,
+                "y": 128,
+                "s": 13,
+                "w": 500,
+                "c": "BLUE_TEXT"
+              },
+              { "t": "Not matched", "x": 16, "y": 166, "s": 12, "w": 600, "c": "RED" },
+              {
+                "t": "Run 19553 job “lint” passed",
+                "x": 16,
+                "y": 190,
+                "s": 14,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "conclusion filter: no match → logged, no dispatch",
+                "x": 16,
+                "y": 212,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "Ignored echo", "x": 16, "y": 250, "s": 12, "w": 600, "c": "DIM" },
+              {
+                "t": "Status event for run 19541 → self-origin (dispatch inv-f5-ci-01) → ignored, no run",
+                "x": 16,
+                "y": 274,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 518,
+                "lh": 16
+              }
+            ]
+          }
+        },
+        {
+          "id": "t04-effects",
+          "kind": "card",
+          "box": [1010, 560, 550, 220],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "What enablement does", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              {
+                "t": "Self-originated run events are ignored — a trigger never re-triggers its own dispatch.",
+                "x": 16,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              },
+              {
+                "t": "Run 19541 is an external CI run id, never a T3 thread.",
+                "x": 16,
+                "y": 102,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              },
+              {
+                "t": "One dispatch per matching delivery; diagnosis targets the failing candidate commit.",
+                "x": 16,
+                "y": 148,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              }
+            ]
+          }
+        },
+        {
+          "id": "t04-history",
+          "kind": "button",
+          "box": [360, 806, 136, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Event history…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE23",
+              "to": "F5-T07",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t04-open-wf",
+          "kind": "button",
+          "box": [512, 806, 160, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "Open workflow v1…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE22",
+              "to": "F5-W03",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        }
+      ],
+      "staticControls": [
+        "Pause binding… (modeled on the New issue binding → F5-T09)",
+        "Filter condition editor"
+      ]
+    },
+    {
+      "id": "F5-T05",
+      "title": "Binding · Custom event + signed webhook",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Factory · Workflows · Triggers · Custom sources",
+        "navTargets": { "Work": "F5-C13", "Workflows": "F5-W03" }
+      },
+      "tag": "Proposed #63 · native T3 shell",
+      "caption": "Custom events and a signed webhook decode through one mapping pipeline; invalid signatures are rejected before mapping. Masked secret and example.invalid endpoint — no real integration.",
+      "state": {
+        "binding": "docs-rebuild-requested → review",
+        "sources": ["custom event adapter docs-tool", "signed webhook"],
+        "webhook": "https://hooks.example.invalid/t3/factory · secret masked",
+        "workflow": "wf-review-change v1",
+        "target": "Factory",
+        "state": "Enabled",
+        "runNow": "none for webhook"
+      },
+      "regions": [
+        {
+          "id": "t05-title",
+          "kind": "text",
+          "box": [360, 128, 560, 30],
+          "props": {
+            "lines": [
+              { "t": "Docs rebuild → Review", "x": 0, "y": 24, "s": 20, "w": 600, "c": "FG" }
+            ]
+          }
+        },
+        {
+          "id": "t05-sub",
+          "kind": "text",
+          "box": [360, 158, 700, 20],
+          "props": {
+            "lines": [
+              {
+                "t": "Custom event + signed webhook · one mapping pipeline · target Factory",
+                "x": 0,
+                "y": 15,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t05-tag",
+          "kind": "tag",
+          "box": [1472, 132, 88, 26],
+          "props": { "label": "Enabled", "size": 12, "role": "status" }
+        },
+        {
+          "id": "t05-f-name",
+          "kind": "card",
+          "box": [360, 200, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Binding name", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Docs rebuild → Review", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" }
+            ]
+          }
+        },
+        {
+          "id": "t05-f-source",
+          "kind": "card",
+          "box": [360, 272, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Source", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "Custom event · docs-rebuild-requested",
+                "x": 16,
+                "y": 38,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Named event registered by the docs-tool adapter",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t05-f-filters",
+          "kind": "card",
+          "box": [360, 344, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Filters", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "payload.title present · project-factory scope",
+                "x": 16,
+                "y": 38,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Unknown payloads are logged, not guessed",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t05-f-workflow",
+          "kind": "card",
+          "box": [360, 416, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Workflow (pinned)", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Review change · v1", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "digest e464ecf8079ddd35b1fa08327785bdd2324aea4511e47aba25b1696d265c019d — pinned at the binding",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 560,
+                "lh": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "t05-f-target",
+          "kind": "card",
+          "box": [360, 488, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Target", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Factory", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Same version also runs on CI — target is chosen per binding",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t05-f-owner",
+          "kind": "card",
+          "box": [360, 560, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Dispatch owner", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "T3 trigger service", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Webhook and adapter deliveries share one dispatch owner",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t05-mapping",
+          "kind": "code",
+          "box": [360, 648, 620, 110],
+          "props": {
+            "style": "code",
+            "lines": [
+              { "t": "Input mapping", "x": 16, "y": 24, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "payload.title → brief title",
+                "x": 16,
+                "y": 48,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "payload.path  → checkout hint",
+                "x": 16,
+                "y": 68,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "event.name    → dispatch ref",
+                "x": 16,
+                "y": 88,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t05-webhook",
+          "kind": "card",
+          "box": [1010, 200, 550, 340],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Signed webhook source", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              { "t": "Endpoint", "x": 16, "y": 54, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "https://hooks.example.invalid/t3/factory",
+                "x": 16,
+                "y": 74,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              { "t": "Secret", "x": 16, "y": 102, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "whsec_••••••••••", "x": 16, "y": 122, "s": 13, "w": 400, "c": "MUT" },
+              {
+                "t": "Masked in UI · never rendered or logged in full",
+                "x": 16,
+                "y": 142,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "Signature", "x": 16, "y": 170, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "X-Signature-256 · HMAC-SHA-256",
+                "x": 16,
+                "y": 190,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              { "t": "Mapping", "x": 16, "y": 218, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "$.type → event name · $.payload → fields",
+                "x": 16,
+                "y": 238,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "No Run now on webhooks — dispatch on valid delivery only; invalid signatures are rejected before mapping (delivery d-7744).",
+                "x": 16,
+                "y": 268,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 518,
+                "lh": 18
+              }
+            ]
+          }
+        },
+        {
+          "id": "t05-registry",
+          "kind": "card",
+          "box": [1010, 560, 550, 240],
+          "props": {
+            "style": "panel",
+            "lines": [
+              {
+                "t": "Custom events · adapter-registered",
+                "x": 16,
+                "y": 26,
+                "s": 14,
+                "w": 600,
+                "c": "FG"
+              },
+              { "t": "docs-rebuild-requested", "x": 16, "y": 56, "s": 13, "w": 400, "c": "FG" },
+              {
+                "t": "adapter docs-tool · payload {title, path} · bound above",
+                "x": 16,
+                "y": 76,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 438,
+                "lh": 16
+              },
+              {
+                "t": "benchmark-regression-detected",
+                "x": 16,
+                "y": 106,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "adapter bench-cli · payload {suite, delta} · registered, no binding yet",
+                "x": 16,
+                "y": 126,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 438,
+                "lh": 16
+              },
+              {
+                "t": "Named events come from registered adapters — not a fixed enum.",
+                "x": 16,
+                "y": 168,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 438,
+                "lh": 16
+              },
+              {
+                "t": "Integration adapters (Slack, Linear, …) publish through the same pipeline.",
+                "x": 16,
+                "y": 200,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 438,
+                "lh": 16
+              }
+            ]
+          }
+        },
+        {
+          "id": "t05-history",
+          "kind": "button",
+          "box": [360, 806, 136, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Event history…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE25",
+              "to": "F5-T07",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t05-open-wf",
+          "kind": "button",
+          "box": [512, 806, 160, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "Open workflow v1…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE24",
+              "to": "F5-W04",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        }
+      ],
+      "staticControls": ["Register event type… (adapter-supplied)", "Rotate webhook secret"]
+    },
+    {
+      "id": "F5-T06",
+      "title": "Activation review · New issue → Implement issue v1",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Factory · Workflows · Triggers · Activation review",
+        "navTargets": { "Work": "F5-C02", "Intake": "F5-C07", "Workflows": "F5-W03" }
+      },
+      "tag": "Proposed #63 · recorded study",
+      "caption": "Recorded pre-enablement review: configuration and automatic effects were explicit before activation. Links are history-read; nothing executed from this frame.",
+      "state": {
+        "study": "recorded activation review",
+        "binding": "new-issue → implement",
+        "stateAtReview": "Draft",
+        "recorded": "2026-11-02 14:05",
+        "outcome": "Enabled · first dispatch inv-f5-auto-01"
+      },
+      "regions": [
+        {
+          "id": "t06-title",
+          "kind": "text",
+          "box": [360, 128, 640, 30],
+          "props": {
+            "lines": [
+              {
+                "t": "Activation review · New issue → Implement",
+                "x": 0,
+                "y": 24,
+                "s": 20,
+                "w": 600,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t06-sub",
+          "kind": "text",
+          "box": [360, 158, 720, 20],
+          "props": {
+            "lines": [
+              {
+                "t": "Recorded before enablement · 2026-11-02 14:05 · history study",
+                "x": 0,
+                "y": 15,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t06-tag",
+          "kind": "tag",
+          "box": [1428, 132, 132, 26],
+          "props": { "label": "Recorded review", "size": 12, "role": "identity" }
+        },
+        {
+          "id": "t06-config",
+          "kind": "card",
+          "box": [360, 200, 700, 430],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Configuration under review", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              { "t": "Source", "x": 16, "y": 60, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "GitHub · issue opened · repository acme/factory",
+                "x": 16,
+                "y": 80,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              { "t": "Filters", "x": 16, "y": 106, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "state = opened · labels any",
+                "x": 16,
+                "y": 126,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              { "t": "Workflow (pinned)", "x": 16, "y": 152, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "Implement issue · v1 · digest fac52fcf0ec317cc8a1e8d88b4a0a5aac72f141dfad772cae970193f93096fa9",
+                "x": 16,
+                "y": 172,
+                "s": 13,
+                "w": 400,
+                "c": "FG",
+                "wrap": 660,
+                "lh": 18
+              },
+              { "t": "Target", "x": 16, "y": 198, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Factory", "x": 16, "y": 218, "s": 13, "w": 400, "c": "FG" },
+              { "t": "Dispatch owner", "x": 16, "y": 244, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "T3 trigger service", "x": 16, "y": 264, "s": 13, "w": 400, "c": "FG" },
+              { "t": "State at review", "x": 16, "y": 290, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "Draft — disabled until this review is accepted",
+                "x": 16,
+                "y": 310,
+                "s": 13,
+                "w": 500,
+                "c": "WARN"
+              },
+              { "t": "Input mapping", "x": 16, "y": 336, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "issue number/title/body → brief · checkout default branch",
+                "x": 16,
+                "y": 356,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "Scope: project-factory (Workstation)",
+                "x": 16,
+                "y": 382,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t06-effects",
+          "kind": "card",
+          "box": [1090, 200, 470, 430],
+          "props": {
+            "style": "panel",
+            "lines": [
+              {
+                "t": "Automatic effects — explicit",
+                "x": 16,
+                "y": 26,
+                "s": 14,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "• Each matching issue dispatches Implement issue v1 (Factory) once — no per-event prompt.",
+                "x": 16,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 438,
+                "lh": 18
+              },
+              {
+                "t": "• Input mapping fixes the brief; unknown fields are logged, not guessed.",
+                "x": 16,
+                "y": 102,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 438,
+                "lh": 18
+              },
+              {
+                "t": "• Filtered, duplicate, rejected and self-origin deliveries create no run.",
+                "x": 16,
+                "y": 148,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 438,
+                "lh": 18
+              },
+              {
+                "t": "• Enablement grants dispatch authority for this pinned version only — no merge, tag or release authority.",
+                "x": 16,
+                "y": 194,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 438,
+                "lh": 18
+              },
+              {
+                "t": "• Pausing stops future dispatch only; active work continues; manual runs stay available.",
+                "x": 16,
+                "y": 240,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 438,
+                "lh": 18
+              },
+              {
+                "t": "• Platform-native subscriptions never duplicate a launch or feed back their own run events.",
+                "x": 16,
+                "y": 286,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 438,
+                "lh": 18
+              },
+              {
+                "t": "• Receipt of an event grants no broader authority; filters and inputs stay project-scoped.",
+                "x": 16,
+                "y": 332,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 438,
+                "lh": 18
+              }
+            ]
+          }
+        },
+        {
+          "id": "t06-preview",
+          "kind": "card",
+          "box": [360, 650, 700, 110],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Preview shown at review", "x": 16, "y": 22, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "Issue #238 “Handle an interrupted index refresh” → would dispatch Implement issue v1 (Factory)",
+                "x": 16,
+                "y": 48,
+                "s": 13,
+                "w": 500,
+                "c": "FG",
+                "wrap": 660,
+                "lh": 18
+              },
+              {
+                "t": "Effects were reviewed here, not executed.",
+                "x": 16,
+                "y": 78,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t06-outcome",
+          "kind": "card",
+          "box": [1090, 650, 470, 120],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Outcome (recorded)", "x": 16, "y": 22, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "Enabled 2026-11-02 14:05 · first matching delivery #238 → queued inv-f5-auto-01",
+                "x": 16,
+                "y": 46,
+                "s": 12,
+                "w": 500,
+                "c": "GREEN",
+                "wrap": 438,
+                "lh": 18
+              },
+              {
+                "t": "No run or provider action occurred from this review frame.",
+                "x": 16,
+                "y": 90,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t06-enable",
+          "kind": "button",
+          "box": [360, 806, 150, 32],
+          "props": {
+            "variant": "primary",
+            "label": "Enable binding",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE26",
+              "to": "F5-T02",
+              "type": "navigate",
+              "effect": "history-read"
+            }
+          }
+        },
+        {
+          "id": "t06-dispatch",
+          "kind": "button",
+          "box": [530, 806, 180, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "View dispatch record…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE27",
+              "to": "F5-T08",
+              "type": "navigate",
+              "effect": "history-read"
+            }
+          }
+        },
+        {
+          "id": "t06-back",
+          "kind": "button",
+          "box": [1410, 806, 140, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Back to bindings",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE28",
+              "to": "F5-T00",
+              "type": "navigate",
+              "effect": "history-read"
+            }
+          }
+        }
+      ],
+      "staticControls": ["Edit before enable (returns to the draft editor)", "Export review record"]
+    },
+    {
+      "id": "F5-T07",
+      "title": "Event history · deliveries",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Factory · Workflows · Triggers · Event history",
+        "navTargets": { "Work": "F5-C13", "Workflows": "F5-W03" }
+      },
+      "tag": "Proposed #63 · native T3 shell",
+      "caption": "Every delivery is logged with its exact outcome. Only d-7741 matched and queued inv-f5-auto-01; filtered, held, rejected, duplicate and self-origin deliveries created no run.",
+      "state": {
+        "surface": "Event history",
+        "bindingsEnabled": "all automatic bindings enabled",
+        "deliveries": {
+          "matched": 1,
+          "filtered": 1,
+          "held": 1,
+          "rejected": 1,
+          "duplicate": 1,
+          "ignoredEcho": 1
+        },
+        "queuedInvocation": "inv-f5-auto-01"
+      },
+      "regions": [
+        {
+          "id": "t07-title",
+          "kind": "text",
+          "box": [360, 128, 420, 30],
+          "props": {
+            "lines": [{ "t": "Event history", "x": 0, "y": 24, "s": 20, "w": 600, "c": "FG" }]
+          }
+        },
+        {
+          "id": "t07-sub",
+          "kind": "text",
+          "box": [360, 158, 720, 20],
+          "props": {
+            "lines": [
+              {
+                "t": "Deliveries · project-factory · automatic bindings enabled",
+                "x": 0,
+                "y": 15,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t07-back",
+          "kind": "button",
+          "box": [1420, 128, 140, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Back to bindings",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE32",
+              "to": "F5-T00",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t07-head",
+          "kind": "text",
+          "box": [376, 204, 1184, 22],
+          "props": {
+            "lines": [
+              { "t": "Delivery", "x": 0, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Time", "x": 104, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Source", "x": 174, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Event", "x": 284, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Result", "x": 674, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Linked", "x": 964, "y": 16, "s": 12, "w": 500, "c": "MUT" }
+            ]
+          }
+        },
+        { "id": "t07-head-rule", "kind": "rule", "box": [376, 229, 1184, 1] },
+        {
+          "id": "t07-row-7741",
+          "kind": "row",
+          "box": [360, 232, 1200, 72],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "d-7741", "x": 16, "y": 28, "s": 13, "w": 400, "c": "FG" },
+              { "t": "09:12", "x": 120, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "platform", "x": 190, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "Issue #238 opened", "x": 300, "y": 28, "s": 14, "w": 400, "c": "FG" },
+              { "t": "acme/factory · rev 1", "x": 300, "y": 50, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "Matched → queued", "x": 690, "y": 28, "s": 12, "w": 600, "c": "GREEN" },
+              {
+                "t": "one dispatch · owner T3 trigger service",
+                "x": 690,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "inv-f5-auto-01", "x": 980, "y": 28, "s": 12, "w": 400, "c": "BLUE_TEXT" }
+            ],
+            "link": {
+              "edge": "F5-TE29",
+              "to": "F5-T08",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t07-row-7742",
+          "kind": "row",
+          "box": [360, 308, 1200, 72],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "d-7742", "x": 16, "y": 28, "s": 13, "w": 400, "c": "FG" },
+              { "t": "09:41", "x": 120, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "platform", "x": 190, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "PR #236 changed to draft", "x": 300, "y": 28, "s": 14, "w": 400, "c": "FG" },
+              { "t": "acme/factory", "x": 300, "y": 50, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "Filtered", "x": 690, "y": 28, "s": 12, "w": 600, "c": "DIM" },
+              {
+                "t": "ready_for_review filter: no match",
+                "x": 690,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "— no run", "x": 980, "y": 28, "s": 12, "w": 400, "c": "DIM" }
+            ]
+          }
+        },
+        {
+          "id": "t07-row-7743",
+          "kind": "row",
+          "box": [360, 384, 1200, 72],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "d-7743", "x": 16, "y": 28, "s": 13, "w": 400, "c": "FG" },
+              { "t": "09:52", "x": 120, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "platform", "x": 190, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "PR #230 ready for review", "x": 300, "y": 28, "s": 14, "w": 400, "c": "FG" },
+              { "t": "acme/factory", "x": 300, "y": 50, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "Held", "x": 690, "y": 28, "s": 12, "w": 600, "c": "WARN" },
+              {
+                "t": "CI target not observed active yet",
+                "x": 690,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "— no run", "x": 980, "y": 28, "s": 12, "w": 400, "c": "DIM" }
+            ],
+            "link": {
+              "edge": "F5-TE30",
+              "to": "F5-T10",
+              "type": "navigate",
+              "effect": "history-read"
+            }
+          }
+        },
+        {
+          "id": "t07-row-7744",
+          "kind": "row",
+          "box": [360, 460, 1200, 72],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "d-7744", "x": 16, "y": 28, "s": 13, "w": 400, "c": "FG" },
+              { "t": "10:03", "x": 120, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "webhook", "x": 190, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "docs-rebuild-requested", "x": 300, "y": 28, "s": 14, "w": 400, "c": "FG" },
+              { "t": "signature invalid", "x": 300, "y": 50, "s": 12, "w": 400, "c": "DIM" },
+              { "t": "Rejected", "x": 690, "y": 28, "s": 12, "w": 600, "c": "RED" },
+              {
+                "t": "HMAC check failed before mapping",
+                "x": 690,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "— no run", "x": 980, "y": 28, "s": 12, "w": 400, "c": "DIM" }
+            ]
+          }
+        },
+        {
+          "id": "t07-row-7745",
+          "kind": "row",
+          "box": [360, 536, 1200, 72],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "d-7745", "x": 16, "y": 28, "s": 13, "w": 400, "c": "FG" },
+              { "t": "10:04", "x": 120, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "webhook", "x": 190, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              {
+                "t": "Redelivery · same delivery id",
+                "x": 300,
+                "y": 28,
+                "s": 14,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "signature valid this time",
+                "x": 300,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "Duplicate", "x": 690, "y": 28, "s": 12, "w": 600, "c": "DIM" },
+              {
+                "t": "delivery id already logged — no re-evaluation",
+                "x": 690,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "— no run", "x": 980, "y": 28, "s": 12, "w": 400, "c": "DIM" }
+            ]
+          }
+        },
+        {
+          "id": "t07-row-7746",
+          "kind": "row",
+          "box": [360, 612, 1200, 72],
+          "props": {
+            "style": "row",
+            "lines": [
+              { "t": "d-7746", "x": 16, "y": 28, "s": 13, "w": 400, "c": "FG" },
+              { "t": "10:14", "x": 120, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              { "t": "platform", "x": 190, "y": 28, "s": 12, "w": 400, "c": "MUT" },
+              {
+                "t": "Actions run 19541 completed",
+                "x": 300,
+                "y": 28,
+                "s": 14,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "job “tests” · acme/factory",
+                "x": 300,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              { "t": "Ignored echo", "x": 690, "y": 28, "s": 12, "w": 600, "c": "DIM" },
+              {
+                "t": "self-origin — run dispatched from inv-f5-ci-01",
+                "x": 690,
+                "y": 50,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              {
+                "t": "run 19541 (external)",
+                "x": 980,
+                "y": 28,
+                "s": 12,
+                "w": 400,
+                "c": "BLUE_TEXT"
+              }
+            ],
+            "link": {
+              "edge": "F5-TE31",
+              "to": "F5-W10",
+              "type": "navigate",
+              "effect": "history-read"
+            }
+          }
+        },
+        {
+          "id": "t07-foot",
+          "kind": "text",
+          "box": [360, 706, 1200, 44],
+          "props": {
+            "lines": [
+              {
+                "t": "Only matched bindings queue exactly one invocation — filtered, held, rejected, duplicate and self-origin deliveries create no run.",
+                "x": 0,
+                "y": 22,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              {
+                "t": "Run 19541 is an external CI run id, not a T3 thread; its status event was ignored as self-origin.",
+                "x": 0,
+                "y": 40,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        }
+      ],
+      "staticControls": [
+        "Outcome filters (matched · filtered · held · rejected · duplicate · ignored)",
+        "Delivery search",
+        "Export"
+      ]
+    },
+    {
+      "id": "F5-T08",
+      "title": "Delivery d-7741 · matched",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Factory · Workflows · Triggers · Event history · d-7741",
+        "navTargets": { "Work": "F5-C13", "Workflows": "F5-W03" }
+      },
+      "tag": "Proposed #63 · native T3 shell",
+      "caption": "Matched delivery d-7741: filter results, mapped inputs and the single queued invocation inv-f5-auto-01 (accepted; provider not yet observed — no thread invented). Links Work item plan-238.",
+      "state": {
+        "delivery": "d-7741",
+        "result": "matched",
+        "invocation": "inv-f5-auto-01 queued 09:12",
+        "providerObservation": "not yet observed",
+        "linkedWork": "plan-238",
+        "workRef": "none before admission"
+      },
+      "regions": [
+        {
+          "id": "t08-title",
+          "kind": "text",
+          "box": [360, 128, 520, 30],
+          "props": {
+            "lines": [
+              { "t": "Delivery d-7741 · matched", "x": 0, "y": 24, "s": 20, "w": 600, "c": "FG" }
+            ]
+          }
+        },
+        {
+          "id": "t08-sub",
+          "kind": "text",
+          "box": [360, 158, 720, 20],
+          "props": {
+            "lines": [
+              {
+                "t": "09:12 · GitHub platform-native · issue opened",
+                "x": 0,
+                "y": 15,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t08-tag",
+          "kind": "tag",
+          "box": [1484, 132, 76, 26],
+          "props": { "label": "Matched", "size": 12, "role": "status" }
+        },
+        {
+          "id": "t08-source",
+          "kind": "card",
+          "box": [360, 200, 560, 170],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Source event", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              {
+                "t": "Issue #238 opened · acme/factory",
+                "x": 16,
+                "y": 56,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "“Handle an interrupted index refresh” · revision 1",
+                "x": 16,
+                "y": 82,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "body 312 chars · author Dana",
+                "x": 16,
+                "y": 104,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              {
+                "t": "Delivery d-7741 · received 09:12 · platform subscription (no webhook signature)",
+                "x": 16,
+                "y": 126,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 528,
+                "lh": 16
+              }
+            ]
+          }
+        },
+        {
+          "id": "t08-rule",
+          "kind": "card",
+          "box": [360, 390, 560, 190],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Rule evaluation", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              {
+                "t": "Binding: New issue → Implement issue v1",
+                "x": 16,
+                "y": 56,
+                "s": 13,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "✓ repository acme/factory",
+                "x": 16,
+                "y": 84,
+                "s": 12,
+                "w": 400,
+                "c": "GREEN"
+              },
+              { "t": "✓ state = opened", "x": 16, "y": 106, "s": 12, "w": 400, "c": "GREEN" },
+              { "t": "✓ labels: any", "x": 16, "y": 128, "s": 12, "w": 400, "c": "GREEN" },
+              { "t": "Result: matched 09:12", "x": 16, "y": 156, "s": 13, "w": 600, "c": "GREEN" }
+            ]
+          }
+        },
+        {
+          "id": "t08-mapping",
+          "kind": "code",
+          "box": [360, 600, 560, 150],
+          "props": {
+            "style": "code",
+            "lines": [
+              { "t": "Input mapping", "x": 16, "y": 22, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "issue.number → task ref (#238)",
+                "x": 16,
+                "y": 48,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              { "t": "issue.title  → brief title", "x": 16, "y": 68, "s": 13, "w": 400, "c": "FG" },
+              {
+                "t": "issue.body   → brief body (rev 1)",
+                "x": 16,
+                "y": 88,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "checkout     → default branch",
+                "x": 16,
+                "y": 108,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t08-dispatch",
+          "kind": "card",
+          "box": [950, 200, 610, 190],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Dispatch", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              {
+                "t": "Queued invocation inv-f5-auto-01",
+                "x": 16,
+                "y": 56,
+                "s": 14,
+                "w": 500,
+                "c": "GREEN"
+              },
+              {
+                "t": "Owner: T3 trigger service · target Factory",
+                "x": 16,
+                "y": 84,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Pinned: Implement issue v1",
+                "x": 16,
+                "y": 106,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "fac52fcf0ec317cc8a1e8d88b4a0a5aac72f141dfad772cae970193f93096fa9",
+                "x": 16,
+                "y": 126,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              {
+                "t": "Queued 09:12 · dispatch accepted",
+                "x": 16,
+                "y": 148,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              },
+              {
+                "t": "Provider/thread association not yet observed — no thread invented",
+                "x": 16,
+                "y": 170,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 578,
+                "lh": 16
+              }
+            ]
+          }
+        },
+        {
+          "id": "t08-linked",
+          "kind": "card",
+          "box": [950, 410, 610, 190],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Linked Work", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              {
+                "t": "PlanItemRef planned/env-ws/project-factory/plan-238",
+                "x": 16,
+                "y": 56,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "Created by this dispatch · source GitHub acme/factory#238 rev 1",
+                "x": 16,
+                "y": 84,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 578,
+                "lh": 16
+              },
+              {
+                "t": "Distinct from plan-237 (acme/factory#237 rev 3) — no identity swap",
+                "x": 16,
+                "y": 116,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 578,
+                "lh": 16
+              },
+              {
+                "t": "No retained WorkRef or thread before Factory admission",
+                "x": 16,
+                "y": 148,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 578,
+                "lh": 16
+              },
+              {
+                "t": "CI run ids (e.g. 19541) never become T3 threads",
+                "x": 16,
+                "y": 176,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 578,
+                "lh": 16
+              }
+            ]
+          }
+        },
+        {
+          "id": "t08-open-work",
+          "kind": "button",
+          "box": [360, 806, 200, 32],
+          "props": {
+            "variant": "primary",
+            "label": "Open Work item plan-238",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE33",
+              "to": "F5-C13",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t08-back",
+          "kind": "button",
+          "box": [580, 806, 140, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Back to history",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE34",
+              "to": "F5-T07",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        }
+      ],
+      "staticControls": ["Copy mapped input", "Raw event payload viewer"]
+    },
+    {
+      "id": "F5-T09",
+      "title": "New issue → Implement issue v1 · paused",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Factory · Workflows · Triggers · New issue → Implement · Paused",
+        "navTargets": { "Work": "F5-C13", "Workflows": "F5-W03" }
+      },
+      "tag": "Proposed #63 · native T3 shell",
+      "caption": "Paused new-issue binding: future deliveries are held, not dropped; inv-f5-auto-01 continues; manual run and host-owned rules stay independent. Resume reverses the pause.",
+      "state": {
+        "binding": "new-issue → implement",
+        "state": "Paused",
+        "pausedAt": "2026-11-03 10:31",
+        "activeWork": "inv-f5-auto-01 in flight (not cancelled)",
+        "manual": "unaffected",
+        "hostRules": "independent"
+      },
+      "regions": [
+        {
+          "id": "t09-title",
+          "kind": "text",
+          "box": [360, 128, 620, 30],
+          "props": {
+            "lines": [
+              {
+                "t": "New issue → Implement · paused",
+                "x": 0,
+                "y": 24,
+                "s": 20,
+                "w": 600,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t09-sub",
+          "kind": "text",
+          "box": [360, 158, 720, 20],
+          "props": {
+            "lines": [
+              {
+                "t": "Binding state variant · pause affects future dispatch only",
+                "x": 0,
+                "y": 15,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t09-tag",
+          "kind": "tag",
+          "box": [1480, 132, 80, 26],
+          "props": { "label": "Paused", "size": 12, "role": "warning" }
+        },
+        {
+          "id": "t09-banner",
+          "kind": "notice",
+          "box": [360, 200, 1200, 64],
+          "props": {
+            "style": "warning",
+            "lines": [
+              {
+                "t": "Paused 2026-11-03 10:31 · future deliveries are logged and held — no automatic dispatch",
+                "x": 16,
+                "y": 26,
+                "s": 14,
+                "w": 500,
+                "c": "WARN"
+              },
+              {
+                "t": "Pausing a binding stops future dispatch only. Active work is not cancelled.",
+                "x": 16,
+                "y": 48,
+                "s": 12,
+                "w": 400,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t09-active",
+          "kind": "card",
+          "box": [360, 284, 1200, 110],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Active work continues", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              {
+                "t": "inv-f5-auto-01 — dispatched 09:12 from delivery d-7741 — in flight",
+                "x": 16,
+                "y": 54,
+                "s": 13,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Accepted dispatch is not cancelled by pausing the binding.",
+                "x": 16,
+                "y": 78,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t09-view-work",
+          "kind": "button",
+          "box": [1150, 323, 200, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "View Work item plan-238",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE36",
+              "to": "F5-C13",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t09-manual",
+          "kind": "card",
+          "box": [360, 412, 1200, 110],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Manual run unaffected", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              {
+                "t": "Run workflow… does not depend on this binding's automatic state.",
+                "x": 16,
+                "y": 54,
+                "s": 13,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Manual dispatch stays available through the workflow run review.",
+                "x": 16,
+                "y": 78,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t09-run",
+          "kind": "button",
+          "box": [1150, 451, 140, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Run workflow…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE37",
+              "to": "F5-W05",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t09-host",
+          "kind": "card",
+          "box": [360, 540, 1200, 120],
+          "props": {
+            "style": "panel",
+            "lines": [
+              {
+                "t": "Host-owned rules stay independent",
+                "x": 16,
+                "y": 26,
+                "s": 14,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "A GitHub-native rule is not disabled by this pause.",
+                "x": 16,
+                "y": 54,
+                "s": 13,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "T3-owned bindings pause in T3; host CI configuration changes only through commit, push and host observation.",
+                "x": 16,
+                "y": 78,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 1168,
+                "lh": 16
+              }
+            ]
+          }
+        },
+        {
+          "id": "t09-held",
+          "kind": "card",
+          "box": [360, 678, 1200, 90],
+          "props": {
+            "style": "neutral",
+            "lines": [
+              { "t": "Deliveries while paused", "x": 16, "y": 22, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "Logged with result Held (paused) — an issue opened now creates no run and no Work item.",
+                "x": 16,
+                "y": 48,
+                "s": 13,
+                "w": 500,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t09-resume",
+          "kind": "button",
+          "box": [360, 806, 132, 32],
+          "props": {
+            "variant": "primary",
+            "label": "Resume binding",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE35",
+              "to": "F5-T02",
+              "type": "navigate",
+              "effect": "configuration-change"
+            }
+          }
+        },
+        {
+          "id": "t09-history",
+          "kind": "button",
+          "box": [512, 806, 136, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Event history…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE38",
+              "to": "F5-T07",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        }
+      ],
+      "staticControls": ["Pause schedule of held deliveries", "Delete binding"]
+    },
+    {
+      "id": "F5-T10",
+      "title": "CI target · pending host activation",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Factory · Workflows · Triggers · CI target activation",
+        "navTargets": { "Work": "F5-C02", "Intake": "F5-C07", "Workflows": "F5-W03" }
+      },
+      "tag": "Proposed #63 + AB:66 · earlier-state study",
+      "caption": "CI-target readiness: local save is pending until commit, push and host observation. T3 Enable/Pause governs T3 bindings only — it never switches a GitHub-owned native rule.",
+      "state": {
+        "study": "CI target pending activation",
+        "workflow": "wf-review-change v1",
+        "localSave": "2026-11-02 09:40",
+        "push": "pending",
+        "hostObservation": "not yet observed",
+        "dispatch": "held (d-7743)"
+      },
+      "regions": [
+        {
+          "id": "t10-title",
+          "kind": "text",
+          "box": [360, 128, 620, 30],
+          "props": {
+            "lines": [
+              {
+                "t": "CI target · pending activation",
+                "x": 0,
+                "y": 24,
+                "s": 20,
+                "w": 600,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t10-sub",
+          "kind": "text",
+          "box": [360, 158, 720, 20],
+          "props": {
+            "lines": [
+              {
+                "t": "Review change v1 · shared CI config · earlier-state record",
+                "x": 0,
+                "y": 15,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t10-tag",
+          "kind": "tag",
+          "box": [1472, 132, 88, 26],
+          "props": { "label": "Pending", "size": 12, "role": "warning" }
+        },
+        {
+          "id": "t10-steps",
+          "kind": "card",
+          "box": [360, 200, 700, 330],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Activation sequence", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              {
+                "t": "1 · Saved in T3 — 2026-11-02 09:40",
+                "x": 16,
+                "y": 58,
+                "s": 13,
+                "w": 500,
+                "c": "GREEN"
+              },
+              {
+                "t": "Local config written for the CI target (portable adapter contract)",
+                "x": 16,
+                "y": 78,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              {
+                "t": "2 · Commit + push to acme/factory — pending",
+                "x": 16,
+                "y": 112,
+                "s": 13,
+                "w": 500,
+                "c": "WARN"
+              },
+              {
+                "t": "T3 does not push on Save; the repository's own flow activates it",
+                "x": 16,
+                "y": 132,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              {
+                "t": "3 · Host observation — not yet observed",
+                "x": 16,
+                "y": 166,
+                "s": 13,
+                "w": 500,
+                "c": "WARN"
+              },
+              {
+                "t": "GitHub must report the workflow present and enabled",
+                "x": 16,
+                "y": 186,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              {
+                "t": "4 · Binding dispatch to CI — held until observed",
+                "x": 16,
+                "y": 220,
+                "s": 13,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Delivery d-7743 (PR #230, 09:52) was held for exactly this reason",
+                "x": 16,
+                "y": 240,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              },
+              {
+                "t": "No dispatch occurs from this frame; the held delivery stays held.",
+                "x": 16,
+                "y": 286,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t10-distinction",
+          "kind": "card",
+          "box": [1090, 200, 470, 330],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "T3-owned vs host-owned", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              {
+                "t": "T3-owned bindings — event subscriptions T3 evaluates — are active in T3 on Enable.",
+                "x": 16,
+                "y": 58,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 438,
+                "lh": 18
+              },
+              {
+                "t": "The GitHub-owned native CI rule activates only from committed, pushed, host-observed configuration.",
+                "x": 16,
+                "y": 104,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 438,
+                "lh": 18
+              },
+              {
+                "t": "A local Save is a pending change — never an instantly active host rule.",
+                "x": 16,
+                "y": 168,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 438,
+                "lh": 18
+              },
+              {
+                "t": "Pausing the T3 binding does not disable an independently active host rule.",
+                "x": 16,
+                "y": 214,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 438,
+                "lh": 18
+              },
+              {
+                "t": "Platform-native CI and Factory subscriptions never duplicate one launch.",
+                "x": 16,
+                "y": 260,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 438,
+                "lh": 18
+              }
+            ]
+          }
+        },
+        {
+          "id": "t10-config",
+          "kind": "code",
+          "box": [360, 554, 700, 170],
+          "props": {
+            "style": "code",
+            "lines": [
+              {
+                "t": "Saved config (local · illustrative)",
+                "x": 16,
+                "y": 22,
+                "s": 12,
+                "w": 500,
+                "c": "MUT"
+              },
+              {
+                "t": "target: ci · adapter: portable-ci",
+                "x": 16,
+                "y": 48,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              { "t": "workflow: review-change@v1", "x": 16, "y": 68, "s": 13, "w": 400, "c": "FG" },
+              {
+                "t": "digest e464ecf8079ddd35b1fa08327785bdd2324aea4511e47aba25b1696d265c019d",
+                "x": 16,
+                "y": 88,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "receipt: invocation → external run id (never a T3 thread)",
+                "x": 16,
+                "y": 108,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              {
+                "t": "input: pr ref → candidate commit",
+                "x": 16,
+                "y": 128,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t10-note",
+          "kind": "card",
+          "box": [1090, 554, 470, 170],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Where this is shown", "x": 16, "y": 22, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "Observed-active state appears on the binding (PR ready → Review).",
+                "x": 16,
+                "y": 48,
+                "s": 12,
+                "w": 400,
+                "c": "FG",
+                "wrap": 438,
+                "lh": 18
+              },
+              {
+                "t": "This frame studies the earlier pending record reached from history.",
+                "x": 16,
+                "y": 84,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 438,
+                "lh": 18
+              },
+              {
+                "t": "Enable/Pause in T3 never claims to switch a host-owned rule.",
+                "x": 16,
+                "y": 132,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 438,
+                "lh": 18
+              }
+            ]
+          }
+        },
+        {
+          "id": "t10-view-enabled",
+          "kind": "button",
+          "box": [360, 806, 170, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "View enabled binding",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE39",
+              "to": "F5-T03",
+              "type": "navigate",
+              "effect": "history-read"
+            }
+          }
+        },
+        {
+          "id": "t10-back",
+          "kind": "button",
+          "box": [550, 806, 140, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Back to history",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE40",
+              "to": "F5-T07",
+              "type": "navigate",
+              "effect": "history-read"
+            }
+          }
+        }
+      ],
+      "staticControls": [
+        "Copy local config path",
+        "View host workflow (opens on the host · not modeled)"
+      ]
+    },
+    {
+      "id": "F5-T11",
+      "title": "Binding · Daily 09:00 → Review change v1",
+      "shell": {
+        "mode": "workspace",
+        "section": "Workflows",
+        "breadcrumb": "Factory · Workflows · Triggers · Daily 09:00 → Review",
+        "navTargets": { "Work": "F5-C13", "Workflows": "F5-W03" }
+      },
+      "tag": "Proposed #63 · native T3 shell",
+      "caption": "Schedule binding reuses the existing ScheduledTasksManager (task-31): one dispatch owner, Run now dispatches once without enabling anything. Webhook sources have no Run now.",
+      "state": {
+        "binding": "daily-0900 → review",
+        "source": "Schedule · ScheduledTasksManager task-31",
+        "cron": "0 9 * * *",
+        "workflow": "wf-review-change v1",
+        "target": "Factory",
+        "state": "Enabled",
+        "lastDispatch": "today 09:00 accepted"
+      },
+      "regions": [
+        {
+          "id": "t11-title",
+          "kind": "text",
+          "box": [360, 128, 520, 30],
+          "props": {
+            "lines": [
+              { "t": "Daily 09:00 → Review", "x": 0, "y": 24, "s": 20, "w": 600, "c": "FG" }
+            ]
+          }
+        },
+        {
+          "id": "t11-sub",
+          "kind": "text",
+          "box": [360, 158, 720, 20],
+          "props": {
+            "lines": [
+              {
+                "t": "Schedule binding · existing ScheduledTasksManager · task-31",
+                "x": 0,
+                "y": 15,
+                "s": 12,
+                "w": 400,
+                "c": "MUT"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t11-tag",
+          "kind": "tag",
+          "box": [1472, 132, 88, 26],
+          "props": { "label": "Enabled", "size": 12, "role": "status" }
+        },
+        {
+          "id": "t11-f-name",
+          "kind": "card",
+          "box": [360, 200, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Binding name", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Daily 09:00 → Review", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" }
+            ]
+          }
+        },
+        {
+          "id": "t11-f-source",
+          "kind": "card",
+          "box": [360, 272, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Source", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Schedule · manager task-31", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Existing ScheduledTasksManager · cron 0 9 * * *",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t11-f-filters",
+          "kind": "card",
+          "box": [360, 344, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Filters", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "none — fixed brief at dispatch",
+                "x": 16,
+                "y": 38,
+                "s": 14,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Schedule deliveries carry their own input; the manager owns timing",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t11-f-workflow",
+          "kind": "card",
+          "box": [360, 416, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Workflow (pinned)", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Review change · v1", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "digest e464ecf8079ddd35b1fa08327785bdd2324aea4511e47aba25b1696d265c019d — pinned at the binding",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 560,
+                "lh": 14
+              }
+            ]
+          }
+        },
+        {
+          "id": "t11-f-target",
+          "kind": "card",
+          "box": [360, 488, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Target", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "Factory", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Same version also runs on CI — target is chosen per binding",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t11-f-owner",
+          "kind": "card",
+          "box": [360, 560, 620, 64],
+          "props": {
+            "style": "field",
+            "lines": [
+              { "t": "Dispatch owner", "x": 16, "y": 16, "s": 12, "w": 500, "c": "MUT" },
+              { "t": "ScheduledTasksManager", "x": 16, "y": 38, "s": 14, "w": 500, "c": "FG" },
+              {
+                "t": "Single dispatch owner for schedule deliveries — no second scheduler",
+                "x": 16,
+                "y": 54,
+                "s": 12,
+                "w": 400,
+                "c": "DIM"
+              }
+            ]
+          }
+        },
+        {
+          "id": "t11-mapping",
+          "kind": "code",
+          "box": [360, 648, 620, 110],
+          "props": {
+            "style": "code",
+            "lines": [
+              { "t": "Input mapping", "x": 16, "y": 24, "s": 12, "w": 500, "c": "MUT" },
+              {
+                "t": "brief    → “Review unreviewed ready PRs on main”",
+                "x": 16,
+                "y": 48,
+                "s": 13,
+                "w": 400,
+                "c": "FG"
+              },
+              { "t": "checkout → default branch", "x": 16, "y": 68, "s": 13, "w": 400, "c": "FG" },
+              { "t": "scope    → project-factory", "x": 16, "y": 88, "s": 13, "w": 400, "c": "FG" }
+            ]
+          }
+        },
+        {
+          "id": "t11-last",
+          "kind": "card",
+          "box": [1010, 200, 550, 300],
+          "props": {
+            "style": "panel",
+            "lines": [
+              {
+                "t": "Last dispatch · today 09:00",
+                "x": 16,
+                "y": 26,
+                "s": 14,
+                "w": 600,
+                "c": "FG"
+              },
+              {
+                "t": "Accepted · summary in the manager",
+                "x": 16,
+                "y": 56,
+                "s": 13,
+                "w": 500,
+                "c": "FG"
+              },
+              {
+                "t": "Run now dispatches once; it does not enable or alter the schedule.",
+                "x": 16,
+                "y": 82,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              },
+              {
+                "t": "Next run: tomorrow 09:00 · schedule enabled in manager task-31",
+                "x": 16,
+                "y": 128,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              },
+              {
+                "t": "Webhook sources have no Run now; manual workflow runs are separate.",
+                "x": 16,
+                "y": 174,
+                "s": 12,
+                "w": 400,
+                "c": "DIM",
+                "wrap": 518,
+                "lh": 18
+              }
+            ]
+          }
+        },
+        {
+          "id": "t11-notes",
+          "kind": "card",
+          "box": [1010, 522, 550, 258],
+          "props": {
+            "style": "panel",
+            "lines": [
+              { "t": "Binding notes", "x": 16, "y": 26, "s": 14, "w": 600, "c": "FG" },
+              {
+                "t": "The schedule reuses the existing manager — no new scheduler is introduced.",
+                "x": 16,
+                "y": 56,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              },
+              {
+                "t": "A schedule binding pins the same version shape as event bindings.",
+                "x": 16,
+                "y": 102,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              },
+              {
+                "t": "Paused schedules stop future dispatch; Run now stays available in the manager.",
+                "x": 16,
+                "y": 148,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              },
+              {
+                "t": "Manual workflow runs are distinct from schedule and webhook dispatch.",
+                "x": 16,
+                "y": 194,
+                "s": 12,
+                "w": 400,
+                "c": "MUT",
+                "wrap": 518,
+                "lh": 18
+              }
+            ]
+          }
+        },
+        {
+          "id": "t11-history",
+          "kind": "button",
+          "box": [360, 806, 136, 32],
+          "props": {
+            "variant": "secondary",
+            "label": "Event history…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE42",
+              "to": "F5-T07",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        },
+        {
+          "id": "t11-open-wf",
+          "kind": "button",
+          "box": [512, 806, 160, 32],
+          "props": {
+            "variant": "ghost",
+            "label": "Open workflow v1…",
+            "size": 14,
+            "link": {
+              "edge": "F5-TE41",
+              "to": "F5-W04",
+              "type": "navigate",
+              "effect": "navigation"
+            }
+          }
+        }
+      ],
+      "staticControls": [
+        "Run now (dispatches once via the existing manager; receipt not modeled here)",
+        "Pause binding… (modeled on the New issue binding → F5-T09)"
+      ]
+    }
+  ],
+  "notes": [
+    "Slice ownership: triggers only — spec/triggers.json, ids F5-T00…F5-T11, edges F5-TE00…F5-TE42. Shell/sidebar/topbar/workspace tabs are parent-owned and deliberately not drawn; all body regions sit inside x340..1580, y108..876 with 20px breathing room.",
+    "Cross-slice targets (sibling-confirmed): Work navTarget → F5-C13 on post-auto scenes (collections auto-branch Board: source github/acme/factory#238 rev 1 → PlanItemRef plan-238 → inv-f5-auto-01 accepted); Intake omitted on post-auto scenes (no post-auto Intake snapshot exists); pre-event studies → Work F5-C02 · Intake F5-C07 (post-plan237); Workflows → F5-W03. Collections adds F5-CE70 'View triggers' → F5-T00 (history-read); this file's F5-T08 'Open Work item plan-238' → F5-C13 and serves as C13's 'View triggering event' target.",
+    "Workflow links: Review change v1 detail → F5-W04 (parent-directed trigger→workflow return; used by T03/T05/T11). Implement issue v1 and Diagnose CI failure v1 have no sibling detail scenes; their 'Open workflow v1…' targets F5-W03 (configured list) — flagged for parent confirmation. Manual run → F5-W05; CI completed evidence → F5-W10 (echo row d-7746 reads external run 19541).",
+    "Identity guards: only one automatic invocation fixture exists — inv-f5-auto-01 (Implement issue v1 · Factory · dispatch accepted 09:12; provider/thread association not yet observed, no thread invented). External CI run 19541 is an external run id, never a T3 thread. plan-238 is a PlanItemRef created by dispatch, distinct from plan-237/SourceRef acme/factory#237 rev 3 — no identity swap, no universal TaskId.",
+    "New illustrative fixtures introduced by this slice (not in base.json, flagged as such): delivery ids d-7741…d-7746, PR #230/#236, Actions run 19553, schedule manager task-31, custom event names docs-rebuild-requested / benchmark-regression-detected, webhook endpoint https://hooks.example.invalid/t3/factory with masked secret placeholder whsec_••••••••••. No real secret, token, integration or CI job exists or was enabled; all digests are the literal base.json workflowCatalog hashes.",
+    "State studies: F5-T06 is the recorded pre-enablement activation review (reached via history-read; its Enable link reads the resulting enabled binding F5-T02, it never re-executes). F5-T10 studies the earlier CI-target pending-activation record (local save vs commit/push/host observation). F5-T09 is the paused variant of the new-issue binding: future deliveries held, inv-f5-auto-01 continues, manual run and host-owned rules stay independent, Resume reverses.",
+    "Event semantics: exactly one delivery (d-7741) matched and queued inv-f5-auto-01; filtered (d-7742), held (d-7743), rejected signature (d-7744), duplicate redelivery (d-7745) and self-origin echo (d-7746) produce no extra run. Webhook sources have no Run now; the schedule binding reuses the existing ScheduledTasksManager (Run now dispatches once, never enables). Enablement grants no merge, tag or release authority.",
+    "navTargets are state-specific: post-auto scenes (T00, T01, T02, T03, T04, T05, T07, T08, T09, T11) use Work F5-C13 and omit Intake — no post-auto Intake snapshot exists; pre-event studies (T06 recorded 2026-11-02 14:05, T10 local save 2026-11-02 09:40) use Work F5-C02 · Intake F5-C07 (post-plan237). Workflows → F5-W03 everywhere. The workflows slice keeps W03/W04 as automatic-off snapshots; no trigger scene returns there as if bindings were off, and enabled/paused trigger states stay inside this slice's own snapshots."
+  ]
+}

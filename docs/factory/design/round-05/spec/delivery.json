@@ -1,0 +1,521 @@
+{
+  "schema": "t3factory-workspace-scenes/1",
+  "notes": [
+    "All values are illustrative design fixtures, not observed runtime. integrate(scenes, base) supplies native IR pins, record rows, links and qualified context before parent finalize/reachability. No IO occurs in the module.",
+    "R4 W4-04..11 supplies append-only provenance, exact-head dispositions, unknown coverage holds, complete independent evidence and separate human acceptance/prepare/grant/receipt. No R4 issue214, PR231, H1/H2, CR-7 or CX-2 is transplanted into issue237.",
+    "The only existing F5-W10 finding identifiers are region ids finding-one and finding-two. Their titles and frozen184 export detail strings are preserved verbatim. Supplemental disposition/patch/evidence text below is new fictional study data, not additional text attributed to the original review-report.md.",
+    "CI-only inv-f5-ci-01/external19541 remains threadless. Factory inv-f5-factory-01/root8b42f1d3 is a separate alternative record; it never supplies CI completion or Ready proof. Native acceptance/delivery currently requires a claimed thread. Candidate acceptance below is a proposed AB:66 candidate-scoped decision, not a fabricated native FactoryAcceptance.",
+    "Current preparation is Held. Requiredness unknown always holds; finished/success is a raw execution conclusion, never a clean verdict. Even the later fully qualified evidence case lacks the proposed server guard, live-base-through-write enforcement and an implemented threadless CI delivery-subject adapter.",
+    "Later future prepare/grant/receipt scenes are read-only conditional design records. Their controls read separately authorized records; they neither grant nor claim that any current host supports atomic base fencing. Confirmed receipt has no route to an action-ready pregrant state. No batch, ordering, next-ready, automatic merge, rebase, tag or release authority exists.",
+    "History is snapshot-scoped. Pre-run catalog gets project-scoped empty/not-loaded history with no borrowed definition. Accepted Factory, working Factory, queued CI, completed CI and automatic issue238 have distinct histories. Automatic inv-f5-auto-01 retains plan238/Implement issue v1 and no observed native association; it never borrows issue237, run19541 or its review digest. Shared immutable history/detail native Back enumerates actual incoming origins. No Back crosses a mutation. Later decision studies have explicit current states and never return to an earlier actionable collection.",
+    "Full fictional additions: comparisonBaseSha=4f5d220000000000000000000000000000000000; correctedHeadSha=2eac71d000000000000000000000000000000000; correctedTreeSha=3ead82e000000000000000000000000000000000; mergeSha=4fac93f000000000000000000000000000000000; movedBaseSha=5abd040000000000000000000000000000000000. They are not Git-resolved values. Workflow pins and original candidate come only from base.json.",
+    "Synthetic SHA-256 receipt record pins, not hashes of real logs: policy=aa11000000000000000000000000000000000000000000000000000000000000; local=aa22000000000000000000000000000000000000000000000000000000000000; config=aa33000000000000000000000000000000000000000000000000000000000000; locks=aa44000000000000000000000000000000000000000000000000000000000000; diff=aa55000000000000000000000000000000000000000000000000000000000000; review=aa66000000000000000000000000000000000000000000000000000000000000; payload=aa77000000000000000000000000000000000000000000000000000000000000; seal=aa88000000000000000000000000000000000000000000000000000000000000.",
+    "Read-only capture readers expose local tests/build/scanner argv, source/subject/tree/base, worktree, times, cache, outcome and coverage; shared runner/configuration pins and distinct hosted/review/owner records are reachable from the packet. Raw stdout/log/config/lock bytes are explicitly not included in the study. Displayed synthetic fields are not observed execution or real evidence completeness.",
+    "Parent owns sourceowners/workflows/common loader and workspace_graph.py. The pure delivery module performs no IO. Parent source-render smoke and review dispositions are recorded in critique/review-fixes/proof.json; final shared-graph assembly and native integration remain pending. No app/provider/CI/Git/host action is performed by these records."
+  ],
+  "scenes": [
+    {
+      "id": "F5-D-REVIEW",
+      "title": "Review & evidence · CI candidate",
+      "shell": {
+        "mode": "workspace",
+        "section": "Work",
+        "breadcrumb": "Work / plan-237 / Review & evidence",
+        "navTargets": {}
+      },
+      "tag": "Proposed AB:66 · illustrative records",
+      "caption": "Human-selected issue237 candidate. CI completion retains two findings and unknown policy/coverage. Read-only details restore the caller. Later studies do not perform corrections, checks or acceptance.",
+      "state": {
+        "readOnly": true,
+        "recordHead": "original",
+        "snapshot": "ci-completed",
+        "acceptance": "not-reviewed",
+        "delivery": "held",
+        "rows": [
+          [
+            "Execution completed, readiness Held",
+            "GitHub Actions · inv-f5-ci-01 · external19541/attempt1 · raw host conclusion not supplied. Finished or Success would not be a clean review verdict.",
+            "warning"
+          ],
+          [
+            "finding-one · Search refresh can starve interactive queries",
+            "Reviewer evidence attached in the CI report",
+            "row"
+          ],
+          [
+            "finding-two · Large-repository regression coverage is missing",
+            "Human disposition still required",
+            "row"
+          ],
+          [
+            "Coverage and policy unknown",
+            "review-report.md supplies no complete changed-file enumeration, full-required-scope verdict or readable required-check policy. No clearance outside documented scope.",
+            "warning"
+          ],
+          [
+            "Authority remains separate",
+            "Issue Open · planning Ready · CI completed · candidate not accepted · delivery not granted. No retained native WorkRef or T3 thread for this CI invocation.",
+            "row"
+          ]
+        ]
+      },
+      "regions": []
+    },
+    {
+      "id": "F5-D-FINDING-ONE",
+      "title": "finding-one · head-bound disposition",
+      "shell": {
+        "mode": "workspace",
+        "section": "Work",
+        "breadcrumb": "Review / finding-one",
+        "navTargets": {}
+      },
+      "tag": "Proposed AB:66 · illustrative disposition",
+      "caption": "Original finding identity and detail are unchanged. Supplemental reasons are fictional decision records. App disposition is not host conversation resolution. Reassessment at the new head is a separate append.",
+      "state": {
+        "readOnly": true,
+        "recordHead": "original",
+        "findingId": "finding-one",
+        "rows": [
+          [
+            "Search refresh can starve interactive queries",
+            "Reviewer evidence attached in the CI report",
+            "row"
+          ],
+          [
+            "Original-head entry · disp-finding-one-01",
+            "Mara · 2026-11-03 10:20 UTC · Fix pending. Reason: the report does not establish a bound on refresh work between interactive queries. Evidence: review-report.md from inv-f5-ci-01/19541.",
+            "warning"
+          ],
+          [
+            "Corrected-head entry · disp-finding-one-02",
+            "Mara · 11:02 UTC · Rechecked. Reason: the pinned change yields between refresh batches; the interactive-query test and fresh independent report inspect this criterion. Evidence: tests-f5-h2, ready-f5-h2, patch-f5-h2.",
+            "row"
+          ],
+          [
+            "No automatic carry or host resolution",
+            "Entry01 stays in history. Entry02 applies only to the full corrected-head study pin in this record. Host thread id and host-resolution readback are unavailable; an app note cannot clear a host-required conversation.",
+            "row"
+          ]
+        ]
+      },
+      "regions": []
+    },
+    {
+      "id": "F5-D-FINDING-TWO",
+      "title": "finding-two · head-bound disposition",
+      "shell": {
+        "mode": "workspace",
+        "section": "Work",
+        "breadcrumb": "Review / finding-two",
+        "navTargets": {}
+      },
+      "tag": "Proposed AB:66 · illustrative disposition",
+      "caption": "Both original finding titles/details are retained. The later current-head entry needs complete regression scope, not disappearance from a filtered reviewer result. No external issue is filed by this study.",
+      "state": {
+        "readOnly": true,
+        "recordHead": "original",
+        "findingId": "finding-two",
+        "rows": [
+          [
+            "Large-repository regression coverage is missing",
+            "Human disposition still required",
+            "row"
+          ],
+          [
+            "Original-head entry · disp-finding-two-01",
+            "Mara · 2026-11-03 10:21 UTC · Fix pending. Reason: no pinned large-repository regression receipt covers the candidate. Evidence: original review-report.md; missing coverage is not a pass.",
+            "warning"
+          ],
+          [
+            "Corrected-head entry · disp-finding-two-02",
+            "Mara · 11:02 UTC · Rechecked. Reason: the pinned regression asserts interactive progress during a large refresh; fresh test and independent review cover the added case and all required criteria. Evidence: tests-f5-h2, ready-f5-h2, owner-f5-h2.",
+            "row"
+          ],
+          [
+            "Scope and mechanism",
+            "Factory append/readback is a proposed AB:66 record, not a bot dismissal or GitHub resolveReviewThread. An unavailable host-required conversation read still holds. No severity, file line, vendor runtime or host thread absent from F5-W10 is invented.",
+            "row"
+          ]
+        ]
+      },
+      "regions": []
+    },
+    {
+      "id": "F5-D-CHANGED",
+      "title": "Changed head · Held",
+      "shell": {
+        "mode": "workspace",
+        "section": "Work",
+        "breadcrumb": "Work / plan-237 / changed candidate",
+        "navTargets": {}
+      },
+      "tag": "Proposed AB:66 · later bounded study",
+      "caption": "Later correction study, not an action that produces code. Original CI run19541 remains pinned to its original candidate. The new head has unknown coverage and cannot inherit findings clearance or acceptance.",
+      "state": {
+        "readOnly": true,
+        "recordHead": "corrected",
+        "snapshot": "changed-head",
+        "acceptance": "stale-or-absent",
+        "delivery": "held",
+        "rows": [
+          [
+            "Held · old evidence is not current proof",
+            "The original candidate report and original dispositions remain append-only. Any prior exact-head acceptance would be stale; this CI example has no prior acceptance.",
+            "warning"
+          ],
+          [
+            "Unknown changed-file coverage · 2 of 3 listed",
+            "src/search/index.ts and src/search/index.test.ts are visible. harness/search-corpus.json is omitted. A truncated enumeration cannot clear protected-path or review coverage.",
+            "warning"
+          ],
+          [
+            "Reassessment and requiredness missing",
+            "finding-one and finding-two require new head-bound entries. Host-required checks/conversations are unknown. Finished/Success on old run19541 clears none of these holds.",
+            "warning"
+          ],
+          [
+            "Protected-path approval absent",
+            "Root-anchored harness/** changed. Owner words for the exact diff, current local tests/build and fresh independent full-scope review are missing in this snapshot.",
+            "row"
+          ],
+          [
+            "Do not repair through navigation",
+            "The later fresh-evidence record has its own fictional receipts, scope and times. Reading it neither dispatches checks/reviews nor grants correction authority.",
+            "row"
+          ]
+        ]
+      },
+      "regions": []
+    },
+    {
+      "id": "F5-D-FRESH",
+      "title": "Fresh evidence · review this candidate",
+      "shell": {
+        "mode": "workspace",
+        "section": "Work",
+        "breadcrumb": "Work / plan-237 / candidate review",
+        "navTargets": {}
+      },
+      "tag": "Proposed AB:66 · later evidence study",
+      "caption": "Later complete-evidence record. Full pins, literal changed hunks and provenance are inspectable before a person accepts one candidate. Evidence readiness is not acceptance or delivery; current guard capability remains missing.",
+      "state": {
+        "readOnly": true,
+        "recordHead": "corrected",
+        "snapshot": "fresh-evidence",
+        "acceptance": "not-reviewed",
+        "delivery": "held",
+        "rows": [
+          [
+            "Evidence complete for this bounded fictional candidate",
+            "Listing3/3 pinned; both findings reassessed at this head; full-scope independent Ready report; protected owner words; readable host policy and exact-head required results. This is fixture data, not observed execution.",
+            "row"
+          ],
+          [
+            "Local proof precedes the separate hosted request",
+            "10:40–10:44 tests-f5-h2; 10:44–10:48 build-f5-h2; complete scan-f5-h2 at10:49. Mara separately requests hosted checks/review at10:50. Agent hook output is only corroboration; push is not evidence that hooks ran.",
+            "row"
+          ],
+          [
+            "Fresh independent Ready · Imani · 11:03 UTC",
+            "I did not implement this change. I used fresh private context without the implementer summary. I inspected all3 pinned files and the original starvation/large-repository criteria. Batch yielding and the regression satisfy both criteria at this head. Ready for human acceptance, not merge authorization.",
+            "row"
+          ],
+          [
+            "Protected owner words · Mara · 11:01 UTC",
+            "I authorize adding the large-refresh interactive-progress case only. Keep existing corpus expectations. Do not broaden rollout or delivery authority. Bound to owner-f5-h2 and patch-f5-h2.",
+            "row"
+          ],
+          [
+            "Still not merge-capable",
+            "Native CI delivery-subject association, gate-aware server guard and live-base enforcement through write are unimplemented/unverified. Current preparation remains Held even with complete evidence.",
+            "warning"
+          ]
+        ]
+      },
+      "regions": []
+    },
+    {
+      "id": "F5-D-PACKET",
+      "title": "Evidence packet · exact subject and provenance",
+      "shell": {
+        "mode": "workspace",
+        "section": "Work",
+        "breadcrumb": "Review / evidence packet",
+        "navTargets": {}
+      },
+      "tag": "Proposed AB:66 · fictional receipts",
+      "caption": "Inspectable receipt fields distinguish factory-run proof, agent corroboration and external observation. All logs/times/digests below are invented design data. No real checks ran and no original CI receipt is rebound to the corrected head.",
+      "state": {
+        "readOnly": true,
+        "recordHead": "corrected",
+        "rows": [
+          [
+            "tests-f5-h2 / build-f5-h2 / scan-f5-h2 · proposed local runner receipts",
+            "argv: vp run check:changed; vp run --filter @t3tools/web build; betterleaks git with full pinned base..head range. Tests, applicable web build and complete scanner exit0 precede the separate hosted request. Clean HEAD before/after; cache disabled. No package/release proof.",
+            "row"
+          ],
+          [
+            "Tool/config provenance · fictional resolved record",
+            "Node24.13.1, vp0.1.11, mise2026.11.0, betterleaks2.0.0-rc.6 are explicit fictional resolved versions from runner capture. Local project binary source plus full config/lock/receipt pins are inspectable. These are synthetic records, not real file attestations; unknown identity in a real run holds.",
+            "row"
+          ],
+          [
+            "External current-head receipts · later inv-f5-ci-02 / external19542 attempt1",
+            "Mara manual request10:50; host finish10:58; observed11:00. Active policy fixture declares Test, Build, Security required; all three exact-head results pass. No required conversations in this declared fixture. Original run19541 retains its two findings and unknown scope.",
+            "row"
+          ],
+          [
+            "Coverage and currency",
+            "Changed files3/3: src/search/index.ts, src/search/index.test.ts, harness/search-corpus.json. Independent report ready-f5-h2 covers all3 and both finding criteria. No merge group; tested tree is correctedTreeSha; comparison base and live target both equal the pinned base in this snapshot.",
+            "row"
+          ],
+          [
+            "Advisory / negative history retained",
+            "Agent-supplied hook stdout is self-reported and bypassable. Original incomplete scope and every prior failed/unknown observation remain. Raw hosted Success, unknown vendor model, incremental/filtered review or latest retry never replaces required full-scope evidence.",
+            "row"
+          ]
+        ]
+      },
+      "regions": []
+    },
+    {
+      "id": "F5-D-PATCH",
+      "title": "Candidate changes · three-file bounded patch",
+      "shell": {
+        "mode": "workspace",
+        "section": "Work",
+        "breadcrumb": "Review / changed hunks",
+        "navTargets": {}
+      },
+      "tag": "Proposed AB:66 · fictional literal hunks",
+      "caption": "New illustrative changed-hunk packet for issue237, not repository source or the R4 owner-mismatch patch. Full corrected head/base bind the packet. Complete changed-file scope is three files; full original files are not claimed.",
+      "state": {
+        "readOnly": true,
+        "recordHead": "corrected",
+        "patchId": "patch-f5-h2",
+        "rows": [
+          [
+            "src/search/index.ts · refresh batches",
+            "@@ async function refreshIndex(entries) {\n-  for (const entry of entries) index.update(entry);\n+  for (let offset = 0; offset < entries.length; offset += 128) {\n+    const end = Math.min(offset + 128, entries.length);\n+    for (let i = offset; i < end; i++) index.update(entries[i]);\n+    await yieldToInteractiveQueries();\n+  }\n }",
+            "code"
+          ],
+          [
+            "src/search/index.test.ts · bounded regression",
+            "@@ it('serves interactive queries during a large refresh', async () => {\n+  const refresh = refreshIndex(makeEntries(100000));\n+  await nextRefreshBatch();\n+  expect(await query('needle')).toContain('needle');\n+  expect(refreshState()).toBe('running');\n+  await refresh;\n });",
+            "code"
+          ],
+          [
+            "harness/search-corpus.json · protected addition",
+            "@@ cases\n+ { \"name\": \"large-refresh-interactive-progress\", \"entries\": 100000,\n+   \"query\": \"needle\", \"requireProgressBeforeRefreshCompletes\": true }\nExisting case expectations are unchanged. Owner approval applies only to this addition.",
+            "code"
+          ]
+        ]
+      },
+      "regions": []
+    },
+    {
+      "id": "F5-D-ACCEPTED",
+      "title": "Accepted exact head · no delivery grant",
+      "shell": {
+        "mode": "workspace",
+        "section": "Work",
+        "breadcrumb": "Work / plan-237 / accepted candidate",
+        "navTargets": {}
+      },
+      "tag": "Proposed AB:66 · later decision record",
+      "caption": "Read a separately authorized exact-head candidate acceptance at11:04, not an acceptance performed by navigation. CI has no claimed native thread. This proposed decision does not fabricate native acceptance or delivery capability.",
+      "state": {
+        "readOnly": true,
+        "recordHead": "corrected",
+        "snapshot": "accepted",
+        "acceptance": "current-proposed-candidate-record",
+        "delivery": "not-prepared",
+        "rows": [
+          [
+            "Mara accepted this exact candidate · 11:04 UTC",
+            "accept-f5-h2 binds project-factory/env-ws/plan-237, source acme/factory#237 rev3, corrected head, comparison base, patch-f5-h2, ready-f5-h2 and both current disposition entries. Re-read currentness on every decision.",
+            "row"
+          ],
+          [
+            "This is not a native FactoryAcceptance",
+            "CI-only inv-f5-ci-01 and later evidence invocation02 have no retained native WorkRef or T3 thread. A future candidate-scoped acceptance/delivery adapter needs an explicit contract; this study does not silently admit a native task.",
+            "warning"
+          ],
+          [
+            "Prepare is a separate person decision",
+            "Evidence complete is not accepted. Accepted is not prepared. Prepared is not granted. No publication, source close, settlement, merge, tag or release follows from acceptance.",
+            "row"
+          ],
+          [
+            "Current product state",
+            "Execution completed · candidate accepted in proposed record · delivery Held · source Open · planning Ready · no native thread to settle.",
+            "row"
+          ]
+        ]
+      },
+      "regions": []
+    },
+    {
+      "id": "F5-D-PREPARE-HELD",
+      "title": "Prepare merge · Held",
+      "shell": {
+        "mode": "workspace",
+        "section": "Work",
+        "breadcrumb": "Review / delivery prerequisites",
+        "navTargets": {}
+      },
+      "tag": "Proposed AB:66 · valid current Held state",
+      "caption": "Current unsupported adapter must stay Held. A disabled button is not server enforcement. Reading the conditional future design record is not preparation, a capability promise or permission to perform a merge.",
+      "state": {
+        "readOnly": true,
+        "recordHead": "corrected",
+        "snapshot": "prepare-held",
+        "acceptance": "current-proposed-candidate-record",
+        "delivery": "held",
+        "rows": [
+          [
+            "Held · Grant merge unavailable",
+            "No native thread-backed delivery owner association for this CI-only candidate. Proposed AB:66 guard is missing. Enforceable live-base-through-write adapter capability is unverified. A host read before write is not atomic enforcement.",
+            "warning"
+          ],
+          [
+            "One human-selected candidate only",
+            "Fictional acme/factory PR247 · squash to main at pinned base. PR identity is a new design fixture, not issue237 or R4 PR231. Open/non-draft/conflict-free status requires a fresh host read before preparation and grant.",
+            "row"
+          ],
+          [
+            "Required guard inputs",
+            "Current exact-head acceptance; fresh readable host-required policy; all required exact-head tests/build/review; complete changed-file/protected-path approval; current dispositions; no unresolved required conversations; free single-use origin/kind slot; sealed payload/evidence digests.",
+            "row"
+          ],
+          [
+            "Changes invalidate preparation",
+            "Moved candidate/base, conflict, draft/closed PR, unreadable requiredness or missing scope holds. Reassess applicable local/hosted/review evidence and acceptance. No automatic rebase or waiver.",
+            "row"
+          ]
+        ]
+      },
+      "regions": []
+    },
+    {
+      "id": "F5-D-FUTURE-PREPARE",
+      "title": "Conditional future · prepared payload record",
+      "shell": {
+        "mode": "workspace",
+        "section": "Work",
+        "breadcrumb": "Later gated design / preparation",
+        "navTargets": {}
+      },
+      "tag": "COUNTERFACTUAL · not a live capability",
+      "caption": "Conditional later design record only. Assumes an implemented threadless delivery-subject contract, server guard and adapter that enforces exact head/live base through the write. None is asserted available today.",
+      "state": {
+        "readOnly": true,
+        "conditionalFuture": true,
+        "recordHead": "corrected",
+        "acceptance": "current-proposed-candidate-record",
+        "delivery": "prepared-conditional",
+        "rows": [
+          [
+            "11:05 · Mara separately requested Prepare merge",
+            "Prepared payload is read-only. It has not granted anything. The current unsupported branch remains Held; this is not its successful continuation.",
+            "warning"
+          ],
+          [
+            "Single-use prepared subject",
+            "acme/factory PR247 · squash · main at pinned base · exact corrected head · acceptance accept-f5-h2. Proposed deliverySubject: project-factory/env-ws/plan-237/PR247. NativeThreadId remains null, not a synthesized CI thread.",
+            "row"
+          ],
+          [
+            "Seal binds policy, evidence and authority",
+            "Payload digest and server seal bind the exact head/base/method, active host rules, tests/build, complete3/3 listing, independent Ready, protected approval and both disposition entries. Host open/non-draft/no-conflict and free origin/kind slot re-read at grant.",
+            "row"
+          ],
+          [
+            "Enforcement prerequisite",
+            "An implemented adapter must reject moved base/head through the remote write itself. A UI check or earlier host read is insufficient. Losing a response reserves the slot as Unknown; only read-only Reconcile may follow, never resend.",
+            "warning"
+          ]
+        ]
+      },
+      "regions": []
+    },
+    {
+      "id": "F5-D-FUTURE-GRANT",
+      "title": "Conditional future · separate human grant record",
+      "shell": {
+        "mode": "workspace",
+        "section": "Work",
+        "breadcrumb": "Later gated design / grant",
+        "navTargets": {}
+      },
+      "tag": "COUNTERFACTUAL · read-only grant record",
+      "caption": "A distinct historical grant record, not a live Grant control. The person names one repository/PR/head/base/method/payload. Navigation does not write authority. No batch or release authority is carried.",
+      "state": {
+        "readOnly": true,
+        "conditionalFuture": true,
+        "recordHead": "corrected",
+        "delivery": "granted-conditional",
+        "rows": [
+          [
+            "11:06 · Mara separately granted only this payload",
+            "grant-f5-h2 / command-f5-merge-01 · PR247 · squash · exact corrected head into main at the pinned base. Prepared acceptance/payload/seal must still match on the server. This conditional record is not a real grant.",
+            "warning"
+          ],
+          [
+            "One live slot before external side effect",
+            "The assumed service stores the intent before sending. Repeated command id reads that same result. Pending/sending/confirmed/unknown reserve the origin+merge-pr slot. A second candidate is neither ordered nor selected automatically.",
+            "row"
+          ],
+          [
+            "Unknown response is not failure proof",
+            "Read remote state with Reconcile only. No retry grant, second send or alternative adapter fallback is authorized. Confirmed retains the slot; a later delivery needs its own explicit contract and authority.",
+            "row"
+          ]
+        ]
+      },
+      "regions": []
+    },
+    {
+      "id": "F5-D-FUTURE-RECEIPT",
+      "title": "Conditional future · confirmed receipt",
+      "shell": {
+        "mode": "workspace",
+        "section": "Work",
+        "breadcrumb": "Later gated design / receipt",
+        "navTargets": {}
+      },
+      "tag": "COUNTERFACTUAL · not an observed merge",
+      "caption": "Terminal conditional readback study. No link reopens prepare/grant or an earlier actionable collection. Current missing-capability branch stays Held. This receipt is fictional, not a host observation or evidence that Git changed.",
+      "state": {
+        "readOnly": true,
+        "conditionalFuture": true,
+        "recordHead": "corrected",
+        "delivery": "confirmed-conditional",
+        "rows": [
+          [
+            "11:07 · assumed host readback confirms one merge",
+            "receipt-f5-merge-01 matches grant-f5-h2, PR247, exact head, base, method and payload digest. Conditional merge SHA is separately pinned below. This is later gated design data, not a claimed runtime result.",
+            "warning"
+          ],
+          [
+            "Independent facts remain separate",
+            "CI execution completed. Proposed exact-head acceptance current for reviewed candidate. Conditional delivery confirmed. Source issue remains Open; plan stays Ready; no native thread exists to settle. Merge is not source closure or filing.",
+            "row"
+          ],
+          [
+            "No evidence reuse for the resulting merge SHA",
+            "Squash result needs its own applicable build/release proof and authority. Another candidate validated against the former base is Held after main moves. No next pointer, ordering, automatic rebase, batch or automatic release.",
+            "row"
+          ],
+          [
+            "Retained history",
+            "Original run19541, its two findings, original unknown coverage and both per-head disposition entries remain. The accepted report never erases old failures. No follow-up issue, release, tag or rollout completion is fabricated.",
+            "row"
+          ]
+        ]
+      },
+      "regions": []
+    }
+  ]
+}

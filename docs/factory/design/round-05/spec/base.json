@@ -1,0 +1,127 @@
+{
+  "schema": "t3factory-workspace-design/1",
+  "frame": {
+    "width": 1600,
+    "height": 1040,
+    "appHeight": 900,
+    "captionHeight": 140,
+    "sidebarWidth": 320,
+    "topbarHeight": 52,
+    "body": [340, 108, 1240, 768]
+  },
+  "typography": {
+    "family": "Inter",
+    "weights": [400, 500, 600, 700],
+    "body": 14,
+    "secondary": 12,
+    "code": 13,
+    "desktopButton": 32,
+    "compactButton": 28,
+    "phoneTarget": 44
+  },
+  "tokens": {
+    "BG": "#000000",
+    "SIDEBAR": "#000000",
+    "PANEL": "#111111",
+    "RAISED": "#191a1d",
+    "BORDER": "#262626",
+    "FG": "#f5f5f5",
+    "MUT": "#a3a3a3",
+    "DIM": "#818181",
+    "BLUE": "#346bf1",
+    "BLUE_TEXT": "#a8c4ff",
+    "WARN": "#f5ce8b",
+    "GREEN": "#8dd7a9",
+    "RED": "#f19b9b",
+    "CAPTION_BG": "#10141c"
+  },
+  "project": {
+    "id": "project-factory",
+    "name": "Factory",
+    "environmentId": "env-ws",
+    "environmentName": "Workstation",
+    "repository": "acme/factory",
+    "checkout": "~/src/factory",
+    "sidebarVariant": "Observed live resized320px; native default256px, persisted preference"
+  },
+  "fixtures": {
+    "workflowSourceCommit": "fcefc5e69848dc6c5b3aa32ea45ae4e8f29d3031",
+    "candidateCommit": "1dfb90f9bc2e41fdc47d1f40c081d95f66c30054",
+    "versionDigest": "e464ecf8079ddd35b1fa08327785bdd2324aea4511e47aba25b1696d265c019d",
+    "planItem": {
+      "kind": "planned",
+      "environmentId": "env-ws",
+      "projectId": "project-factory",
+      "id": "plan-237"
+    },
+    "sourceIssue": {
+      "provider": "github",
+      "repository": "acme/factory",
+      "number": 237,
+      "revision": 3,
+      "title": "Keep the search index responsive in large repositories",
+      "state": "Open"
+    },
+    "retainedWorkAfterFactoryAdmission": {
+      "version": 1,
+      "environmentId": "env-ws",
+      "kind": "issue",
+      "id": "8b42f1d3"
+    },
+    "nativeThreadAfterFactoryAdmission": "8b42f1d3",
+    "manualFactoryInvocation": "inv-f5-factory-01",
+    "manualCIInvocation": "inv-f5-ci-01",
+    "automaticInvocation": "inv-f5-auto-01",
+    "automaticSourceIssue": 238,
+    "automaticPlanItemId": "plan-238",
+    "externalCIRun": "19541",
+    "manualActor": "Mara"
+  },
+  "workflowCatalog": [
+    {
+      "id": "wf-implement-issue",
+      "name": "Implement issue",
+      "version": 1,
+      "digest": "fac52fcf0ec317cc8a1e8d88b4a0a5aac72f141dfad772cae970193f93096fa9",
+      "targets": ["Factory", "CI"]
+    },
+    {
+      "id": "wf-review-change",
+      "name": "Review change",
+      "version": 1,
+      "digest": "e464ecf8079ddd35b1fa08327785bdd2324aea4511e47aba25b1696d265c019d",
+      "targets": ["Factory", "CI"]
+    },
+    {
+      "id": "wf-diagnose-ci",
+      "name": "Diagnose CI failure",
+      "version": 1,
+      "digest": "ee50d212f11bbd19b9a80053b1f366d4a5861d2f9e3b51a4191540bde14f2f09",
+      "targets": ["Factory", "CI"]
+    }
+  ],
+  "identityRule": "A new PlanItemRef is not an existing retained WorkRef, SourceRef, ThreadId or universal TaskId. Board/Table/List preserve the complete selected row identity. Issue/feed retained Work roots exist only after admission; CI run ids never become T3 thread ids.",
+  "policy": {
+    "manualAndAutomatic": true,
+    "executionTargets": ["Factory", "CI"],
+    "triggerSources": [
+      "Manual",
+      "Schedule",
+      "Platform-native event",
+      "Integration event",
+      "Custom event",
+      "Custom webhook"
+    ],
+    "mergeAndRelease": "Separate explicit authority; no implied grant from trigger enablement",
+    "automaticDefaults": "Draft/disabled until explicit configuration review and activation",
+    "platformOwner": "Platform-native CI activation follows committed/pushed host configuration observation, not merely Save in T3",
+    "sourceTrust": "Events are data; signed/authenticated source, project filters and input schema do not grant broader authority"
+  },
+  "provenance": {
+    "baseline": "ground/t3-ui-baseline.md",
+    "inspirations": "ground/inspiration-patterns.md",
+    "sourceReference": "258972b7 plus explicitly marked local candidate3a4ef2e4; live Nightly shell differs from older Factory navigation",
+    "figma": "Static editable design and navigation evidence only; no runtime,a11y or parity claim",
+    "privateCapture": "Local only; never upload private native desktop screenshot"
+  }
+}

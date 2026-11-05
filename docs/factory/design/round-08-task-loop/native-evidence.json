@@ -1,0 +1,201 @@
+{
+  "status": "NATIVE_DESIGN_NAVIGATION_VERIFIED",
+  "reviewDate": "2026-11-04",
+  "fileKey": "y3onOFKZMZ84W1A5uL2FQn",
+  "pageId": "4:80",
+  "sourceDigest": "3c2853dac50d24320d6a632d9ae7defbe556390b8ef5761e8caaae7383bddd6e",
+  "importReceiptNodeId": "319:86",
+  "frames": [
+    {
+      "scene": "R8-T01",
+      "nodeId": "319:87",
+      "sourceSha256": "6daaec3a356a0e36a4f13085db8b7fb007d7f59741fce21402d4668517ed2e93",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R8-T02",
+      "nodeId": "319:229",
+      "sourceSha256": "9d4d8fa1d466c3b3b676ed7459bbd37cdd6ed2894520c917d13825d051bd81c1",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R8-T03",
+      "nodeId": "319:374",
+      "sourceSha256": "4080e965a97cdda10b6ae3367982540b0bf704aceac659d003555ce23b8dc9a1",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R8-T04",
+      "nodeId": "319:530",
+      "sourceSha256": "9918377fdbd15b16b99fec96f00eb08a21fde1a3c39e79f8cd466147e3232d5b",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R8-T05",
+      "nodeId": "319:709",
+      "sourceSha256": "00f40a926e533b5232fd48e3722a2c32aae5ea6820c25a0f26aed7a6baa6bfc6",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R8-T06",
+      "nodeId": "319:888",
+      "sourceSha256": "210edcf362b9e6233fdfc9dcba5bce197d8caf43f48d679bb2e018829357acb4",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R8-T07",
+      "nodeId": "319:1030",
+      "sourceSha256": "8307d5ac49a1c3b675729c71ad4d575148f49e56128d94ce8efa9266dce53e84",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R8-T08",
+      "nodeId": "319:1177",
+      "sourceSha256": "d30bfdaf56ab0e941bf24c14820734ff70117d87571e838a8b0ea796385c3e30",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R8-WF01",
+      "nodeId": "319:1320",
+      "sourceSha256": "528881c9a3d4f32ffc3f442b5590d7d9ee8dc0a81bc27769df59522f550f88ec",
+      "width": 1000,
+      "height": 1230
+    },
+    {
+      "scene": "R8-WF02",
+      "nodeId": "319:1447",
+      "sourceSha256": "b0fe6b8d3c864dfb9d137829ba665d838cdf3a5d02abd8f0579e5387f3b8608a",
+      "width": 1000,
+      "height": 1480
+    }
+  ],
+  "liveInspection": {
+    "frames": 10,
+    "allFramesTopLevel": true,
+    "storedPrototypeControls": 9,
+    "eachControlHasOneReaction": true,
+    "pageTopLevelBefore": 1059,
+    "pageTopLevelAfter": 1070,
+    "addedHiddenReceiptFrames": 1
+  },
+  "pointerVerification": {
+    "distinctControlsPassed": 9,
+    "attempts": [
+      {
+        "from": "R8-T01",
+        "control": "capture-analyze",
+        "expected": "319:374",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=319-374&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "matched": true
+      },
+      {
+        "from": "R8-T03",
+        "control": "answer-context",
+        "expected": "319:530",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=319-530&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "matched": true
+      },
+      {
+        "from": "R8-T04",
+        "control": "continue-with-policy",
+        "expected": "319:709",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=319-709&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "matched": true
+      },
+      {
+        "from": "R8-T05",
+        "control": "open-decision",
+        "expected": "319:888",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=319-888&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "matched": true
+      },
+      {
+        "from": "R8-T06",
+        "control": "choose-meeting",
+        "expected": "319:1030",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=319-1030&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "matched": true
+      },
+      {
+        "from": "R8-T07",
+        "control": "approve-external",
+        "expected": "319:1177",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=319-1177&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "matched": true
+      },
+      {
+        "from": "R8-T01",
+        "control": "capture-later",
+        "expected": "319:229",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=319-87&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "matched": false
+      },
+      {
+        "from": "R8-T01",
+        "control": "capture-later",
+        "expected": "319:229",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=319-229&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "matched": true
+      },
+      {
+        "from": "R8-T01",
+        "control": "capture-later",
+        "expected": "319:229",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=319-229&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "matched": true
+      },
+      {
+        "from": "R8-T02",
+        "control": "analyze-saved",
+        "expected": "319:374",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=319-374&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "matched": true
+      },
+      {
+        "from": "R8-T05",
+        "control": "child-task-3",
+        "expected": "319:888",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=319-888&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "matched": true
+      }
+    ],
+    "initialUnmatchedAttempt": "Save for later was clicked before the freshly navigated Figma canvas finished loading. Repeated after observing the loaded frame; expected destination passed."
+  },
+  "inspectedNativeTaskFrames": [
+    "R8-T01",
+    "R8-T02",
+    "R8-T03",
+    "R8-T04",
+    "R8-T05",
+    "R8-T06",
+    "R8-T07",
+    "R8-T08"
+  ],
+  "inspectedNativeMapFrames": [
+    "R8-WF01",
+    "R8-WF02"
+  ],
+  "sourceChecks": {
+    "taskXmlAndGeometry": "PASS",
+    "wayfinderXmlAndGeometry": "PASS",
+    "mermaidStructuralAccessibility": "PASS",
+    "mermaidExactRender": "UNVERIFIED",
+    "nativeImportJavaScriptSyntax": "PASS",
+    "repositoryFormatter": "UNAVAILABLE_LOCAL_VITE_PLUS_DEPENDENCY"
+  },
+  "limits": [
+    "Design fixtures only; no functional forms, persistence, provider execution or external connector actions.",
+    "Imported editable SVG compositions do not establish component or auto-layout reuse.",
+    "Mobile, keyboard, accessibility conformance and responsiveness remain unqualified.",
+    "Only nine named controls are wired; simple-direct distinct states, preparation-only completion, fresh capture, reopen, full child readers, plan editing and workflow promotion remain outside this bounded native prototype.",
+    "Source captions retain authoring-time qualification; this evidence qualifies only the named native import and navigation slice."
+  ]
+}

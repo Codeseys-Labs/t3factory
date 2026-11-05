@@ -1,0 +1,30 @@
+flowchart TD
+  accTitle: Where do I go to move this task forward?
+  accDescr: A proposed task-centered navigation map. Capture and Intake lead to the same local task. Conversation, child work, evidence and attention retain that task context. Connections, workflows and machines remain optional secondary surfaces. Proposed Round-08 product navigation and lifecycle, using November 4 priority IDs P1-P4. These views complement canonical Wayfinder issue #2 and delivery roadmap #66; they do not renumber tracker milestones M0-M5 or slices W1-W5. Existing foundations are explicitly labeled; no runtime qualification is implied.
+
+  %% Generated from maps.json; SVG uses the stored geometry, Mermaid lays itself out.
+  capture["P1 PROPOSAL | Capture an outcome | Text, links, files or action items | Analyze now or save for later"]
+  intake["P1 REFINEMENT | Intake | Capture or review new arrivals | Deduplicate; keep source context"]
+  sources["P2 EXPANSION | Optional sources | Issues, email, calendar, knowledge | Input context grants no authority"]
+  work["DESIGN FOUNDATION | Work | Board, table and list | Keep scope, filter and selection | Open the same local task"]
+  task["P1 PROPOSED EXTENSION | The same local task | Outcome, state and next action | Plan, attempts and evidence | Optional source / thread links"]
+  attention["P1 PROPOSAL | Needs your decision | A precise question or blocker | Open the task at that context | Answer or revise the task"]
+  conversation["ORDINARY THREAD FOUNDATION | Task conversation | Discuss and steer the outcome | An ordinary thread coordinates | Keep the task context"]
+  children["P1 PROPOSAL | Child tasks and attempts | Dependencies and assignments | Model, harness and machine | Attempts return to their task"]
+  results["P1 PROPOSAL | Results and review | Artifacts and uncertainty | Proposed action / actual receipt | Review keeps the same task"]
+  connections["P2 INTEGRATIONS | Connections | Optional source or action access | Local work survives disconnect"]
+  workflows["P3 · OPTIONAL P4 CI | Reusable workflows | Reuse a successful task plan | Each run enters the same loop"]
+  machines["EXISTING TARGETS + P1/P3 | Machines and placement | Eligible linked environments | Machine choice differs from model"]
+  capture -->|"capture task"| task
+  sources -.->|"arrivals"| intake
+  intake -->|"analyze / save"| task
+  work -->|"open"| task
+  task -.->|"back"| work
+  attention -->|"open"| task
+  task -.->|"alert"| attention
+  task -->|"discuss"| conversation
+  task -->|"expand"| children
+  task -->|"review"| results
+  task -.->|"optional; retain task origin"| connections
+  task -.-> workflows
+  task -.-> machines

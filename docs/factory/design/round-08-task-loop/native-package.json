@@ -1,0 +1,18 @@
+{
+  "status": "SOURCE_PACKAGE_NATIVE_EVIDENCE_SEPARATE",
+  "sourceDigest": "3c2853dac50d24320d6a632d9ae7defbe556390b8ef5761e8caaae7383bddd6e",
+  "frames": 10,
+  "configuredSourceEdges": 9,
+  "sourceHashes": {
+    "R8-T01": "6daaec3a356a0e36a4f13085db8b7fb007d7f59741fce21402d4668517ed2e93",
+    "R8-T02": "9d4d8fa1d466c3b3b676ed7459bbd37cdd6ed2894520c917d13825d051bd81c1",
+    "R8-T03": "4080e965a97cdda10b6ae3367982540b0bf704aceac659d003555ce23b8dc9a1",
+    "R8-T04": "9918377fdbd15b16b99fec96f00eb08a21fde1a3c39e79f8cd466147e3232d5b",
+    "R8-T05": "00f40a926e533b5232fd48e3722a2c32aae5ea6820c25a0f26aed7a6baa6bfc6",
+    "R8-T06": "210edcf362b9e6233fdfc9dcba5bce197d8caf43f48d679bb2e018829357acb4",
+    "R8-T07": "8307d5ac49a1c3b675729c71ad4d575148f49e56128d94ce8efa9266dce53e84",
+    "R8-T08": "d30bfdaf56ab0e941bf24c14820734ff70117d87571e838a8b0ea796385c3e30",
+    "R8-WF01": "528881c9a3d4f32ffc3f442b5590d7d9ee8dc0a81bc27769df59522f550f88ec",
+    "R8-WF02": "b0fe6b8d3c864dfb9d137829ba665d838cdf3a5d02abd8f0579e5387f3b8608a"
+  }
+}

@@ -1,0 +1,24 @@
+flowchart TD
+  accTitle: Where do I return after a task?
+  accDescr: Proposed navigation preserves task identity, origin, history and read-only child context. Proposed Round-09 design; not runtime, acceptance or native navigation evidence. Tracker #2 and #66 retain decisions and milestones.
+
+  %% Generated from maps.json; SVG uses the stored geometry, Mermaid lays itself out.
+  draft["P1 DESIGN PROPOSAL | New task draft | Unassigned; opening starts nothing | Capture creates a distinct identity"]
+  task["P1 DESIGN PROPOSAL | Captured task | Outcome, context and next decision | Same identity through the journey"]
+  result["P1 DESIGN PROPOSAL | Review and accept result | Accept exact prepared revision | Inspect artifacts and uncertainty"]
+  accepted["P1 DESIGN PROPOSAL | Accepted task | Prior result and history remain | New task or reopen are distinct"]
+  reader["P1 DESIGN PROPOSAL | Child reader | Read-only: output and dependencies | Model, harness, environment, attempt"]
+  history["P1 DESIGN PROPOSAL | Retained history | Accepted revisions and receipts | Return to the same task context"]
+  reopen["P1 DESIGN PROPOSAL | Reopened task | Same identity; settlement cleared | Idle until new intent and valid scope"]
+  work["P1 DESIGN PROPOSAL | Work / origin | Back restores selection and filters | Opening a detail starts no work"]
+  draft --> task
+  task --> result
+  result --> accepted
+  accepted -.->|"reopen"| reopen
+  task -.->|"inspect"| reader
+  reader -.->|"back"| task
+  accepted -.->|"open"| history
+  history -.->|"back"| accepted
+  work -->|"open"| task
+  accepted -.->|"new task"| draft
+  task -.-> work

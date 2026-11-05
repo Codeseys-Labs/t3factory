@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1080" viewBox="0 0 1000 1080" role="img" aria-labelledby="R9-WF01-title R9-WF01-desc">
+<title id="R9-WF01-title">Where do I return after a task?</title>
+<desc id="R9-WF01-desc">Proposed navigation preserves task identity, origin, history and read-only child context. Proposed Round-09 design; not runtime, acceptance or native navigation evidence. Tracker #2 and #66 retain decisions and milestones.</desc>
+<style>text{font-family:Arial;fill:#f1f3f7}.muted{fill:#bac4d2}</style>
+<rect width="1000" height="1080" fill="#101216"/>
+<text x="50" y="44" font-size="26" font-weight="600">Where do I return after a task?</text>
+<text x="50" y="72" font-size="14" class="muted">T3 Factory · November 4 proposed priorities P1–P4 · complements tracker #2 / #66</text>
+<defs>
+<marker id="R9-WF01-progress" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#8cb7ff"/></marker>
+<marker id="R9-WF01-return" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#b4bdca"/></marker>
+<marker id="R9-WF01-context" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#ebc878"/></marker>
+</defs>
+<path d="M50 100h32" stroke="#8cb7ff" stroke-width="2"/>
+<text x="91" y="105" font-size="13" class="muted">Progress within scope</text>
+<path d="M286 100h32" stroke="#b4bdca" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="327" y="105" font-size="13" class="muted">Return / new intent</text>
+<path d="M510 100h32" stroke="#ebc878" stroke-width="2" stroke-dasharray="2 5"/>
+<text x="551" y="105" font-size="13" class="muted">Optional or recovery</text>
+<path id="n1" d="M500 260 L500 320" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R9-WF01-progress)"><title>draft to task: Progress within scope</title></path>
+<path id="n2" d="M500 430 L500 490" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R9-WF01-progress)"><title>task to result: Progress within scope</title></path>
+<path id="n3" d="M500 600 L500 660" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R9-WF01-progress)"><title>result to accepted: Progress within scope</title></path>
+<path id="n4" d="M500 770 L500 830" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R9-WF01-return)" stroke-dasharray="7 5"><title>accepted to reopen: reopen</title></path>
+<rect x="536.4" y="793" width="47.2" height="16" fill="#101216"/>
+<text x="560" y="805" font-size="12" text-anchor="middle" class="muted">reopen</text>
+<path id="n5" d="M360 350 L320 350" fill="none" stroke="#ebc878" stroke-width="2" marker-end="url(#R9-WF01-context)" stroke-dasharray="2 5"><title>task to reader: inspect</title></path>
+<rect x="313.3" y="326" width="53.4" height="16" fill="#101216"/>
+<text x="340" y="338" font-size="12" text-anchor="middle" class="muted">inspect</text>
+<path id="n6" d="M320 400 L360 400" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R9-WF01-return)" stroke-dasharray="7 5"><title>reader to task: back</title></path>
+<rect x="322.6" y="378" width="34.8" height="16" fill="#101216"/>
+<text x="340" y="390" font-size="12" text-anchor="middle" class="muted">back</text>
+<path id="n7" d="M640 690 L680 690" fill="none" stroke="#ebc878" stroke-width="2" marker-end="url(#R9-WF01-context)" stroke-dasharray="2 5"><title>accepted to history: open</title></path>
+<rect x="642.6" y="668" width="34.8" height="16" fill="#101216"/>
+<text x="660" y="680" font-size="12" text-anchor="middle" class="muted">open</text>
+<path id="n8" d="M680 740 L640 740" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R9-WF01-return)" stroke-dasharray="7 5"><title>history to accepted: back</title></path>
+<rect x="642.6" y="718" width="34.8" height="16" fill="#101216"/>
+<text x="660" y="730" font-size="12" text-anchor="middle" class="muted">back</text>
+<path id="n9" d="M180 260 L180 290 L430 290 L430 320" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R9-WF01-progress)"><title>work to task: open</title></path>
+<rect x="192.6" y="268" width="34.8" height="16" fill="#101216"/>
+<text x="210" y="280" font-size="12" text-anchor="middle" class="muted">open</text>
+<path id="n10" d="M360 730 L25 730 L25 130 L500 130 L500 150" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R9-WF01-return)" stroke-dasharray="7 5"><title>accepted to draft: new task</title></path>
+<rect x="60.2" y="703" width="59.6" height="16" fill="#101216"/>
+<text x="90" y="715" font-size="12" text-anchor="middle" class="muted">new task</text>
+<path id="n11" d="M360 390 L340 390 L340 280 L180 280 L180 260" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R9-WF01-return)" stroke-dasharray="7 5"><title>task to work: Return / new intent</title></path>
+<g id="draft"><title>New task draft</title><rect x="360" y="150" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="376" y="171" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="376" y="194" font-size="18" font-weight="600">New task draft</text>
+<text x="376" y="216" font-size="14" class="muted">Unassigned; opening starts nothing</text>
+<text x="376" y="235" font-size="14" class="muted">Capture creates a distinct identity</text>
+</g>
+<g id="task"><title>Captured task</title><rect x="360" y="320" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="376" y="341" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="376" y="364" font-size="18" font-weight="600">Captured task</text>
+<text x="376" y="386" font-size="14" class="muted">Outcome, context and next decision</text>
+<text x="376" y="405" font-size="14" class="muted">Same identity through the journey</text>
+</g>
+<g id="result"><title>Review and accept result</title><rect x="360" y="490" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="376" y="511" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="376" y="534" font-size="18" font-weight="600">Review and accept result</text>
+<text x="376" y="556" font-size="14" class="muted">Accept exact prepared revision</text>
+<text x="376" y="575" font-size="14" class="muted">Inspect artifacts and uncertainty</text>
+</g>
+<g id="accepted"><title>Accepted task</title><rect x="360" y="660" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="376" y="681" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="376" y="704" font-size="18" font-weight="600">Accepted task</text>
+<text x="376" y="726" font-size="14" class="muted">Prior result and history remain</text>
+<text x="376" y="745" font-size="14" class="muted">New task or reopen are distinct</text>
+</g>
+<g id="reader"><title>Child reader</title><rect x="40" y="320" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="56" y="341" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="56" y="364" font-size="18" font-weight="600">Child reader</text>
+<text x="56" y="386" font-size="14" class="muted">Read-only: output and dependencies</text>
+<text x="56" y="405" font-size="14" class="muted">Model, harness, environment, attempt</text>
+</g>
+<g id="history"><title>Retained history</title><rect x="680" y="660" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="696" y="681" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="696" y="704" font-size="18" font-weight="600">Retained history</text>
+<text x="696" y="726" font-size="14" class="muted">Accepted revisions and receipts</text>
+<text x="696" y="745" font-size="14" class="muted">Return to the same task context</text>
+</g>
+<g id="reopen"><title>Reopened task</title><rect x="360" y="830" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="376" y="851" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="376" y="874" font-size="18" font-weight="600">Reopened task</text>
+<text x="376" y="896" font-size="14" class="muted">Same identity; settlement cleared</text>
+<text x="376" y="915" font-size="14" class="muted">Idle until new intent and valid scope</text>
+</g>
+<g id="work"><title>Work / origin</title><rect x="40" y="150" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="56" y="171" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="56" y="194" font-size="18" font-weight="600">Work / origin</text>
+<text x="56" y="216" font-size="14" class="muted">Back restores selection and filters</text>
+<text x="56" y="235" font-size="14" class="muted">Opening a detail starts no work</text>
+</g>
+<text x="50" y="1011" font-size="13" class="muted">Scene counterparts are proposed design references, not verified prototype controls.</text>
+<text x="50" y="1045" font-size="13" class="muted">Opening a draft or reader starts no work; new identity is assigned on capture.</text>
+</svg>

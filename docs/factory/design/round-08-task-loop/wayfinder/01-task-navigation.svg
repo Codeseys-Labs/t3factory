@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1230" viewBox="0 0 1000 1230" role="img" aria-labelledby="R8-WF01-title R8-WF01-desc">
+<title id="R8-WF01-title">Where do I go to move this task forward?</title>
+<desc id="R8-WF01-desc">A proposed task-centered navigation map. Capture and Intake lead to the same local task. Conversation, child work, evidence and attention retain that task context. Connections, workflows and machines remain optional secondary surfaces. Proposed Round-08 product navigation and lifecycle, using November 4 priority IDs P1-P4. These views complement canonical Wayfinder issue #2 and delivery roadmap #66; they do not renumber tracker milestones M0-M5 or slices W1-W5. Existing foundations are explicitly labeled; no runtime qualification is implied.</desc>
+<style>text{font-family:Arial;fill:#f1f3f7}.muted{fill:#bac4d2}</style>
+<rect width="1000" height="1230" fill="#101216"/>
+<text x="50" y="44" font-size="26" font-weight="600">Where do I go to move this task forward?</text>
+<text x="50" y="72" font-size="14" class="muted">T3 Factory · November 4 proposed priorities P1–P4 · complements tracker #2 / #66</text>
+<defs>
+<marker id="R8-WF01-navigate" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#8cb7ff"/></marker>
+<marker id="R8-WF01-return" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#b4bdca"/></marker>
+<marker id="R8-WF01-context" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#b4bdca"/></marker>
+</defs>
+<path d="M50 100h32" stroke="#8cb7ff" stroke-width="2"/>
+<text x="91" y="105" font-size="13" class="muted">Open a view</text>
+<path d="M226 100h32" stroke="#b4bdca" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="267" y="105" font-size="13" class="muted">Return to origin</text>
+<path d="M432 100h32" stroke="#b4bdca" stroke-width="2" stroke-dasharray="2 5"/>
+<text x="473" y="105" font-size="13" class="muted">Optional context</text>
+<text x="50" y="884" font-size="15" font-weight="600" class="muted">Optional surfaces — return to the task that opened them</text>
+<path id="n01" d="M180 280 L180 335 L440 335 L440 390" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF01-navigate)"><title>capture to task: capture task</title></path>
+<rect x="247.8" y="308" width="84.4" height="16" fill="#101216"/>
+<text x="290" y="320" font-size="12" text-anchor="middle" class="muted">capture task</text>
+<path id="n02" d="M690 250 L630 250" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R8-WF01-context)" stroke-dasharray="2 5"><title>sources to intake: arrivals</title></path>
+<rect x="630.2" y="223" width="59.6" height="16" fill="#101216"/>
+<text x="660" y="235" font-size="12" text-anchor="middle" class="muted">arrivals</text>
+<path id="n03" d="M500 280 L500 390" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF01-navigate)"><title>intake to task: analyze / save</title></path>
+<rect x="526.6" y="326" width="96.8" height="16" fill="#101216"/>
+<text x="575" y="338" font-size="12" text-anchor="middle" class="muted">analyze / save</text>
+<path id="n04" d="M310 430 L370 430" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF01-navigate)"><title>work to task: open</title></path>
+<rect x="322.6" y="405" width="34.8" height="16" fill="#101216"/>
+<text x="340" y="417" font-size="12" text-anchor="middle" class="muted">open</text>
+<path id="n05" d="M370 480 L310 480" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R8-WF01-return)" stroke-dasharray="7 5"><title>task to work: back</title></path>
+<rect x="322.6" y="455" width="34.8" height="16" fill="#101216"/>
+<text x="340" y="467" font-size="12" text-anchor="middle" class="muted">back</text>
+<path id="n06" d="M690 430 L630 430" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF01-navigate)"><title>attention to task: open</title></path>
+<rect x="642.6" y="405" width="34.8" height="16" fill="#101216"/>
+<text x="660" y="417" font-size="12" text-anchor="middle" class="muted">open</text>
+<path id="n07" d="M630 480 L690 480" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R8-WF01-context)" stroke-dasharray="2 5"><title>task to attention: alert</title></path>
+<rect x="639.5" y="455" width="41" height="16" fill="#101216"/>
+<text x="660" y="467" font-size="12" text-anchor="middle" class="muted">alert</text>
+<path id="n08" d="M420 510 L420 600 L180 600 L180 680" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF01-navigate)"><title>task to conversation: discuss</title></path>
+<rect x="263.3" y="572" width="53.4" height="16" fill="#101216"/>
+<text x="290" y="584" font-size="12" text-anchor="middle" class="muted">discuss</text>
+<path id="n09" d="M500 510 L500 680" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF01-navigate)"><title>task to children: expand</title></path>
+<rect x="520.4" y="632" width="47.2" height="16" fill="#101216"/>
+<text x="544" y="644" font-size="12" text-anchor="middle" class="muted">expand</text>
+<path id="n10" d="M580 510 L580 600 L820 600 L820 680" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF01-navigate)"><title>task to results: review</title></path>
+<rect x="683.4" y="572" width="47.2" height="16" fill="#101216"/>
+<text x="707" y="584" font-size="12" text-anchor="middle" class="muted">review</text>
+<path id="n11" d="M610 510 L610 546 L970 546 L970 930 L180 930 L180 980" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R8-WF01-context)" stroke-dasharray="2 5"><title>task to connections: optional; retain task origin</title></path>
+<rect x="418.2" y="903" width="183.6" height="16" fill="#101216"/>
+<text x="510" y="915" font-size="12" text-anchor="middle" class="muted">optional; retain task origin</text>
+<path id="n12" d="M610 510 L610 546 L970 546 L970 930 L500 930 L500 980" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R8-WF01-context)" stroke-dasharray="2 5"><title>task to workflows: Optional context</title></path>
+<path id="n13" d="M610 510 L610 546 L970 546 L970 930 L820 930 L820 980" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R8-WF01-context)" stroke-dasharray="2 5"><title>task to machines: Optional context</title></path>
+<g id="capture"><title>Capture an outcome</title><rect x="50" y="180" width="260" height="100" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="66" y="201" font-size="11" font-weight="600" class="muted">P1 PROPOSAL</text>
+<text x="66" y="224" font-size="18" font-weight="600">Capture an outcome</text>
+<text x="66" y="246" font-size="14" class="muted">Text, links, files or action items</text>
+<text x="66" y="265" font-size="14" class="muted">Analyze now or save for later</text>
+</g>
+<g id="intake"><title>Intake</title><rect x="370" y="180" width="260" height="100" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="386" y="201" font-size="11" font-weight="600" class="muted">P1 REFINEMENT</text>
+<text x="386" y="224" font-size="18" font-weight="600">Intake</text>
+<text x="386" y="246" font-size="14" class="muted">Capture or review new arrivals</text>
+<text x="386" y="265" font-size="14" class="muted">Deduplicate; keep source context</text>
+</g>
+<g id="sources"><title>Optional sources</title><rect x="690" y="180" width="260" height="100" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="706" y="201" font-size="11" font-weight="600" class="muted">P2 EXPANSION</text>
+<text x="706" y="224" font-size="18" font-weight="600">Optional sources</text>
+<text x="706" y="246" font-size="14" class="muted">Issues, email, calendar, knowledge</text>
+<text x="706" y="265" font-size="14" class="muted">Input context grants no authority</text>
+</g>
+<g id="work"><title>Work</title><rect x="50" y="390" width="260" height="120" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="66" y="411" font-size="11" font-weight="600" class="muted">DESIGN FOUNDATION</text>
+<text x="66" y="434" font-size="18" font-weight="600">Work</text>
+<text x="66" y="456" font-size="14" class="muted">Board, table and list</text>
+<text x="66" y="475" font-size="14" class="muted">Keep scope, filter and selection</text>
+<text x="66" y="494" font-size="14" class="muted">Open the same local task</text>
+</g>
+<g id="task"><title>The same local task</title><rect x="370" y="390" width="260" height="120" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="386" y="411" font-size="11" font-weight="600" class="muted">P1 PROPOSED EXTENSION</text>
+<text x="386" y="434" font-size="18" font-weight="600">The same local task</text>
+<text x="386" y="456" font-size="14" class="muted">Outcome, state and next action</text>
+<text x="386" y="475" font-size="14" class="muted">Plan, attempts and evidence</text>
+<text x="386" y="494" font-size="14" class="muted">Optional source / thread links</text>
+</g>
+<g id="attention"><title>Needs your decision</title><rect x="690" y="390" width="260" height="120" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="706" y="411" font-size="11" font-weight="600" class="muted">P1 PROPOSAL</text>
+<text x="706" y="434" font-size="18" font-weight="600">Needs your decision</text>
+<text x="706" y="456" font-size="14" class="muted">A precise question or blocker</text>
+<text x="706" y="475" font-size="14" class="muted">Open the task at that context</text>
+<text x="706" y="494" font-size="14" class="muted">Answer or revise the task</text>
+</g>
+<g id="conversation"><title>Task conversation</title><rect x="50" y="680" width="260" height="120" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="66" y="701" font-size="11" font-weight="600" class="muted">ORDINARY THREAD FOUNDATION</text>
+<text x="66" y="724" font-size="18" font-weight="600">Task conversation</text>
+<text x="66" y="746" font-size="14" class="muted">Discuss and steer the outcome</text>
+<text x="66" y="765" font-size="14" class="muted">An ordinary thread coordinates</text>
+<text x="66" y="784" font-size="14" class="muted">Keep the task context</text>
+</g>
+<g id="children"><title>Child tasks and attempts</title><rect x="370" y="680" width="260" height="120" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="386" y="701" font-size="11" font-weight="600" class="muted">P1 PROPOSAL</text>
+<text x="386" y="724" font-size="18" font-weight="600">Child tasks and attempts</text>
+<text x="386" y="746" font-size="14" class="muted">Dependencies and assignments</text>
+<text x="386" y="765" font-size="14" class="muted">Model, harness and machine</text>
+<text x="386" y="784" font-size="14" class="muted">Attempts return to their task</text>
+</g>
+<g id="results"><title>Results and review</title><rect x="690" y="680" width="260" height="120" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="706" y="701" font-size="11" font-weight="600" class="muted">P1 PROPOSAL</text>
+<text x="706" y="724" font-size="18" font-weight="600">Results and review</text>
+<text x="706" y="746" font-size="14" class="muted">Artifacts and uncertainty</text>
+<text x="706" y="765" font-size="14" class="muted">Proposed action / actual receipt</text>
+<text x="706" y="784" font-size="14" class="muted">Review keeps the same task</text>
+</g>
+<g id="connections"><title>Connections</title><rect x="50" y="980" width="260" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="66" y="1001" font-size="11" font-weight="600" class="muted">P2 INTEGRATIONS</text>
+<text x="66" y="1024" font-size="18" font-weight="600">Connections</text>
+<text x="66" y="1046" font-size="14" class="muted">Optional source or action access</text>
+<text x="66" y="1065" font-size="14" class="muted">Local work survives disconnect</text>
+</g>
+<g id="workflows"><title>Reusable workflows</title><rect x="370" y="980" width="260" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="386" y="1001" font-size="11" font-weight="600" class="muted">P3 · OPTIONAL P4 CI</text>
+<text x="386" y="1024" font-size="18" font-weight="600">Reusable workflows</text>
+<text x="386" y="1046" font-size="14" class="muted">Reuse a successful task plan</text>
+<text x="386" y="1065" font-size="14" class="muted">Each run enters the same loop</text>
+</g>
+<g id="machines"><title>Machines and placement</title><rect x="690" y="980" width="260" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="706" y="1001" font-size="11" font-weight="600" class="muted">EXISTING TARGETS + P1/P3</text>
+<text x="706" y="1024" font-size="18" font-weight="600">Machines and placement</text>
+<text x="706" y="1046" font-size="14" class="muted">Eligible linked environments</text>
+<text x="706" y="1065" font-size="14" class="muted">Machine choice differs from model</text>
+</g>
+<text x="50" y="1161" font-size="13" class="muted">One local task identity; optional source references and execution threads remain distinct records.</text>
+<text x="50" y="1195" font-size="13" class="muted">Close a detail to restore the task; Back restores the originating Work layout, selection and filter.</text>
+</svg>

@@ -8,7 +8,7 @@ Use **T3 Factory** in the application shell, titles, onboarding, settings, and p
 
 Display branding does not authorize a mechanical rename of storage directories, bundle IDs, URL schemes, credentials, package names, or wire contracts. Those are compatibility identities with separate migration requirements. The existing runtime still contains legacy display names; this design decision is not evidence that a rebuilt desktop or mobile app has been rebranded.
 
-This is the product direction, reviewed on 2026-10-29, not a release capability checklist. [Sources and evidence](sources.md) distinguish inspected foundations from proposals. Active work belongs in the [vision tracker](https://github.com/baladithyab/t3code-factory/issues/2).
+This is product direction, with delivery sequencing updated on 2026-11-04, not a release capability checklist. The [roadmap refinement](roadmap.md) maps the requested priorities to the existing tracker milestones and proposed exit evidence. [Sources and evidence](sources.md) distinguish inspected foundations from proposals. The [Wayfinder decision map](https://github.com/Codeseys-Labs/t3factory/issues/2) and [delivery roadmap](https://github.com/Codeseys-Labs/t3factory/issues/66) retain the active decisions, milestones and acceptance records.
 
 ## One experience, many kinds of work
 
@@ -80,13 +80,12 @@ Adapt Junior's temporary watches, durable automations, pre-agent filtering, run 
 
 ## Delivery priorities and measures
 
-1. Prove one complete thread-to-settlement loop, including a mixed architect/FDE request producing investigation, prototype, diagrams, and customer brief, plus a simple request that completes directly.
-2. Add dependency-aware parallel work, scoped collaboration, independent review, writer isolation, context handoff, and restart recovery.
-3. Make successful plans reusable with quiet, policy-controlled scheduled and event work.
-4. Extend shared placement/admission and remote sandbox provisioning with durable artifacts and recovery.
-5. Expand source, context, and artifact integrations as complete user stories justify them.
+1. Complete the general task factory: capture an outcome, retain a stable task, analyze and decompose when useful, delegate dependency-aware children, assemble and review results, and recover safely. Prove a simple direct request and a mixed coding/knowledge task using local or pasted inputs. Investigate, deep-dive, architect, plan, act and review are adaptive phases, not mandatory gates.
+2. Connect complete work stories. Add optional Linear task intake/linking, CodeRabbit and Greptile review evidence, and scoped email, calendar and knowledge integrations through the same task lifecycle.
+3. Make successful task plans reusable through workflow authoring, with versioned inputs, quiet scheduled/event work and execution on eligible onboarded machines. Reuse existing linked-machine capabilities earlier; qualify broader placement, provisioning and portability here.
+4. Add optional git-platform-native CI/CD execution through adapters that preserve task, invocation and evidence identity. General work remains useful without a repository or hosted automation.
 
-This order does not require discarding existing slices. Measure time to useful result, interventions, review rework, duplicate work, recovery success, cost per accepted outcome, and responsiveness under realistic concurrency. Agent count and token consumption are not productivity measures.
+These P1–P4 priorities do not renumber the tracker's M0–M5 milestones or invalidate accepted local alpha evidence. The roadmap preserves the crosswalk, plan-write and remote-ownership decision gates, and current manual-only delivery controls. Measure time to useful result, interventions, review rework, duplicate work, recovery success, cost per accepted outcome, and responsiveness under realistic concurrency. Agent count and token consumption are not productivity measures.
 
 ## Visual contract
 

@@ -1,0 +1,48 @@
+{
+  "status": "PASS",
+  "scenes": [
+    {
+      "screen": "R8-T01",
+      "textNodes": 63,
+      "controls": 7
+    },
+    {
+      "screen": "R8-T02",
+      "textNodes": 64,
+      "controls": 6
+    },
+    {
+      "screen": "R8-T03",
+      "textNodes": 68,
+      "controls": 6
+    },
+    {
+      "screen": "R8-T04",
+      "textNodes": 87,
+      "controls": 10
+    },
+    {
+      "screen": "R8-T05",
+      "textNodes": 87,
+      "controls": 10
+    },
+    {
+      "screen": "R8-T06",
+      "textNodes": 61,
+      "controls": 5
+    },
+    {
+      "screen": "R8-T07",
+      "textNodes": 64,
+      "controls": 6
+    },
+    {
+      "screen": "R8-T08",
+      "textNodes": 59,
+      "controls": 7
+    }
+  ],
+  "issues": [],
+  "method": "XML parse; unique groups; native text/raster scan; Inter PIL ink bounds and pair overlaps; control/group and destination existence.",
+  "limits": "Static design-source geometry only. No native import, actual pointer journey, interactive input, persistence, connector, runtime, mobile or accessibility proof."
+}

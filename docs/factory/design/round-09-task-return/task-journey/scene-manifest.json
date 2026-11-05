@@ -1,0 +1,2117 @@
+{
+  "schema": "t3factory-task-journey-design/1",
+  "round": "09",
+  "status": "EDITABLE_SOURCE_ONLY",
+  "namespace": "R9 task-return / fictional env-demo / customer-ops",
+  "appHeight": 900,
+  "taskIdentity": "Namespace-qualified proposed local identities, not implemented runtime contracts. Unassigned draft has taskRef=null; capturing assigns local-085 once per alternate first-capture history.",
+  "scenes": [
+    {
+      "id": "R9-T01",
+      "title": "Review the assembled outcome",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "R9 contextual copy of R8-T07. Two alternate fictional histories begin here: preparation acceptance, or separate acceptance + action approval followed by later observed receipts.",
+      "composition": "task-assembled-review-context-copy",
+      "svg": "screens/R9-T01.svg",
+      "svgSha256": "a749eadee03e295b7b7e37261089a3e4b669ad2a54b4211a59304091b494ef54",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084",
+          "displayId": "T-084"
+        },
+        "startsWorkOnOpen": false,
+        "historyBranch": "mixed-review-fork",
+        "execution": "Complete",
+        "status": "ready-for-review",
+        "resultRevision": 1,
+        "stopState": "acknowledged",
+        "planRevision": 1
+      },
+      "containers": [
+        {
+          "id": "assembled-result",
+          "box": [
+            340,
+            288,
+            720,
+            276
+          ]
+        },
+        {
+          "id": "reply-preview",
+          "box": [
+            340,
+            584,
+            720,
+            178
+          ]
+        },
+        {
+          "id": "external-review",
+          "box": [
+            1080,
+            288,
+            500,
+            474
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9-T02",
+      "title": "Preparation accepted · drafts retained",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "Alternate preparation-only history. This branch never contains approval-084-1 or sent/held receipts. No fixed Back control enters the action-completed branch.",
+      "composition": "task-preparation-accepted",
+      "svg": "screens/R9-T02.svg",
+      "svgSha256": "90450f256f61b2e790d2a2e7d9ac30d5c386fc551e1f0be06e1d9268ec335efa",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084",
+          "displayId": "T-084"
+        },
+        "startsWorkOnOpen": false,
+        "historyBranch": "mixed-preparation-only",
+        "execution": "Complete",
+        "status": "preparation-accepted",
+        "acceptedRevision": 1,
+        "acceptanceId": "accept-084-prep-1",
+        "actionApproval": null,
+        "actionReceipts": [],
+        "settlement": "prepared-artifacts-only"
+      },
+      "containers": [
+        {
+          "id": "accepted-preparation",
+          "box": [
+            340,
+            288,
+            820,
+            270
+          ]
+        },
+        {
+          "id": "drafts-retained",
+          "box": [
+            340,
+            580,
+            820,
+            176
+          ]
+        },
+        {
+          "id": "unperformed-actions",
+          "box": [
+            1180,
+            288,
+            400,
+            468
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9-T03",
+      "title": "Completed outcome · observed receipts",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "R9 contextual copy of R8-T08, using original accept-084-1, approval-084-1, mail-receipt-084 and event-084. All values and observed outcomes are fictional.",
+      "composition": "task-completed-context-copy",
+      "svg": "screens/R9-T03.svg",
+      "svgSha256": "1971c5e2cc2c0a97cd2bf8f8e822a9bf4eb108bda832aec94916638af2e877dc",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084",
+          "displayId": "T-084"
+        },
+        "startsWorkOnOpen": false,
+        "historyBranch": "mixed-original-actions",
+        "execution": "Complete",
+        "status": "completed",
+        "acceptedRevision": 1,
+        "acceptanceId": "accept-084-1",
+        "approvalId": "approval-084-1",
+        "actionReceipts": [
+          "mail-receipt-084",
+          "event-084"
+        ],
+        "settlement": "closed"
+      },
+      "containers": [
+        {
+          "id": "completed-result",
+          "box": [
+            340,
+            288,
+            890,
+            204
+          ]
+        },
+        {
+          "id": "action-receipts",
+          "box": [
+            340,
+            512,
+            890,
+            194
+          ]
+        },
+        {
+          "id": "continue-options",
+          "box": [
+            1250,
+            288,
+            330,
+            418
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9-T04",
+      "title": "Reopened · no new work started",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "Same T-084, reopened idle. Reopening changes settlement only. The earlier accepted revision, consumed approval and observed fictional receipts are preserved; no new attempt/action is created.",
+      "composition": "task-reopened-idle-history",
+      "svg": "screens/R9-T04.svg",
+      "svgSha256": "6429da4dcdbceed0b22ed45351e4367c4343eef572daf5cf55ee502a0e45cf1f",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084",
+          "displayId": "T-084"
+        },
+        "startsWorkOnOpen": false,
+        "historyBranch": "mixed-original-actions",
+        "execution": "Idle",
+        "status": "reopened-idle",
+        "acceptedRevision": 1,
+        "acceptanceId": "accept-084-1",
+        "approvalId": "approval-084-1",
+        "actionReceipts": [
+          "mail-receipt-084",
+          "event-084"
+        ],
+        "newAttempts": [],
+        "newActions": [],
+        "completedChildrenReset": false,
+        "settlement": "open"
+      },
+      "containers": [
+        {
+          "id": "follow-up-intent",
+          "box": [
+            340,
+            288,
+            720,
+            270
+          ]
+        },
+        {
+          "id": "retained-result",
+          "box": [
+            340,
+            580,
+            720,
+            180
+          ]
+        },
+        {
+          "id": "preserved-history",
+          "box": [
+            1080,
+            288,
+            500,
+            472
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9-T05",
+      "title": "New task · empty unassigned draft",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "Static capture variant. No TaskRef until capture. The explicit fixture-selection control fills an illustrated example; it is not functional typing. Completed T-085 never routes back into this first-cycle fixture.",
+      "composition": "unassigned-capture-empty",
+      "svg": "screens/R9-T05.svg",
+      "svgSha256": "df2c95d7da34ae75ac1041aec4126fb67d17ac5690ef6545467ce6db63d9f2b8",
+      "state": {
+        "taskRef": null,
+        "startsWorkOnOpen": false,
+        "historyBranch": "simple-first-capture",
+        "execution": "none",
+        "status": "draft",
+        "draftFixture": "empty",
+        "inputId": null
+      },
+      "containers": [
+        {
+          "id": "capture-composer",
+          "box": [
+            340,
+            214,
+            850,
+            530
+          ]
+        },
+        {
+          "id": "capture-settings",
+          "box": [
+            1210,
+            214,
+            370,
+            530
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9-T06",
+      "title": "Supplied-note draft",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "Static capture variant. No TaskRef until capture. The explicit fixture-selection control fills an illustrated example; it is not functional typing. Completed T-085 never routes back into this first-cycle fixture.",
+      "composition": "unassigned-capture-filled",
+      "svg": "screens/R9-T06.svg",
+      "svgSha256": "f8d48df7edad73ce45b2b78003b82e48581c4a2a28a80ea1eb86f8c40355f2e7",
+      "state": {
+        "taskRef": null,
+        "startsWorkOnOpen": false,
+        "historyBranch": "simple-first-capture",
+        "execution": "none",
+        "status": "draft",
+        "draftFixture": "note-supplied",
+        "inputId": "input-085-note-v1"
+      },
+      "containers": [
+        {
+          "id": "capture-composer",
+          "box": [
+            340,
+            214,
+            850,
+            530
+          ]
+        },
+        {
+          "id": "capture-settings",
+          "box": [
+            1210,
+            214,
+            370,
+            530
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9-T07",
+      "title": "Saved T-085 · no work started",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "Alternate capture-only path for the same first T-085 input. Analyze retains local-085; it does not capture a second task. No child or external action records exist for T-085.",
+      "composition": "simple-task-saved",
+      "svg": "screens/R9-T07.svg",
+      "svgSha256": "ed9bdcf67d8244d7974cbb3fb59b70ae3d10be0d89ced2a16b417d45a7e00877",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-085",
+          "displayId": "T-085"
+        },
+        "startsWorkOnOpen": false,
+        "historyBranch": "simple-first-capture",
+        "execution": "Not started",
+        "status": "needs-analysis",
+        "inputId": "input-085-note-v1",
+        "attempts": [],
+        "children": [],
+        "externalActions": []
+      },
+      "containers": [
+        {
+          "id": "saved-input",
+          "box": [
+            340,
+            288,
+            850,
+            480
+          ]
+        },
+        {
+          "id": "simple-details",
+          "box": [
+            1210,
+            288,
+            370,
+            480
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9-T08",
+      "title": "Direct summary in progress",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "Fictional direct execution of T-085. There are no child tasks, plan/phase gates or external actions. Reading the later result is an explicitly temporal fixture navigation, not fabricated progress.",
+      "composition": "simple-task-direct-working",
+      "svg": "screens/R9-T08.svg",
+      "svgSha256": "15b5e19528100d71591145f59018046c3709973e1ca543f848d060f7bdf323d3",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-085",
+          "displayId": "T-085"
+        },
+        "startsWorkOnOpen": false,
+        "historyBranch": "simple-first-capture",
+        "execution": "Working directly",
+        "status": "working",
+        "inputId": "input-085-note-v1",
+        "attemptId": "attempt-085-1",
+        "children": [],
+        "externalActions": []
+      },
+      "containers": [
+        {
+          "id": "direct-work",
+          "box": [
+            340,
+            288,
+            850,
+            480
+          ]
+        },
+        {
+          "id": "simple-details",
+          "box": [
+            1210,
+            288,
+            370,
+            480
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9-T09",
+      "title": "Review the exact summary",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "Same T-085 input and completed attempt. Accept binds summary-085-r1 and its SHA-256; it grants no external action approval. The supplied-note summary is a fictional authored result.",
+      "composition": "simple-task-exact-review",
+      "svg": "screens/R9-T09.svg",
+      "svgSha256": "9822cc5dab12fd6e750c24c38036d2929dab0cd911941b9e0a598a8c0a50a463",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-085",
+          "displayId": "T-085"
+        },
+        "startsWorkOnOpen": false,
+        "historyBranch": "simple-first-capture",
+        "execution": "Complete",
+        "status": "ready-for-review",
+        "inputId": "input-085-note-v1",
+        "attemptId": "attempt-085-1",
+        "resultId": "summary-085-r1",
+        "resultRevision": 1,
+        "children": [],
+        "externalActions": []
+      },
+      "containers": [
+        {
+          "id": "summary-result",
+          "box": [
+            340,
+            288,
+            850,
+            236
+          ]
+        },
+        {
+          "id": "source-and-uncertainty",
+          "box": [
+            340,
+            544,
+            850,
+            224
+          ]
+        },
+        {
+          "id": "simple-details",
+          "box": [
+            1210,
+            288,
+            370,
+            480
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9-T10",
+      "title": "Summary accepted",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "T-085 remains the accepted original task. Next-cycle capture and reopening variants are explicitly outside this slice; no control recycles completed local-085 as a new task.",
+      "composition": "simple-task-accepted",
+      "svg": "screens/R9-T10.svg",
+      "svgSha256": "4beb8e3885c237f44caed52ab32f8a63e47ac752440e5ea3a526429101167941",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-085",
+          "displayId": "T-085"
+        },
+        "startsWorkOnOpen": false,
+        "historyBranch": "simple-first-capture",
+        "execution": "Complete",
+        "status": "accepted",
+        "inputId": "input-085-note-v1",
+        "resultId": "summary-085-r1",
+        "acceptedRevision": 1,
+        "acceptanceId": "accept-085-1",
+        "children": [],
+        "externalActions": [],
+        "settlement": "closed"
+      },
+      "containers": [
+        {
+          "id": "accepted-summary",
+          "box": [
+            340,
+            288,
+            850,
+            380
+          ]
+        },
+        {
+          "id": "simple-details",
+          "box": [
+            1210,
+            288,
+            370,
+            480
+          ]
+        },
+        {
+          "id": "next-cycle-boundary",
+          "box": [
+            340,
+            688,
+            850,
+            94
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9-T11",
+      "title": "Completed child · full knowledge brief",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "Read-only full T-084.2 result with original R8 assignment and explicit originating parent. This child reader returns only to R9-T03, the completed action-receipt parent; opening it starts nothing.",
+      "composition": "completed-child-full-reader",
+      "svg": "screens/R9-T11.svg",
+      "svgSha256": "190410b00e2a733a5ae7f88adaf2fddbf9c2a7a5a3ce017883fd9a3eef275377",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084-2",
+          "displayId": "T-084.2"
+        },
+        "startsWorkOnOpen": false,
+        "historyBranch": "mixed-original-actions",
+        "execution": "Complete",
+        "status": "read-only-child",
+        "parentTaskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084",
+          "displayId": "T-084"
+        },
+        "originScene": "R9-T03",
+        "returnScene": "R9-T03",
+        "resultId": "brief-084-2-r1",
+        "attemptId": "attempt-084-2-1"
+      },
+      "containers": [
+        {
+          "id": "full-child-output",
+          "box": [
+            340,
+            288,
+            820,
+            280
+          ]
+        },
+        {
+          "id": "child-sources",
+          "box": [
+            340,
+            588,
+            820,
+            192
+          ]
+        },
+        {
+          "id": "child-assignment",
+          "box": [
+            1180,
+            288,
+            400,
+            492
+          ]
+        }
+      ]
+    }
+  ],
+  "controls": [
+    {
+      "screen": "R9-T01",
+      "groupId": "R9-T01--nav-work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "label": "Work",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T01",
+      "groupId": "R9-T01--nav-intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "label": "Intake",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T01",
+      "groupId": "R9-T01--nav-workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "label": "Workflows",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T01",
+      "groupId": "R9-T01--nav-more",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "label": "More",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T01",
+      "groupId": "R9-T01--accept-preparation",
+      "box": [
+        340,
+        812,
+        226,
+        32
+      ],
+      "label": "Accept preparation only",
+      "target": "R9-T02",
+      "kind": "fixture-transition",
+      "effect": "Accept exact mixed revision 1 as preparation only under accept-084-prep-1. Narrow settlement to prepared artifacts; no action approval, send, calendar change or receipt."
+    },
+    {
+      "screen": "R9-T01",
+      "groupId": "R9-T01--approve-external",
+      "box": [
+        1270,
+        812,
+        310,
+        32
+      ],
+      "label": "Accept + approve actions",
+      "target": "R9-T03",
+      "kind": "fixture-transition",
+      "effect": "Record separate original accept-084-1 and approval-084-1 for the unchanged exact R8 action envelope. Read a later fictional confirmed-receipt fixture; approval alone does not establish success."
+    },
+    {
+      "screen": "R9-T02",
+      "groupId": "R9-T02--nav-work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "label": "Work",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T02",
+      "groupId": "R9-T02--nav-intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "label": "Intake",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T02",
+      "groupId": "R9-T02--nav-workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "label": "Workflows",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T02",
+      "groupId": "R9-T02--nav-more",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "label": "More",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T02",
+      "groupId": "R9-T02--new-task",
+      "box": [
+        340,
+        812,
+        160,
+        32
+      ],
+      "label": "New task",
+      "target": "R9-T05",
+      "kind": "navigate",
+      "effect": "Leave accepted preparation retained. Open unassigned draft; no task identity or work is created by navigation."
+    },
+    {
+      "screen": "R9-T03",
+      "groupId": "R9-T03--nav-work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "label": "Work",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T03",
+      "groupId": "R9-T03--nav-intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "label": "Intake",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T03",
+      "groupId": "R9-T03--nav-workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "label": "Workflows",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T03",
+      "groupId": "R9-T03--nav-more",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "label": "More",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T03",
+      "groupId": "R9-T03--reopen-task",
+      "box": [
+        1270,
+        470,
+        170,
+        32
+      ],
+      "label": "Reopen task",
+      "target": "R9-T04",
+      "kind": "fixture-transition",
+      "effect": "Reopen the same T-084 as idle. Preserve acceptance, all child results and receipts; start no attempt, reset no child, replay no action."
+    },
+    {
+      "screen": "R9-T03",
+      "groupId": "R9-T03--read-child",
+      "box": [
+        340,
+        812,
+        246,
+        32
+      ],
+      "label": "Read T-084.2 · knowledge brief",
+      "target": "R9-T11",
+      "kind": "history-read",
+      "effect": "Open the complete child result without work or authority changes; return only to this exact completed parent scene."
+    },
+    {
+      "screen": "R9-T03",
+      "groupId": "R9-T03--new-task",
+      "box": [
+        604,
+        812,
+        160,
+        32
+      ],
+      "label": "New task",
+      "target": "R9-T05",
+      "kind": "navigate",
+      "effect": "Open an unassigned draft; retain completed T-084 and receipts. No attempt starts."
+    },
+    {
+      "screen": "R9-T04",
+      "groupId": "R9-T04--nav-work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "label": "Work",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T04",
+      "groupId": "R9-T04--nav-intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "label": "Intake",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T04",
+      "groupId": "R9-T04--nav-workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "label": "Workflows",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T04",
+      "groupId": "R9-T04--nav-more",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "label": "More",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T04",
+      "groupId": "R9-T04--close-without-work",
+      "box": [
+        340,
+        812,
+        228,
+        32
+      ],
+      "label": "Close without new work",
+      "target": "R9-T03",
+      "kind": "fixture-transition",
+      "effect": "Close unchanged reopened T-084 with no new work. Restore exact completed parent display; retain original acceptance and receipts without accepting again or replaying actions."
+    },
+    {
+      "screen": "R9-T04",
+      "groupId": "R9-T04--new-task",
+      "box": [
+        586,
+        812,
+        160,
+        32
+      ],
+      "label": "New task",
+      "target": "R9-T05",
+      "kind": "navigate",
+      "effect": "Leave T-084 idle and preserved. Open an independent unassigned draft; no work starts."
+    },
+    {
+      "screen": "R9-T05",
+      "groupId": "R9-T05--nav-work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "label": "Work",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T05",
+      "groupId": "R9-T05--nav-intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "label": "Intake",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T05",
+      "groupId": "R9-T05--nav-workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "label": "Workflows",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T05",
+      "groupId": "R9-T05--nav-more",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "label": "More",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T05",
+      "groupId": "R9-T05--select-supplied-note-fixture",
+      "box": [
+        360,
+        688,
+        322,
+        32
+      ],
+      "label": "Show supplied-note example (fixture)",
+      "target": "R9-T06",
+      "kind": "fixture-selection",
+      "effect": "Select the illustrated populated draft, still taskRef=null. Does not simulate typing, capture, persistence, model work or elapsed time."
+    },
+    {
+      "screen": "R9-T06",
+      "groupId": "R9-T06--nav-work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "label": "Work",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T06",
+      "groupId": "R9-T06--nav-intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "label": "Intake",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T06",
+      "groupId": "R9-T06--nav-workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "label": "Workflows",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T06",
+      "groupId": "R9-T06--nav-more",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "label": "More",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T06",
+      "groupId": "R9-T06--capture-later",
+      "box": [
+        360,
+        688,
+        166,
+        32
+      ],
+      "label": "Save for later",
+      "target": "R9-T07",
+      "kind": "fixture-transition",
+      "effect": "Capture input-085-note-v1 as local-085 exactly once in this alternate saved path. No provider attempt starts; draft no longer unassigned."
+    },
+    {
+      "screen": "R9-T06",
+      "groupId": "R9-T06--capture-analyze",
+      "box": [
+        544,
+        688,
+        220,
+        32
+      ],
+      "label": "Capture and analyze",
+      "target": "R9-T08",
+      "kind": "fixture-transition",
+      "effect": "Assign local-085 to the same supplied input and admit direct summary work in displayed scope. Destination is the fictional working state; zero children and external actions."
+    },
+    {
+      "screen": "R9-T07",
+      "groupId": "R9-T07--nav-work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "label": "Work",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T07",
+      "groupId": "R9-T07--nav-intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "label": "Intake",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T07",
+      "groupId": "R9-T07--nav-workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "label": "Workflows",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T07",
+      "groupId": "R9-T07--nav-more",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "label": "More",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T07",
+      "groupId": "R9-T07--analyze-saved",
+      "box": [
+        340,
+        812,
+        190,
+        32
+      ],
+      "label": "Analyze task",
+      "target": "R9-T08",
+      "kind": "fixture-transition",
+      "effect": "Admit direct work on existing local-085 using the same captured input and valid supplied-note draft scope. Do not recapture or create children or external actions."
+    },
+    {
+      "screen": "R9-T08",
+      "groupId": "R9-T08--nav-work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "label": "Work",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T08",
+      "groupId": "R9-T08--nav-intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "label": "Intake",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T08",
+      "groupId": "R9-T08--nav-workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "label": "Workflows",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T08",
+      "groupId": "R9-T08--nav-more",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "label": "More",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T08",
+      "groupId": "R9-T08--read-later-result",
+      "box": [
+        340,
+        812,
+        280,
+        32
+      ],
+      "label": "Read later result (fixture)",
+      "target": "R9-T09",
+      "kind": "temporal-fixture-read",
+      "effect": "Read the later fictional completed attempt and exact summary revision 1. Clicking does not finish an attempt or simulate time; no external action."
+    },
+    {
+      "screen": "R9-T09",
+      "groupId": "R9-T09--nav-work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "label": "Work",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T09",
+      "groupId": "R9-T09--nav-intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "label": "Intake",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T09",
+      "groupId": "R9-T09--nav-workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "label": "Workflows",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T09",
+      "groupId": "R9-T09--nav-more",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "label": "More",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T09",
+      "groupId": "R9-T09--accept-summary",
+      "box": [
+        340,
+        812,
+        232,
+        32
+      ],
+      "label": "Accept this summary",
+      "target": "R9-T10",
+      "kind": "fixture-transition",
+      "effect": "Accept exact summary-085-r1 with acceptance accept-085-1 and settle only this concise-summary outcome. No action approval, child or external write."
+    },
+    {
+      "screen": "R9-T10",
+      "groupId": "R9-T10--nav-work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "label": "Work",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T10",
+      "groupId": "R9-T10--nav-intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "label": "Intake",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T10",
+      "groupId": "R9-T10--nav-workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "label": "Workflows",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T10",
+      "groupId": "R9-T10--nav-more",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "label": "More",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T10",
+      "groupId": "R9-T10--new-task-later",
+      "box": [
+        340,
+        812,
+        170,
+        32
+      ],
+      "label": "New task…",
+      "target": null,
+      "kind": "disabled",
+      "effect": "Next-cycle capture not wired: requires another unassigned draft and a future identity distinct from local-085."
+    },
+    {
+      "screen": "R9-T10",
+      "groupId": "R9-T10--reopen-later",
+      "box": [
+        528,
+        812,
+        170,
+        32
+      ],
+      "label": "Reopen task…",
+      "target": null,
+      "kind": "disabled",
+      "effect": "T-085 reopened variant is outside this bounded source journey; acceptance and history must be retained."
+    },
+    {
+      "screen": "R9-T11",
+      "groupId": "R9-T11--nav-work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "label": "Work",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T11",
+      "groupId": "R9-T11--nav-intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "label": "Intake",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T11",
+      "groupId": "R9-T11--nav-workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "label": "Workflows",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T11",
+      "groupId": "R9-T11--nav-more",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "label": "More",
+      "target": null,
+      "kind": "out-of-slice",
+      "effect": "Workspace navigation is outside this bounded source journey; no task action or state change."
+    },
+    {
+      "screen": "R9-T11",
+      "groupId": "R9-T11--return-origin-parent",
+      "box": [
+        340,
+        812,
+        328,
+        32
+      ],
+      "label": "Return to completed T-084",
+      "target": "R9-T03",
+      "kind": "history-read",
+      "effect": "Return exactly to originScene R9-T03 with accept-084-1, approval-084-1 and original action receipts. No dispatch, acceptance or action."
+    }
+  ],
+  "edges": [
+    {
+      "id": "R9-T01--accept-preparation",
+      "from": "R9-T01",
+      "to": "R9-T02",
+      "groupId": "R9-T01--accept-preparation",
+      "box": [
+        340,
+        812,
+        226,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Accept exact mixed revision 1 as preparation only under accept-084-prep-1. Narrow settlement to prepared artifacts; no action approval, send, calendar change or receipt."
+    },
+    {
+      "id": "R9-T01--approve-external",
+      "from": "R9-T01",
+      "to": "R9-T03",
+      "groupId": "R9-T01--approve-external",
+      "box": [
+        1270,
+        812,
+        310,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Record separate original accept-084-1 and approval-084-1 for the unchanged exact R8 action envelope. Read a later fictional confirmed-receipt fixture; approval alone does not establish success."
+    },
+    {
+      "id": "R9-T02--new-task",
+      "from": "R9-T02",
+      "to": "R9-T05",
+      "groupId": "R9-T02--new-task",
+      "box": [
+        340,
+        812,
+        160,
+        32
+      ],
+      "kind": "navigate",
+      "effect": "Leave accepted preparation retained. Open unassigned draft; no task identity or work is created by navigation."
+    },
+    {
+      "id": "R9-T03--reopen-task",
+      "from": "R9-T03",
+      "to": "R9-T04",
+      "groupId": "R9-T03--reopen-task",
+      "box": [
+        1270,
+        470,
+        170,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Reopen the same T-084 as idle. Preserve acceptance, all child results and receipts; start no attempt, reset no child, replay no action."
+    },
+    {
+      "id": "R9-T03--read-child",
+      "from": "R9-T03",
+      "to": "R9-T11",
+      "groupId": "R9-T03--read-child",
+      "box": [
+        340,
+        812,
+        246,
+        32
+      ],
+      "kind": "history-read",
+      "effect": "Open the complete child result without work or authority changes; return only to this exact completed parent scene."
+    },
+    {
+      "id": "R9-T03--new-task",
+      "from": "R9-T03",
+      "to": "R9-T05",
+      "groupId": "R9-T03--new-task",
+      "box": [
+        604,
+        812,
+        160,
+        32
+      ],
+      "kind": "navigate",
+      "effect": "Open an unassigned draft; retain completed T-084 and receipts. No attempt starts."
+    },
+    {
+      "id": "R9-T04--close-without-work",
+      "from": "R9-T04",
+      "to": "R9-T03",
+      "groupId": "R9-T04--close-without-work",
+      "box": [
+        340,
+        812,
+        228,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Close unchanged reopened T-084 with no new work. Restore exact completed parent display; retain original acceptance and receipts without accepting again or replaying actions."
+    },
+    {
+      "id": "R9-T04--new-task",
+      "from": "R9-T04",
+      "to": "R9-T05",
+      "groupId": "R9-T04--new-task",
+      "box": [
+        586,
+        812,
+        160,
+        32
+      ],
+      "kind": "navigate",
+      "effect": "Leave T-084 idle and preserved. Open an independent unassigned draft; no work starts."
+    },
+    {
+      "id": "R9-T05--select-supplied-note-fixture",
+      "from": "R9-T05",
+      "to": "R9-T06",
+      "groupId": "R9-T05--select-supplied-note-fixture",
+      "box": [
+        360,
+        688,
+        322,
+        32
+      ],
+      "kind": "fixture-selection",
+      "effect": "Select the illustrated populated draft, still taskRef=null. Does not simulate typing, capture, persistence, model work or elapsed time."
+    },
+    {
+      "id": "R9-T06--capture-later",
+      "from": "R9-T06",
+      "to": "R9-T07",
+      "groupId": "R9-T06--capture-later",
+      "box": [
+        360,
+        688,
+        166,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Capture input-085-note-v1 as local-085 exactly once in this alternate saved path. No provider attempt starts; draft no longer unassigned."
+    },
+    {
+      "id": "R9-T06--capture-analyze",
+      "from": "R9-T06",
+      "to": "R9-T08",
+      "groupId": "R9-T06--capture-analyze",
+      "box": [
+        544,
+        688,
+        220,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Assign local-085 to the same supplied input and admit direct summary work in displayed scope. Destination is the fictional working state; zero children and external actions."
+    },
+    {
+      "id": "R9-T07--analyze-saved",
+      "from": "R9-T07",
+      "to": "R9-T08",
+      "groupId": "R9-T07--analyze-saved",
+      "box": [
+        340,
+        812,
+        190,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Admit direct work on existing local-085 using the same captured input and valid supplied-note draft scope. Do not recapture or create children or external actions."
+    },
+    {
+      "id": "R9-T08--read-later-result",
+      "from": "R9-T08",
+      "to": "R9-T09",
+      "groupId": "R9-T08--read-later-result",
+      "box": [
+        340,
+        812,
+        280,
+        32
+      ],
+      "kind": "temporal-fixture-read",
+      "effect": "Read the later fictional completed attempt and exact summary revision 1. Clicking does not finish an attempt or simulate time; no external action."
+    },
+    {
+      "id": "R9-T09--accept-summary",
+      "from": "R9-T09",
+      "to": "R9-T10",
+      "groupId": "R9-T09--accept-summary",
+      "box": [
+        340,
+        812,
+        232,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Accept exact summary-085-r1 with acceptance accept-085-1 and settle only this concise-summary outcome. No action approval, child or external write."
+    },
+    {
+      "id": "R9-T11--return-origin-parent",
+      "from": "R9-T11",
+      "to": "R9-T03",
+      "groupId": "R9-T11--return-origin-parent",
+      "box": [
+        340,
+        812,
+        328,
+        32
+      ],
+      "kind": "history-read",
+      "effect": "Return exactly to originScene R9-T03 with accept-084-1, approval-084-1 and original action receipts. No dispatch, acceptance or action."
+    }
+  ],
+  "identities": {
+    "mixedTask": {
+      "environmentId": "env-demo",
+      "projectId": "customer-ops",
+      "id": "local-084",
+      "displayId": "T-084"
+    },
+    "simpleTask": {
+      "environmentId": "env-demo",
+      "projectId": "customer-ops",
+      "id": "local-085",
+      "displayId": "T-085"
+    },
+    "child": {
+      "environmentId": "env-demo",
+      "projectId": "customer-ops",
+      "id": "local-084-2",
+      "displayId": "T-084.2"
+    },
+    "freshDraftTaskRef": null
+  },
+  "alternateHistories": [
+    {
+      "id": "mixed-preparation-only",
+      "entry": "R9-T01",
+      "acceptance": "accept-084-prep-1",
+      "acceptedOutcome": "prepared-artifacts-only",
+      "approval": null,
+      "receipts": [],
+      "cannotReachActionCompletedFixture": true
+    },
+    {
+      "id": "mixed-original-actions",
+      "entry": "R9-T01",
+      "acceptance": "accept-084-1",
+      "approval": "approval-084-1",
+      "receipts": [
+        "mail-receipt-084",
+        "event-084"
+      ],
+      "reopenedSameTask": "R9-T04",
+      "childReaderOriginAndReturn": "R9-T03"
+    },
+    {
+      "id": "simple-first-capture",
+      "capturePaths": [
+        [
+          "R9-T05",
+          "R9-T06",
+          "R9-T08"
+        ],
+        [
+          "R9-T05",
+          "R9-T06",
+          "R9-T07",
+          "R9-T08"
+        ]
+      ],
+      "oneTask": {
+        "environmentId": "env-demo",
+        "projectId": "customer-ops",
+        "id": "local-085",
+        "displayId": "T-085"
+      },
+      "notSequentialDuplicateCaptures": true,
+      "noCompletedTaskToFirstCycleCaptureEdge": true
+    }
+  ],
+  "scopeFixtures": [
+    {
+      "id": "scope-084-research-drafts",
+      "taskRef": {
+        "environmentId": "env-demo",
+        "projectId": "customer-ops",
+        "id": "local-084",
+        "displayId": "T-084"
+      },
+      "owner": "Mara",
+      "inputs": [
+        "Customer email.eml",
+        "Incident note.md",
+        "Availability.txt",
+        "Mara-confirmed time zone"
+      ],
+      "automaticAdmissions": [
+        "read supplied context",
+        "research within permitted context",
+        "summarize",
+        "propose",
+        "draft",
+        "independent review"
+      ],
+      "externalWrites": [],
+      "reopenAloneAdmitsNothing": true,
+      "newFollowupRequiresIntentAndStillValidScope": true,
+      "runtimeAuthority": "ILLUSTRATIVE_ONLY"
+    },
+    {
+      "id": "scope-085-note-summary",
+      "taskRef": {
+        "environmentId": "env-demo",
+        "projectId": "customer-ops",
+        "id": "local-085",
+        "displayId": "T-085"
+      },
+      "owner": "Mara",
+      "inputs": [
+        "input-085-note-v1"
+      ],
+      "automaticAdmissions": [
+        "read supplied note",
+        "summarize",
+        "self-review uncertainty"
+      ],
+      "browsing": false,
+      "accountAccess": false,
+      "externalWrites": [],
+      "runtimeAuthority": "ILLUSTRATIVE_ONLY"
+    }
+  ],
+  "preparedRevisionFixture": {
+    "payload": {
+      "id": "prepared-084-r1",
+      "taskRef": {
+        "environmentId": "env-demo",
+        "projectId": "customer-ops",
+        "id": "local-084",
+        "displayId": "T-084"
+      },
+      "revision": 1,
+      "summary": "The refresh interruption matches the supplied incident note. The response explains the recovery step and links the evidence; the meeting proposal uses the confirmed time zone.",
+      "artifactPreviews": [
+        {
+          "name": "Diagnosis.md",
+          "detail": "2 evidence links · assumption stated"
+        },
+        {
+          "name": "Customer brief.md",
+          "detail": "3 supplied sources · reviewed summary"
+        }
+      ],
+      "replyDraft": "Hi Alex — the incident note says interrupted refreshes keep the last complete index. Please retry refresh and share the trace if it happens again.\nWould Thursday 12 Nov at 2:30 pm PST work for a 30-minute follow-up?\nSources: Incident note.md §2; Customer email.eml.",
+      "meetingProposal": {
+        "owner": "Mara",
+        "title": "Customer follow-up · private hold",
+        "start": "2026-11-12T14:30:00-08:00",
+        "end": "2026-11-12T15:00:00-08:00",
+        "timeZone": "America/Los_Angeles",
+        "attendees": [],
+        "visibility": "private"
+      },
+      "limits": "Exact displayed assembled revision, not an invented full diagnosis artifact; original artifact previews and reviewed envelope derive from bound R8 source."
+    },
+    "sha256": "fa14f989d6a92f58353e3cc8d6b0983fea569c34916c251e9b6ca25e77b80b94",
+    "canonicalization": "UTF-8 JSON, sorted keys, compact separators, unescaped Unicode",
+    "reviewScene": "R9-T01",
+    "reviewSceneSha256": "a749eadee03e295b7b7e37261089a3e4b669ad2a54b4211a59304091b494ef54",
+    "acceptanceBindings": {
+      "accept-084-prep-1": "fa14f989d6a92f58353e3cc8d6b0983fea569c34916c251e9b6ca25e77b80b94",
+      "accept-084-1": "fa14f989d6a92f58353e3cc8d6b0983fea569c34916c251e9b6ca25e77b80b94"
+    },
+    "bindingIsR9AuthoredDesignEvidence": true
+  },
+  "inputs": [
+    {
+      "id": "input-085-note-v1",
+      "text": "Refresh can be interrupted without losing the last complete index. Retry the refresh once. If it repeats, capture the trace and send it to support. We have not confirmed what caused the interruption.",
+      "provenance": "Fictional note supplied by Mara; no independent verification.",
+      "sha256": "bdeddd804a70f70d1b74735e236b56b6da580219200fd2c08ee2c2e8b1992ab4"
+    }
+  ],
+  "results": [
+    {
+      "id": "summary-085-r1",
+      "taskRef": {
+        "environmentId": "env-demo",
+        "projectId": "customer-ops",
+        "id": "local-085",
+        "displayId": "T-085"
+      },
+      "revision": 1,
+      "text": "An interrupted refresh keeps the last complete index. Retry once; if it happens again, capture the trace for support. The cause is still unconfirmed.",
+      "sha256": "7c9c2ecc2997ea603b3c8b22d2eca7ef95398e1c1fddb55ad9e0ce02bb6b34b9",
+      "canonicalization": "UTF-8 text, no trailing newline",
+      "source": "input-085-note-v1",
+      "uncertainty": "Cause unconfirmed; supplied note only",
+      "children": [],
+      "externalActions": []
+    },
+    {
+      "id": "brief-084-2-r1",
+      "taskRef": {
+        "environmentId": "env-demo",
+        "projectId": "customer-ops",
+        "id": "local-084-2",
+        "displayId": "T-084.2"
+      },
+      "artifact": "Customer brief.md",
+      "text": "The supplied incident note says an interrupted refresh keeps the last complete index. Ask Alex to retry the refresh once, then share a trace if the interruption repeats. The customer email reports the interruption but does not establish its cause. A follow-up can check recovery; no customer invitation has been sent.",
+      "sha256": "6ecdd39620aab1b50ef8a205ffb57edd2293777d17c58be4c5e43b2cd0b1ea36",
+      "sources": [
+        "Incident note.md §2",
+        "Customer email.eml",
+        "Availability.txt"
+      ],
+      "uncertainty": "Cause unconfirmed; availability is a proposal only",
+      "dependsOn": [],
+      "inputDependency": "supplied context",
+      "usedBy": "local-084-4",
+      "assignment": {
+        "model": "Sonnet 5.5",
+        "harness": "Claude Code",
+        "environment": "Workstation",
+        "environmentId": "env-demo",
+        "attemptId": "attempt-084-2-1",
+        "attempt": 1,
+        "status": "Complete"
+      }
+    }
+  ],
+  "simpleAssignment": {
+    "taskRef": {
+      "environmentId": "env-demo",
+      "projectId": "customer-ops",
+      "id": "local-085",
+      "displayId": "T-085"
+    },
+    "model": "GPT-6.1 Luna",
+    "harness": "Codex",
+    "environment": "Workstation",
+    "environmentId": "env-demo",
+    "attemptId": "attempt-085-1",
+    "attempt": 1
+  },
+  "acceptanceFixtures": [
+    {
+      "id": "accept-084-prep-1",
+      "taskRef": {
+        "environmentId": "env-demo",
+        "projectId": "customer-ops",
+        "id": "local-084",
+        "displayId": "T-084"
+      },
+      "revision": 1,
+      "branch": "mixed-preparation-only",
+      "acceptedArtifactNames": [
+        "Diagnosis.md",
+        "Customer brief.md",
+        "Reply.eml",
+        "Meeting proposal"
+      ],
+      "artifactBinding": "unchanged R8 reviewed action envelope + R8 source hash; email and proposal accepted as drafts",
+      "reviewedEnvelopeSha256": "b5727b31a0492163e2e8921cfc0bdb5e45be56694767158ed007e469bcd97266",
+      "owner": "Mara",
+      "acceptsActions": false,
+      "settledOutcome": "preparation-only",
+      "email": "Not sent",
+      "calendar": "Not changed"
+    },
+    {
+      "id": "accept-084-1",
+      "taskRef": {
+        "environmentId": "env-demo",
+        "projectId": "customer-ops",
+        "id": "local-084",
+        "displayId": "T-084"
+      },
+      "revision": 1,
+      "branch": "mixed-original-actions",
+      "owner": "Mara",
+      "reviewedEnvelopeSha256": "b5727b31a0492163e2e8921cfc0bdb5e45be56694767158ed007e469bcd97266",
+      "separateApproval": "approval-084-1"
+    },
+    {
+      "id": "accept-085-1",
+      "taskRef": {
+        "environmentId": "env-demo",
+        "projectId": "customer-ops",
+        "id": "local-085",
+        "displayId": "T-085"
+      },
+      "revision": 1,
+      "resultId": "summary-085-r1",
+      "resultSha256": "7c9c2ecc2997ea603b3c8b22d2eca7ef95398e1c1fddb55ad9e0ce02bb6b34b9",
+      "owner": "Mara",
+      "actionApproval": null
+    }
+  ],
+  "reviewedActionEnvelope": {
+    "payload": {
+      "taskRef": {
+        "environmentId": "env-demo",
+        "projectId": "customer-ops",
+        "id": "local-084",
+        "displayId": "T-084"
+      },
+      "planRevision": 1,
+      "email": {
+        "to": [
+          "alex@example.test"
+        ],
+        "subject": "Search refresh follow-up",
+        "body": "Hi Alex — the incident note says interrupted refreshes keep the last complete index. Please retry refresh and share the trace if it happens again.\nWould Thursday 12 Nov at 2:30 pm PST work for a 30-minute follow-up?\nSources: Incident note.md §2; Customer email.eml."
+      },
+      "calendar": {
+        "owner": "Mara",
+        "title": "Customer follow-up · private hold",
+        "start": "2026-11-12T14:30:00-08:00",
+        "end": "2026-11-12T15:00:00-08:00",
+        "timeZone": "America/Los_Angeles",
+        "attendees": [],
+        "visibility": "private"
+      }
+    },
+    "sha256": "b5727b31a0492163e2e8921cfc0bdb5e45be56694767158ed007e469bcd97266",
+    "canonicalization": "UTF-8 JSON, sorted keys, compact separators, unescaped Unicode",
+    "acceptanceFixture": "accept-084-1",
+    "approvalFixture": "approval-084-1",
+    "receiptFixtures": [
+      "mail-receipt-084",
+      "event-084"
+    ],
+    "allValuesFictional": true
+  },
+  "actionEvidence": {
+    "allValuesFictional": true,
+    "approvalDoesNotProveSuccess": true,
+    "approval": "approval-084-1",
+    "receipts": [
+      {
+        "id": "mail-receipt-084",
+        "observed": "Email sent",
+        "time": "10:24",
+        "contentBinding": "b5727b31a0492163e2e8921cfc0bdb5e45be56694767158ed007e469bcd97266"
+      },
+      {
+        "id": "event-084",
+        "observed": "Private calendar hold created",
+        "start": "2026-11-12T14:30:00-08:00",
+        "attendees": []
+      }
+    ],
+    "importedFromR8": true,
+    "unknownOutcomePolicy": "Reconcile before proposing a duplicate; never infer a new approval from acceptance or reopen."
+  },
+  "reopenInvariant": {
+    "taskRef": {
+      "environmentId": "env-demo",
+      "projectId": "customer-ops",
+      "id": "local-084",
+      "displayId": "T-084"
+    },
+    "preservedAcceptance": "accept-084-1",
+    "preservedRevision": 1,
+    "preservedApproval": "approval-084-1",
+    "preservedReceipts": [
+      "mail-receipt-084",
+      "event-084"
+    ],
+    "newAttempts": [],
+    "newActions": [],
+    "resetsCompletedChildren": false,
+    "closeWithoutNewWorkReturns": "R9-T03",
+    "furtherWork": "Requires new intent within still-valid research/drafts scope; no continuation submission is simulated."
+  },
+  "journeys": {
+    "preparationOnly": [
+      "R9-T01",
+      "R9-T02",
+      "R9-T05"
+    ],
+    "actionsThenReopen": [
+      "R9-T01",
+      "R9-T03",
+      "R9-T04",
+      "R9-T03"
+    ],
+    "childReader": [
+      "R9-T03",
+      "R9-T11",
+      "R9-T03"
+    ],
+    "simpleDirect": [
+      "R9-T05",
+      "R9-T06",
+      "R9-T08",
+      "R9-T09",
+      "R9-T10"
+    ],
+    "simpleSaved": [
+      "R9-T05",
+      "R9-T06",
+      "R9-T07",
+      "R9-T08",
+      "R9-T09",
+      "R9-T10"
+    ]
+  },
+  "sourceBinding": {
+    "r8Files": {
+      "round-08-task-loop/build-native.py": "969a8a8284cf24e2d1a129dfb38b153921960d581643c357ca558eeab7291b17",
+      "round-08-task-loop/build-review.py": "a853d8fe72cc511d211a741b9354e32248079eb9858a8cada3dc414ee20d0d4d",
+      "round-08-task-loop/native-evidence.json": "a7dbe5855bbfee218d33f2ffdf959a529d5576e29abb3809e00e5a042f962994",
+      "round-08-task-loop/native-import.js": "d7e021c024f24276cfbd8bb652fa0a3d99be890c791c8cfeb91e2104de9caa4d",
+      "round-08-task-loop/native-package.json": "3d11e2ca9ad6cab7165f1190b5b7a5c402935a6c03e3205180597e0ad9905cbf",
+      "round-08-task-loop/README.md": "debd4a48161f384b9be52cbe33b53a8a324d44a9c6151122db9ff4e0c5fecc7c",
+      "round-08-task-loop/review.html": "8b2af5631c577cc7207998976446d9d06f2b1ec8d0fba1d1987372efc66acb94",
+      "round-08-task-loop/task-journey/build.py": "99dcd60c8a2c91bca3cc6ea991717fc846207de163f22ecfb0b4f05ae4a32a50",
+      "round-08-task-loop/task-journey/decisions.md": "efeadbd4f66eaed04beecd1205fdefa9e7f54797a98d28a9ec2e92fbc091bdd6",
+      "round-08-task-loop/task-journey/previews/R8-T01.png": "a043dc813da2817a9a1aba7e8700726b745c9563990bf93f3f107d341368c60a",
+      "round-08-task-loop/task-journey/previews/R8-T02.png": "8ea66044d0d9c148dfd85f4046b2e7e9200e60f037e962338f556d6abe263056",
+      "round-08-task-loop/task-journey/previews/R8-T03.png": "8ad641eff6b0947ec9f916bbc360915322630feb7428de397f5cce8bbb151c4d",
+      "round-08-task-loop/task-journey/previews/R8-T04.png": "7b6150776ad4ea2277c9af86228dd4d8c819314016fc4e856c30c21a4cbc44bd",
+      "round-08-task-loop/task-journey/previews/R8-T05.png": "35c39a143a1d82c001692e8072e7157c7d45d380e67c6aaa4d2901f6442e4c36",
+      "round-08-task-loop/task-journey/previews/R8-T06.png": "eb455d088f3610d03fb7cc0f88b76e2b65f61da86a9fe5e283536ce92dbdde9f",
+      "round-08-task-loop/task-journey/previews/R8-T07.png": "3382e78af2b54fae72d5c80506a44e3e61fc404d5bde3fe5c970d16e76e773b6",
+      "round-08-task-loop/task-journey/previews/R8-T08.png": "98c163fdbdebf6d9b43c8e5d7a462514d6387f5755139542f2788b96cf8a4cf6",
+      "round-08-task-loop/task-journey/scene-manifest.json": "9b274d126f427c7581ffa59ff6f3029a9f1e90c939fc28bf927e698d70afaecd",
+      "round-08-task-loop/task-journey/screens/R8-T01.svg": "6daaec3a356a0e36a4f13085db8b7fb007d7f59741fce21402d4668517ed2e93",
+      "round-08-task-loop/task-journey/screens/R8-T02.svg": "9d4d8fa1d466c3b3b676ed7459bbd37cdd6ed2894520c917d13825d051bd81c1",
+      "round-08-task-loop/task-journey/screens/R8-T03.svg": "4080e965a97cdda10b6ae3367982540b0bf704aceac659d003555ce23b8dc9a1",
+      "round-08-task-loop/task-journey/screens/R8-T04.svg": "9918377fdbd15b16b99fec96f00eb08a21fde1a3c39e79f8cd466147e3232d5b",
+      "round-08-task-loop/task-journey/screens/R8-T05.svg": "00f40a926e533b5232fd48e3722a2c32aae5ea6820c25a0f26aed7a6baa6bfc6",
+      "round-08-task-loop/task-journey/screens/R8-T06.svg": "210edcf362b9e6233fdfc9dcba5bce197d8caf43f48d679bb2e018829357acb4",
+      "round-08-task-loop/task-journey/screens/R8-T07.svg": "8307d5ac49a1c3b675729c71ad4d575148f49e56128d94ce8efa9266dce53e84",
+      "round-08-task-loop/task-journey/screens/R8-T08.svg": "d30bfdaf56ab0e941bf24c14820734ff70117d87571e838a8b0ea796385c3e30",
+      "round-08-task-loop/task-journey/validation.json": "48b3dd317058cc63f46fc2e8a5863d24b732cd37e0c8bbf1d79e33a21f22f4e7",
+      "round-08-task-loop/wayfinder/01-task-navigation.mmd": "fbccb05205c7b26cdd62bac047492d979d500b54416e3b3deddd028c8b793c77",
+      "round-08-task-loop/wayfinder/01-task-navigation.png": "57890bd2b34a3e3e1086151916722b28bbc52b1c6e77584f050e6b1bc5815e5d",
+      "round-08-task-loop/wayfinder/01-task-navigation.svg": "528881c9a3d4f32ffc3f442b5590d7d9ee8dc0a81bc27769df59522f550f88ec",
+      "round-08-task-loop/wayfinder/02-task-lifecycle.mmd": "fcd995ac1ac8110e5a1637d5910d09e979b931e2414c7375a09c170aea018470",
+      "round-08-task-loop/wayfinder/02-task-lifecycle.png": "8a368cf2dd824a0288b7f0ef92cbf65d5bfe1c866d0bda4703d6b028f7829e13",
+      "round-08-task-loop/wayfinder/02-task-lifecycle.svg": "b0fe6b8d3c864dfb9d137829ba665d838cdf3a5d02abd8f0579e5387f3b8608a",
+      "round-08-task-loop/wayfinder/generate.py": "9b381a7388ea23ca8f7030dc48260d50d9bd1e4ada288369dc774dff92033676",
+      "round-08-task-loop/wayfinder/maps.json": "e210b4298117583bdd6b2380b5a0eeddb467ca55dccb46b2245f46be994ac29b",
+      "round-08-task-loop/wayfinder/README.md": "4f7b16b06dccdeb1af03fac435c4a9c91a4b1d76a12a39784db45d5b3d1271cc"
+    },
+    "r8ByteIdenticalAfterGeneration": true,
+    "reuse": "Import R8 definitions without main(); own Page/action/finish/registries over R8.M.Canvas; no inherited T-084 page content or output globals."
+  },
+  "qualification": {
+    "authored": true,
+    "staticGeometry": "PASS",
+    "rendered": true,
+    "nativeImport": "UNRUN",
+    "pointerVerified": "UNRUN",
+    "runtime": "UNIMPLEMENTED_DESIGN_FIXTURE",
+    "mobile": "UNQUALIFIED",
+    "accessibility": "UNQUALIFIED",
+    "renderEvidenceSha256": "84517d1dfdb551d02932e8402eda382df199a2cb2233dd5ab0d03dfcd5f254cf"
+  }
+}

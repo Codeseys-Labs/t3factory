@@ -1,0 +1,1114 @@
+{
+  "schemaVersion": 1,
+  "status": "Proposed Round-08 product navigation and lifecycle, using November 4 priority IDs P1-P4. These views complement canonical Wayfinder issue #2 and delivery roadmap #66; they do not renumber tracker milestones M0-M5 or slices W1-W5. Existing foundations are explicitly labeled; no runtime qualification is implied.",
+  "trackerProvenance": {
+    "decisionMap": "https://github.com/Codeseys-Labs/t3factory/issues/2",
+    "deliveryRoadmap": "https://github.com/Codeseys-Labs/t3factory/issues/66",
+    "prioritySequence": "Proposed 2026-11-04 P1-P4; not a tracker milestone migration",
+    "crosswalk": {
+      "P1": "Reuse M1/W1-W2 foundations and W3 evidence; extend M2/W4-W5 under #63 authority.",
+      "P2": "Prioritize selected M5 integration lanes; preserve existing source and delivery contracts.",
+      "P3": "M3 repeatability plus relevant M4 placement, with #65 ownership/isolation still separate.",
+      "P4": "Optional later platform CI target; preserve current M0 manual validation/build/publication gates."
+    }
+  },
+  "edgeKinds": {
+    "navigate": {
+      "label": "Open a view",
+      "dash": "",
+      "color": "#8cb7ff"
+    },
+    "return": {
+      "label": "Return to origin",
+      "dash": "7 5",
+      "color": "#b4bdca"
+    },
+    "context": {
+      "label": "Optional context",
+      "dash": "2 5",
+      "color": "#b4bdca"
+    },
+    "progress": {
+      "label": "Progress under granted scope",
+      "dash": "",
+      "color": "#8cb7ff"
+    },
+    "control": {
+      "label": "Exception or replan",
+      "dash": "7 5",
+      "color": "#ebc878"
+    }
+  },
+  "views": [
+    {
+      "id": "R8-WF01",
+      "file": "01-task-navigation",
+      "title": "Where do I go to move this task forward?",
+      "description": "A proposed task-centered navigation map. Capture and Intake lead to the same local task. Conversation, child work, evidence and attention retain that task context. Connections, workflows and machines remain optional secondary surfaces.",
+      "width": 1000,
+      "height": 1230,
+      "legend": [
+        "navigate",
+        "return",
+        "context"
+      ],
+      "notes": [
+        "One local task identity; optional source references and execution threads remain distinct records.",
+        "Close a detail to restore the task; Back restores the originating Work layout, selection and filter."
+      ],
+      "sections": [
+        {
+          "text": "Optional surfaces — return to the task that opened them",
+          "x": 50,
+          "y": 884
+        }
+      ],
+      "nodes": [
+        {
+          "id": "capture",
+          "title": "Capture an outcome",
+          "badge": "P1 PROPOSAL",
+          "x": 50,
+          "y": 180,
+          "w": 260,
+          "h": 100,
+          "lines": [
+            "Text, links, files or action items",
+            "Analyze now or save for later"
+          ],
+          "screenRefs": [
+            "R8-T01"
+          ]
+        },
+        {
+          "id": "intake",
+          "title": "Intake",
+          "badge": "P1 REFINEMENT",
+          "x": 370,
+          "y": 180,
+          "w": 260,
+          "h": 100,
+          "lines": [
+            "Capture or review new arrivals",
+            "Deduplicate; keep source context"
+          ],
+          "screenRefs": [
+            "R8-T01"
+          ]
+        },
+        {
+          "id": "sources",
+          "title": "Optional sources",
+          "badge": "P2 EXPANSION",
+          "x": 690,
+          "y": 180,
+          "w": 260,
+          "h": 100,
+          "lines": [
+            "Issues, email, calendar, knowledge",
+            "Input context grants no authority"
+          ]
+        },
+        {
+          "id": "work",
+          "title": "Work",
+          "badge": "DESIGN FOUNDATION",
+          "x": 50,
+          "y": 390,
+          "w": 260,
+          "h": 120,
+          "lines": [
+            "Board, table and list",
+            "Keep scope, filter and selection",
+            "Open the same local task"
+          ]
+        },
+        {
+          "id": "task",
+          "title": "The same local task",
+          "badge": "P1 PROPOSED EXTENSION",
+          "x": 370,
+          "y": 390,
+          "w": 260,
+          "h": 120,
+          "lines": [
+            "Outcome, state and next action",
+            "Plan, attempts and evidence",
+            "Optional source / thread links"
+          ],
+          "screenRefs": [
+            "R8-T02",
+            "R8-T03",
+            "R8-T04"
+          ]
+        },
+        {
+          "id": "attention",
+          "title": "Needs your decision",
+          "badge": "P1 PROPOSAL",
+          "x": 690,
+          "y": 390,
+          "w": 260,
+          "h": 120,
+          "lines": [
+            "A precise question or blocker",
+            "Open the task at that context",
+            "Answer or revise the task"
+          ],
+          "screenRefs": [
+            "R8-T06"
+          ]
+        },
+        {
+          "id": "conversation",
+          "title": "Task conversation",
+          "badge": "ORDINARY THREAD FOUNDATION",
+          "x": 50,
+          "y": 680,
+          "w": 260,
+          "h": 120,
+          "lines": [
+            "Discuss and steer the outcome",
+            "An ordinary thread coordinates",
+            "Keep the task context"
+          ]
+        },
+        {
+          "id": "children",
+          "title": "Child tasks and attempts",
+          "badge": "P1 PROPOSAL",
+          "x": 370,
+          "y": 680,
+          "w": 260,
+          "h": 120,
+          "lines": [
+            "Dependencies and assignments",
+            "Model, harness and machine",
+            "Attempts return to their task"
+          ],
+          "screenRefs": [
+            "R8-T04",
+            "R8-T05",
+            "R8-T06"
+          ]
+        },
+        {
+          "id": "results",
+          "title": "Results and review",
+          "badge": "P1 PROPOSAL",
+          "x": 690,
+          "y": 680,
+          "w": 260,
+          "h": 120,
+          "lines": [
+            "Artifacts and uncertainty",
+            "Proposed action / actual receipt",
+            "Review keeps the same task"
+          ],
+          "screenRefs": [
+            "R8-T07",
+            "R8-T08"
+          ]
+        },
+        {
+          "id": "connections",
+          "title": "Connections",
+          "badge": "P2 INTEGRATIONS",
+          "x": 50,
+          "y": 980,
+          "w": 260,
+          "h": 110,
+          "lines": [
+            "Optional source or action access",
+            "Local work survives disconnect"
+          ]
+        },
+        {
+          "id": "workflows",
+          "title": "Reusable workflows",
+          "badge": "P3 · OPTIONAL P4 CI",
+          "x": 370,
+          "y": 980,
+          "w": 260,
+          "h": 110,
+          "lines": [
+            "Reuse a successful task plan",
+            "Each run enters the same loop"
+          ]
+        },
+        {
+          "id": "machines",
+          "title": "Machines and placement",
+          "badge": "EXISTING TARGETS + P1/P3",
+          "x": 690,
+          "y": 980,
+          "w": 260,
+          "h": 110,
+          "lines": [
+            "Eligible linked environments",
+            "Machine choice differs from model"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "id": "n01",
+          "source": "capture",
+          "target": "task",
+          "kind": "navigate",
+          "label": "capture task",
+          "points": [
+            [
+              180,
+              280
+            ],
+            [
+              180,
+              335
+            ],
+            [
+              440,
+              335
+            ],
+            [
+              440,
+              390
+            ]
+          ],
+          "labelAt": [
+            290,
+            320
+          ]
+        },
+        {
+          "id": "n02",
+          "source": "sources",
+          "target": "intake",
+          "kind": "context",
+          "label": "arrivals",
+          "points": [
+            [
+              690,
+              250
+            ],
+            [
+              630,
+              250
+            ]
+          ],
+          "labelAt": [
+            660,
+            235
+          ]
+        },
+        {
+          "id": "n03",
+          "source": "intake",
+          "target": "task",
+          "kind": "navigate",
+          "label": "analyze / save",
+          "points": [
+            [
+              500,
+              280
+            ],
+            [
+              500,
+              390
+            ]
+          ],
+          "labelAt": [
+            575,
+            338
+          ]
+        },
+        {
+          "id": "n04",
+          "source": "work",
+          "target": "task",
+          "kind": "navigate",
+          "label": "open",
+          "points": [
+            [
+              310,
+              430
+            ],
+            [
+              370,
+              430
+            ]
+          ],
+          "labelAt": [
+            340,
+            417
+          ]
+        },
+        {
+          "id": "n05",
+          "source": "task",
+          "target": "work",
+          "kind": "return",
+          "label": "back",
+          "points": [
+            [
+              370,
+              480
+            ],
+            [
+              310,
+              480
+            ]
+          ],
+          "labelAt": [
+            340,
+            467
+          ]
+        },
+        {
+          "id": "n06",
+          "source": "attention",
+          "target": "task",
+          "kind": "navigate",
+          "label": "open",
+          "points": [
+            [
+              690,
+              430
+            ],
+            [
+              630,
+              430
+            ]
+          ],
+          "labelAt": [
+            660,
+            417
+          ]
+        },
+        {
+          "id": "n07",
+          "source": "task",
+          "target": "attention",
+          "kind": "context",
+          "label": "alert",
+          "points": [
+            [
+              630,
+              480
+            ],
+            [
+              690,
+              480
+            ]
+          ],
+          "labelAt": [
+            660,
+            467
+          ]
+        },
+        {
+          "id": "n08",
+          "source": "task",
+          "target": "conversation",
+          "kind": "navigate",
+          "label": "discuss",
+          "points": [
+            [
+              420,
+              510
+            ],
+            [
+              420,
+              600
+            ],
+            [
+              180,
+              600
+            ],
+            [
+              180,
+              680
+            ]
+          ],
+          "labelAt": [
+            290,
+            584
+          ]
+        },
+        {
+          "id": "n09",
+          "source": "task",
+          "target": "children",
+          "kind": "navigate",
+          "label": "expand",
+          "points": [
+            [
+              500,
+              510
+            ],
+            [
+              500,
+              680
+            ]
+          ],
+          "labelAt": [
+            544,
+            644
+          ]
+        },
+        {
+          "id": "n10",
+          "source": "task",
+          "target": "results",
+          "kind": "navigate",
+          "label": "review",
+          "points": [
+            [
+              580,
+              510
+            ],
+            [
+              580,
+              600
+            ],
+            [
+              820,
+              600
+            ],
+            [
+              820,
+              680
+            ]
+          ],
+          "labelAt": [
+            707,
+            584
+          ]
+        },
+        {
+          "id": "n11",
+          "source": "task",
+          "target": "connections",
+          "kind": "context",
+          "label": "optional; retain task origin",
+          "points": [
+            [
+              610,
+              510
+            ],
+            [
+              610,
+              546
+            ],
+            [
+              970,
+              546
+            ],
+            [
+              970,
+              930
+            ],
+            [
+              180,
+              930
+            ],
+            [
+              180,
+              980
+            ]
+          ],
+          "labelAt": [
+            510,
+            915
+          ]
+        },
+        {
+          "id": "n12",
+          "source": "task",
+          "target": "workflows",
+          "kind": "context",
+          "label": "",
+          "points": [
+            [
+              610,
+              510
+            ],
+            [
+              610,
+              546
+            ],
+            [
+              970,
+              546
+            ],
+            [
+              970,
+              930
+            ],
+            [
+              500,
+              930
+            ],
+            [
+              500,
+              980
+            ]
+          ]
+        },
+        {
+          "id": "n13",
+          "source": "task",
+          "target": "machines",
+          "kind": "context",
+          "label": "",
+          "points": [
+            [
+              610,
+              510
+            ],
+            [
+              610,
+              546
+            ],
+            [
+              970,
+              546
+            ],
+            [
+              970,
+              930
+            ],
+            [
+              820,
+              930
+            ],
+            [
+              820,
+              980
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R8-WF02",
+      "file": "02-task-lifecycle",
+      "title": "How does one task reach a reviewed outcome?",
+      "description": "The proposed P1 task loop uses adaptive analysis, dependency-ready child work and admitted execution attempts. Simple work runs directly. Exceptions retain ownership until stop acknowledgement or fencing; reviewed external actions record observed receipts. Successful plans can later become P3 workflows with optional P4 CI targets.",
+      "width": 1000,
+      "height": 1480,
+      "legend": [
+        "progress",
+        "control",
+        "context"
+      ],
+      "notes": [
+        "Coordinator owns task, plan and dispatch; executor owns processes, workspace and observed evidence.",
+        "Completion, acceptance, delivery and settlement remain separate. This is proposed behavior, not runtime proof."
+      ],
+      "sections": [
+        {
+          "text": "Phases are adaptive: investigate → deep-dive → architect → plan → act → review",
+          "x": 50,
+          "y": 130
+        }
+      ],
+      "nodes": [
+        {
+          "id": "capture",
+          "title": "Capture → local task",
+          "badge": "P1 PROPOSAL",
+          "x": 350,
+          "y": 170,
+          "w": 300,
+          "h": 100,
+          "lines": [
+            "One task; optional source context",
+            "Save for later or analyze now"
+          ],
+          "screenRefs": [
+            "R8-T01",
+            "R8-T02"
+          ]
+        },
+        {
+          "id": "analyze",
+          "title": "Analyze the outcome",
+          "badge": "P1 PROPOSAL",
+          "x": 350,
+          "y": 310,
+          "w": 300,
+          "h": 110,
+          "lines": [
+            "Find criteria and constraints",
+            "Request blocking missing context",
+            "Choose the smallest useful plan"
+          ],
+          "screenRefs": [
+            "R8-T03"
+          ]
+        },
+        {
+          "id": "plan",
+          "title": "Plan and child tasks",
+          "badge": "P1 PROPOSAL",
+          "x": 50,
+          "y": 480,
+          "w": 350,
+          "h": 110,
+          "lines": [
+            "Dependencies decide readiness",
+            "Child purpose, criteria and output",
+            "Progress stays within granted scope"
+          ],
+          "screenRefs": [
+            "R8-T04"
+          ]
+        },
+        {
+          "id": "direct",
+          "title": "Simple task: act directly",
+          "badge": "P1 PROPOSAL",
+          "x": 650,
+          "y": 480,
+          "w": 300,
+          "h": 110,
+          "lines": [
+            "Same task and evidence",
+            "No decomposition or setup required",
+            "Example: summarize a supplied note"
+          ]
+        },
+        {
+          "id": "routing",
+          "title": "Admit a ready child",
+          "badge": "P1 PROPOSAL",
+          "x": 50,
+          "y": 670,
+          "w": 350,
+          "h": 110,
+          "lines": [
+            "Auto: model + harness + machine",
+            "Check capability, access and capacity",
+            "Show the admitted assignment"
+          ],
+          "screenRefs": [
+            "R8-T05"
+          ]
+        },
+        {
+          "id": "control",
+          "title": "Hold, stop or recover",
+          "badge": "P1 PROPOSAL",
+          "x": 650,
+          "y": 670,
+          "w": 300,
+          "h": 150,
+          "lines": [
+            "Retain the task when blocked",
+            "Pause future starts; show active work",
+            "Stop requested is not stopped",
+            "Wait for acknowledgement or fencing",
+            "Unknown result: reconcile before retry"
+          ],
+          "screenRefs": [
+            "R8-T06"
+          ]
+        },
+        {
+          "id": "attempt",
+          "title": "Execute an owned attempt",
+          "badge": "P1 PROPOSAL",
+          "x": 50,
+          "y": 860,
+          "w": 350,
+          "h": 110,
+          "lines": [
+            "Lineage records what actually ran",
+            "Late results cannot replace newer work",
+            "Return evidence and uncertainty"
+          ],
+          "screenRefs": [
+            "R8-T05",
+            "R8-T06"
+          ]
+        },
+        {
+          "id": "evidence",
+          "title": "Assemble the results",
+          "badge": "P1 PROPOSAL",
+          "x": 650,
+          "y": 860,
+          "w": 300,
+          "h": 110,
+          "lines": [
+            "Reconcile results and disagreements",
+            "Preserve artifacts, sources and failures",
+            "Keep blocked work visible"
+          ],
+          "screenRefs": [
+            "R8-T07"
+          ]
+        },
+        {
+          "id": "review",
+          "title": "Review the outcome",
+          "badge": "P1 PROPOSAL",
+          "x": 350,
+          "y": 1070,
+          "w": 300,
+          "h": 110,
+          "lines": [
+            "Check criteria and evidence",
+            "Inspect proposed external actions",
+            "Revise the plan when needed"
+          ],
+          "screenRefs": [
+            "R8-T07"
+          ]
+        },
+        {
+          "id": "outcome",
+          "title": "Record the outcome",
+          "badge": "P1 CORE · P2 ACTION ADAPTERS",
+          "x": 350,
+          "y": 1260,
+          "w": 300,
+          "h": 110,
+          "lines": [
+            "Act within authorized scope",
+            "Observe send/event/delivery receipts",
+            "Accept or settle with explicit meaning"
+          ],
+          "screenRefs": [
+            "R8-T08"
+          ]
+        },
+        {
+          "id": "reuse",
+          "title": "Save as workflow",
+          "badge": "P3 · OPTIONAL P4 CI",
+          "x": 730,
+          "y": 1260,
+          "w": 220,
+          "h": 110,
+          "lines": [
+            "Version inputs and policy",
+            "New run uses the same loop",
+            "Eligible machine or CI target"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "id": "l01",
+          "source": "capture",
+          "target": "analyze",
+          "kind": "progress",
+          "label": "begin under policy",
+          "points": [
+            [
+              500,
+              270
+            ],
+            [
+              500,
+              310
+            ]
+          ],
+          "labelAt": [
+            610,
+            289
+          ]
+        },
+        {
+          "id": "l02",
+          "source": "analyze",
+          "target": "plan",
+          "kind": "progress",
+          "label": "decompose when useful",
+          "points": [
+            [
+              420,
+              420
+            ],
+            [
+              420,
+              445
+            ],
+            [
+              225,
+              445
+            ],
+            [
+              225,
+              480
+            ]
+          ],
+          "labelAt": [
+            270,
+            431
+          ]
+        },
+        {
+          "id": "l03",
+          "source": "analyze",
+          "target": "direct",
+          "kind": "progress",
+          "label": "simple outcome",
+          "points": [
+            [
+              580,
+              420
+            ],
+            [
+              580,
+              445
+            ],
+            [
+              800,
+              445
+            ],
+            [
+              800,
+              480
+            ]
+          ],
+          "labelAt": [
+            739,
+            431
+          ]
+        },
+        {
+          "id": "l04",
+          "source": "plan",
+          "target": "routing",
+          "kind": "progress",
+          "label": "dependency-ready",
+          "points": [
+            [
+              225,
+              590
+            ],
+            [
+              225,
+              670
+            ]
+          ],
+          "labelAt": [
+            225,
+            635
+          ]
+        },
+        {
+          "id": "l05",
+          "source": "routing",
+          "target": "attempt",
+          "kind": "progress",
+          "label": "admitted assignment",
+          "points": [
+            [
+              225,
+              780
+            ],
+            [
+              225,
+              860
+            ]
+          ],
+          "labelAt": [
+            225,
+            825
+          ]
+        },
+        {
+          "id": "l06",
+          "source": "attempt",
+          "target": "evidence",
+          "kind": "progress",
+          "label": "observed evidence",
+          "points": [
+            [
+              400,
+              915
+            ],
+            [
+              650,
+              915
+            ]
+          ],
+          "labelAt": [
+            525,
+            900
+          ]
+        },
+        {
+          "id": "l07",
+          "source": "direct",
+          "target": "evidence",
+          "kind": "progress",
+          "label": "direct result",
+          "points": [
+            [
+              950,
+              535
+            ],
+            [
+              980,
+              535
+            ],
+            [
+              980,
+              915
+            ],
+            [
+              950,
+              915
+            ]
+          ],
+          "labelAt": [
+            894,
+            627
+          ]
+        },
+        {
+          "id": "l08",
+          "source": "control",
+          "target": "attempt",
+          "kind": "control",
+          "label": "hold / reconcile before replacement",
+          "points": [
+            [
+              650,
+              745
+            ],
+            [
+              600,
+              745
+            ],
+            [
+              600,
+              825
+            ],
+            [
+              350,
+              825
+            ],
+            [
+              350,
+              860
+            ]
+          ],
+          "labelAt": [
+            537,
+            810
+          ]
+        },
+        {
+          "id": "l09",
+          "source": "evidence",
+          "target": "review",
+          "kind": "progress",
+          "label": "assembled output",
+          "points": [
+            [
+              800,
+              970
+            ],
+            [
+              800,
+              1015
+            ],
+            [
+              500,
+              1015
+            ],
+            [
+              500,
+              1070
+            ]
+          ],
+          "labelAt": [
+            655,
+            1000
+          ]
+        },
+        {
+          "id": "l10",
+          "source": "review",
+          "target": "plan",
+          "kind": "control",
+          "label": "replan",
+          "points": [
+            [
+              350,
+              1125
+            ],
+            [
+              25,
+              1125
+            ],
+            [
+              25,
+              445
+            ],
+            [
+              165,
+              445
+            ],
+            [
+              165,
+              480
+            ]
+          ],
+          "labelAt": [
+            72,
+            1035
+          ]
+        },
+        {
+          "id": "l11",
+          "source": "review",
+          "target": "outcome",
+          "kind": "progress",
+          "label": "within granted scope",
+          "points": [
+            [
+              500,
+              1180
+            ],
+            [
+              500,
+              1260
+            ]
+          ],
+          "labelAt": [
+            620,
+            1225
+          ]
+        },
+        {
+          "id": "l12",
+          "source": "outcome",
+          "target": "reuse",
+          "kind": "context",
+          "label": "reuse",
+          "points": [
+            [
+              650,
+              1315
+            ],
+            [
+              730,
+              1315
+            ]
+          ],
+          "labelAt": [
+            690,
+            1300
+          ]
+        }
+      ]
+    }
+  ]
+}

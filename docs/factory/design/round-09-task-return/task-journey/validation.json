@@ -1,0 +1,85 @@
+{
+  "status": "PASS",
+  "scenes": [
+    {
+      "screen": "R9-T01",
+      "textNodes": 65,
+      "controls": 6
+    },
+    {
+      "screen": "R9-T02",
+      "textNodes": 56,
+      "controls": 5
+    },
+    {
+      "screen": "R9-T03",
+      "textNodes": 57,
+      "controls": 7
+    },
+    {
+      "screen": "R9-T04",
+      "textNodes": 60,
+      "controls": 6
+    },
+    {
+      "screen": "R9-T05",
+      "textNodes": 56,
+      "controls": 5
+    },
+    {
+      "screen": "R9-T06",
+      "textNodes": 58,
+      "controls": 6
+    },
+    {
+      "screen": "R9-T07",
+      "textNodes": 56,
+      "controls": 5
+    },
+    {
+      "screen": "R9-T08",
+      "textNodes": 62,
+      "controls": 5
+    },
+    {
+      "screen": "R9-T09",
+      "textNodes": 57,
+      "controls": 5
+    },
+    {
+      "screen": "R9-T10",
+      "textNodes": 58,
+      "controls": 6
+    },
+    {
+      "screen": "R9-T11",
+      "textNodes": 62,
+      "controls": 5
+    }
+  ],
+  "issues": [],
+  "method": "XML parse; unique namespaced vector groups; raster exclusion; exact Inter PIL ink bounds and pair overlaps; control/group/container bounds; destination existence; fresh-draft identity, simple-task record, preparation-history separation and no completed-085 recycling checks.",
+  "fonts": [
+    {
+      "weight": 400,
+      "source": "round-04\\build\\fonts\\Inter-Regular.ttf",
+      "sha256": "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82"
+    },
+    {
+      "weight": 500,
+      "source": "round-04\\build\\fonts\\Inter-Medium.ttf",
+      "sha256": "97ad806f526e41546d46365bb3a393145f75b7b1568913db74549ad8b8dba872"
+    },
+    {
+      "weight": 600,
+      "source": "round-04\\build\\fonts\\Inter-SemiBold.ttf",
+      "sha256": "78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3"
+    },
+    {
+      "weight": 700,
+      "source": "round-04\\build\\fonts\\Inter-Bold.ttf",
+      "sha256": "288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f"
+    }
+  ],
+  "limits": "Static source geometry and authored fixture invariants only; no functional inputs, native import/pointer test, runtime, persistence, provider, connector, mobile or accessibility proof."
+}

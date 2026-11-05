@@ -1,0 +1,542 @@
+{
+  "status": "NATIVE_DESIGN_NAVIGATION_VERIFIED",
+  "reviewDate": "2026-11-05",
+  "fileKey": "y3onOFKZMZ84W1A5uL2FQn",
+  "pageId": "4:80",
+  "sourceDigest": "c3bd642c0fb1d75c879e67df5106c6065840348160d1cff17908d1843d5074a7",
+  "importReceiptNodeId": "337:86",
+  "sourceFrames": 13,
+  "sourcePrototypeEdges": 15,
+  "frames": [
+    {
+      "scene": "R9-T01",
+      "nodeId": "337:87",
+      "sourceSha256": "a749eadee03e295b7b7e37261089a3e4b669ad2a54b4211a59304091b494ef54",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R9-T02",
+      "nodeId": "337:235",
+      "sourceSha256": "90450f256f61b2e790d2a2e7d9ac30d5c386fc551e1f0be06e1d9268ec335efa",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R9-T03",
+      "nodeId": "337:370",
+      "sourceSha256": "1971c5e2cc2c0a97cd2bf8f8e822a9bf4eb108bda832aec94916638af2e877dc",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R9-T04",
+      "nodeId": "337:510",
+      "sourceSha256": "6429da4dcdbceed0b22ed45351e4367c4343eef572daf5cf55ee502a0e45cf1f",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R9-T05",
+      "nodeId": "337:651",
+      "sourceSha256": "df2c95d7da34ae75ac1041aec4126fb67d17ac5690ef6545467ce6db63d9f2b8",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R9-T06",
+      "nodeId": "337:783",
+      "sourceSha256": "f8d48df7edad73ce45b2b78003b82e48581c4a2a28a80ea1eb86f8c40355f2e7",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R9-T07",
+      "nodeId": "337:919",
+      "sourceSha256": "ed9bdcf67d8244d7974cbb3fb59b70ae3d10be0d89ced2a16b417d45a7e00877",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R9-T08",
+      "nodeId": "337:1052",
+      "sourceSha256": "15b5e19528100d71591145f59018046c3709973e1ca543f848d060f7bdf323d3",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R9-T09",
+      "nodeId": "337:1190",
+      "sourceSha256": "9822cc5dab12fd6e750c24c38036d2929dab0cd911941b9e0a598a8c0a50a463",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R9-T10",
+      "nodeId": "337:1327",
+      "sourceSha256": "4beb8e3885c237f44caed52ab32f8a63e47ac752440e5ea3a526429101167941",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R9-T11",
+      "nodeId": "337:1466",
+      "sourceSha256": "190410b00e2a733a5ae7f88adaf2fddbf9c2a7a5a3ce017883fd9a3eef275377",
+      "width": 1600,
+      "height": 1040
+    },
+    {
+      "scene": "R9-WF01",
+      "nodeId": "337:1609",
+      "sourceSha256": "9c1cc2761b5dc418952206d96d424649c3bdb33c0a693c51b8b0414687c635b7",
+      "width": 1000,
+      "height": 1080
+    },
+    {
+      "scene": "R9-WF02",
+      "nodeId": "337:1695",
+      "sourceSha256": "6124658b2461ebb50689c4833f3b39be4e8e5cf09098e2d8a029cd9786913712",
+      "width": 1000,
+      "height": 1080
+    }
+  ],
+  "wiring": [
+    {
+      "from": "R9-T01",
+      "to": "R9-T02",
+      "nodeId": "337:1779",
+      "label": "Accept preparation only",
+      "kind": "fixture-transition",
+      "effect": "Accept exact mixed revision 1 as preparation only under accept-084-prep-1. Narrow settlement to prepared artifacts; no action approval, send, calendar change or receipt."
+    },
+    {
+      "from": "R9-T01",
+      "to": "R9-T03",
+      "nodeId": "337:1781",
+      "label": "Accept + approve actions",
+      "kind": "fixture-transition",
+      "effect": "Record separate original accept-084-1 and approval-084-1 for the unchanged exact R8 action envelope. Read a later fictional confirmed-receipt fixture; approval alone does not establish success."
+    },
+    {
+      "from": "R9-T02",
+      "to": "R9-T05",
+      "nodeId": "337:1783",
+      "label": "New task",
+      "kind": "navigate",
+      "effect": "Leave accepted preparation retained. Open unassigned draft; no task identity or work is created by navigation."
+    },
+    {
+      "from": "R9-T03",
+      "to": "R9-T04",
+      "nodeId": "337:1785",
+      "label": "Reopen task",
+      "kind": "fixture-transition",
+      "effect": "Reopen the same T-084 as idle. Preserve acceptance, all child results and receipts; start no attempt, reset no child, replay no action."
+    },
+    {
+      "from": "R9-T03",
+      "to": "R9-T11",
+      "nodeId": "337:1787",
+      "label": "Read T-084.2 \u00b7 knowledge brief",
+      "kind": "history-read",
+      "effect": "Open the complete child result without work or authority changes; return only to this exact completed parent scene."
+    },
+    {
+      "from": "R9-T03",
+      "to": "R9-T05",
+      "nodeId": "337:1789",
+      "label": "New task",
+      "kind": "navigate",
+      "effect": "Open an unassigned draft; retain completed T-084 and receipts. No attempt starts."
+    },
+    {
+      "from": "R9-T04",
+      "to": "R9-T03",
+      "nodeId": "337:1791",
+      "label": "Close without new work",
+      "kind": "fixture-transition",
+      "effect": "Close unchanged reopened T-084 with no new work. Restore exact completed parent display; retain original acceptance and receipts without accepting again or replaying actions."
+    },
+    {
+      "from": "R9-T04",
+      "to": "R9-T05",
+      "nodeId": "337:1793",
+      "label": "New task",
+      "kind": "navigate",
+      "effect": "Leave T-084 idle and preserved. Open an independent unassigned draft; no work starts."
+    },
+    {
+      "from": "R9-T05",
+      "to": "R9-T06",
+      "nodeId": "337:1795",
+      "label": "Show supplied-note example (fixture)",
+      "kind": "fixture-selection",
+      "effect": "Select the illustrated populated draft, still taskRef=null. Does not simulate typing, capture, persistence, model work or elapsed time."
+    },
+    {
+      "from": "R9-T06",
+      "to": "R9-T07",
+      "nodeId": "337:1797",
+      "label": "Save for later",
+      "kind": "fixture-transition",
+      "effect": "Capture input-085-note-v1 as local-085 exactly once in this alternate saved path. No provider attempt starts; draft no longer unassigned."
+    },
+    {
+      "from": "R9-T06",
+      "to": "R9-T08",
+      "nodeId": "337:1799",
+      "label": "Capture and analyze",
+      "kind": "fixture-transition",
+      "effect": "Assign local-085 to the same supplied input and admit direct summary work in displayed scope. Destination is the fictional working state; zero children and external actions."
+    },
+    {
+      "from": "R9-T07",
+      "to": "R9-T08",
+      "nodeId": "337:1801",
+      "label": "Analyze task",
+      "kind": "fixture-transition",
+      "effect": "Admit direct work on existing local-085 using the same captured input and valid supplied-note draft scope. Do not recapture or create children or external actions."
+    },
+    {
+      "from": "R9-T08",
+      "to": "R9-T09",
+      "nodeId": "337:1803",
+      "label": "Read later result (fixture)",
+      "kind": "temporal-fixture-read",
+      "effect": "Read the later fictional completed attempt and exact summary revision 1. Clicking does not finish an attempt or simulate time; no external action."
+    },
+    {
+      "from": "R9-T09",
+      "to": "R9-T10",
+      "nodeId": "337:1805",
+      "label": "Accept this summary",
+      "kind": "fixture-transition",
+      "effect": "Accept exact summary-085-r1 with acceptance accept-085-1 and settle only this concise-summary outcome. No action approval, child or external write."
+    },
+    {
+      "from": "R9-T11",
+      "to": "R9-T03",
+      "nodeId": "337:1807",
+      "label": "Return to completed T-084",
+      "kind": "history-read",
+      "effect": "Return exactly to originScene R9-T03 with accept-084-1, approval-084-1 and original action receipts. No dispatch, acceptance or action."
+    }
+  ],
+  "sourceTransport": {
+    "method": "Browser-use DOM paste events into Scripter, five chunks, then one UI Run",
+    "characters": 150209,
+    "normalizedScriptSha256": "e5e25a08dd1fedb99c7de4600b1229d6cf56e118ae243dcb6b3a9de5cf828f0b",
+    "editorModelHashMatchedBeforeRun": true
+  },
+  "liveInspection": {
+    "pageTopLevelBefore": 1070,
+    "pageTopLevelAfter": 1084,
+    "addedHiddenReceiptFrames": 1,
+    "allFramesTopLevel": true,
+    "storedPrototypeControls": 15,
+    "priorR8NativeFramesGeometryChildrenAndReactionsUnchanged": true
+  },
+  "pointerVerification": {
+    "distinctControlsPassed": 15,
+    "attempts": [
+      {
+        "control": "R9-T05--select-supplied-note-fixture",
+        "from": "R9-T05",
+        "target": "R9-T06",
+        "expectedNode": "337:783",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-783&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 621,
+        "y": 784,
+        "matched": true
+      },
+      {
+        "control": "R9-T06--capture-analyze",
+        "from": "R9-T06",
+        "target": "R9-T08",
+        "expectedNode": "337:1052",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-1052&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 754,
+        "y": 784,
+        "matched": true
+      },
+      {
+        "control": "R9-T08--read-later-result",
+        "from": "R9-T08",
+        "target": "R9-T09",
+        "expectedNode": "337:1190",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-1190&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 580,
+        "y": 908,
+        "matched": true
+      },
+      {
+        "control": "R9-T09--accept-summary",
+        "from": "R9-T09",
+        "target": "R9-T10",
+        "expectedNode": "337:1327",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-1327&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 556,
+        "y": 908,
+        "matched": true
+      },
+      {
+        "control": "R9-T06--capture-later",
+        "from": "R9-T06",
+        "target": "R9-T07",
+        "expectedNode": "337:919",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-919&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 543,
+        "y": 784,
+        "matched": true
+      },
+      {
+        "control": "R9-T07--analyze-saved",
+        "from": "R9-T07",
+        "target": "R9-T08",
+        "expectedNode": "337:1052",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-1052&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 535,
+        "y": 908,
+        "matched": true
+      },
+      {
+        "control": "R9-T01--accept-preparation",
+        "from": "R9-T01",
+        "target": "R9-T02",
+        "expectedNode": "337:235",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-235&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 553,
+        "y": 908,
+        "matched": true
+      },
+      {
+        "control": "R9-T02--new-task",
+        "from": "R9-T02",
+        "target": "R9-T05",
+        "expectedNode": "337:651",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-651&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 520,
+        "y": 908,
+        "matched": true
+      },
+      {
+        "control": "R9-T01--approve-external",
+        "from": "R9-T01",
+        "target": "R9-T03",
+        "expectedNode": "337:370",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-370&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 1525,
+        "y": 908,
+        "matched": true
+      },
+      {
+        "control": "R9-T03--reopen-task",
+        "from": "R9-T03",
+        "target": "R9-T04",
+        "expectedNode": "337:510",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-510&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 1455,
+        "y": 566,
+        "matched": true
+      },
+      {
+        "control": "R9-T04--close-without-work",
+        "from": "R9-T04",
+        "target": "R9-T03",
+        "expectedNode": "337:370",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-370&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 554,
+        "y": 908,
+        "matched": true
+      },
+      {
+        "control": "R9-T03--read-child",
+        "from": "R9-T03",
+        "target": "R9-T11",
+        "expectedNode": "337:1466",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-1466&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 563,
+        "y": 908,
+        "matched": true
+      },
+      {
+        "control": "R9-T11--return-origin-parent",
+        "from": "R9-T11",
+        "target": "R9-T03",
+        "expectedNode": "337:370",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-370&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 604,
+        "y": 908,
+        "matched": true
+      },
+      {
+        "control": "R9-T03--new-task",
+        "from": "R9-T03",
+        "target": "R9-T05",
+        "expectedNode": "337:651",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-651&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 784,
+        "y": 908,
+        "matched": true
+      },
+      {
+        "control": "R9-T04--new-task",
+        "from": "R9-T04",
+        "target": "R9-T05",
+        "expectedNode": "337:651",
+        "observedUrl": "https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-%E2%80%94-Product---Interface?node-id=337-651&scaling=scale-down&content-scaling=fixed&page-id=4%3A80",
+        "x": 766,
+        "y": 908,
+        "matched": true
+      }
+    ]
+  },
+  "inspectedNativeTaskFrames": [
+    "R9-T01",
+    "R9-T02",
+    "R9-T03",
+    "R9-T04",
+    "R9-T05",
+    "R9-T06",
+    "R9-T07",
+    "R9-T08",
+    "R9-T09",
+    "R9-T10",
+    "R9-T11"
+  ],
+  "inspectedNativeMapFrames": [
+    "R9-WF01",
+    "R9-WF02"
+  ],
+  "sourceChecks": {
+    "taskGeometryAndBranchInvariants": "PASS",
+    "mapGeometryAndXml": "PASS",
+    "sourceImportJavaScriptSyntax": "PASS",
+    "r8SourceInventoryPreserved": true,
+    "mermaidExactParseAndRender": "UNVERIFIED",
+    "repositoryFormatter": "UNAVAILABLE_LOCAL_VITE_PLUS_DEPENDENCY"
+  },
+  "review": {
+    "models": [
+      "gpt-6-astra",
+      "gpt-6.1-sol",
+      "gpt-6.1-terra"
+    ],
+    "effort": "high",
+    "independentSourceFinding": "Calendar approval omitted exact event title",
+    "parentResolution": "Added original title; envelope unchanged; native review frame visually inspected",
+    "opusAttempt": "FAILED_CLAUDE_API_RATE_LIMIT_NO_DESIGN_RESULT",
+    "claudeWorkflow": "UNRUN"
+  },
+  "priorAttemptErrors": [
+    "Figma MCP Starter tool quota",
+    "Shared-browser cross-site input and disconnected automation host",
+    "Large keyboard-style input stalled; recovered with shorter source lines and exact DOM paste events"
+  ],
+  "limits": [
+    "Native design/navigation only; no functional form, persistence, provider or connector action",
+    "All task, source, assignment, artifact, approval and receipt values are fictional",
+    "Imported SVG compositions do not establish component/auto-layout reuse",
+    "Mobile, keyboard, accessibility conformance and responsive layouts remain unqualified",
+    "Only the fifteen named controls were pointer-verified; other controls and next-cycle variants remain outside this bounded native prototype",
+    "Source captions retain authoring-time qualification; this record supersedes native import/navigation limits only for the named frames and controls"
+  ],
+  "captureEvidence": {
+    "archiveFile": "native-session-audit.json",
+    "archiveSha256": "3c97e673b2a0ae8b4245f73bcd815df9e5b2b77643c73c8c78abf10f7760cb31",
+    "location": "Local review archive outside the worktree; captures are not product design source",
+    "images": [
+      {
+        "scene": "R9-T01",
+        "nodeId": "337:87",
+        "file": "r9-native-T01.png",
+        "sha256": "0f1f54f83c189ff7f1a966778c15f8632730c7cb8d93c7512c08ff14fbfe77aa",
+        "visuallyInspected": true
+      },
+      {
+        "scene": "R9-T02",
+        "nodeId": "337:235",
+        "file": "r9-native-T02.png",
+        "sha256": "740de783d2d86f686f8a869a78f60bf5758de764d56c83248bb46bf0bfd0de68",
+        "visuallyInspected": true
+      },
+      {
+        "scene": "R9-T03",
+        "nodeId": "337:370",
+        "file": "r9-native-T03.png",
+        "sha256": "754675960a526384e5f16b8ad455f344a5a51aad3a71f22c86155a8a6e6b3ea7",
+        "visuallyInspected": true
+      },
+      {
+        "scene": "R9-T04",
+        "nodeId": "337:510",
+        "file": "r9-native-T04.png",
+        "sha256": "d57884443bbe10d77dfe8c1d72db81a6718bb27dce65f83715f8fe51b85d6a79",
+        "visuallyInspected": true
+      },
+      {
+        "scene": "R9-T05",
+        "nodeId": "337:651",
+        "file": "r9-native-T05.png",
+        "sha256": "aed739befe60d2c061c1db5ee31714cb8fab8acd5cb470997f1395be6e3ce083",
+        "visuallyInspected": true
+      },
+      {
+        "scene": "R9-T06",
+        "nodeId": "337:783",
+        "file": "r9-native-T06.png",
+        "sha256": "1b6d6fcb8348d752ed1c44c07051e736b0637c5989b9c13ba0d3e964825ce77b",
+        "visuallyInspected": true
+      },
+      {
+        "scene": "R9-T07",
+        "nodeId": "337:919",
+        "file": "r9-native-T07.png",
+        "sha256": "efd16b7937a2caec4d09370903cb238ec67ad1ea72f10d8f95ba1889801e05e7",
+        "visuallyInspected": true
+      },
+      {
+        "scene": "R9-T08",
+        "nodeId": "337:1052",
+        "file": "r9-native-T08.png",
+        "sha256": "264e8bc7cda4f463fd6e8ecb8a5af9e056225b3e32de53e1bfcb4e19adb562a3",
+        "visuallyInspected": true
+      },
+      {
+        "scene": "R9-T09",
+        "nodeId": "337:1190",
+        "file": "r9-native-T09.png",
+        "sha256": "a1c0f0f3cbc04e0fac121a941886f8abef726b13011ef445846ee2b96d701c9c",
+        "visuallyInspected": true
+      },
+      {
+        "scene": "R9-T10",
+        "nodeId": "337:1327",
+        "file": "r9-native-T10.png",
+        "sha256": "af481fa2c226132fe1311fbc370de84a452ebf36fef28213db21f4a13a0b11a2",
+        "visuallyInspected": true
+      },
+      {
+        "scene": "R9-T11",
+        "nodeId": "337:1466",
+        "file": "r9-native-T11.png",
+        "sha256": "fcf0d98e49ae62fd20392d20385d325b066680ab80e6430b705f69f3d88d4fec",
+        "visuallyInspected": true
+      },
+      {
+        "scene": "R9-WF01",
+        "nodeId": "337:1609",
+        "file": "r9-native-WF01.png",
+        "sha256": "eaa08ca59f984ab8363b4c9b0772aea2660436bf0f281f6b619e3a33f3e9672c",
+        "visuallyInspected": true
+      },
+      {
+        "scene": "R9-WF02",
+        "nodeId": "337:1695",
+        "file": "r9-native-WF02.png",
+        "sha256": "5f3c992e9f30323b09fb32b33b22084e83b1d4f8ffa0c9cc60e9555b445abebb",
+        "visuallyInspected": true
+      }
+    ]
+  }
+}

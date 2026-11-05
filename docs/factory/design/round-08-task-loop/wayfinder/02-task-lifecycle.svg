@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1480" viewBox="0 0 1000 1480" role="img" aria-labelledby="R8-WF02-title R8-WF02-desc">
+<title id="R8-WF02-title">How does one task reach a reviewed outcome?</title>
+<desc id="R8-WF02-desc">The proposed P1 task loop uses adaptive analysis, dependency-ready child work and admitted execution attempts. Simple work runs directly. Exceptions retain ownership until stop acknowledgement or fencing; reviewed external actions record observed receipts. Successful plans can later become P3 workflows with optional P4 CI targets. Proposed Round-08 product navigation and lifecycle, using November 4 priority IDs P1-P4. These views complement canonical Wayfinder issue #2 and delivery roadmap #66; they do not renumber tracker milestones M0-M5 or slices W1-W5. Existing foundations are explicitly labeled; no runtime qualification is implied.</desc>
+<style>text{font-family:Arial;fill:#f1f3f7}.muted{fill:#bac4d2}</style>
+<rect width="1000" height="1480" fill="#101216"/>
+<text x="50" y="44" font-size="26" font-weight="600">How does one task reach a reviewed outcome?</text>
+<text x="50" y="72" font-size="14" class="muted">T3 Factory · November 4 proposed priorities P1–P4 · complements tracker #2 / #66</text>
+<defs>
+<marker id="R8-WF02-progress" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#8cb7ff"/></marker>
+<marker id="R8-WF02-control" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#ebc878"/></marker>
+<marker id="R8-WF02-context" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#b4bdca"/></marker>
+</defs>
+<path d="M50 100h32" stroke="#8cb7ff" stroke-width="2"/>
+<text x="91" y="105" font-size="13" class="muted">Progress under granted scope</text>
+<path d="M328 100h32" stroke="#ebc878" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="369" y="105" font-size="13" class="muted">Exception or replan</text>
+<path d="M552 100h32" stroke="#b4bdca" stroke-width="2" stroke-dasharray="2 5"/>
+<text x="593" y="105" font-size="13" class="muted">Optional context</text>
+<text x="50" y="130" font-size="15" font-weight="600" class="muted">Phases are adaptive: investigate → deep-dive → architect → plan → act → review</text>
+<path id="l01" d="M500 270 L500 310" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF02-progress)"><title>capture to analyze: begin under policy</title></path>
+<rect x="549.2" y="277" width="121.6" height="16" fill="#101216"/>
+<text x="610" y="289" font-size="12" text-anchor="middle" class="muted">begin under policy</text>
+<path id="l02" d="M420 420 L420 445 L225 445 L225 480" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF02-progress)"><title>analyze to plan: decompose when useful</title></path>
+<rect x="199.9" y="419" width="140.2" height="16" fill="#101216"/>
+<text x="270" y="431" font-size="12" text-anchor="middle" class="muted">decompose when useful</text>
+<path id="l03" d="M580 420 L580 445 L800 445 L800 480" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF02-progress)"><title>analyze to direct: simple outcome</title></path>
+<rect x="690.6" y="419" width="96.8" height="16" fill="#101216"/>
+<text x="739" y="431" font-size="12" text-anchor="middle" class="muted">simple outcome</text>
+<path id="l04" d="M225 590 L225 670" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF02-progress)"><title>plan to routing: dependency-ready</title></path>
+<rect x="170.4" y="623" width="109.2" height="16" fill="#101216"/>
+<text x="225" y="635" font-size="12" text-anchor="middle" class="muted">dependency-ready</text>
+<path id="l05" d="M225 780 L225 860" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF02-progress)"><title>routing to attempt: admitted assignment</title></path>
+<rect x="161.1" y="813" width="127.8" height="16" fill="#101216"/>
+<text x="225" y="825" font-size="12" text-anchor="middle" class="muted">admitted assignment</text>
+<path id="l06" d="M400 915 L650 915" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF02-progress)"><title>attempt to evidence: observed evidence</title></path>
+<rect x="467.3" y="888" width="115.4" height="16" fill="#101216"/>
+<text x="525" y="900" font-size="12" text-anchor="middle" class="muted">observed evidence</text>
+<path id="l07" d="M950 535 L980 535 L980 915 L950 915" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF02-progress)"><title>direct to evidence: direct result</title></path>
+<rect x="848.7" y="615" width="90.6" height="16" fill="#101216"/>
+<text x="894" y="627" font-size="12" text-anchor="middle" class="muted">direct result</text>
+<path id="l08" d="M650 745 L600 745 L600 825 L350 825 L350 860" fill="none" stroke="#ebc878" stroke-width="2" marker-end="url(#R8-WF02-control)" stroke-dasharray="7 5"><title>control to attempt: hold / reconcile before replacement</title></path>
+<rect x="423.5" y="798" width="227" height="16" fill="#101216"/>
+<text x="537" y="810" font-size="12" text-anchor="middle" class="muted">hold / reconcile before replacement</text>
+<path id="l09" d="M800 970 L800 1015 L500 1015 L500 1070" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF02-progress)"><title>evidence to review: assembled output</title></path>
+<rect x="600.4" y="988" width="109.2" height="16" fill="#101216"/>
+<text x="655" y="1000" font-size="12" text-anchor="middle" class="muted">assembled output</text>
+<path id="l10" d="M350 1125 L25 1125 L25 445 L165 445 L165 480" fill="none" stroke="#ebc878" stroke-width="2" marker-end="url(#R8-WF02-control)" stroke-dasharray="7 5"><title>review to plan: replan</title></path>
+<rect x="48.4" y="1023" width="47.2" height="16" fill="#101216"/>
+<text x="72" y="1035" font-size="12" text-anchor="middle" class="muted">replan</text>
+<path id="l11" d="M500 1180 L500 1260" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R8-WF02-progress)"><title>review to outcome: within granted scope</title></path>
+<rect x="553" y="1213" width="134" height="16" fill="#101216"/>
+<text x="620" y="1225" font-size="12" text-anchor="middle" class="muted">within granted scope</text>
+<path id="l12" d="M650 1315 L730 1315" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R8-WF02-context)" stroke-dasharray="2 5"><title>outcome to reuse: reuse</title></path>
+<rect x="669.5" y="1288" width="41" height="16" fill="#101216"/>
+<text x="690" y="1300" font-size="12" text-anchor="middle" class="muted">reuse</text>
+<g id="capture"><title>Capture → local task</title><rect x="350" y="170" width="300" height="100" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="366" y="191" font-size="11" font-weight="600" class="muted">P1 PROPOSAL</text>
+<text x="366" y="214" font-size="18" font-weight="600">Capture → local task</text>
+<text x="366" y="236" font-size="14" class="muted">One task; optional source context</text>
+<text x="366" y="255" font-size="14" class="muted">Save for later or analyze now</text>
+</g>
+<g id="analyze"><title>Analyze the outcome</title><rect x="350" y="310" width="300" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="366" y="331" font-size="11" font-weight="600" class="muted">P1 PROPOSAL</text>
+<text x="366" y="354" font-size="18" font-weight="600">Analyze the outcome</text>
+<text x="366" y="376" font-size="14" class="muted">Find criteria and constraints</text>
+<text x="366" y="395" font-size="14" class="muted">Request blocking missing context</text>
+<text x="366" y="414" font-size="14" class="muted">Choose the smallest useful plan</text>
+</g>
+<g id="plan"><title>Plan and child tasks</title><rect x="50" y="480" width="350" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="66" y="501" font-size="11" font-weight="600" class="muted">P1 PROPOSAL</text>
+<text x="66" y="524" font-size="18" font-weight="600">Plan and child tasks</text>
+<text x="66" y="546" font-size="14" class="muted">Dependencies decide readiness</text>
+<text x="66" y="565" font-size="14" class="muted">Child purpose, criteria and output</text>
+<text x="66" y="584" font-size="14" class="muted">Progress stays within granted scope</text>
+</g>
+<g id="direct"><title>Simple task: act directly</title><rect x="650" y="480" width="300" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="666" y="501" font-size="11" font-weight="600" class="muted">P1 PROPOSAL</text>
+<text x="666" y="524" font-size="18" font-weight="600">Simple task: act directly</text>
+<text x="666" y="546" font-size="14" class="muted">Same task and evidence</text>
+<text x="666" y="565" font-size="14" class="muted">No decomposition or setup required</text>
+<text x="666" y="584" font-size="14" class="muted">Example: summarize a supplied note</text>
+</g>
+<g id="routing"><title>Admit a ready child</title><rect x="50" y="670" width="350" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="66" y="691" font-size="11" font-weight="600" class="muted">P1 PROPOSAL</text>
+<text x="66" y="714" font-size="18" font-weight="600">Admit a ready child</text>
+<text x="66" y="736" font-size="14" class="muted">Auto: model + harness + machine</text>
+<text x="66" y="755" font-size="14" class="muted">Check capability, access and capacity</text>
+<text x="66" y="774" font-size="14" class="muted">Show the admitted assignment</text>
+</g>
+<g id="control"><title>Hold, stop or recover</title><rect x="650" y="670" width="300" height="150" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="666" y="691" font-size="11" font-weight="600" class="muted">P1 PROPOSAL</text>
+<text x="666" y="714" font-size="18" font-weight="600">Hold, stop or recover</text>
+<text x="666" y="736" font-size="14" class="muted">Retain the task when blocked</text>
+<text x="666" y="755" font-size="14" class="muted">Pause future starts; show active work</text>
+<text x="666" y="774" font-size="14" class="muted">Stop requested is not stopped</text>
+<text x="666" y="793" font-size="14" class="muted">Wait for acknowledgement or fencing</text>
+<text x="666" y="812" font-size="14" class="muted">Unknown result: reconcile before retry</text>
+</g>
+<g id="attempt"><title>Execute an owned attempt</title><rect x="50" y="860" width="350" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="66" y="881" font-size="11" font-weight="600" class="muted">P1 PROPOSAL</text>
+<text x="66" y="904" font-size="18" font-weight="600">Execute an owned attempt</text>
+<text x="66" y="926" font-size="14" class="muted">Lineage records what actually ran</text>
+<text x="66" y="945" font-size="14" class="muted">Late results cannot replace newer work</text>
+<text x="66" y="964" font-size="14" class="muted">Return evidence and uncertainty</text>
+</g>
+<g id="evidence"><title>Assemble the results</title><rect x="650" y="860" width="300" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="666" y="881" font-size="11" font-weight="600" class="muted">P1 PROPOSAL</text>
+<text x="666" y="904" font-size="18" font-weight="600">Assemble the results</text>
+<text x="666" y="926" font-size="14" class="muted">Reconcile results and disagreements</text>
+<text x="666" y="945" font-size="14" class="muted">Preserve artifacts, sources and failures</text>
+<text x="666" y="964" font-size="14" class="muted">Keep blocked work visible</text>
+</g>
+<g id="review"><title>Review the outcome</title><rect x="350" y="1070" width="300" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="366" y="1091" font-size="11" font-weight="600" class="muted">P1 PROPOSAL</text>
+<text x="366" y="1114" font-size="18" font-weight="600">Review the outcome</text>
+<text x="366" y="1136" font-size="14" class="muted">Check criteria and evidence</text>
+<text x="366" y="1155" font-size="14" class="muted">Inspect proposed external actions</text>
+<text x="366" y="1174" font-size="14" class="muted">Revise the plan when needed</text>
+</g>
+<g id="outcome"><title>Record the outcome</title><rect x="350" y="1260" width="300" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="366" y="1281" font-size="11" font-weight="600" class="muted">P1 CORE · P2 ACTION ADAPTERS</text>
+<text x="366" y="1304" font-size="18" font-weight="600">Record the outcome</text>
+<text x="366" y="1326" font-size="14" class="muted">Act within authorized scope</text>
+<text x="366" y="1345" font-size="14" class="muted">Observe send/event/delivery receipts</text>
+<text x="366" y="1364" font-size="14" class="muted">Accept or settle with explicit meaning</text>
+</g>
+<g id="reuse"><title>Save as workflow</title><rect x="730" y="1260" width="220" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="746" y="1281" font-size="11" font-weight="600" class="muted">P3 · OPTIONAL P4 CI</text>
+<text x="746" y="1304" font-size="18" font-weight="600">Save as workflow</text>
+<text x="746" y="1326" font-size="14" class="muted">Version inputs and policy</text>
+<text x="746" y="1345" font-size="14" class="muted">New run uses the same loop</text>
+<text x="746" y="1364" font-size="14" class="muted">Eligible machine or CI target</text>
+</g>
+<text x="50" y="1411" font-size="13" class="muted">Coordinator owns task, plan and dispatch; executor owns processes, workspace and observed evidence.</text>
+<text x="50" y="1445" font-size="13" class="muted">Completion, acceptance, delivery and settlement remain separate. This is proposed behavior, not runtime proof.</text>
+</svg>

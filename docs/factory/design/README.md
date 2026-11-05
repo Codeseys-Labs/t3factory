@@ -11,6 +11,8 @@ This naming decision does not change runtime storage, protocol or installation i
 
 ## Open the design
 
+- [Task completion and return refinement](round-09-task-return/README.md): direct tasks, preparation acceptance, fresh capture, reopened history and child reading; 13 native frames inspected and all 15 named prototype links pointer-verified.
+- [General task loop and wayfinders](round-08-task-loop/README.md): the current refinement for intake, analysis, delegated child tasks and outcome review, with its native walkthrough and roadmap crosswalk.
 - [Product and Interface](https://www.figma.com/design/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-Product-Interface?node-id=180-12713)
 - [Standalone and optional Linear walkthrough](https://www.figma.com/proto/y3onOFKZMZ84W1A5uL2FQn/T3-Factory-Product-Interface?node-id=301-86&scaling=scale-down&content-scaling=fixed&page-id=4%3A80)
 - [FigJam research, flows and data hub](https://www.figma.com/board/EAR1WfaOUnegQz5aqlT2R1/T3-Factory-Research-Flows-Data?node-id=32-309)
@@ -30,7 +32,7 @@ The source branding change does not retroactively qualify new Figma exports.
   documents consumed by [the assembler](round-05/build/workspace_graph.py)
 - [Linear UX decision](round-06-linear/decision.md) and [sync mapping](round-06-linear/sync-contract/mapping.json)
 - [Standalone and optional Linear decisions](round-07-optional-linear/refined/design-decisions.md)
-- [Current editable SVG screens](round-07-optional-linear/refined/screens)
+- [Optional-Linear baseline SVG screens](round-07-optional-linear/refined/screens)
 - [Native frame bindings](round-07-optional-linear/refined/native-bindings.json) and
   [39 configured prototype interactions](round-07-optional-linear/refined/wiring-ledger.json)
 
@@ -38,6 +40,11 @@ The round numbers preserve source dependencies and stable frame identifiers; the
 not application modes. The earlier diagram helpers and licensed Inter fonts are retained
 under `round-04/build`. The original unrefined optional-Linear generator remains a
 dependency of its correcting assembler, not the current design entry point.
+
+The [Round-08 task journey](round-08-task-loop/task-journey/decisions.md) and
+[wayfinder maps](round-08-task-loop/wayfinder/README.md) extend that baseline.
+Their [native evidence](round-08-task-loop/native-evidence.json) records the bounded
+import and pointer checks separately from the earlier qualification history below.
 
 ## Regenerate
 

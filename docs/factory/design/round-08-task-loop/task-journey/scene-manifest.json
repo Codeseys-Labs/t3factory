@@ -1,0 +1,1455 @@
+{
+  "schema": "t3factory-task-journey-design/1",
+  "status": "EDITABLE_SOURCE_ONLY",
+  "appHeight": 900,
+  "taskIdentity": "Proposed local task identity; not a claim that a universal TaskRef contract is implemented.",
+  "scenes": [
+    {
+      "id": "R8-T01",
+      "title": "Capture an outcome",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "Capture is local-first. Main example creates T-084; Save for later starts nothing. Inputs and results are fictional design fixtures.",
+      "composition": "intake-composer",
+      "svg": "screens/R8-T01.svg",
+      "svgSha256": "6daaec3a356a0e36a4f13085db8b7fb007d7f59741fce21402d4668517ed2e93",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084",
+          "displayId": "T-084"
+        },
+        "execution": "none",
+        "capture": "draft"
+      },
+      "containers": [
+        {
+          "id": "capture-composer",
+          "box": [
+            340,
+            204,
+            860,
+            315
+          ]
+        },
+        {
+          "id": "capture-options",
+          "box": [
+            1220,
+            204,
+            360,
+            315
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R8-T02",
+      "title": "Saved task · needs analysis",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "T-084 exists independently of a source, provider turn or workflow. Capture-only is a genuine non-executing path.",
+      "composition": "task-detail-saved",
+      "svg": "screens/R8-T02.svg",
+      "svgSha256": "9d4d8fa1d466c3b3b676ed7459bbd37cdd6ed2894520c917d13825d051bd81c1",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084",
+          "displayId": "T-084"
+        },
+        "execution": "Not started",
+        "status": "needs-analysis"
+      },
+      "containers": [
+        {
+          "id": "saved-brief",
+          "box": [
+            340,
+            288,
+            890,
+            350
+          ]
+        },
+        {
+          "id": "task-details",
+          "box": [
+            1250,
+            288,
+            330,
+            500
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R8-T03",
+      "title": "Analysis · a focused question",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "The task stays T-084. One missing fact pauses the dependent calendar work; the policy permits useful investigation and drafting within scope.",
+      "composition": "task-analysis-question",
+      "svg": "screens/R8-T03.svg",
+      "svgSha256": "4080e965a97cdda10b6ae3367982540b0bf704aceac659d003555ce23b8dc9a1",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084",
+          "displayId": "T-084"
+        },
+        "execution": "Analyzing",
+        "status": "needs-context",
+        "question": "customer-timezone"
+      },
+      "containers": [
+        {
+          "id": "analysis-message",
+          "box": [
+            340,
+            342,
+            890,
+            168
+          ]
+        },
+        {
+          "id": "context-question",
+          "box": [
+            340,
+            530,
+            890,
+            212
+          ]
+        },
+        {
+          "id": "task-details",
+          "box": [
+            1250,
+            288,
+            330,
+            500
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R8-T04",
+      "title": "A plan that can run",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "These are durable proposed child tasks, not provider-native children started twice. The current policy permits automatic analysis/drafts; external actions remain outside it.",
+      "composition": "task-child-plan",
+      "svg": "screens/R8-T04.svg",
+      "svgSha256": "9918377fdbd15b16b99fec96f00eb08a21fde1a3c39e79f8cd466147e3232d5b",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084",
+          "displayId": "T-084"
+        },
+        "execution": "Ready to delegate",
+        "status": "plan-ready",
+        "planRevision": 1
+      },
+      "containers": [
+        {
+          "id": "task-details",
+          "box": [
+            1250,
+            288,
+            330,
+            500
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R8-T05",
+      "title": "Delegated work in progress",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "Assignments are fictional admission fixtures. A selected model does not move the workspace. Waiting children start only after their explicit dependencies are satisfied.",
+      "composition": "task-running-children",
+      "svg": "screens/R8-T05.svg",
+      "svgSha256": "00f40a926e533b5232fd48e3722a2c32aae5ea6820c25a0f26aed7a6baa6bfc6",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084",
+          "displayId": "T-084"
+        },
+        "execution": "Working",
+        "status": "working",
+        "planRevision": 1,
+        "completeChildren": 1
+      },
+      "containers": [
+        {
+          "id": "task-details",
+          "box": [
+            1250,
+            288,
+            330,
+            500
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R8-T06",
+      "title": "Needs your decision · observed attempts",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "A stop request is not Stopped. The old attempt keeps its claim until acknowledgement or fencing. Choosing a meeting time does not authorize sending or scheduling.",
+      "composition": "task-decision-attempt-detail",
+      "svg": "screens/R8-T06.svg",
+      "svgSha256": "210edcf362b9e6233fdfc9dcba5bce197d8caf43f48d679bb2e018829357acb4",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084",
+          "displayId": "T-084"
+        },
+        "execution": "Waiting for input",
+        "status": "needs-decision",
+        "stopState": "requested-not-acknowledged",
+        "planRevision": 1
+      },
+      "containers": [
+        {
+          "id": "meeting-choice",
+          "box": [
+            340,
+            288,
+            860,
+            278
+          ]
+        },
+        {
+          "id": "attempt-detail",
+          "box": [
+            1220,
+            288,
+            360,
+            500
+          ]
+        },
+        {
+          "id": "saved-results",
+          "box": [
+            340,
+            588,
+            860,
+            150
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R8-T07",
+      "title": "Review the assembled outcome",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "Preparation and observed worker completion precede this later review fixture. The optional external actions are reviewed here; no live connector or send is implemented.",
+      "composition": "task-assembled-review",
+      "svg": "screens/R8-T07.svg",
+      "svgSha256": "8307d5ac49a1c3b675729c71ad4d575148f49e56128d94ce8efa9266dce53e84",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084",
+          "displayId": "T-084"
+        },
+        "execution": "Complete",
+        "status": "ready-for-review",
+        "stopState": "acknowledged",
+        "planRevision": 1
+      },
+      "containers": [
+        {
+          "id": "assembled-result",
+          "box": [
+            340,
+            288,
+            720,
+            276
+          ]
+        },
+        {
+          "id": "reply-preview",
+          "box": [
+            340,
+            584,
+            720,
+            178
+          ]
+        },
+        {
+          "id": "external-review",
+          "box": [
+            1080,
+            288,
+            500,
+            474
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R8-T08",
+      "title": "Completed outcome · observed receipts",
+      "width": 1600,
+      "height": 1040,
+      "productHeight": 900,
+      "caption": "All receipt IDs, times and outputs are fictional. Approval, confirmed action results and task completion are distinct milestones; this fixture illustrates the later observed result.",
+      "composition": "task-completed-receipts",
+      "svg": "screens/R8-T08.svg",
+      "svgSha256": "d30bfdaf56ab0e941bf24c14820734ff70117d87571e838a8b0ea796385c3e30",
+      "state": {
+        "taskRef": {
+          "environmentId": "env-demo",
+          "projectId": "customer-ops",
+          "id": "local-084",
+          "displayId": "T-084"
+        },
+        "execution": "Complete",
+        "status": "completed",
+        "acceptance": "accepted",
+        "delivery": "confirmed-fixture",
+        "planRevision": 1
+      },
+      "containers": [
+        {
+          "id": "completed-result",
+          "box": [
+            340,
+            288,
+            890,
+            204
+          ]
+        },
+        {
+          "id": "action-receipts",
+          "box": [
+            340,
+            512,
+            890,
+            194
+          ]
+        },
+        {
+          "id": "completion-options",
+          "box": [
+            1250,
+            288,
+            330,
+            418
+          ]
+        }
+      ]
+    }
+  ],
+  "controls": [
+    {
+      "screen": "R8-T01",
+      "groupId": "R8-T01--nav-work",
+      "label": "Work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Return to the current Work query without changing this task."
+    },
+    {
+      "screen": "R8-T01",
+      "groupId": "R8-T01--nav-intake",
+      "label": "Intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open capture without discarding or replaying this task."
+    },
+    {
+      "screen": "R8-T01",
+      "groupId": "R8-T01--nav-workflows",
+      "label": "Workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Optional reusable workflows; never a prerequisite for this task."
+    },
+    {
+      "screen": "R8-T01",
+      "groupId": "R8-T01--nav-more",
+      "label": "More",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Existing project menu; connections remain optional."
+    },
+    {
+      "screen": "R8-T01",
+      "groupId": "R8-T01--outcome-input",
+      "label": "Desired outcome",
+      "box": [
+        356,
+        252,
+        824,
+        123
+      ],
+      "kind": "fixture-edit",
+      "target": null,
+      "effect": "Editable design text; no functional prototype input is claimed."
+    },
+    {
+      "screen": "R8-T01",
+      "groupId": "R8-T01--capture-later",
+      "label": "Save for later",
+      "box": [
+        780,
+        471,
+        170,
+        32
+      ],
+      "kind": "fixture-transition",
+      "target": "R8-T02",
+      "effect": "Create durable local T-084 in Needs analysis; no turn, child task or external action starts."
+    },
+    {
+      "screen": "R8-T01",
+      "groupId": "R8-T01--capture-analyze",
+      "label": "Capture and analyze",
+      "box": [
+        962,
+        471,
+        218,
+        32
+      ],
+      "kind": "fixture-transition",
+      "target": "R8-T03",
+      "effect": "Create durable T-084 once and admit analysis under the displayed research-and-draft policy; do not send or schedule."
+    },
+    {
+      "screen": "R8-T02",
+      "groupId": "R8-T02--nav-work",
+      "label": "Work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Return to the current Work query without changing this task."
+    },
+    {
+      "screen": "R8-T02",
+      "groupId": "R8-T02--nav-intake",
+      "label": "Intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open capture without discarding or replaying this task."
+    },
+    {
+      "screen": "R8-T02",
+      "groupId": "R8-T02--nav-workflows",
+      "label": "Workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Optional reusable workflows; never a prerequisite for this task."
+    },
+    {
+      "screen": "R8-T02",
+      "groupId": "R8-T02--nav-more",
+      "label": "More",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Existing project menu; connections remain optional."
+    },
+    {
+      "screen": "R8-T02",
+      "groupId": "R8-T02--analyze-saved",
+      "label": "Analyze task",
+      "box": [
+        340,
+        674,
+        170,
+        32
+      ],
+      "kind": "fixture-transition",
+      "target": "R8-T03",
+      "effect": "Admit analysis for existing T-084 under research-and-draft scope; preserve the original capture and identity."
+    },
+    {
+      "screen": "R8-T02",
+      "groupId": "R8-T02--edit-brief",
+      "label": "Edit brief",
+      "box": [
+        522,
+        674,
+        132,
+        32
+      ],
+      "kind": "fixture-edit",
+      "target": null,
+      "effect": "Local source text remains editable; no persistence is simulated."
+    },
+    {
+      "screen": "R8-T03",
+      "groupId": "R8-T03--nav-work",
+      "label": "Work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Return to the current Work query without changing this task."
+    },
+    {
+      "screen": "R8-T03",
+      "groupId": "R8-T03--nav-intake",
+      "label": "Intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open capture without discarding or replaying this task."
+    },
+    {
+      "screen": "R8-T03",
+      "groupId": "R8-T03--nav-workflows",
+      "label": "Workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Optional reusable workflows; never a prerequisite for this task."
+    },
+    {
+      "screen": "R8-T03",
+      "groupId": "R8-T03--nav-more",
+      "label": "More",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Existing project menu; connections remain optional."
+    },
+    {
+      "screen": "R8-T03",
+      "groupId": "R8-T03--timezone-answer",
+      "label": "Customer time zone",
+      "box": [
+        360,
+        598,
+        820,
+        38
+      ],
+      "kind": "fixture-edit",
+      "target": null,
+      "effect": "Local editable design field; parent must supply prototype input behavior.",
+      "value": "America/Los_Angeles · supplied by Mara"
+    },
+    {
+      "screen": "R8-T03",
+      "groupId": "R8-T03--answer-context",
+      "label": "Use this and continue",
+      "box": [
+        988,
+        690,
+        192,
+        32
+      ],
+      "kind": "fixture-transition",
+      "target": "R8-T04",
+      "effect": "Record the supplied time zone against T-084 and continue analysis; no external side effect."
+    },
+    {
+      "screen": "R8-T04",
+      "groupId": "R8-T04--nav-work",
+      "label": "Work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Return to the current Work query without changing this task."
+    },
+    {
+      "screen": "R8-T04",
+      "groupId": "R8-T04--nav-intake",
+      "label": "Intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open capture without discarding or replaying this task."
+    },
+    {
+      "screen": "R8-T04",
+      "groupId": "R8-T04--nav-workflows",
+      "label": "Workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Optional reusable workflows; never a prerequisite for this task."
+    },
+    {
+      "screen": "R8-T04",
+      "groupId": "R8-T04--nav-more",
+      "label": "More",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Existing project menu; connections remain optional."
+    },
+    {
+      "screen": "R8-T04",
+      "groupId": "R8-T04--child-task-1",
+      "label": "Open T-084.1",
+      "box": [
+        340,
+        390,
+        890,
+        78
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open this child within the same parent context; full child-detail variants remain outside the bounded source journey."
+    },
+    {
+      "screen": "R8-T04",
+      "groupId": "R8-T04--child-task-2",
+      "label": "Open T-084.2",
+      "box": [
+        340,
+        468,
+        890,
+        78
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open this child within the same parent context; full child-detail variants remain outside the bounded source journey."
+    },
+    {
+      "screen": "R8-T04",
+      "groupId": "R8-T04--child-task-3",
+      "label": "Open T-084.3",
+      "box": [
+        340,
+        546,
+        890,
+        78
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open this child within the same parent context; full child-detail variants remain outside the bounded source journey."
+    },
+    {
+      "screen": "R8-T04",
+      "groupId": "R8-T04--child-task-4",
+      "label": "Open T-084.4",
+      "box": [
+        340,
+        624,
+        890,
+        78
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open this child within the same parent context; full child-detail variants remain outside the bounded source journey."
+    },
+    {
+      "screen": "R8-T04",
+      "groupId": "R8-T04--continue-with-policy",
+      "label": "View running tasks",
+      "box": [
+        340,
+        812,
+        216,
+        32
+      ],
+      "kind": "history-read",
+      "target": "R8-T05",
+      "effect": "Open the later running state. The displayed standing policy, not this navigation click, authorizes admission of ready children; no per-child approval gate."
+    },
+    {
+      "screen": "R8-T04",
+      "groupId": "R8-T04--adjust-plan",
+      "label": "Adjust plan",
+      "box": [
+        568,
+        812,
+        138,
+        32
+      ],
+      "kind": "fixture-edit",
+      "target": null,
+      "effect": "A plan edit needs a new revision and dependency re-evaluation before new dispatches; existing attempt ownership is retained."
+    },
+    {
+      "screen": "R8-T05",
+      "groupId": "R8-T05--nav-work",
+      "label": "Work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Return to the current Work query without changing this task."
+    },
+    {
+      "screen": "R8-T05",
+      "groupId": "R8-T05--nav-intake",
+      "label": "Intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open capture without discarding or replaying this task."
+    },
+    {
+      "screen": "R8-T05",
+      "groupId": "R8-T05--nav-workflows",
+      "label": "Workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Optional reusable workflows; never a prerequisite for this task."
+    },
+    {
+      "screen": "R8-T05",
+      "groupId": "R8-T05--nav-more",
+      "label": "More",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Existing project menu; connections remain optional."
+    },
+    {
+      "screen": "R8-T05",
+      "groupId": "R8-T05--child-task-1",
+      "label": "Open T-084.1",
+      "box": [
+        340,
+        390,
+        890,
+        78
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open this child within the same parent context; full child-detail variants remain outside the bounded source journey."
+    },
+    {
+      "screen": "R8-T05",
+      "groupId": "R8-T05--child-task-2",
+      "label": "Open T-084.2",
+      "box": [
+        340,
+        468,
+        890,
+        78
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open this child within the same parent context; full child-detail variants remain outside the bounded source journey."
+    },
+    {
+      "screen": "R8-T05",
+      "groupId": "R8-T05--child-task-3",
+      "label": "Open T-084.3",
+      "box": [
+        340,
+        546,
+        890,
+        78
+      ],
+      "kind": "history-read",
+      "target": "R8-T06",
+      "effect": "Read the later recorded child-task decision and assignment; opening it starts no work."
+    },
+    {
+      "screen": "R8-T05",
+      "groupId": "R8-T05--child-task-4",
+      "label": "Open T-084.4",
+      "box": [
+        340,
+        624,
+        890,
+        78
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open this child within the same parent context; full child-detail variants remain outside the bounded source journey."
+    },
+    {
+      "screen": "R8-T05",
+      "groupId": "R8-T05--open-decision",
+      "label": "Open task decision",
+      "box": [
+        340,
+        812,
+        212,
+        32
+      ],
+      "kind": "history-read",
+      "target": "R8-T06",
+      "effect": "Open the later recorded decision state; navigation itself does not manufacture progress or request a stop."
+    },
+    {
+      "screen": "R8-T05",
+      "groupId": "R8-T05--pause-task",
+      "label": "Pause new work",
+      "box": [
+        564,
+        812,
+        140,
+        32
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Pause future admissions only; running attempts remain visible until completion or acknowledged/fenced stop."
+    },
+    {
+      "screen": "R8-T06",
+      "groupId": "R8-T06--nav-work",
+      "label": "Work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Return to the current Work query without changing this task."
+    },
+    {
+      "screen": "R8-T06",
+      "groupId": "R8-T06--nav-intake",
+      "label": "Intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open capture without discarding or replaying this task."
+    },
+    {
+      "screen": "R8-T06",
+      "groupId": "R8-T06--nav-workflows",
+      "label": "Workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Optional reusable workflows; never a prerequisite for this task."
+    },
+    {
+      "screen": "R8-T06",
+      "groupId": "R8-T06--nav-more",
+      "label": "More",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Existing project menu; connections remain optional."
+    },
+    {
+      "screen": "R8-T06",
+      "groupId": "R8-T06--choose-meeting",
+      "label": "Use Thursday and continue",
+      "box": [
+        340,
+        812,
+        210,
+        32
+      ],
+      "kind": "fixture-transition",
+      "target": "R8-T07",
+      "effect": "Record Thursday as the proposal. The destination is a later fictional state after stop acknowledgement and dependent drafting complete; this click alone is not stop acknowledgement or external authority."
+    },
+    {
+      "screen": "R8-T07",
+      "groupId": "R8-T07--nav-work",
+      "label": "Work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Return to the current Work query without changing this task."
+    },
+    {
+      "screen": "R8-T07",
+      "groupId": "R8-T07--nav-intake",
+      "label": "Intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open capture without discarding or replaying this task."
+    },
+    {
+      "screen": "R8-T07",
+      "groupId": "R8-T07--nav-workflows",
+      "label": "Workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Optional reusable workflows; never a prerequisite for this task."
+    },
+    {
+      "screen": "R8-T07",
+      "groupId": "R8-T07--nav-more",
+      "label": "More",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Existing project menu; connections remain optional."
+    },
+    {
+      "screen": "R8-T07",
+      "groupId": "R8-T07--accept-preparation",
+      "label": "Accept preparation only",
+      "box": [
+        340,
+        812,
+        226,
+        32
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Accept the prepared outcome and complete T-084 without sending email or changing a calendar. Preserve the draft artifacts and distinct action states."
+    },
+    {
+      "screen": "R8-T07",
+      "groupId": "R8-T07--approve-external",
+      "label": "Accept + approve actions",
+      "box": [
+        1270,
+        812,
+        310,
+        32
+      ],
+      "kind": "fixture-transition",
+      "target": "R8-T08",
+      "effect": "Accept the assembled outcome revision and separately approve the exact reviewed email and private calendar hold. Record acceptance accept-084-1 and action approval approval-084-1 separately. The destination is later confirmed fictional receipts, never evidence that approval alone completed an external write."
+    },
+    {
+      "screen": "R8-T08",
+      "groupId": "R8-T08--nav-work",
+      "label": "Work",
+      "box": [
+        340,
+        56,
+        72,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Return to the current Work query without changing this task."
+    },
+    {
+      "screen": "R8-T08",
+      "groupId": "R8-T08--nav-intake",
+      "label": "Intake",
+      "box": [
+        416,
+        56,
+        76,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open capture without discarding or replaying this task."
+    },
+    {
+      "screen": "R8-T08",
+      "groupId": "R8-T08--nav-workflows",
+      "label": "Workflows",
+      "box": [
+        496,
+        56,
+        110,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Optional reusable workflows; never a prerequisite for this task."
+    },
+    {
+      "screen": "R8-T08",
+      "groupId": "R8-T08--nav-more",
+      "label": "More",
+      "box": [
+        610,
+        56,
+        70,
+        34
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Existing project menu; connections remain optional."
+    },
+    {
+      "screen": "R8-T08",
+      "groupId": "R8-T08--save-workflow",
+      "label": "Save as workflow…",
+      "box": [
+        1270,
+        438,
+        224,
+        32
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Propose a parameterized version of this successful plan. Saving alone grants no standing authority or automatic activation."
+    },
+    {
+      "screen": "R8-T08",
+      "groupId": "R8-T08--reopen-task",
+      "label": "Reopen task",
+      "box": [
+        1270,
+        490,
+        166,
+        32
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Reopen T-084 without replaying any external action or erasing prior receipts."
+    },
+    {
+      "screen": "R8-T08",
+      "groupId": "R8-T08--new-capture",
+      "label": "Capture another task",
+      "box": [
+        340,
+        822,
+        164,
+        32
+      ],
+      "kind": "out-of-slice",
+      "target": null,
+      "effect": "Open a fresh unassigned draft variant before wiring. Never return to the T-084 capture fixture: T-084 remains completed with its prior receipts and no action is replayed."
+    }
+  ],
+  "edges": [
+    {
+      "id": "R8-T01--capture-later",
+      "from": "R8-T01",
+      "to": "R8-T02",
+      "groupId": "R8-T01--capture-later",
+      "box": [
+        780,
+        471,
+        170,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Create durable local T-084 in Needs analysis; no turn, child task or external action starts."
+    },
+    {
+      "id": "R8-T01--capture-analyze",
+      "from": "R8-T01",
+      "to": "R8-T03",
+      "groupId": "R8-T01--capture-analyze",
+      "box": [
+        962,
+        471,
+        218,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Create durable T-084 once and admit analysis under the displayed research-and-draft policy; do not send or schedule."
+    },
+    {
+      "id": "R8-T02--analyze-saved",
+      "from": "R8-T02",
+      "to": "R8-T03",
+      "groupId": "R8-T02--analyze-saved",
+      "box": [
+        340,
+        674,
+        170,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Admit analysis for existing T-084 under research-and-draft scope; preserve the original capture and identity."
+    },
+    {
+      "id": "R8-T03--answer-context",
+      "from": "R8-T03",
+      "to": "R8-T04",
+      "groupId": "R8-T03--answer-context",
+      "box": [
+        988,
+        690,
+        192,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Record the supplied time zone against T-084 and continue analysis; no external side effect."
+    },
+    {
+      "id": "R8-T04--continue-with-policy",
+      "from": "R8-T04",
+      "to": "R8-T05",
+      "groupId": "R8-T04--continue-with-policy",
+      "box": [
+        340,
+        812,
+        216,
+        32
+      ],
+      "kind": "history-read",
+      "effect": "Open the later running state. The displayed standing policy, not this navigation click, authorizes admission of ready children; no per-child approval gate."
+    },
+    {
+      "id": "R8-T05--child-task-3",
+      "from": "R8-T05",
+      "to": "R8-T06",
+      "groupId": "R8-T05--child-task-3",
+      "box": [
+        340,
+        546,
+        890,
+        78
+      ],
+      "kind": "history-read",
+      "effect": "Read the later recorded child-task decision and assignment; opening it starts no work."
+    },
+    {
+      "id": "R8-T05--open-decision",
+      "from": "R8-T05",
+      "to": "R8-T06",
+      "groupId": "R8-T05--open-decision",
+      "box": [
+        340,
+        812,
+        212,
+        32
+      ],
+      "kind": "history-read",
+      "effect": "Open the later recorded decision state; navigation itself does not manufacture progress or request a stop."
+    },
+    {
+      "id": "R8-T06--choose-meeting",
+      "from": "R8-T06",
+      "to": "R8-T07",
+      "groupId": "R8-T06--choose-meeting",
+      "box": [
+        340,
+        812,
+        210,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Record Thursday as the proposal. The destination is a later fictional state after stop acknowledgement and dependent drafting complete; this click alone is not stop acknowledgement or external authority."
+    },
+    {
+      "id": "R8-T07--approve-external",
+      "from": "R8-T07",
+      "to": "R8-T08",
+      "groupId": "R8-T07--approve-external",
+      "box": [
+        1270,
+        812,
+        310,
+        32
+      ],
+      "kind": "fixture-transition",
+      "effect": "Accept the assembled outcome revision and separately approve the exact reviewed email and private calendar hold. Record acceptance accept-084-1 and action approval approval-084-1 separately. The destination is later confirmed fictional receipts, never evidence that approval alone completed an external write."
+    }
+  ],
+  "scopeFixture": {
+    "id": "policy-research-drafts-01",
+    "owner": "Mara",
+    "automaticAdmissions": [
+      "read supplied context",
+      "research",
+      "summarize",
+      "propose",
+      "draft",
+      "independent review"
+    ],
+    "externalWrites": [],
+    "runtimeAuthority": "ILLUSTRATIVE_ONLY"
+  },
+  "children": [
+    {
+      "id": "local-084-1",
+      "displayId": "T-084.1",
+      "parentId": "local-084",
+      "role": "Research agent",
+      "dependsOn": [],
+      "output": "Diagnosis.md",
+      "harness": "Codex",
+      "model": "GPT-6.1 Sol",
+      "environment": "Workstation",
+      "attempt": 1
+    },
+    {
+      "id": "local-084-2",
+      "displayId": "T-084.2",
+      "parentId": "local-084",
+      "role": "Knowledge agent",
+      "dependsOn": [],
+      "output": "Customer brief.md",
+      "harness": "Claude Code",
+      "model": "Sonnet 5.5",
+      "environment": "Workstation",
+      "attempt": 1
+    },
+    {
+      "id": "local-084-3",
+      "displayId": "T-084.3",
+      "parentId": "local-084",
+      "role": "Calendar agent",
+      "dependsOn": [],
+      "output": "Meeting proposal",
+      "harness": "Codex",
+      "model": "GPT-6.1 Sol",
+      "environment": "Ops node",
+      "attempt": 1,
+      "replacementWhileStopPending": "held"
+    },
+    {
+      "id": "local-084-4",
+      "displayId": "T-084.4",
+      "parentId": "local-084",
+      "role": "Writing agent",
+      "dependsOn": [
+        "local-084-1",
+        "local-084-2",
+        "local-084-3"
+      ],
+      "output": "Reply.eml",
+      "harness": "Claude Code",
+      "model": "Sonnet 5.5",
+      "environment": "Workstation",
+      "attempt": 1
+    }
+  ],
+  "journeys": {
+    "captureAndAnalyze": [
+      "R8-T01",
+      "R8-T03",
+      "R8-T04",
+      "R8-T05",
+      "R8-T06",
+      "R8-T07",
+      "R8-T08"
+    ],
+    "saveForLater": [
+      "R8-T01",
+      "R8-T02",
+      "R8-T03"
+    ],
+    "simpleDirect": {
+      "path": [
+        "R8-T01",
+        "R8-T03",
+        "R8-T07",
+        "R8-T08"
+      ],
+      "status": "SEMANTIC_BRANCH_SPECIFIED_NOT_RENDERED_AS_SEPARATE_FIXTURES",
+      "input": "Summarize the supplied note",
+      "omittedPhases": [
+        "Deep-dive",
+        "Architect",
+        "Plan"
+      ],
+      "childTasks": [],
+      "externalActions": [],
+      "requiresDistinctInputAndResultVariantsBeforeNativeWiring": true
+    }
+  },
+  "externalActions": {
+    "default": "Research and drafts only",
+    "optionalReviewedActions": [
+      "Send exactly the reviewed reply to alex@example.test",
+      "Create a private hold on Mara's calendar; no customer invite"
+    ],
+    "approvalDoesNotProveSuccess": true,
+    "unknownOutcomePolicy": "Retain intent; reconcile observed state before any resend."
+  },
+  "reviewedActionEnvelope": {
+    "payload": {
+      "taskRef": {
+        "environmentId": "env-demo",
+        "projectId": "customer-ops",
+        "id": "local-084",
+        "displayId": "T-084"
+      },
+      "planRevision": 1,
+      "email": {
+        "to": [
+          "alex@example.test"
+        ],
+        "subject": "Search refresh follow-up",
+        "body": "Hi Alex — the incident note says interrupted refreshes keep the last complete index. Please retry refresh and share the trace if it happens again.\nWould Thursday 12 Nov at 2:30 pm PST work for a 30-minute follow-up?\nSources: Incident note.md §2; Customer email.eml."
+      },
+      "calendar": {
+        "owner": "Mara",
+        "title": "Customer follow-up · private hold",
+        "start": "2026-11-12T14:30:00-08:00",
+        "end": "2026-11-12T15:00:00-08:00",
+        "timeZone": "America/Los_Angeles",
+        "attendees": [],
+        "visibility": "private"
+      }
+    },
+    "sha256": "b5727b31a0492163e2e8921cfc0bdb5e45be56694767158ed007e469bcd97266",
+    "canonicalization": "UTF-8 JSON, sorted keys, compact separators, unescaped Unicode",
+    "acceptanceFixture": "accept-084-1",
+    "approvalFixture": "approval-084-1",
+    "receiptFixtures": [
+      "mail-receipt-084",
+      "event-084"
+    ],
+    "allValuesFictional": true
+  },
+  "qualification": {
+    "staticGeometry": "PASS",
+    "figmaImport": "UNRUN",
+    "prototypeWiring": "UNRUN",
+    "runtime": "UNIMPLEMENTED_DESIGN_FIXTURE",
+    "mobile": "UNQUALIFIED",
+    "accessibility": "UNQUALIFIED"
+  },
+  "sourcePatterns": [
+    "../../round-07-optional-linear/build/build_optional_linear.py",
+    "../../round-05/build/native_svg.py",
+    "../../round-05/build/build_workspace.py"
+  ]
+}

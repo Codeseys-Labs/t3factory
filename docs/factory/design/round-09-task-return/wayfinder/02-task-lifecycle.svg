@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1080" viewBox="0 0 1000 1080" role="img" aria-labelledby="R9-WF02-title R9-WF02-desc">
+<title id="R9-WF02-title">How does the same task return a result?</title>
+<desc id="R9-WF02-desc">Direct and mixed preparation converge on exact revision acceptance, with external action approval separate. Proposed Round-09 design; not runtime, acceptance or native navigation evidence. Tracker #2 and #66 retain decisions and milestones.</desc>
+<style>text{font-family:Arial;fill:#f1f3f7}.muted{fill:#bac4d2}</style>
+<rect width="1000" height="1080" fill="#101216"/>
+<text x="50" y="44" font-size="26" font-weight="600">How does the same task return a result?</text>
+<text x="50" y="72" font-size="14" class="muted">T3 Factory · November 4 proposed priorities P1–P4 · complements tracker #2 / #66</text>
+<defs>
+<marker id="R9-WF02-progress" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#8cb7ff"/></marker>
+<marker id="R9-WF02-return" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#b4bdca"/></marker>
+<marker id="R9-WF02-context" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#ebc878"/></marker>
+</defs>
+<path d="M50 100h32" stroke="#8cb7ff" stroke-width="2"/>
+<text x="91" y="105" font-size="13" class="muted">Progress within scope</text>
+<path d="M286 100h32" stroke="#b4bdca" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="327" y="105" font-size="13" class="muted">Return / new intent</text>
+<path d="M510 100h32" stroke="#ebc878" stroke-width="2" stroke-dasharray="2 5"/>
+<text x="551" y="105" font-size="13" class="muted">Optional or recovery</text>
+<path id="l1" d="M430 260 L430 290 L180 290 L180 320" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R9-WF02-progress)"><title>capture to direct: simple</title></path>
+<rect x="191.4" y="268" width="47.2" height="16" fill="#101216"/>
+<text x="215" y="280" font-size="12" text-anchor="middle" class="muted">simple</text>
+<path id="l2" d="M570 260 L570 290 L820 290 L820 320" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R9-WF02-progress)"><title>capture to mixed: when useful</title></path>
+<rect x="725.9" y="268" width="78.2" height="16" fill="#101216"/>
+<text x="765" y="280" font-size="12" text-anchor="middle" class="muted">when useful</text>
+<path id="l3" d="M180 430 L180 455 L430 455 L430 490" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R9-WF02-progress)"><title>direct to review: result</title></path>
+<rect x="226.4" y="433" width="47.2" height="16" fill="#101216"/>
+<text x="250" y="445" font-size="12" text-anchor="middle" class="muted">result</text>
+<path id="l4" d="M820 430 L820 455 L570 455 L570 490" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R9-WF02-progress)"><title>mixed to review: assembled</title></path>
+<rect x="697.1" y="433" width="65.8" height="16" fill="#101216"/>
+<text x="730" y="445" font-size="12" text-anchor="middle" class="muted">assembled</text>
+<path id="l5" d="M500 600 L500 660" fill="none" stroke="#8cb7ff" stroke-width="2" marker-end="url(#R9-WF02-progress)"><title>review to accept: Progress within scope</title></path>
+<path id="l6" d="M500 770 L500 830" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R9-WF02-return)" stroke-dasharray="7 5"><title>accept to reopen: reopen</title></path>
+<rect x="536.4" y="793" width="47.2" height="16" fill="#101216"/>
+<text x="560" y="805" font-size="12" text-anchor="middle" class="muted">reopen</text>
+<path id="l7" d="M640 545 L820 545 L820 660" fill="none" stroke="#ebc878" stroke-width="2" marker-end="url(#R9-WF02-context)" stroke-dasharray="2 5"><title>review to actions: separate approval</title></path>
+<rect x="672.3" y="523" width="115.4" height="16" fill="#101216"/>
+<text x="730" y="535" font-size="12" text-anchor="middle" class="muted">separate approval</text>
+<path id="l8" d="M960 375 L980 375 L980 120 L20 120 L20 715 L40 715" fill="none" stroke="#ebc878" stroke-width="2" marker-end="url(#R9-WF02-context)" stroke-dasharray="2 5"><title>mixed to control: Optional or recovery</title></path>
+<path id="l9" d="M360 885 L340 885 L340 545 L360 545" fill="none" stroke="#b4bdca" stroke-width="2" marker-end="url(#R9-WF02-return)" stroke-dasharray="7 5"><title>reopen to review: new revision</title></path>
+<rect x="232.8" y="793" width="84.4" height="16" fill="#101216"/>
+<text x="275" y="805" font-size="12" text-anchor="middle" class="muted">new revision</text>
+<g id="capture"><title>Capture local outcome</title><rect x="360" y="150" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="376" y="171" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="376" y="194" font-size="18" font-weight="600">Capture local outcome</text>
+<text x="376" y="216" font-size="14" class="muted">A supplied note can be enough</text>
+<text x="376" y="235" font-size="14" class="muted">No integration prerequisite</text>
+</g>
+<g id="direct"><title>Direct preparation</title><rect x="40" y="320" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="56" y="341" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="56" y="364" font-size="18" font-weight="600">Direct preparation</text>
+<text x="56" y="386" font-size="14" class="muted">Summarize the supplied note</text>
+<text x="56" y="405" font-size="14" class="muted">No child tasks required</text>
+</g>
+<g id="mixed"><title>Mixed preparation</title><rect x="680" y="320" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="696" y="341" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="696" y="364" font-size="18" font-weight="600">Mixed preparation</text>
+<text x="696" y="386" font-size="14" class="muted">Optional children and dependencies</text>
+<text x="696" y="405" font-size="14" class="muted">Ready work advances within scope</text>
+</g>
+<g id="review"><title>Review exact revision</title><rect x="360" y="490" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="376" y="511" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="376" y="534" font-size="18" font-weight="600">Review exact revision</text>
+<text x="376" y="556" font-size="14" class="muted">Artifacts, sources and uncertainty</text>
+<text x="376" y="575" font-size="14" class="muted">Inspect proposed actions separately</text>
+</g>
+<g id="accept"><title>Accept preparation</title><rect x="360" y="660" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="376" y="681" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="376" y="704" font-size="18" font-weight="600">Accept preparation</text>
+<text x="376" y="726" font-size="14" class="muted">Prepared result is accepted</text>
+<text x="376" y="745" font-size="14" class="muted">Email not sent; calendar not changed</text>
+</g>
+<g id="reopen"><title>Reopen same task</title><rect x="360" y="830" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="376" y="851" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="376" y="874" font-size="18" font-weight="600">Reopen same task</text>
+<text x="376" y="896" font-size="14" class="muted">Acceptance and receipts retained</text>
+<text x="376" y="915" font-size="14" class="muted">Idle until intent and valid scope</text>
+</g>
+<g id="actions"><title>External action</title><rect x="680" y="660" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="696" y="681" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="696" y="704" font-size="18" font-weight="600">External action</text>
+<text x="696" y="726" font-size="14" class="muted">Review and approve exact intent</text>
+<text x="696" y="745" font-size="14" class="muted">Receipt observed or still unknown</text>
+</g>
+<g id="control"><title>Stop or reconcile</title><rect x="40" y="660" width="280" height="110" rx="9" fill="#191d24" stroke="#66778e"/>
+<text x="56" y="681" font-size="11" font-weight="600" class="muted">P1 DESIGN PROPOSAL</text>
+<text x="56" y="704" font-size="18" font-weight="600">Stop or reconcile</text>
+<text x="56" y="726" font-size="14" class="muted">Stop requested is not stopped</text>
+<text x="56" y="745" font-size="14" class="muted">Fence or acknowledge first</text>
+</g>
+<text x="50" y="1011" font-size="13" class="muted">Reopening preserves accepted evidence; a changed result awaits acceptance as a new revision.</text>
+<text x="50" y="1045" font-size="13" class="muted">Uncertain actions require reconciliation; stop requests do not release an active writer.</text>
+</svg>

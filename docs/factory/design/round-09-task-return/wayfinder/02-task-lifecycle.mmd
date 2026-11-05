@@ -1,0 +1,22 @@
+flowchart TD
+  accTitle: How does the same task return a result?
+  accDescr: Direct and mixed preparation converge on exact revision acceptance, with external action approval separate. Proposed Round-09 design; not runtime, acceptance or native navigation evidence. Tracker #2 and #66 retain decisions and milestones.
+
+  %% Generated from maps.json; SVG uses the stored geometry, Mermaid lays itself out.
+  capture["P1 DESIGN PROPOSAL | Capture local outcome | A supplied note can be enough | No integration prerequisite"]
+  direct["P1 DESIGN PROPOSAL | Direct preparation | Summarize the supplied note | No child tasks required"]
+  mixed["P1 DESIGN PROPOSAL | Mixed preparation | Optional children and dependencies | Ready work advances within scope"]
+  review["P1 DESIGN PROPOSAL | Review exact revision | Artifacts, sources and uncertainty | Inspect proposed actions separately"]
+  accept["P1 DESIGN PROPOSAL | Accept preparation | Prepared result is accepted | Email not sent; calendar not changed"]
+  reopen["P1 DESIGN PROPOSAL | Reopen same task | Acceptance and receipts retained | Idle until intent and valid scope"]
+  actions["P1 DESIGN PROPOSAL | External action | Review and approve exact intent | Receipt observed or still unknown"]
+  control["P1 DESIGN PROPOSAL | Stop or reconcile | Stop requested is not stopped | Fence or acknowledge first"]
+  capture -->|"simple"| direct
+  capture -->|"when useful"| mixed
+  direct -->|"result"| review
+  mixed -->|"assembled"| review
+  review --> accept
+  accept -.->|"reopen"| reopen
+  review -.->|"separate approval"| actions
+  mixed -.-> control
+  reopen -.->|"new revision"| review

@@ -1,0 +1,94 @@
+{
+  "method": "rsvg-convert of temporary outlined copies; glyph outlines from fontTools TTFont of bound Inter files, positions from PIL prefix advances. Authored SVGs retain editable native text. No fonts installed.",
+  "fontWeights": [
+    {
+      "weight": 400,
+      "source": "round-04\\build\\fonts\\Inter-Regular.ttf",
+      "sha256": "40d692fce188e4471e2b3cba937be967878f631ad3ebbbdcd587687c7ebe0c82"
+    },
+    {
+      "weight": 500,
+      "source": "round-04\\build\\fonts\\Inter-Medium.ttf",
+      "sha256": "97ad806f526e41546d46365bb3a393145f75b7b1568913db74549ad8b8dba872"
+    },
+    {
+      "weight": 600,
+      "source": "round-04\\build\\fonts\\Inter-SemiBold.ttf",
+      "sha256": "78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3"
+    },
+    {
+      "weight": 700,
+      "source": "round-04\\build\\fonts\\Inter-Bold.ttf",
+      "sha256": "288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f"
+    }
+  ],
+  "previews": [
+    {
+      "scene": "R9-T01",
+      "svgSha256": "a749eadee03e295b7b7e37261089a3e4b669ad2a54b4211a59304091b494ef54",
+      "png": "previews/R9-T01.png",
+      "pngSha256": "2a62e966cdf7758f080c2f034b8434a2756be020268bd6dc0a9a2de741eea73e"
+    },
+    {
+      "scene": "R9-T02",
+      "svgSha256": "90450f256f61b2e790d2a2e7d9ac30d5c386fc551e1f0be06e1d9268ec335efa",
+      "png": "previews/R9-T02.png",
+      "pngSha256": "041baa8a3fa61473474e57822042014077440a4b2a04b01877b046e8074da967"
+    },
+    {
+      "scene": "R9-T03",
+      "svgSha256": "1971c5e2cc2c0a97cd2bf8f8e822a9bf4eb108bda832aec94916638af2e877dc",
+      "png": "previews/R9-T03.png",
+      "pngSha256": "afdeeab50e4470746c9ca968283c24bce932393bb5efa3cb9e44333b3109e2f2"
+    },
+    {
+      "scene": "R9-T04",
+      "svgSha256": "6429da4dcdbceed0b22ed45351e4367c4343eef572daf5cf55ee502a0e45cf1f",
+      "png": "previews/R9-T04.png",
+      "pngSha256": "84f4bdca7e93808fa03643bf9e83e39a07a818c246f60bca95bffaf5af4ffd9f"
+    },
+    {
+      "scene": "R9-T05",
+      "svgSha256": "df2c95d7da34ae75ac1041aec4126fb67d17ac5690ef6545467ce6db63d9f2b8",
+      "png": "previews/R9-T05.png",
+      "pngSha256": "df0d02d5f63547b397101072c6492917f201900cd3b72776012891a4db4fc5c5"
+    },
+    {
+      "scene": "R9-T06",
+      "svgSha256": "f8d48df7edad73ce45b2b78003b82e48581c4a2a28a80ea1eb86f8c40355f2e7",
+      "png": "previews/R9-T06.png",
+      "pngSha256": "70134ea2697203b315764c4d8e14b5c6f8b7069a33221bcdf4e88a699c369530"
+    },
+    {
+      "scene": "R9-T07",
+      "svgSha256": "ed9bdcf67d8244d7974cbb3fb59b70ae3d10be0d89ced2a16b417d45a7e00877",
+      "png": "previews/R9-T07.png",
+      "pngSha256": "9d6853412c0ab46575f8e83872055efeb7cebc0d1a8c18cbcadae0de368753c3"
+    },
+    {
+      "scene": "R9-T08",
+      "svgSha256": "15b5e19528100d71591145f59018046c3709973e1ca543f848d060f7bdf323d3",
+      "png": "previews/R9-T08.png",
+      "pngSha256": "ed9d7876c3440e37adefa219ce5bc5d60093aa7d87b4f7c337fcb44fc672a740"
+    },
+    {
+      "scene": "R9-T09",
+      "svgSha256": "9822cc5dab12fd6e750c24c38036d2929dab0cd911941b9e0a598a8c0a50a463",
+      "png": "previews/R9-T09.png",
+      "pngSha256": "8f70543e09ed58ef953ad50c15532673f8bcc5ac7743db486a869f685e2a55a8"
+    },
+    {
+      "scene": "R9-T10",
+      "svgSha256": "4beb8e3885c237f44caed52ab32f8a63e47ac752440e5ea3a526429101167941",
+      "png": "previews/R9-T10.png",
+      "pngSha256": "04022adc9d99ab09d959a151b05b4545d2e17b12aab7c6d6128ea4a0f3cdf186"
+    },
+    {
+      "scene": "R9-T11",
+      "svgSha256": "190410b00e2a733a5ae7f88adaf2fddbf9c2a7a5a3ce017883fd9a3eef275377",
+      "png": "previews/R9-T11.png",
+      "pngSha256": "891f4acea9a92983c056d4cbe8afc1e31ca53f309c097aa54200089c0c61503f"
+    }
+  ],
+  "limits": "Local derivative raster rendering only; not platform font matching, native Figma typography, shaping equivalence or native pointer proof. Visual inspection is recorded separately."
+}

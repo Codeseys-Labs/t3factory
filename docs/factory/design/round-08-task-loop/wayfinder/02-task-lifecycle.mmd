@@ -1,0 +1,28 @@
+flowchart TD
+  accTitle: How does one task reach a reviewed outcome?
+  accDescr: The proposed P1 task loop uses adaptive analysis, dependency-ready child work and admitted execution attempts. Simple work runs directly. Exceptions retain ownership until stop acknowledgement or fencing; reviewed external actions record observed receipts. Successful plans can later become P3 workflows with optional P4 CI targets. Proposed Round-08 product navigation and lifecycle, using November 4 priority IDs P1-P4. These views complement canonical Wayfinder issue #2 and delivery roadmap #66; they do not renumber tracker milestones M0-M5 or slices W1-W5. Existing foundations are explicitly labeled; no runtime qualification is implied.
+
+  %% Generated from maps.json; SVG uses the stored geometry, Mermaid lays itself out.
+  capture["P1 PROPOSAL | Capture → local task | One task; optional source context | Save for later or analyze now"]
+  analyze["P1 PROPOSAL | Analyze the outcome | Find criteria and constraints | Request blocking missing context | Choose the smallest useful plan"]
+  plan["P1 PROPOSAL | Plan and child tasks | Dependencies decide readiness | Child purpose, criteria and output | Progress stays within granted scope"]
+  direct["P1 PROPOSAL | Simple task: act directly | Same task and evidence | No decomposition or setup required | Example: summarize a supplied note"]
+  routing["P1 PROPOSAL | Admit a ready child | Auto: model + harness + machine | Check capability, access and capacity | Show the admitted assignment"]
+  control["P1 PROPOSAL | Hold, stop or recover | Retain the task when blocked | Pause future starts; show active work | Stop requested is not stopped | Wait for acknowledgement or fencing | Unknown result: reconcile before retry"]
+  attempt["P1 PROPOSAL | Execute an owned attempt | Lineage records what actually ran | Late results cannot replace newer work | Return evidence and uncertainty"]
+  evidence["P1 PROPOSAL | Assemble the results | Reconcile results and disagreements | Preserve artifacts, sources and failures | Keep blocked work visible"]
+  review["P1 PROPOSAL | Review the outcome | Check criteria and evidence | Inspect proposed external actions | Revise the plan when needed"]
+  outcome["P1 CORE · P2 ACTION ADAPTERS | Record the outcome | Act within authorized scope | Observe send/event/delivery receipts | Accept or settle with explicit meaning"]
+  reuse["P3 · OPTIONAL P4 CI | Save as workflow | Version inputs and policy | New run uses the same loop | Eligible machine or CI target"]
+  capture -->|"begin under policy"| analyze
+  analyze -->|"decompose when useful"| plan
+  analyze -->|"simple outcome"| direct
+  plan -->|"dependency-ready"| routing
+  routing -->|"admitted assignment"| attempt
+  attempt -->|"observed evidence"| evidence
+  direct -->|"direct result"| evidence
+  control -.->|"hold / reconcile before replacement"| attempt
+  evidence -->|"assembled output"| review
+  review -.->|"replan"| plan
+  review -->|"within granted scope"| outcome
+  outcome -.->|"reuse"| reuse

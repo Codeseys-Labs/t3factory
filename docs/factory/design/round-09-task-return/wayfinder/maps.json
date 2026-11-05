@@ -1,0 +1,792 @@
+{
+  "schemaVersion": 1,
+  "status": "Proposed Round-09 design; not runtime, acceptance or native navigation evidence. Tracker #2 and #66 retain decisions and milestones.",
+  "trackerProvenance": {
+    "decisionMap": "https://github.com/Codeseys-Labs/t3factory/issues/2",
+    "deliveryRoadmap": "https://github.com/Codeseys-Labs/t3factory/issues/66",
+    "prioritySequence": "P1 core, P2 integrations, P3 workflows and machines, P4 optional CI; M0-M5 and W1-W5 unchanged"
+  },
+  "edgeKinds": {
+    "progress": {
+      "label": "Progress within scope",
+      "dash": "",
+      "color": "#8cb7ff"
+    },
+    "return": {
+      "label": "Return / new intent",
+      "dash": "7 5",
+      "color": "#b4bdca"
+    },
+    "context": {
+      "label": "Optional or recovery",
+      "dash": "2 5",
+      "color": "#ebc878"
+    }
+  },
+  "views": [
+    {
+      "id": "R9-WF01",
+      "file": "01-task-navigation",
+      "title": "Where do I return after a task?",
+      "description": "Proposed navigation preserves task identity, origin, history and read-only child context.",
+      "width": 1000,
+      "height": 1080,
+      "legend": [
+        "progress",
+        "return",
+        "context"
+      ],
+      "notes": [
+        "Scene counterparts are proposed design references, not verified prototype controls.",
+        "Opening a draft or reader starts no work; new identity is assigned on capture."
+      ],
+      "sections": [],
+      "nodes": [
+        {
+          "id": "draft",
+          "title": "New task draft",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 360,
+          "y": 150,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Unassigned; opening starts nothing",
+            "Capture creates a distinct identity"
+          ]
+        },
+        {
+          "id": "task",
+          "title": "Captured task",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 360,
+          "y": 320,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Outcome, context and next decision",
+            "Same identity through the journey"
+          ]
+        },
+        {
+          "id": "result",
+          "title": "Review and accept result",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 360,
+          "y": 490,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Accept exact prepared revision",
+            "Inspect artifacts and uncertainty"
+          ]
+        },
+        {
+          "id": "accepted",
+          "title": "Accepted task",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 360,
+          "y": 660,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Prior result and history remain",
+            "New task or reopen are distinct"
+          ]
+        },
+        {
+          "id": "reader",
+          "title": "Child reader",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 40,
+          "y": 320,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Read-only: output and dependencies",
+            "Model, harness, environment, attempt"
+          ]
+        },
+        {
+          "id": "history",
+          "title": "Retained history",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 680,
+          "y": 660,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Accepted revisions and receipts",
+            "Return to the same task context"
+          ]
+        },
+        {
+          "id": "reopen",
+          "title": "Reopened task",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 360,
+          "y": 830,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Same identity; settlement cleared",
+            "Idle until new intent and valid scope"
+          ]
+        },
+        {
+          "id": "work",
+          "title": "Work / origin",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 40,
+          "y": 150,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Back restores selection and filters",
+            "Opening a detail starts no work"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "id": "n1",
+          "source": "draft",
+          "target": "task",
+          "kind": "progress",
+          "points": [
+            [
+              500,
+              260
+            ],
+            [
+              500,
+              320
+            ]
+          ],
+          "label": "",
+          "labelAt": [
+            0,
+            0
+          ]
+        },
+        {
+          "id": "n2",
+          "source": "task",
+          "target": "result",
+          "kind": "progress",
+          "points": [
+            [
+              500,
+              430
+            ],
+            [
+              500,
+              490
+            ]
+          ],
+          "label": "",
+          "labelAt": [
+            0,
+            0
+          ]
+        },
+        {
+          "id": "n3",
+          "source": "result",
+          "target": "accepted",
+          "kind": "progress",
+          "points": [
+            [
+              500,
+              600
+            ],
+            [
+              500,
+              660
+            ]
+          ],
+          "label": "",
+          "labelAt": [
+            0,
+            0
+          ]
+        },
+        {
+          "id": "n4",
+          "source": "accepted",
+          "target": "reopen",
+          "kind": "return",
+          "points": [
+            [
+              500,
+              770
+            ],
+            [
+              500,
+              830
+            ]
+          ],
+          "label": "reopen",
+          "labelAt": [
+            560,
+            805
+          ]
+        },
+        {
+          "id": "n5",
+          "source": "task",
+          "target": "reader",
+          "kind": "context",
+          "points": [
+            [
+              360,
+              350
+            ],
+            [
+              320,
+              350
+            ]
+          ],
+          "label": "inspect",
+          "labelAt": [
+            340,
+            338
+          ]
+        },
+        {
+          "id": "n6",
+          "source": "reader",
+          "target": "task",
+          "kind": "return",
+          "points": [
+            [
+              320,
+              400
+            ],
+            [
+              360,
+              400
+            ]
+          ],
+          "label": "back",
+          "labelAt": [
+            340,
+            390
+          ]
+        },
+        {
+          "id": "n7",
+          "source": "accepted",
+          "target": "history",
+          "kind": "context",
+          "points": [
+            [
+              640,
+              690
+            ],
+            [
+              680,
+              690
+            ]
+          ],
+          "label": "open",
+          "labelAt": [
+            660,
+            680
+          ]
+        },
+        {
+          "id": "n8",
+          "source": "history",
+          "target": "accepted",
+          "kind": "return",
+          "points": [
+            [
+              680,
+              740
+            ],
+            [
+              640,
+              740
+            ]
+          ],
+          "label": "back",
+          "labelAt": [
+            660,
+            730
+          ]
+        },
+        {
+          "id": "n9",
+          "source": "work",
+          "target": "task",
+          "kind": "progress",
+          "points": [
+            [
+              180,
+              260
+            ],
+            [
+              180,
+              290
+            ],
+            [
+              430,
+              290
+            ],
+            [
+              430,
+              320
+            ]
+          ],
+          "label": "open",
+          "labelAt": [
+            210,
+            280
+          ]
+        },
+        {
+          "id": "n10",
+          "source": "accepted",
+          "target": "draft",
+          "kind": "return",
+          "points": [
+            [
+              360,
+              730
+            ],
+            [
+              25,
+              730
+            ],
+            [
+              25,
+              130
+            ],
+            [
+              500,
+              130
+            ],
+            [
+              500,
+              150
+            ]
+          ],
+          "label": "new task",
+          "labelAt": [
+            90,
+            715
+          ]
+        },
+        {
+          "id": "n11",
+          "source": "task",
+          "target": "work",
+          "kind": "return",
+          "points": [
+            [
+              360,
+              390
+            ],
+            [
+              340,
+              390
+            ],
+            [
+              340,
+              280
+            ],
+            [
+              180,
+              280
+            ],
+            [
+              180,
+              260
+            ]
+          ],
+          "label": "",
+          "labelAt": [
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "R9-WF02",
+      "file": "02-task-lifecycle",
+      "title": "How does the same task return a result?",
+      "description": "Direct and mixed preparation converge on exact revision acceptance, with external action approval separate.",
+      "width": 1000,
+      "height": 1080,
+      "legend": [
+        "progress",
+        "return",
+        "context"
+      ],
+      "notes": [
+        "Reopening preserves accepted evidence; a changed result awaits acceptance as a new revision.",
+        "Uncertain actions require reconciliation; stop requests do not release an active writer."
+      ],
+      "sections": [],
+      "nodes": [
+        {
+          "id": "capture",
+          "title": "Capture local outcome",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 360,
+          "y": 150,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "A supplied note can be enough",
+            "No integration prerequisite"
+          ]
+        },
+        {
+          "id": "direct",
+          "title": "Direct preparation",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 40,
+          "y": 320,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Summarize the supplied note",
+            "No child tasks required"
+          ]
+        },
+        {
+          "id": "mixed",
+          "title": "Mixed preparation",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 680,
+          "y": 320,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Optional children and dependencies",
+            "Ready work advances within scope"
+          ]
+        },
+        {
+          "id": "review",
+          "title": "Review exact revision",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 360,
+          "y": 490,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Artifacts, sources and uncertainty",
+            "Inspect proposed actions separately"
+          ]
+        },
+        {
+          "id": "accept",
+          "title": "Accept preparation",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 360,
+          "y": 660,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Prepared result is accepted",
+            "Email not sent; calendar not changed"
+          ]
+        },
+        {
+          "id": "reopen",
+          "title": "Reopen same task",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 360,
+          "y": 830,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Acceptance and receipts retained",
+            "Idle until intent and valid scope"
+          ]
+        },
+        {
+          "id": "actions",
+          "title": "External action",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 680,
+          "y": 660,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Review and approve exact intent",
+            "Receipt observed or still unknown"
+          ]
+        },
+        {
+          "id": "control",
+          "title": "Stop or reconcile",
+          "badge": "P1 DESIGN PROPOSAL",
+          "x": 40,
+          "y": 660,
+          "w": 280,
+          "h": 110,
+          "lines": [
+            "Stop requested is not stopped",
+            "Fence or acknowledge first"
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "id": "l1",
+          "source": "capture",
+          "target": "direct",
+          "kind": "progress",
+          "points": [
+            [
+              430,
+              260
+            ],
+            [
+              430,
+              290
+            ],
+            [
+              180,
+              290
+            ],
+            [
+              180,
+              320
+            ]
+          ],
+          "label": "simple",
+          "labelAt": [
+            215,
+            280
+          ]
+        },
+        {
+          "id": "l2",
+          "source": "capture",
+          "target": "mixed",
+          "kind": "progress",
+          "points": [
+            [
+              570,
+              260
+            ],
+            [
+              570,
+              290
+            ],
+            [
+              820,
+              290
+            ],
+            [
+              820,
+              320
+            ]
+          ],
+          "label": "when useful",
+          "labelAt": [
+            765,
+            280
+          ]
+        },
+        {
+          "id": "l3",
+          "source": "direct",
+          "target": "review",
+          "kind": "progress",
+          "points": [
+            [
+              180,
+              430
+            ],
+            [
+              180,
+              455
+            ],
+            [
+              430,
+              455
+            ],
+            [
+              430,
+              490
+            ]
+          ],
+          "label": "result",
+          "labelAt": [
+            250,
+            445
+          ]
+        },
+        {
+          "id": "l4",
+          "source": "mixed",
+          "target": "review",
+          "kind": "progress",
+          "points": [
+            [
+              820,
+              430
+            ],
+            [
+              820,
+              455
+            ],
+            [
+              570,
+              455
+            ],
+            [
+              570,
+              490
+            ]
+          ],
+          "label": "assembled",
+          "labelAt": [
+            730,
+            445
+          ]
+        },
+        {
+          "id": "l5",
+          "source": "review",
+          "target": "accept",
+          "kind": "progress",
+          "points": [
+            [
+              500,
+              600
+            ],
+            [
+              500,
+              660
+            ]
+          ],
+          "label": "",
+          "labelAt": [
+            0,
+            0
+          ]
+        },
+        {
+          "id": "l6",
+          "source": "accept",
+          "target": "reopen",
+          "kind": "return",
+          "points": [
+            [
+              500,
+              770
+            ],
+            [
+              500,
+              830
+            ]
+          ],
+          "label": "reopen",
+          "labelAt": [
+            560,
+            805
+          ]
+        },
+        {
+          "id": "l7",
+          "source": "review",
+          "target": "actions",
+          "kind": "context",
+          "points": [
+            [
+              640,
+              545
+            ],
+            [
+              820,
+              545
+            ],
+            [
+              820,
+              660
+            ]
+          ],
+          "label": "separate approval",
+          "labelAt": [
+            730,
+            535
+          ]
+        },
+        {
+          "id": "l8",
+          "source": "mixed",
+          "target": "control",
+          "kind": "context",
+          "points": [
+            [
+              960,
+              375
+            ],
+            [
+              980,
+              375
+            ],
+            [
+              980,
+              120
+            ],
+            [
+              20,
+              120
+            ],
+            [
+              20,
+              715
+            ],
+            [
+              40,
+              715
+            ]
+          ],
+          "label": "",
+          "labelAt": [
+            140,
+            110
+          ]
+        },
+        {
+          "id": "l9",
+          "source": "reopen",
+          "target": "review",
+          "kind": "return",
+          "points": [
+            [
+              360,
+              885
+            ],
+            [
+              340,
+              885
+            ],
+            [
+              340,
+              545
+            ],
+            [
+              360,
+              545
+            ]
+          ],
+          "label": "new revision",
+          "labelAt": [
+            275,
+            805
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -95,6 +95,9 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
   } | null>(null);
   const [reviewed, setReviewed] = useState<readonly string[]>([]);
   const [delivery, setDelivery] = useState<"not-requested" | "outstanding">("not-requested");
+  // Called unconditionally: the React Compiler keeps the && short-circuit, so a
+  // conditional call here changes the hook count between renders.
+  const nowMinute = useNowMinute();
   const data = query.error === null ? query.data : null;
   const run = async (value: Request) => {
     if (inFlight.current) return;
@@ -162,7 +165,7 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
     grant !== null &&
     grant !== undefined &&
     grant.revokedAt === null &&
-    Date.parse(grant.policy.expiresAt) > Date.parse(`${useNowMinute()}Z`);
+    Date.parse(grant.policy.expiresAt) > Date.parse(`${nowMinute}Z`);
   const direct =
     plan.tasks.filter((task) => !task.retired).length === 1
       ? data?.tasks.find((task) => task.taskId === ref.rootId)?.selectedResult

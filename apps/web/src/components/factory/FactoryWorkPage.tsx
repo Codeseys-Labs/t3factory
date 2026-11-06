@@ -46,6 +46,7 @@ import {
   FactoryWorkTable,
 } from "./FactoryWorkCollectionViews";
 import { FactoryOverviewPage } from "./FactoryOverviewPage";
+import { FactoryPlanEditor } from "./FactoryPlanEditor";
 import { FactoryWorkPrerequisites } from "./FactoryWorkPrerequisites";
 
 const ownerMessages: Record<FactoryWorkOwnerStatus, string> = {
@@ -82,6 +83,7 @@ function FactoryWorkWorkspace() {
     ReadonlyMap<EnvironmentId, readonly (string | undefined)[]>
   >(new Map());
   const [showOverview, setShowOverview] = useState(false);
+  const [showPlans, setShowPlans] = useState(false);
   const plan = planFactoryWorkOwners({
     environmentIds: scope.environmentIds,
     projects: scope.kind === "project" || scope.kind === "checkout" ? scope.members : null,
@@ -225,10 +227,21 @@ function FactoryWorkWorkspace() {
             Issues and Sources.
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={refresh}>
-          Refresh collection
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            aria-expanded={showPlans}
+            onClick={() => setShowPlans((previous) => !previous)}
+          >
+            {showPlans ? "Hide local plans" : "Local plans"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={refresh}>
+            Refresh collection
+          </Button>
+        </div>
       </div>
+      {showPlans ? <FactoryPlanEditor /> : null}
       <ToggleGroup
         aria-label="Work kind"
         value={[search.workKind ?? "all"]}

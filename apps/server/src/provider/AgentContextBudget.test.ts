@@ -8,6 +8,7 @@ import { FactoryFeedService } from "../factory/FactoryFeedService.ts";
 import { FactoryIssueRelations } from "../factory/FactoryIssueRelations.ts";
 import { FactoryIssueService } from "../factory/FactoryIssueService.ts";
 import { FactoryWorkService } from "../factory/FactoryWorkService.ts";
+import { FactoryPlanService } from "../factory/FactoryPlanService.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import { ProviderInstanceId } from "@t3tools/contracts";
@@ -20,6 +21,7 @@ import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { ServerConfig } from "../config.ts";
 import { DeviceService } from "../device/DeviceService.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import { GitWorkflowService } from "../git/GitWorkflowService.ts";
 import * as McpHttpServer from "../mcp/McpHttpServer.ts";
 import { PreviewAutomationBroker } from "../mcp/PreviewAutomationBroker.ts";
@@ -55,6 +57,7 @@ import budget from "./agentContextBudget.json" with { type: "json" };
 
 // Registration only stores tool definitions, so the handlers' services are never called.
 const toolHandlerServices = Layer.mergeAll(
+  FactoryExecutionTestkit.layerExecutionServiceMock,
   Layer.mock(FactoryIssueService)({}),
   Layer.mock(FactoryIssueRelations)({}),
   Layer.mock(FactoryFeedService)({}),
@@ -64,6 +67,7 @@ const toolHandlerServices = Layer.mergeAll(
   Layer.mock(FactoryKnowledgeService)({}),
   Layer.mock(FactoryDeliveryService)({}),
   Layer.mock(FactoryWorkService)({}),
+  Layer.mock(FactoryPlanService)({}),
   Layer.mock(ProjectCoordinatorService)({}),
 
   Layer.mock(DeviceService)({}),

@@ -4,6 +4,9 @@ import * as FactoryFeedService from "./factory/FactoryFeedService.ts";
 import * as FactoryResearchService from "./factory/FactoryResearchService.ts";
 import * as FactoryClaimsService from "./factory/FactoryClaimsService.ts";
 import * as FactoryWorkService from "./factory/FactoryWorkService.ts";
+import * as FactoryPlanService from "./factory/FactoryPlanService.ts";
+import * as FactoryExecutionService from "./factory/FactoryExecutionService.ts";
+import * as FactoryPreparationAcceptanceService from "./factory/FactoryPreparationAcceptanceService.ts";
 import * as FactoryAcceptanceService from "./factory/FactoryAcceptanceService.ts";
 import * as FactoryKnowledgeService from "./factory/FactoryKnowledgeService.ts";
 import * as FactoryDeliveryService from "./factory/FactoryDeliveryService.ts";
@@ -1288,6 +1291,9 @@ export const layerWsRpc = (
       const factoryResearch = yield* FactoryResearchService.FactoryResearchService;
       const factoryClaims = yield* FactoryClaimsService.FactoryClaimsService;
       const factoryWork = yield* FactoryWorkService.FactoryWorkService;
+      const factoryPlans = yield* FactoryPlanService.FactoryPlanService;
+      const factoryExecution = yield* FactoryExecutionService.FactoryExecutionService;
+      const factoryPreparation = yield* FactoryPreparationAcceptanceService.FactoryPreparationAcceptanceService;
       const factoryAcceptance = yield* FactoryAcceptanceService.FactoryAcceptanceService;
       const factoryKnowledge = yield* FactoryKnowledgeService.FactoryKnowledgeService;
       const factoryDelivery = yield* FactoryDeliveryService.FactoryDeliveryService;
@@ -2599,6 +2605,34 @@ export const layerWsRpc = (
         [WS_METHODS.factoryReadWork]: (input) => factoryWork.read(input),
         [WS_METHODS.factoryReadWorkHistory]: (input) => factoryWork.history(input),
         [WS_METHODS.factoryReadWorkPrerequisites]: (input) => factoryWork.readPrerequisites(input),
+        [WS_METHODS.factoryCreatePlan]: (input) =>
+          factoryPlans.create(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryApplyPlan]: (input) =>
+          factoryPlans.apply(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryReadPlan]: (input) => factoryPlans.read(input),
+        [WS_METHODS.factoryListPlans]: (input) => factoryPlans.list(input),
+        [WS_METHODS.factoryReadPlanHistory]: (input) => factoryPlans.history(input),
+        [WS_METHODS.factoryIssueExecutionGrant]: (input) =>
+          factoryExecution.issueGrant(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryRevokeExecutionGrant]: (input) =>
+          factoryExecution.revokeGrant(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryAdmitExecution]: (input) =>
+          factoryExecution.admit(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryRetryExecution]: (input) =>
+          factoryExecution.retry(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryRetryExecutionCapture]: (input) =>
+          factoryExecution.retryCapture(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryStopExecution]: (input) =>
+          factoryExecution.requestStop(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryReadExecution]: (input) => factoryExecution.readExecution(input),
+        [WS_METHODS.factoryReadExecutionOutputs]: (input) => factoryExecution.readOutputs(input),
+        [WS_METHODS.factoryReadExecutionOutput]: (input) => factoryExecution.readOutput(input),
+        [WS_METHODS.factoryReadExecutionAssembly]: (input) => factoryExecution.readAssembly(input),
+        [WS_METHODS.factoryAcceptPreparation]: (input) =>
+          factoryPreparation.accept(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryReopenPreparation]: (input) =>
+          factoryPreparation.reopen(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryReadPreparationHistory]: (input) => factoryPreparation.read(input),
         [WS_METHODS.factoryAcceptCommit]: (input) => factoryAcceptance.acceptCommit(input),
         [WS_METHODS.factoryReadAcceptance]: (input) => factoryAcceptance.read(input),
         [WS_METHODS.factoryCreateKnowledgeBrief]: (input) => factoryKnowledge.createBrief(input),
@@ -3352,6 +3386,9 @@ export const layer = Layer.unwrap(
     const factoryResearch = yield* FactoryResearchService.FactoryResearchService;
     const factoryClaims = yield* FactoryClaimsService.FactoryClaimsService;
     const factoryWork = yield* FactoryWorkService.FactoryWorkService;
+    const factoryPlans = yield* FactoryPlanService.FactoryPlanService;
+    const factoryExecution = yield* FactoryExecutionService.FactoryExecutionService;
+    const factoryPreparation = yield* FactoryPreparationAcceptanceService.FactoryPreparationAcceptanceService;
     const factoryAcceptance = yield* FactoryAcceptanceService.FactoryAcceptanceService;
     const factoryKnowledge = yield* FactoryKnowledgeService.FactoryKnowledgeService;
     const factoryDelivery = yield* FactoryDeliveryService.FactoryDeliveryService;
@@ -3446,6 +3483,9 @@ export const layer = Layer.unwrap(
                   Layer.succeed(FactoryClaimsService.FactoryClaimsService, factoryClaims),
                 ),
                 Layer.provide(Layer.succeed(FactoryWorkService.FactoryWorkService, factoryWork)),
+                Layer.provide(Layer.succeed(FactoryPlanService.FactoryPlanService, factoryPlans)),
+                Layer.provide(Layer.succeed(FactoryExecutionService.FactoryExecutionService, factoryExecution)),
+                Layer.provide(Layer.succeed(FactoryPreparationAcceptanceService.FactoryPreparationAcceptanceService, factoryPreparation)),
                 Layer.provide(
                   Layer.succeed(
                     FactoryAcceptanceService.FactoryAcceptanceService,

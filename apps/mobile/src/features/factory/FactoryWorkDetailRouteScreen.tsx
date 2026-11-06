@@ -1,5 +1,11 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import { StackActions, useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
+import {
+  StackActions,
+  useNavigation,
+  usePreventRemove,
+  useRoute,
+  type RouteProp,
+} from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import {
   factoryWorkKey,
@@ -36,7 +42,9 @@ import {
   openFactoryWorkReview,
   selectFactoryWorkHistory,
   selectFactoryWorkItem,
+  useFactoryInboxSelection,
   useFactoryWorkView,
+  type FactoryWorkDetailParams,
 } from "./factory-inbox-state";
 import { safeFactoryIssueUrl } from "./factoryIssues";
 import {
@@ -48,6 +56,7 @@ import {
   resolveFactoryWorkReview,
 } from "./factoryWorkList";
 import type { FactoryWorkRoutes } from "./FactoryWorkSection";
+import { FactoryWorkPrerequisites } from "./FactoryWorkPrerequisites";
 import { useOpenFactoryThread } from "./useFactoryIssueActions";
 
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
@@ -219,10 +228,13 @@ function WorkDetail(props: {
   readonly data: FactoryWorkReadResult;
   readonly projectLabel: (projectId: ProjectId) => string | null;
   readonly capabilities: { readonly factoryIssues?: boolean; readonly factoryKnowledge?: boolean };
+  readonly routeContext: FactoryWorkDetailParams;
 }) {
   const { reference, work, data } = props;
   const navigation = useNavigation<NativeStackNavigationProp<DetailRoutes>>();
   const openThread = useOpenFactoryThread();
+  const scope = useFactoryInboxSelection();
+  const view = useFactoryWorkView();
   const canStartIssue = useAtomValue(
     factoryEnvironment.start.permissionAtom(reference.environmentId),
   );
@@ -319,8 +331,9 @@ function WorkDetail(props: {
                     projectId: review.projectId,
                     section: review.section,
                     work,
+                    returnTo: props.routeContext.returnTo,
                   });
-                  navigation.dispatch(StackActions.popTo("SettingsFactoryIssues"));
+                  navigation.dispatch(StackActions.push("SettingsFactoryIssues"));
                 }}
               />
               {review.operateNote ? (
@@ -368,13 +381,25 @@ function WorkDetail(props: {
             The project coordinator is project context, not this item's provenance. Inspecting Work
             doesn't launch, reconcile, accept or publish.
           </Text>
-          <Text className="text-xs text-foreground-muted">
-            The prerequisites view isn't available in the mobile app yet. Open this item on web or
-            desktop to inspect its source blockers.
-          </Text>
         </View>
       </SettingsSection>
 
+      <FactoryWorkPrerequisites
+        key={factoryWorkKey(reference)}
+        reference={reference}
+        status="current"
+        withinFilter={(link) =>
+          (scope.environmentId === null || scope.environmentId === link.ref.environmentId) &&
+          (scope.projectId === null || scope.projectId === link.projectId) &&
+          (view.kind === null || view.kind === link.ref.kind)
+        }
+        onOpen={(target) =>
+          navigation.push("SettingsFactoryWork", {
+            work: JSON.stringify(target),
+            returnTo: props.routeContext,
+          })
+        }
+      />
       <WorkHistory reference={reference} work={work} />
     </>
   );
@@ -384,6 +409,24 @@ export function FactoryWorkDetailRouteScreen() {
   const registry = use(RegistryContext);
   const view = useFactoryWorkView();
   const route = useRoute<RouteProp<FactoryWorkRoutes, "SettingsFactoryWork">>();
+  const navigation = useNavigation<NativeStackNavigationProp<FactoryWorkRoutes>>();
+  const returnTo = route.params?.returnTo;
+  const previous = navigation.getState().routes.at(-2);
+  const previousMatches =
+    previous?.name === "SettingsFactoryWork" && previous.params?.work === returnTo?.work;
+  const navigationReturn = (target: FactoryWorkDetailParams) => {
+    if (previousMatches) navigation.goBack();
+    else navigation.setParams({ ...target, returnTo: target.returnTo });
+  };
+  usePreventRemove(returnTo !== undefined, ({ data }) => {
+    if (
+      returnTo &&
+      !previousMatches &&
+      (data.action.type === "GO_BACK" || data.action.type === "POP")
+    )
+      navigation.setParams({ ...returnTo, returnTo: returnTo.returnTo });
+    else navigation.dispatch(data.action);
+  });
   const insets = useSafeAreaInsets();
   const work = route.params?.work;
   const reference = parseFactoryWorkSelection(work);
@@ -443,6 +486,7 @@ export function FactoryWorkDetailRouteScreen() {
         data={data}
         projectLabel={projectLabel}
         capabilities={environment?.serverConfig?.environment.capabilities ?? {}}
+        routeContext={route.params}
       />
     );
   }
@@ -456,6 +500,18 @@ export function FactoryWorkDetailRouteScreen() {
         contentContainerClassName="gap-5 px-5 pt-4"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
+        {route.params?.returnTo ? (
+          <View className="items-start">
+            <Button
+              label="Return to previous selection"
+              accessibilityHint="Restores the Work detail you inspected this prerequisite from"
+              onPress={() => {
+                const target = route.params.returnTo;
+                if (target) navigationReturn(target);
+              }}
+            />
+          </View>
+        ) : null}
         {reference !== null ? (
           <View className="flex-row flex-wrap items-center justify-between gap-2">
             <Text className="min-w-0 flex-1 text-xs text-foreground-muted" selectable>

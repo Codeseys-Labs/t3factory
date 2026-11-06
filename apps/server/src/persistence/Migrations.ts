@@ -90,6 +90,8 @@ import Migration0203 from "./Migrations/203_FactoryArtifactDeliveries.ts";
 import Migration0204 from "./Migrations/204_FactoryBaseBranches.ts";
 import Migration0205 from "./Migrations/205_ProjectCoordinatorRevisions.ts";
 import Migration0206 from "./Migrations/206_FactoryWorkReadIndexes.ts";
+import Migration0207 from "./Migrations/207_FactoryPlans.ts";
+import Migration0208 from "./Migrations/208_FactoryExecutions.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -180,6 +182,8 @@ const migrationEntries = [
   [204, "FactoryBaseBranches", Migration0204],
   [205, "ProjectCoordinatorRevisions", Migration0205],
   [206, "FactoryWorkReadIndexes", Migration0206],
+  [207, "FactoryPlans", Migration0207],
+  [208, "FactoryExecutions", Migration0208],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -284,14 +288,12 @@ const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(funct
       const executed: Array<readonly [number, string]> = [];
       for (const [id, name, migration] of migrationEntries) {
         if (id < 69 || id > 73 || translated.has(id)) continue;
-        yield* Effect.catch(migration, (cause: unknown) =>
-          Effect.fail(
-            new Migrator.MigrationError({
-              kind: "Failed",
-              message: `Failed to install ${id}_${name} while upgrading legacy Factory history.`,
-              cause,
-            }),
-          ),
+        yield* Effect.mapError(migration, (cause: unknown) =>
+          new Migrator.MigrationError({
+            kind: "Failed",
+            message: `Failed to install ${id}_${name} while upgrading legacy Factory history.`,
+            cause,
+          }),
         );
         yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${id}, ${name})`;
         executed.push([id, name]);

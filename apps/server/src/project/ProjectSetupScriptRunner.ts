@@ -1,3 +1,4 @@
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
 import { linkOriginIsFenced, ProjectId, type ProjectScript, ThreadId } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
@@ -190,6 +191,7 @@ function wrapCommandForCompletion(
 
 /** @public */
 export const make = Effect.gen(function* () {
+  const factoryLifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
   const projects = yield* ProjectService.ProjectService;
   const threads = yield* ProjectionStore.ProjectionStoreV2;
   const terminalManager = yield* TerminalManager.TerminalManager;
@@ -356,6 +358,10 @@ export const make = Effect.gen(function* () {
       ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
       ...(input.projectCwd === undefined ? {} : { projectCwd: input.projectCwd }),
     };
+    const managed = yield* factoryLifecycle.binding({ threadId: ThreadId.make(input.threadId) }).pipe(
+      Effect.mapError((cause) => new ProjectSetupScriptOperationError({ ...errorContext, operation: "readThread", cause })),
+    );
+    if (managed !== null) return { status: "no-script" } as const;
     // A thread whose origin cannot be read might be a link's: run nothing.
     const thread = yield* threads.getThreadShell(ThreadId.make(input.threadId)).pipe(
       Effect.mapError(

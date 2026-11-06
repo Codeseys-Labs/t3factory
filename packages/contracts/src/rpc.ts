@@ -58,6 +58,38 @@ import {
   FactoryWorkPrerequisitesResult,
 } from "./factoryWork.ts";
 import {
+  FactoryPlanApplyInput,
+  FactoryPlanCreateInput,
+  FactoryPlanError,
+  FactoryPlanHistoryInput,
+  FactoryPlanHistoryResult,
+  FactoryPlanListInput,
+  FactoryPlanListResult,
+  FactoryPlanMutationResult,
+  FactoryPlanReadInput,
+  FactoryPlanSnapshot,
+} from "./factoryPlan.ts";
+import {
+  FactoryExecutionRetryCaptureInput,
+  FactoryExecutionAdmitInput,
+  FactoryExecutionAssembly,
+  FactoryExecutionError,
+  FactoryExecutionIssueGrantInput,
+  FactoryExecutionMutationResult,
+  FactoryExecutionOutputReadInput,
+  FactoryExecutionOutputReadResult,
+  FactoryExecutionOutputsInput,
+  FactoryExecutionOutputsResult,
+  FactoryExecutionReadInput,
+  FactoryExecutionReadResult,
+  FactoryExecutionRetryInput,
+  FactoryExecutionRevokeGrantInput,
+  FactoryExecutionStopInput,
+  FactoryPreparationAcceptInput,
+  FactoryPreparationHistoryResult,
+  FactoryPreparationReopenInput,
+} from "./factoryExecution.ts";
+import {
   FactoryKnowledgeAcceptInput,
   FactoryKnowledgeBrief,
   FactoryKnowledgeBriefCreateInput,
@@ -519,6 +551,24 @@ export const WS_METHODS = {
   factoryReadWork: "factory.readWork",
   factoryReadWorkHistory: "factory.readWorkHistory",
   factoryReadWorkPrerequisites: "factory.readWorkPrerequisites",
+  factoryCreatePlan: "factory.createPlan",
+  factoryApplyPlan: "factory.applyPlan",
+  factoryReadPlan: "factory.readPlan",
+  factoryListPlans: "factory.listPlans",
+  factoryReadPlanHistory: "factory.readPlanHistory",
+  factoryIssueExecutionGrant: "factory.issueExecutionGrant",
+  factoryRevokeExecutionGrant: "factory.revokeExecutionGrant",
+  factoryAdmitExecution: "factory.admitExecution",
+  factoryRetryExecutionCapture: "factory.retryExecutionCapture",
+  factoryRetryExecution: "factory.retryExecution",
+  factoryStopExecution: "factory.stopExecution",
+  factoryReadExecution: "factory.readExecution",
+  factoryReadExecutionOutputs: "factory.readExecutionOutputs",
+  factoryReadExecutionOutput: "factory.readExecutionOutput",
+  factoryReadExecutionAssembly: "factory.readExecutionAssembly",
+  factoryAcceptPreparation: "factory.acceptPreparation",
+  factoryReopenPreparation: "factory.reopenPreparation",
+  factoryReadPreparationHistory: "factory.readPreparationHistory",
   factoryReadIssue: "factory.readIssue",
   factoryAcceptCommit: "factory.acceptCommit",
   factoryReadAcceptance: "factory.readAcceptance",
@@ -2064,6 +2114,100 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
   stream: true,
 });
 
+const factoryPlanError = Schema.Union([FactoryPlanError, EnvironmentAuthorizationError]);
+const WsFactoryCreatePlanRpc = Rpc.make(WS_METHODS.factoryCreatePlan, {
+  payload: FactoryPlanCreateInput,
+  success: FactoryPlanMutationResult,
+  error: factoryPlanError,
+});
+const WsFactoryApplyPlanRpc = Rpc.make(WS_METHODS.factoryApplyPlan, {
+  payload: FactoryPlanApplyInput,
+  success: FactoryPlanMutationResult,
+  error: factoryPlanError,
+});
+const WsFactoryReadPlanRpc = Rpc.make(WS_METHODS.factoryReadPlan, {
+  payload: FactoryPlanReadInput,
+  success: FactoryPlanSnapshot,
+  error: factoryPlanError,
+});
+const WsFactoryListPlansRpc = Rpc.make(WS_METHODS.factoryListPlans, {
+  payload: FactoryPlanListInput,
+  success: FactoryPlanListResult,
+  error: factoryPlanError,
+});
+const WsFactoryReadPlanHistoryRpc = Rpc.make(WS_METHODS.factoryReadPlanHistory, {
+  payload: FactoryPlanHistoryInput,
+  success: FactoryPlanHistoryResult,
+  error: factoryPlanError,
+});
+
+const factoryExecutionError = Schema.Union([FactoryExecutionError, EnvironmentAuthorizationError]);
+const WsFactoryIssueExecutionGrantRpc = Rpc.make(WS_METHODS.factoryIssueExecutionGrant, {
+  payload: FactoryExecutionIssueGrantInput,
+  success: FactoryExecutionMutationResult,
+  error: factoryExecutionError,
+});
+const WsFactoryRevokeExecutionGrantRpc = Rpc.make(WS_METHODS.factoryRevokeExecutionGrant, {
+  payload: FactoryExecutionRevokeGrantInput,
+  success: FactoryExecutionMutationResult,
+  error: factoryExecutionError,
+});
+const WsFactoryAdmitExecutionRpc = Rpc.make(WS_METHODS.factoryAdmitExecution, {
+  payload: FactoryExecutionAdmitInput,
+  success: FactoryExecutionMutationResult,
+  error: factoryExecutionError,
+});
+const WsFactoryRetryExecutionCaptureRpc = Rpc.make(WS_METHODS.factoryRetryExecutionCapture, {
+  payload: FactoryExecutionRetryCaptureInput,
+  success: FactoryExecutionMutationResult,
+  error: factoryExecutionError,
+});
+const WsFactoryRetryExecutionRpc = Rpc.make(WS_METHODS.factoryRetryExecution, {
+  payload: FactoryExecutionRetryInput,
+  success: FactoryExecutionMutationResult,
+  error: factoryExecutionError,
+});
+const WsFactoryStopExecutionRpc = Rpc.make(WS_METHODS.factoryStopExecution, {
+  payload: FactoryExecutionStopInput,
+  success: FactoryExecutionMutationResult,
+  error: factoryExecutionError,
+});
+const WsFactoryReadExecutionRpc = Rpc.make(WS_METHODS.factoryReadExecution, {
+  payload: FactoryExecutionReadInput,
+  success: FactoryExecutionReadResult,
+  error: factoryExecutionError,
+});
+const WsFactoryReadExecutionOutputsRpc = Rpc.make(WS_METHODS.factoryReadExecutionOutputs, {
+  payload: FactoryExecutionOutputsInput,
+  success: FactoryExecutionOutputsResult,
+  error: factoryExecutionError,
+});
+const WsFactoryReadExecutionOutputRpc = Rpc.make(WS_METHODS.factoryReadExecutionOutput, {
+  payload: FactoryExecutionOutputReadInput,
+  success: FactoryExecutionOutputReadResult,
+  error: factoryExecutionError,
+});
+const WsFactoryReadExecutionAssemblyRpc = Rpc.make(WS_METHODS.factoryReadExecutionAssembly, {
+  payload: FactoryExecutionReadInput,
+  success: Schema.NullOr(FactoryExecutionAssembly),
+  error: factoryExecutionError,
+});
+const WsFactoryAcceptPreparationRpc = Rpc.make(WS_METHODS.factoryAcceptPreparation, {
+  payload: FactoryPreparationAcceptInput,
+  success: FactoryExecutionMutationResult,
+  error: factoryExecutionError,
+});
+const WsFactoryReopenPreparationRpc = Rpc.make(WS_METHODS.factoryReopenPreparation, {
+  payload: FactoryPreparationReopenInput,
+  success: FactoryExecutionMutationResult,
+  error: factoryExecutionError,
+});
+const WsFactoryReadPreparationHistoryRpc = Rpc.make(WS_METHODS.factoryReadPreparationHistory, {
+  payload: FactoryExecutionReadInput,
+  success: FactoryPreparationHistoryResult,
+  error: factoryExecutionError,
+});
+
 const WsFactoryListWorkRpc = Rpc.make(WS_METHODS.factoryListWork, {
   payload: FactoryWorkListInput,
   success: FactoryWorkListResult,
@@ -2298,6 +2442,24 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
 export const WsRpcGroup = RpcGroup.make(
   WsGuestShareCreateRpc,
   WsFactoryListWorkRpc,
+  WsFactoryCreatePlanRpc,
+  WsFactoryApplyPlanRpc,
+  WsFactoryReadPlanRpc,
+  WsFactoryListPlansRpc,
+  WsFactoryReadPlanHistoryRpc,
+  WsFactoryIssueExecutionGrantRpc,
+  WsFactoryRevokeExecutionGrantRpc,
+  WsFactoryAdmitExecutionRpc,
+  WsFactoryRetryExecutionCaptureRpc,
+  WsFactoryRetryExecutionRpc,
+  WsFactoryReadExecutionRpc,
+  WsFactoryStopExecutionRpc,
+  WsFactoryReadExecutionOutputsRpc,
+  WsFactoryReadExecutionOutputRpc,
+  WsFactoryReadExecutionAssemblyRpc,
+  WsFactoryAcceptPreparationRpc,
+  WsFactoryReopenPreparationRpc,
+  WsFactoryReadPreparationHistoryRpc,
   WsFactoryReadWorkRpc,
   WsFactoryReadWorkHistoryRpc,
   WsFactoryReadWorkPrerequisitesRpc,

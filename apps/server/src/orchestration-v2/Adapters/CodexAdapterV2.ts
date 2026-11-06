@@ -1,3 +1,4 @@
+import { spawnOwnedProcess } from "@t3tools/shared/ownedProcess";
 import { pipe } from "effect/Function";
 import * as DocumentText from "../../provider/DocumentText.ts";
 import { revertCodexThread } from "../../provider/CodexThreadRevert.ts";
@@ -1504,7 +1505,7 @@ export const layerAppServerClientFactory: Layer.Layer<
           env: environment,
           threadId: input.threadId,
         }).pipe(Effect.provideService(AgentScope, agentScope));
-        const handle = yield* spawner.spawn(command).pipe(
+        const handle = yield* spawnOwnedProcess(spawner, command).pipe(
           Effect.provideService(Scope.Scope, scope),
           Effect.mapError(
             (cause) =>

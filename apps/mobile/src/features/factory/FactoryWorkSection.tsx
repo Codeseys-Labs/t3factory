@@ -28,6 +28,7 @@ import { useProjects } from "../../state/entities";
 import type { EnvironmentPresentation } from "../../state/environments";
 import { useFactoryWorkPages } from "../../state/factory";
 import { useEnvironmentsWithScope } from "../../state/session";
+import { FactoryLocalPlans } from "./FactoryLocalPlans";
 import {
   factoryWorkPagesKey,
   loadedFactoryWorkCursors,
@@ -36,6 +37,7 @@ import {
   selectFactoryWorkItem,
   selectFactoryWorkKind,
   useFactoryWorkView,
+  type FactoryWorkDetailParams,
 } from "./factory-inbox-state";
 import {
   FACTORY_WORK_KIND_LABELS,
@@ -50,7 +52,7 @@ import {
 } from "./factoryWorkList";
 
 export type FactoryWorkRoutes = {
-  SettingsFactoryWork: { readonly work: string };
+  SettingsFactoryWork: FactoryWorkDetailParams;
 };
 
 /** Above this text scale a five-way segmented control truncates; a menu row keeps full labels. */
@@ -308,6 +310,15 @@ export function FactoryWorkSection(props: {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshAll} />}
       ListHeaderComponent={
         <View className="gap-3 pt-2">
+          {environmentId !== null && projectId !== null ? (
+            <FactoryLocalPlans
+              key={`${environmentId}:${projectId}`}
+              environmentId={environmentId}
+              projectId={projectId}
+              environment={environments.find((entry) => entry.environmentId === environmentId)}
+              canRead={readable.has(environmentId)}
+            />
+          ) : null}
           <FactoryWorkKindPicker kind={view.kind} onSelect={selectFactoryWorkKind} />
           <Text className="text-xs text-foreground-muted">
             Retained issue and feed admissions, authored briefs and sealed protocols. Each

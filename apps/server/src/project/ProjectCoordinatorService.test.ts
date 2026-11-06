@@ -24,6 +24,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as Coordinator from "./ProjectCoordinatorService.ts";
 import * as Bindings from "../persistence/ProjectCoordinators.ts";
 import * as IssueLaunches from "../persistence/FactoryIssueLaunches.ts";
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Projects from "./ProjectService.ts";
 import * as Identities from "./RepositoryIdentityResolver.ts";
@@ -107,6 +108,7 @@ function harness(
     }),
   ).pipe(Layer.provide(SetupTracker.layer));
   const external = Layer.mergeAll(
+    FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
     Layer.mock(Identities.RepositoryIdentityResolver)({ resolve: () => Effect.succeed(null) }),
     Layer.succeed(Favicons.ProjectFaviconResolver, {
       resolvePath: () => Effect.succeed(null),

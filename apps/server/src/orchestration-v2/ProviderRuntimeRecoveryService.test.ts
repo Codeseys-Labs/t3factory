@@ -17,14 +17,81 @@ import {
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import * as EffectWorker from "./EffectWorker.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderRuntimeRecovery from "./ProviderRuntimeRecoveryService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
+it.effect(
+  "terminalizes the orphaned run of a quiescent managed binding after factory recovery",
+  () => {
+    const threadId = ThreadId.make("thread_factory_settled");
+    const runId = RunId.make("run_factory_settled");
+    let committed = false;
+    const projection = {
+      thread: { id: threadId },
+      runtimeRequests: [],
+      providerSessions: [],
+      providerThreads: [],
+      runs: [{ id: runId, status: "running" }],
+      attempts: [],
+      providerTurns: [],
+      messages: [],
+      turnItems: [],
+      subagents: [],
+      nodes: [],
+    } as unknown as OrchestrationV2ThreadProjection;
+    const managedLifecycle = (quiescent: boolean) =>
+      FactoryExecutionLifecycle.FactoryExecutionLifecycle.of({
+        binding: Effect.fn("Testkit.binding")(() =>
+          Effect.succeed({ threadId, runId, quiescent } as never),
+        ),
+        guardCommand: Effect.fn("Testkit.guardCommand")(() => Effect.void),
+        runPhase: (() => Effect.void) as never,
+        recover: Effect.fn("Testkit.recover")(() => Effect.void),
+        stop: Effect.fn("Testkit.stop")(() => Effect.succeed(true)),
+        quiesce: Effect.fn("Testkit.quiesce")(() => Effect.succeed(true)),
+        complete: Effect.fn("Testkit.complete")(() => Effect.succeed(true)),
+      });
+    const layerFor = (lifecycle: ReturnType<typeof managedLifecycle>) =>
+      ProviderRuntimeRecovery.layer.pipe(
+        Layer.provide(ServerSettings.layerTest()),
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(FactoryExecutionLifecycle.FactoryExecutionLifecycle, lifecycle),
+            Layer.mock(ProjectionStore.ProjectionStoreV2)({
+              getRecoveryThreadIds: () => Effect.succeed([threadId]),
+              getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+            }),
+            Layer.mock(EventSink.EventSinkV2)({
+              commitCommand: () => {
+                committed = true;
+                return Effect.succeed({ committed: true, cancelledEffectCount: 0 } as never);
+              },
+            }),
+            IdAllocator.layer,
+            Layer.mock(EffectWorker.OrchestrationEffectWorkerV2)({
+              runRecoveryOnce: Effect.succeed(false),
+            }),
+            Layer.mock(EffectOutbox.EffectOutboxV2)({
+              reconcileAfterProcessLoss: Effect.succeed({ requeued: 0, cancelled: 0 }),
+            }),
+          ),
+        ),
+      );
+    return Effect.gen(function* () {
+      const summary = yield* (yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService)
+        .recover;
+      assert.equal(summary.terminalizedRuns, 1);
+      assert.isTrue(committed);
+    }).pipe(Effect.provide(layerFor(managedLifecycle(true))));
+  },
+);
 it.effect("expires orphaned runtime requests before command readiness", () => {
   const threadId = ThreadId.make("thread_recovery_requests");
   let committedInput: Parameters<EventSink.EventSinkV2["Service"]["commitCommand"]>[0] | null =
@@ -54,6 +121,7 @@ it.effect("expires orphaned runtime requests before command readiness", () => {
     Layer.provide(ServerSettings.layerTest()),
     Layer.provide(
       Layer.mergeAll(
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),
@@ -106,6 +174,7 @@ it.effect("preserves async questions across startup and shutdown", () => {
     Layer.provide(ServerSettings.layerTest()),
     Layer.provide(
       Layer.mergeAll(
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),
@@ -176,6 +245,7 @@ it.effect(
       Layer.provide(ServerSettings.layerTest()),
       Layer.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
@@ -321,6 +391,7 @@ it.effect(
       Layer.provide(ServerSettings.layerTest()),
       Layer.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
@@ -387,6 +458,7 @@ it.effect("cancels a stale waiting run when no checkpoint capture can finish it"
     Layer.provide(ServerSettings.layerTest()),
     Layer.provide(
       Layer.mergeAll(
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),
@@ -463,6 +535,7 @@ it.effect("recovery closes a secret card's form but leaves a link card open", ()
     Layer.provide(ServerSettings.layerTest()),
     Layer.provide(
       Layer.mergeAll(
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),
@@ -554,6 +627,7 @@ it.effect.each(["queued", "preparing"] as const)("recovers $0 work after restart
     Layer.provide(ServerSettings.layerTest()),
     Layer.provide(
       Layer.mergeAll(
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),
@@ -680,6 +754,7 @@ it.effect(
       Layer.provide(ServerSettings.layerTest()),
       Layer.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
@@ -787,6 +862,7 @@ it.effect("cancels workflow members and child roots without run ids after restar
     Layer.provide(ServerSettings.layerTest()),
     Layer.provide(
       Layer.mergeAll(
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([parentThreadId, childThreadId]),
           getRuntimeRecoveryProjection: (threadId) =>
@@ -952,6 +1028,7 @@ it.effect(
       Layer.provide(ServerSettings.layerTest()),
       Layer.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
@@ -1109,6 +1186,7 @@ it.effect(
       Layer.provide(ServerSettings.layerTest()),
       Layer.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
@@ -1239,6 +1317,7 @@ it.effect(
       Layer.provide(ServerSettings.layerTest()),
       Layer.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
             getRuntimeRecoveryProjection: () => Effect.succeed(projection),
@@ -1396,6 +1475,7 @@ it.effect("leaves delegated tasks to their own child threads after process loss"
     Layer.provide(ServerSettings.layerTest()),
     Layer.provide(
       Layer.mergeAll(
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),

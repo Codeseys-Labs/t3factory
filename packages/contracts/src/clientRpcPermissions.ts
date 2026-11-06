@@ -15,6 +15,16 @@ import { WS_METHODS } from "./rpc.ts";
 
 /** Incremental client enforcement; the server still authorizes every request. */
 export const CLIENT_GUARDED_RPC_SCOPES = {
+  [WS_METHODS.factoryCreatePlan]: AuthOrchestrationOperateScope,
+  [WS_METHODS.factoryApplyPlan]: AuthOrchestrationOperateScope,
+  [WS_METHODS.factoryIssueExecutionGrant]: AuthOrchestrationOperateScope,
+  [WS_METHODS.factoryRevokeExecutionGrant]: AuthOrchestrationOperateScope,
+  [WS_METHODS.factoryAdmitExecution]: AuthOrchestrationOperateScope,
+  [WS_METHODS.factoryRetryExecution]: AuthOrchestrationOperateScope,
+  [WS_METHODS.factoryStopExecution]: AuthOrchestrationOperateScope,
+  [WS_METHODS.factoryAcceptPreparation]: AuthOrchestrationOperateScope,
+  [WS_METHODS.factoryRetryExecutionCapture]: AuthOrchestrationOperateScope,
+  [WS_METHODS.factoryReopenPreparation]: AuthOrchestrationOperateScope,
   [WS_METHODS.factoryStartIssue]: AuthOrchestrationOperateScope,
   [WS_METHODS.factoryAdmitFeedCandidate]: AuthOrchestrationOperateScope,
   [WS_METHODS.factorySetIssueReadinessOverride]: AuthOrchestrationOperateScope,

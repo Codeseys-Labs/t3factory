@@ -31,6 +31,7 @@ import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 import { ChildProcessSpawner } from "effect/process";
 import * as Factory from "./FactoryIssueService.ts";
+import * as FactoryExecutionTestkit from "./FactoryExecutionTestkit.ts";
 import * as Launches from "../persistence/FactoryIssueLaunches.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Projects from "../project/ProjectService.ts";
@@ -163,6 +164,7 @@ function harness(
     Layer.provide(Layer.mergeAll(orchestrator, settings, receipts)),
   );
   const external = Layer.mergeAll(
+    FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
     Layer.succeed(ServerEnvironmentIdentity, { getEnvironmentId: Effect.succeed(environmentId) }),
     repositoryIdentitiesLayer(
       options.resolve ?? (() => Effect.succeed(identity)),

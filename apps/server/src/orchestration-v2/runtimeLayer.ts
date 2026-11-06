@@ -62,6 +62,9 @@ import * as FactoryAcceptanceStore from "../persistence/FactoryAcceptanceStore.t
 import * as FactoryDeliveryStore from "../persistence/FactoryDeliveryStore.ts";
 import * as FactoryKnowledgeService from "../factory/FactoryKnowledgeService.ts";
 import * as FactoryKnowledgeStore from "../persistence/FactoryKnowledgeStore.ts";
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
+import * as FactoryExecutionStore from "../persistence/FactoryExecutionStore.ts";
+import * as FactoryExecutionService from "../factory/FactoryExecutionService.ts";
 
 export const layerEventInfrastructure = Layer.mergeAll(
   OrchestrationEventStore.layer,
@@ -78,9 +81,12 @@ const layerEventStoreProvided = EventStore.layerFromOrchestrationEventStore.pipe
 const layerCommandReceiptStoreProvided = CommandReceiptStore.layerFromApplicationReceipts.pipe(
   Layer.provide(layerEventInfrastructure),
 );
+// Factory execution lifecycle owns per-attempt durable phase claims over CORE's same store.
+const layerFactoryExecutionLifecycle = FactoryExecutionLifecycle.layer.pipe(
+  Layer.provide(FactoryExecutionStore.layer),
+);
 
 const layerStores = Layer.mergeAll(
-  layerEventInfrastructure,
   layerEventStoreProvided,
   ProjectionStore.layer,
   ProjectStore.layer,
@@ -90,6 +96,14 @@ const layerStores = Layer.mergeAll(
 );
 
 export const layerEventSink = EventSink.layerFromStores.pipe(Layer.provide(layerStores));
+// Fully provided: same store as CORE; adapter/id/projection instances are memoized shared.
+export const layerFactoryExecutionServiceProvided = FactoryExecutionService.layer.pipe(
+  Layer.provide(layerEventSink),
+  Layer.provide(layerFactoryExecutionLifecycle),
+  Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
+  Layer.provideMerge(IdAllocator.layer),
+  Layer.provideMerge(ProjectionStore.layer),
+);
 const layerProjectionMaintenanceProvided = ProjectionMaintenance.layer.pipe(
   Layer.provide(layerStores),
 );
@@ -143,6 +157,7 @@ const layerProviderSessionManagerProvided = ProviderSessionManager.layer.pipe(
       ProviderAdapterRegistry.layerFromProviderInstanceRegistry,
       layerEventSink,
       IdAllocator.layer,
+      layerFactoryExecutionLifecycle,
       layerProviderEventIngestorProvided,
       ProjectionStore.layer,
     ),
@@ -161,6 +176,7 @@ const layerRunExecutionServiceProvided = RunExecutionService.layer.pipe(
       layerCheckpointServiceProvided,
       layerEventSink,
       IdAllocator.layer,
+      layerFactoryExecutionLifecycle,
       layerProviderEventIngestorProvided,
       TurnItemPositionStore.layer,
     ),
@@ -173,6 +189,7 @@ const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pip
       layerContextHandoffServiceProvided,
       layerEventSink,
       IdAllocator.layer,
+      layerFactoryExecutionLifecycle,
       ProjectionStore.layer,
       layerProviderSessionManagerProvided,
       layerProviderAuthServiceProvided,
@@ -183,10 +200,22 @@ const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pip
 );
 
 const layerProviderTurnControlServiceProvided = ProviderTurnControlService.layer.pipe(
-  Layer.provide(Layer.merge(ProjectionStore.layer, layerProviderSessionManagerProvided)),
+  Layer.provide(
+    Layer.mergeAll(
+      ProjectionStore.layer,
+      layerFactoryExecutionLifecycle,
+      layerProviderSessionManagerProvided,
+    ),
+  ),
 );
 const layerRuntimeRequestServiceProvided = RuntimeRequestService.layer.pipe(
-  Layer.provide(Layer.merge(ProjectionStore.layer, layerProviderSessionManagerProvided)),
+  Layer.provide(
+    Layer.mergeAll(
+      ProjectionStore.layer,
+      layerFactoryExecutionLifecycle,
+      layerProviderSessionManagerProvided,
+    ),
+  ),
 );
 const layerCheckpointRollbackServiceProvided = CheckpointRollbackService.layer.pipe(
   Layer.provide(
@@ -232,6 +261,7 @@ const layerOrchestratorProvided = Orchestrator.layer.pipe(
       ProviderContinuationRequests.layer,
       layerProviderEventIngestorProvided,
       layerRuntimePolicyProvided,
+      layerFactoryExecutionLifecycle,
       layerProviderSessionManagerProvided,
       layerProviderSwitchServiceProvided,
       layerRunExecutionServiceProvided,
@@ -267,6 +297,7 @@ export const layerProjectSetupScriptRunner = ProjectSetupScriptRunner.layer.pipe
   Layer.provide(layerProjectService),
   // Whether a thread came from a linked environment, which skips setup.
   Layer.provide(ProjectionStore.layer),
+  Layer.provide(layerFactoryExecutionLifecycle),
 );
 const layerManagedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
   Layer.provide(layerProjectService),
@@ -280,6 +311,7 @@ const layerThreadLaunchProvided = ThreadLaunchService.layer.pipe(
       layerThreadManagementProvided,
       layerCommandReceiptStoreProvided,
       IdAllocator.layer,
+      layerFactoryExecutionLifecycle,
     ),
   ),
 );
@@ -354,6 +386,10 @@ const layerEffectExecutorProvided = EffectWorker.layerExecutor.pipe(
     Layer.mergeAll(
       layerRunFinalizationServiceProvided,
       layerCheckpointRollbackServiceProvided,
+      layerFactoryExecutionLifecycle,
+      layerFactoryExecutionServiceProvided,
+      layerThreadLaunchProvided,
+      ProjectionStore.layer,
       layerProviderSessionManagerProvided,
       layerProviderTurnControlServiceProvided,
       layerProviderTurnStartServiceProvided,
@@ -373,6 +409,7 @@ const layerProviderRuntimeRecoveryProvided = ProviderRuntimeRecoveryService.laye
       layerStores,
       layerEventSink,
       IdAllocator.layer,
+      layerFactoryExecutionLifecycle,
       ProjectionStore.layer,
     ),
   ),

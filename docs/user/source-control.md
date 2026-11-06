@@ -180,15 +180,21 @@ observations, not a synchronized global snapshot.
 
 #### Follow an item's prerequisites
 
-On web and desktop, select an admitted issue and choose **Show prerequisites** to see its direct
+On web, desktop or mobile, select an admitted issue and choose **Show prerequisites** to see its direct
 blockers on GitHub as a small diagram with an equivalent list. Factory asks GitHub only when you
 expand it, using the same evidence as **Blockers**. Each blocker says whether this environment
 retains Work for it. **Open retained Work** keeps your scope, kind filter and layout, even when the
 blocker belongs to another project, and **Return to previous selection** goes back. The diagram
 shows up to 25 blockers; the list pages through the rest. Feed work, briefs and protocols say
 prerequisites are not modeled here, which does not mean they have none. Sub-issues and execution
-history stay in their own views, and the mobile app does not show prerequisites yet. Agents can
-read the same view with the read-only `factory_read_work_prerequisites`.
+history stay in their own views. On mobile, Back also returns to the original detail; inspecting
+a blocker keeps the collection's scope, kind and loaded pages.
+
+Agents can use the read-only `factory_list_work` to discover retained issues, feed work, briefs
+and protocols in the connected environment, optionally filtered by project or kind. A page is
+not the full collection; continue with its `nextCursor` and the same filters. Pass a returned
+reference to `factory_read_work_prerequisites` to inspect an issue or follow a retained blocker.
+Discovery does not admit or start work, accept a result, or publish anything.
 
 The advanced environment overview shows project paths, thread and running counts, scheduled
 workflow counts and latest dispatch, and project coordinator context. Opening a workflow selects
@@ -199,6 +205,19 @@ Issues requires a single checkout. At a broader scope, choose a checkout before 
 Factory does not combine its GitHub pages into a global issue queue. Orchestrator creation
 also requires a single checkout. Workflows can list definitions across the selected scope,
 but every definition has one owning environment and project.
+
+### Refine a local plan
+
+On web or desktop, choose one checkout in **Factory → Work** and open **Local plans**.
+Save an outcome, add child tasks and dependencies, and attach retained Work as context.
+Saving or revising a plan starts no agent and changes no tracker status. Retired tasks and
+dependencies can be restored with their history intact.
+
+Grant an existing local thread permission to edit a particular plan when you want an agent to
+help refine it. You can revoke that permission at any time. If another editor saves first,
+your draft stays available; reload the current revision and deliberately reapply your changes.
+Plan editing does not accept artifacts, publish results or authorize execution. Local plan
+authoring is not yet available in the mobile app or to agents on linked environments.
 
 ### Start a task from an issue
 

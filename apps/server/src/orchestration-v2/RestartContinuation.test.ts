@@ -19,6 +19,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ServerSettings from "../serverSettings.ts";
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import { restartContinuationRun, continueRestartedRun } from "./RestartContinuation.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ProviderRuntimeRecovery from "./ProviderRuntimeRecoveryService.ts";
@@ -209,7 +210,8 @@ it.effect.each(["completed", "waiting", "cancelled"] as const)(
       >[0][] = [];
       yield* continueRestartedRun({ threadId, sourceRunId: runId }).pipe(
         Effect.provide(
-          Layer.merge(
+          Layer.mergeAll(
+            FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
             Layer.mock(ThreadManagementService.ThreadManagementService)({
               getThreadRecords: () => Effect.succeed(projection),
               recoverDelegatedTask: () => Effect.void,
@@ -245,6 +247,7 @@ it.effect.each([
       const recovery = yield* ProviderRuntimeRecovery.make.pipe(
         Effect.provide(
           Layer.mergeAll(
+            FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
             ServerSettings.layerTest({
               continueThreadsAfterServerUpdate: enabled,
               projectSettingsOverrides:
@@ -318,6 +321,7 @@ it.effect("lets a cut blocking delegate_task wake its parent like an async task"
     const recovery = yield* ProviderRuntimeRecovery.make.pipe(
       Effect.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
@@ -383,6 +387,7 @@ it.effect.each(["running", "waiting"])(
       const recovery = yield* ProviderRuntimeRecovery.make.pipe(
         Effect.provide(
           Layer.mergeAll(
+            FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
             ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
             Layer.mock(ProjectionStore.ProjectionStoreV2)({
               getRecoveryThreadIds: () => Effect.succeed([threadId]),
@@ -442,7 +447,8 @@ it.effect("does not duplicate delivery and yields to newer user work or opt-out"
         return Effect.succeed({} as never);
       },
     });
-    const layerEnabled = Layer.merge(
+    const layerEnabled = Layer.mergeAll(
+      FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
       layerThreads,
       ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
     );
@@ -476,7 +482,8 @@ it.effect("does not duplicate delivery and yields to newer user work or opt-out"
     projection = { ...projection, runs: [projection.runs[0]!] };
     yield* continueRestartedRun({ threadId, sourceRunId: runId }).pipe(
       Effect.provide(
-        Layer.merge(
+        Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           layerThreads,
           ServerSettings.layerTest({ continueThreadsAfterServerUpdate: false }),
         ),
@@ -508,6 +515,7 @@ it.effect("prepares no continuation for background work another provider thread 
     const recovery = yield* ProviderRuntimeRecovery.make.pipe(
       Effect.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
@@ -535,6 +543,7 @@ it.effect("prepares no continuation for background work another provider thread 
     const ownRecovery = yield* ProviderRuntimeRecovery.make.pipe(
       Effect.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
@@ -630,6 +639,7 @@ it.effect.each([
         const recovery = yield* ProviderRuntimeRecovery.make.pipe(
           Effect.provide(
             Layer.mergeAll(
+              FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
               ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
               Layer.mock(ProjectionStore.ProjectionStoreV2)({
                 getRecoveryThreadIds: () => Effect.succeed([threadId]),
@@ -781,6 +791,7 @@ it.effect("does not cancel or resume a run that completes while shutdown intent 
     const recovery = yield* ProviderRuntimeRecovery.make.pipe(
       Effect.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([threadId]),
@@ -822,6 +833,7 @@ it.effect("does not cancel or resume a run that completes while shutdown intent 
     yield* continueRestartedRun({ threadId, sourceRunId: runId }).pipe(
       Effect.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
           Layer.mock(ThreadManagementService.ThreadManagementService)({
             getThreadRecords: () => Effect.succeed(projection),
@@ -844,7 +856,8 @@ const continuationDispatches = (projection: OrchestrationV2ThreadProjection) =>
     const dispatches: Array<Extract<OrchestrationV2Command, { type: "message.dispatch" }>> = [];
     yield* continueRestartedRun({ threadId, sourceRunId: runId }).pipe(
       Effect.provide(
-        Layer.merge(
+        Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           Layer.mock(ThreadManagementService.ThreadManagementService)({
             getThreadRecords: () => Effect.succeed(projection),
             recoverDelegatedTask: () => Effect.void,
@@ -1015,6 +1028,7 @@ it.effect("prepares later threads' continuations when one thread fails", () =>
     const recovery = yield* ProviderRuntimeRecovery.make.pipe(
       Effect.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRecoveryThreadIds: () => Effect.succeed([brokenThreadId, threadId]),

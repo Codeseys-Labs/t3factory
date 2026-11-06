@@ -1,3 +1,4 @@
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import {
@@ -118,6 +119,7 @@ export interface ProviderTurnStartServiceV2Shape {
     readonly threadId: ThreadId;
     readonly runId: RunId;
     readonly willRetry?: boolean;
+    readonly runAttemptId?: import("@t3tools/contracts").RunAttemptId;
   }) => Effect.Effect<void, ProviderTurnStartError>;
 }
 
@@ -129,6 +131,7 @@ export class ProviderTurnStartServiceV2 extends Context.Service<
 export const layer: Layer.Layer<
   ProviderTurnStartServiceV2,
   never,
+  | FactoryExecutionLifecycle.FactoryExecutionLifecycle
   | EventSink.EventSinkV2
   | ContextHandoffService.ContextHandoffServiceV2
   | IdAllocator.IdAllocatorV2
@@ -146,6 +149,7 @@ export const layer: Layer.Layer<
 > = Layer.effect(
   ProviderTurnStartServiceV2,
   Effect.gen(function* () {
+    const factoryLifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
     const eventSink = yield* EventSink.EventSinkV2;
     const contextHandoffService = yield* ContextHandoffService.ContextHandoffServiceV2;
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
@@ -303,10 +307,12 @@ export const layer: Layer.Layer<
       readonly threadId: ThreadId;
       readonly runId: RunId;
       readonly willRetry?: boolean;
+      readonly runAttemptId?: import("@t3tools/contracts").RunAttemptId;
     }) {
       const { runId } = input;
       const projection = yield* projectionStore.getTurnStartContext(input.threadId, runId);
       const run = projection.runs.find((candidate) => candidate.id === runId);
+      if (input.runAttemptId !== undefined && run?.activeAttemptId !== input.runAttemptId) return;
       if (run === undefined) {
         return yield* new ProviderTurnStartError({ runId, cause: `Run ${runId} was not found.` });
       }
@@ -448,12 +454,21 @@ export const layer: Layer.Layer<
               } satisfies OrchestrationV2DomainEvent;
             }),
           );
+          const managed = yield* factoryLifecycle.binding({ threadId: projection.thread.id, runId, runAttemptId: attempt.id });
           yield* eventSink.writeIfRunCurrent({
             threadId: projection.thread.id,
             runId,
             activeAttemptId: attempt.id,
             expectedStatus: "starting",
             events,
+            ...(managed === null ? {} : { effects: [{
+              id: `effect:factory.execution.finalize:${attempt.id}`,
+              commandId: CommandId.make(`command:effect:factory.execution.finalize:${attempt.id}`),
+              threadId: projection.thread.id,
+              request: { type: "factory.execution.finalize" as const, runId, runAttemptId: attempt.id,
+                scopeId: checkpointScope.id, captureGeneration: 1, providerThreadId: providerThread.id,
+                driver: managed.driver, providerInstanceId: run.providerInstanceId },
+            }] }),
           });
         },
       );
@@ -749,6 +764,12 @@ export const layer: Layer.Layer<
         return;
       }
       const session = sessionResult.success;
+      const managedSession = yield* factoryLifecycle.binding({ threadId: input.threadId, runId: run.id,
+        ...(input.runAttemptId === undefined ? {} : { runAttemptId: input.runAttemptId }) });
+      if (managedSession !== null && (session.driver !== managedSession.driver ||
+        session.instanceId !== managedSession.spec.modelSelection.instanceId || session.providerSessionId !== providerSessionId)) {
+        return yield* new ProviderTurnStartError({ runId: run.id, cause: "Native session identity differs from admitted harness binding." });
+      }
       if (!(yield* isCurrentAttemptInStatus("starting"))) return;
       const loadFromProvider = Effect.fn("ProviderTurnStartService.loadFromProvider")(function* (
         load: Effect.Effect<OrchestrationV2ProviderThread, ProviderAdapter.ProviderAdapterV2Error>,
@@ -1533,9 +1554,12 @@ export const layer: Layer.Layer<
           // Storage cleanup removes worktrees under the same lease. Only startup
           // holds it; the provider turn runs after it is released.
           const { thread } = yield* projectionStore.getThreadRecords(input.threadId, []);
-          const providerTurn = yield* thread.worktreePath === null
-            ? start(input)
-            : withWorkspaceLease(path.resolve(thread.worktreePath), start(input));
+          const managed = yield* factoryLifecycle.binding({ threadId: input.threadId, runId: input.runId,
+            ...(input.runAttemptId === undefined ? {} : { runAttemptId: input.runAttemptId }) });
+          if (managed !== null && input.runAttemptId === undefined) return yield* new ProviderTurnStartError({ runId: input.runId, cause: "Managed start requires immutable attempt binding." });
+          const startup = thread.worktreePath === null ? start(input) : withWorkspaceLease(path.resolve(thread.worktreePath), start(input));
+          const providerTurn = yield* managed === null ? startup : factoryLifecycle.runPhase({ ...managed, phase: "session" },
+            factoryLifecycle.runPhase({ ...managed, phase: "native-thread" }, startup));
           if (providerTurn !== undefined) yield* providerTurn;
         },
         (effect, input) =>

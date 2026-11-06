@@ -800,53 +800,113 @@ describe("Factory claims query", () => {
   );
 });
 
-it.effect("removes cached Work detail immediately when owner read permission is revoked", () =>
-  Effect.gen(function* () {
-    let snapshot = "Protected intent";
-    const h = yield* makeEnvironmentHarness(
-      () => ({
-        [WS_METHODS.factoryReadWork]: () =>
-          Effect.sync(() => ({
-            item: {
-              ref: { version: 1, environmentId, kind: "brief", id: "exact-brief" },
-              projectId,
-              title: "Protected brief",
-              createdAt: fetchedAt,
-              sourceKey: null,
-              sourceUrl: null,
-              sourceState: null,
-              revision: "revision",
-              supersededBy: null,
-              originConflict: false,
-              planningStage: null,
-            },
-            reviewTarget: { kind: "brief", briefId: "exact-brief" },
-            snapshot,
-            snapshotTruncated: false,
-            projectAvailable: true,
-            reviewProjectId: projectId,
-            projectCoordinatorThreadId: null,
-            supersedes: null,
-            fetchedAt,
-          })),
-      }),
-      [AuthOrchestrationReadScope],
-    );
-    const atom = h.atoms.readWork({
-      environmentId,
-      input: { ref: { version: 1, environmentId, kind: "brief", id: "exact-brief" } },
-    });
-    yield* AtomRegistry.mount(h.registry, atom);
-    const detail = yield* AtomRegistry.getResult(h.registry, atom, { suspendOnWaiting: true });
-    expect(detail.snapshot).toBe("Protected intent");
-    snapshot = "Changed protected intent";
-    h.registry.refresh(atom);
-    expect(
-      (yield* AtomRegistry.getResult(h.registry, atom, { suspendOnWaiting: true })).snapshot,
-    ).toBe(snapshot);
-    h.registry.set(sessions(environmentId), AsyncResult.success(sessionWith([])));
-    expect(Option.isNone(AsyncResult.value(h.registry.get(atom)))).toBe(true);
-  }).pipe(Effect.scoped),
+it.effect(
+  "removes cached Work and plan details immediately when owner read permission is revoked",
+  () =>
+    Effect.gen(function* () {
+      let snapshot = "Protected intent";
+      const plan = {
+        ref: { environmentId, projectId, rootId: "private-root" },
+        revision: 1,
+        tasks: [
+          {
+            id: "private-root",
+            parentId: null,
+            title: "Private outcome",
+            context: "Private context",
+            order: 0,
+            retired: false,
+          },
+        ],
+        edges: [],
+        workContexts: [],
+        editorThreadIds: [],
+        createdAt: fetchedAt,
+        updatedAt: fetchedAt,
+      };
+      const summary = {
+        ref: plan.ref,
+        revision: 1,
+        title: "Private outcome",
+        retired: false,
+        updatedAt: fetchedAt,
+      };
+      const h = yield* makeEnvironmentHarness(
+        () => ({
+          [WS_METHODS.factoryReadPlan]: () => Effect.succeed(plan),
+          [WS_METHODS.factoryListPlans]: () =>
+            Effect.succeed({ items: [summary], nextRootId: null }),
+          [WS_METHODS.factoryReadPlanHistory]: () =>
+            Effect.succeed({ items: [summary], nextBeforeRevision: null }),
+          [WS_METHODS.factoryReadExecutionOutput]: () =>
+            Effect.succeed({ text: "Protected result", output: {}, binding: {} }),
+          [WS_METHODS.factoryReadWork]: () =>
+            Effect.sync(() => ({
+              item: {
+                ref: { version: 1, environmentId, kind: "brief", id: "exact-brief" },
+                projectId,
+                title: "Protected brief",
+                createdAt: fetchedAt,
+                sourceKey: null,
+                sourceUrl: null,
+                sourceState: null,
+                revision: "revision",
+                supersededBy: null,
+                originConflict: false,
+                planningStage: null,
+              },
+              reviewTarget: { kind: "brief", briefId: "exact-brief" },
+              snapshot,
+              snapshotTruncated: false,
+              projectAvailable: true,
+              reviewProjectId: projectId,
+              projectCoordinatorThreadId: null,
+              supersedes: null,
+              fetchedAt,
+            })),
+        }),
+        [AuthOrchestrationReadScope],
+      );
+      const atom = h.atoms.readWork({
+        environmentId,
+        input: { ref: { version: 1, environmentId, kind: "brief", id: "exact-brief" } },
+      });
+      yield* AtomRegistry.mount(h.registry, atom);
+      const detail = yield* AtomRegistry.getResult(h.registry, atom, { suspendOnWaiting: true });
+      expect(detail.snapshot).toBe("Protected intent");
+      const planDetail = h.atoms.readPlan({ environmentId, input: { ref: plan.ref } });
+      const planList = h.atoms.listPlans({ environmentId, input: { projectId } });
+      const planHistory = h.atoms.readPlanHistory({ environmentId, input: { ref: plan.ref } });
+      const executionOutput = h.atoms.readExecutionOutput({ environmentId, input: {
+        selection: { ref: plan.ref, revision: 1, taskId: plan.ref.rootId }, resultId: "a".repeat(64),
+      } });
+      yield* AtomRegistry.mount(h.registry, planDetail);
+      yield* AtomRegistry.mount(h.registry, planList);
+      yield* AtomRegistry.mount(h.registry, planHistory);
+      yield* AtomRegistry.mount(h.registry, executionOutput);
+      expect((yield* AtomRegistry.getResult(h.registry, executionOutput, { suspendOnWaiting: true })).text).toBe("Protected result");
+      expect(
+        (yield* AtomRegistry.getResult(h.registry, planDetail, { suspendOnWaiting: true })).tasks[0]
+          ?.context,
+      ).toBe("Private context");
+      expect(
+        (yield* AtomRegistry.getResult(h.registry, planList, { suspendOnWaiting: true })).items,
+      ).toHaveLength(1);
+      expect(
+        (yield* AtomRegistry.getResult(h.registry, planHistory, { suspendOnWaiting: true })).items,
+      ).toHaveLength(1);
+      snapshot = "Changed protected intent";
+      h.registry.refresh(atom);
+      expect(
+        (yield* AtomRegistry.getResult(h.registry, atom, { suspendOnWaiting: true })).snapshot,
+      ).toBe(snapshot);
+      h.registry.set(sessions(environmentId), AsyncResult.success(sessionWith([])));
+      expect(Option.isNone(AsyncResult.value(h.registry.get(atom)))).toBe(true);
+      expect(Option.isNone(AsyncResult.value(h.registry.get(planDetail)))).toBe(true);
+      expect(Option.isNone(AsyncResult.value(h.registry.get(planList)))).toBe(true);
+      expect(Option.isNone(AsyncResult.value(h.registry.get(planHistory)))).toBe(true);
+      expect(Option.isNone(AsyncResult.value(h.registry.get(executionOutput)))).toBe(true);
+    }).pipe(Effect.scoped),
 );
 
 const makeReadinessHarness = Effect.fn("TestFactory.makeReadinessHarness")(function* (

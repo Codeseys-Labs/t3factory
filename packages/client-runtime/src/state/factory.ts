@@ -182,6 +182,89 @@ export function createFactoryEnvironmentAtoms<R, E>(
       );
     });
   return {
+    readExecution: protectedRead(createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:factory:execution", tag: WS_METHODS.factoryReadExecution, staleTimeMs: 0, idleTtlMs: 0,
+    })),
+    readExecutionOutputs: protectedRead(createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:factory:execution-outputs", tag: WS_METHODS.factoryReadExecutionOutputs, staleTimeMs: 0, idleTtlMs: 0,
+    })),
+    readExecutionOutput: protectedRead(createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:factory:execution-output", tag: WS_METHODS.factoryReadExecutionOutput, staleTimeMs: 0, idleTtlMs: 0,
+    })),
+    readExecutionAssembly: protectedRead(createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:factory:execution-assembly", tag: WS_METHODS.factoryReadExecutionAssembly, staleTimeMs: 0, idleTtlMs: 0,
+    })),
+    readPreparationHistory: protectedRead(createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:factory:preparation-history", tag: WS_METHODS.factoryReadPreparationHistory, staleTimeMs: 0, idleTtlMs: 0,
+    })),
+    issueExecutionGrant: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:factory:issue-execution-grant", tag: WS_METHODS.factoryIssueExecutionGrant,
+      concurrency: { mode: "singleFlight", key: ({ environmentId, input }) => JSON.stringify([environmentId, input.commandId]) },
+    }),
+    revokeExecutionGrant: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:factory:revoke-execution-grant", tag: WS_METHODS.factoryRevokeExecutionGrant,
+      concurrency: { mode: "singleFlight", key: ({ environmentId, input }) => JSON.stringify([environmentId, input.commandId]) },
+    }),
+    admitExecution: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:factory:admit-execution", tag: WS_METHODS.factoryAdmitExecution,
+      concurrency: { mode: "singleFlight", key: ({ environmentId, input }) => JSON.stringify([environmentId, input.commandId]) },
+    }),
+    retryExecution: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:factory:retry-execution", tag: WS_METHODS.factoryRetryExecution,
+      concurrency: { mode: "singleFlight", key: ({ environmentId, input }) => JSON.stringify([environmentId, input.commandId]) },
+    }),
+    stopExecution: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:factory:stop-execution", tag: WS_METHODS.factoryStopExecution,
+      concurrency: { mode: "singleFlight", key: ({ environmentId, input }) => JSON.stringify([environmentId, input.commandId]) },
+    }),
+    acceptPreparation: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:factory:accept-preparation", tag: WS_METHODS.factoryAcceptPreparation,
+      concurrency: { mode: "singleFlight", key: ({ environmentId, input }) => JSON.stringify([environmentId, input.commandId]) },
+    }),
+    reopenPreparation: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:factory:reopen-preparation", tag: WS_METHODS.factoryReopenPreparation,
+      concurrency: { mode: "singleFlight", key: ({ environmentId, input }) => JSON.stringify([environmentId, input.commandId]) },
+    }),
+    listPlans: protectedRead(
+      createEnvironmentRpcQueryAtomFamily(runtime, {
+        label: "environment-data:factory:plans",
+        tag: WS_METHODS.factoryListPlans,
+        staleTimeMs: 0,
+        idleTtlMs: 0,
+      }),
+    ),
+    readPlan: protectedRead(
+      createEnvironmentRpcQueryAtomFamily(runtime, {
+        label: "environment-data:factory:plan",
+        tag: WS_METHODS.factoryReadPlan,
+        staleTimeMs: 0,
+        idleTtlMs: 0,
+      }),
+    ),
+    readPlanHistory: protectedRead(
+      createEnvironmentRpcQueryAtomFamily(runtime, {
+        label: "environment-data:factory:plan-history",
+        tag: WS_METHODS.factoryReadPlanHistory,
+        staleTimeMs: 0,
+        idleTtlMs: 0,
+      }),
+    ),
+    createPlan: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:factory:create-plan",
+      tag: WS_METHODS.factoryCreatePlan,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input.commandId]),
+      },
+    }),
+    applyPlan: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:factory:apply-plan",
+      tag: WS_METHODS.factoryApplyPlan,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input.commandId]),
+      },
+    }),
     readIssue: protectedRead(
       createEnvironmentRpcQueryAtomFamily(runtime, {
         label: "environment-data:factory:issue",

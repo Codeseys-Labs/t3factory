@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import { spawnOwnedProcess } from "@t3tools/shared/ownedProcess";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -1436,8 +1437,7 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
           ELECTRON_RUN_AS_NODE: "1",
           T3_ACP_CGROUP_WRAPPER: "1",
         };
-  const child = yield* spawner
-    .spawn(
+  const child = yield* spawnOwnedProcess(spawner,
       ChildProcess.make(containedSpawnCommand.command, containedSpawnCommand.args, {
         ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
         ...(spawnEnvironment ? { env: spawnEnvironment } : {}),

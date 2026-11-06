@@ -1,3 +1,4 @@
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
 import * as WorktreeSetupTracker from "../project/WorktreeSetupTracker.ts";
 import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
@@ -116,6 +117,7 @@ export interface ThreadLaunchPreparationInput {
   readonly commandId: CommandId;
   readonly threadId: ThreadId;
   readonly runId: RunId;
+  readonly runAttemptId?: import("@t3tools/contracts").RunAttemptId;
 }
 
 export interface ThreadLaunchResult {
@@ -202,6 +204,7 @@ function failureDetail(error: unknown): string {
 }
 
 const make = Effect.gen(function* () {
+  const factoryLifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
   const projects = yield* ProjectService.ProjectService;
   const setupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
   const cloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
@@ -307,6 +310,7 @@ const make = Effect.gen(function* () {
       ),
     );
 
+    const managed = runId === null ? null : yield* factoryLifecycle.binding({ threadId, runId }).pipe(Effect.mapError(mapError(input, "resolve-project", threadId)));
     const reused = input.reusedWorktree;
     const tracked = input.workspaceStrategy.type === "worktree" || reused !== undefined;
     let createdWorktreePath: string | null = null;
@@ -370,7 +374,7 @@ const make = Effect.gen(function* () {
         },
       );
 
-      const requestedBranch = input.workspaceStrategy.branch;
+      const requestedBranch = input.workspaceStrategy.branch ?? (managed === null ? undefined : `t3-factory/${threadId.replace(/[^a-zA-Z0-9-]/g, "-").slice(-80)}`);
       let branch: string | null;
       if (input.workspaceStrategy.type === "worktree" && requestedBranch === undefined) {
         const uuid = yield* randomUuidV4;
@@ -474,6 +478,7 @@ const make = Effect.gen(function* () {
       workspaceRecorded = true;
 
       if (
+        managed === null &&
         reused === undefined &&
         worktreePath !== null &&
         branch !== null &&
@@ -568,7 +573,7 @@ const make = Effect.gen(function* () {
       }
       yield* setupTracker.stageStatus(threadId, "setup-script", "running");
       const setup =
-        worktreePath === null
+        worktreePath === null || managed !== null
           ? ({ status: "no-script" } as const)
           : yield* setupScripts
               .runForThread({
@@ -770,7 +775,10 @@ const make = Effect.gen(function* () {
     runId: RunId | null,
   ) {
     const preparation = Effect.gen(function* () {
-      const prepare = prepareInBackground(input, threadId, runId);
+      const managed = runId === null ? null : yield* factoryLifecycle.binding({ threadId, runId });
+      const prepare = managed === null ? prepareInBackground(input, threadId, runId) : factoryLifecycle.runPhase({
+        threadId, runId: managed.runId, runAttemptId: managed.runAttemptId, phase: "workspace",
+      }, prepareInBackground(input, threadId, runId));
       if (
         runId === null ||
         (input.workspaceStrategy.type !== "worktree" && input.reusedWorktree === undefined)
@@ -822,6 +830,9 @@ const make = Effect.gen(function* () {
         (yield* managedFolders.isScratchProject(request.projectId))
           ? { ...request, workspaceStrategy: { type: "root" } }
           : request;
+      if (input.threadId !== undefined && (yield* factoryLifecycle.binding({ threadId: input.threadId }).pipe(
+        Effect.mapError(mapError(input, "dispatch-message", input.threadId)),
+      )) !== null) return yield* mapError(input, "dispatch-message", input.threadId)("Managed threads require exact execution admission, not ordinary launch reuse.");
       yield* ProjectCloneTracker.rejectCommandsDuringClone(cloneTracker, {
         type: "thread.create",
         projectId: input.projectId,
@@ -1077,6 +1088,8 @@ const make = Effect.gen(function* () {
       });
       const run = runs.find((candidate) => candidate.id === input.runId);
       const workspacePreparation = run?.workspacePreparation;
+      if (input.runAttemptId !== undefined && run?.activeAttemptId !== input.runAttemptId) return;
+      yield* factoryLifecycle.binding({ threadId: input.threadId, runId: input.runId, ...(input.runAttemptId === undefined ? {} : { runAttemptId: input.runAttemptId }) });
       if (run?.status !== "preparing" || workspacePreparation === undefined) return;
       if (!(yield* reservePreparation(input.commandId, input.runId))) return;
       yield* scheduleRunPreparation(input, thread, run, workspacePreparation).pipe(

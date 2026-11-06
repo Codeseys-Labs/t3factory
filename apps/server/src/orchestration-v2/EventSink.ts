@@ -1,5 +1,10 @@
 import {
   CommandId,
+  FactoryPlanError,
+  FactoryExecutionError,
+  EventId,
+  type FactoryExecutionMutationResult,
+  type FactoryPlanMutationResult,
   type OrchestrationV2Run,
   OrchestrationV2DomainEvent,
   type OrchestrationV2ProviderThread,
@@ -34,6 +39,11 @@ import * as EventStore from "./EventStore.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
+import * as FactoryPlans from "../persistence/FactoryPlanStore.ts";
+import * as FactoryExecutions from "../persistence/FactoryExecutionStore.ts";
+
+const isFactoryPlanError = Schema.is(FactoryPlanError);
+const isFactoryExecutionError = Schema.is(FactoryExecutionError);
 
 export class EventSinkWriteError extends Schema.TaggedError<EventSinkWriteError>()(
   "EventSinkWriteError",
@@ -67,6 +77,14 @@ export const EventSinkV2Error = Schema.Union([EventSinkWriteError, EventSinkStre
 export type EventSinkV2Error = typeof EventSinkV2Error.Type;
 
 export interface EventSinkV2Shape {
+  readonly commitFactoryExecutionCommand: (input: {
+    readonly command: FactoryExecutions.FactoryExecutionCommit;
+    readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
+    readonly effects: ReadonlyArray<EffectOutbox.PendingOrchestrationEffectV2>;
+  }) => Effect.Effect<FactoryExecutionMutationResult, FactoryExecutionError>;
+  readonly commitFactoryPlanCommand: (
+    input: FactoryPlans.FactoryPlanCommit,
+  ) => Effect.Effect<FactoryPlanMutationResult, FactoryPlanError>;
   readonly write: (input: {
     /** Return no events if another thread owns this native session at commit time. */
     readonly unlessNativeThreadOwned?: Pick<
@@ -220,6 +238,8 @@ const layerBase: Layer.Layer<
     const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
     const projectStore = yield* ProjectStore.ProjectStoreV2;
     const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
+    const factoryPlans = yield* FactoryPlans.FactoryPlanStore;
+    const factoryExecutions = yield* FactoryExecutions.FactoryExecutionStore;
     const liveEvents = yield* PubSub.unbounded<OrchestrationV2StoredEvent>();
     const liveEventsByType = new Map<
       OrchestrationV2DomainEvent["type"],
@@ -735,6 +755,203 @@ const layerBase: Layer.Layer<
       );
     });
 
+    const commitFactoryPlanCommand = Effect.fn(
+      "orchestrationV2.EventSink.commitFactoryPlanCommand",
+    )(function* (input: FactoryPlans.FactoryPlanCommit) {
+      const result = yield* commitThenPublish(
+        Effect.gen(function* () {
+          const decision = yield* factoryPlans.decide(input);
+          if (decision.replayed) return { decision, event: undefined };
+          const receipt: CommandReceiptStore.ProjectCommandReceiptV2 = {
+            commandId: input.commandId,
+            projectId: input.ref.projectId,
+            commandType: "factory.plan.apply",
+            acceptedAt: DateTime.makeUnsafe(input.occurredAt),
+            resultSequence: 0,
+            status: decision.status,
+            error: decision.status === "rejected" ? decision.error.reason : null,
+          };
+          if (!(yield* commandReceipts.insertIfAbsent(receipt)))
+            return yield* new FactoryPlanError({ reason: "command-conflict" });
+          const event =
+            decision.status === "accepted"
+              ? yield* eventStore.appendProjectEvent({
+                  eventId: input.eventId,
+                  aggregateKind: "project",
+                  aggregateId: input.ref.projectId,
+                  occurredAt: input.occurredAt,
+                  commandId: input.commandId,
+                  causationEventId: null,
+                  correlationId: input.commandId,
+                  metadata: {},
+                  type: "project.factory-plan-revised",
+                  payload: {
+                    projectId: input.ref.projectId,
+                    expectedRevision: input.expectedRevision,
+                    plan: decision.plan,
+                    actor: input.actor,
+                    requestDigest: input.requestDigest,
+                  },
+                })
+              : undefined;
+          if (event?.type === "project.factory-plan-revised") {
+            yield* factoryPlans.project(event.payload.plan, event.payload.expectedRevision);
+            yield* projectStore.apply(event);
+            yield* commandReceipts.upsert({ ...receipt, resultSequence: event.sequence });
+          }
+          yield* factoryPlans.record(input, decision);
+          return { decision, event };
+        }),
+        ({ event }) => (event === undefined ? Effect.void : eventStore.publishCommitted([event])),
+      ).pipe(
+        Effect.mapError((cause) =>
+          isFactoryPlanError(cause)
+            ? cause
+            : new FactoryPlanError({ reason: "persistence-failure", cause }),
+        ),
+      );
+      if (result.decision.status === "rejected") return yield* result.decision.error;
+      return {
+        plan: result.decision.plan,
+        current: result.decision.currentRevision === result.decision.plan.revision,
+        replayed: result.decision.replayed,
+      };
+    });
+
+    const commitFactoryExecutionCommand = Effect.fn(
+      "orchestrationV2.EventSink.commitFactoryExecutionCommand",
+    )(function* (input: Parameters<EventSinkV2Shape["commitFactoryExecutionCommand"]>[0]) {
+      const command = input.command;
+      const committed = yield* commitThenPublish(
+        Effect.gen(function* () {
+          const decision = yield* factoryExecutions.decide(command);
+          if (decision.replayed)
+            return {
+              decision,
+              storedEvents: [],
+              outcomes: [],
+              projectEvent: undefined,
+              effects: [],
+            };
+          const operation = command.operation;
+          if (
+            decision.executeNative &&
+            (operation.type === "admit" || operation.type === "retry")
+          ) {
+            const binding = operation.binding;
+            const occupied =
+              yield* sql`SELECT thread_id FROM orchestration_v2_projection_threads WHERE thread_id = ${binding.threadId}`;
+            const existingRun =
+              yield* sql`SELECT run_id FROM orchestration_v2_projection_runs WHERE run_id = ${binding.runId}`;
+            const thread = input.events.find((event) => event.type === "thread.created");
+            const run = input.events.find((event) => event.type === "run.created");
+            const attempt = input.events.find((event) => event.type === "run-attempt.created");
+            if (
+              occupied.length ||
+              existingRun.length ||
+              thread?.threadId !== binding.threadId ||
+              run?.type !== "run.created" ||
+              run.payload.id !== binding.runId ||
+              run.payload.activeAttemptId !== binding.runAttemptId ||
+              attempt?.type !== "run-attempt.created" ||
+              attempt.payload.id !== binding.runAttemptId ||
+              attempt.payload.runId !== binding.runId
+            )
+              return yield* new FactoryExecutionError({ reason: "task-conflict" });
+          }
+          const events = decision.executeNative ? input.events : [];
+          if (decision.executeNative && operation.type === "retryCapture") {
+            const captureKey = yield* factoryExecutions.captureKey(operation.input.runAttemptId);
+            const finalize = input.effects.find(
+              (effect) => effect.request.type === "factory.execution.finalize",
+            );
+            if (
+              finalize?.request.type !== "factory.execution.finalize" ||
+              finalize.request.runId !== operation.input.runId ||
+              finalize.request.runAttemptId !== operation.input.runAttemptId ||
+              captureKey !== `native-final/${finalize.request.captureGeneration ?? 1}`
+            )
+              return yield* new FactoryExecutionError({ reason: "task-conflict" });
+          }
+          const effects = [...(decision.executeNative ? input.effects : [])];
+          if (
+            decision.advance &&
+            (operation.type === "observe" ||
+              operation.type === "admit" ||
+              operation.type === "retry")
+          ) {
+            const binding =
+              operation.type === "observe"
+                ? yield* factoryExecutions.getBinding(operation.input.runAttemptId)
+                : operation.binding;
+            effects.push({
+              id: `effect:${command.commandId}:factory.execution.advance`,
+              commandId: command.commandId,
+              threadId: binding.threadId,
+              request: {
+                type: "factory.execution.advance",
+                ref: command.ref,
+                revision: command.revision,
+              },
+            });
+          }
+          const storedEvents = yield* eventStore.append({
+            commandId: command.commandId,
+            events: yield* normalizeEvents(events),
+          });
+          const outcomes = yield* applyStoredEvents(storedEvents);
+          const projectEvent =
+            decision.error === null
+              ? yield* eventStore.appendProjectEvent({
+                  eventId: EventId.make(`factory-execution:${command.commandId}`),
+                  aggregateKind: "project",
+                  aggregateId: command.ref.projectId,
+                  occurredAt: command.now,
+                  commandId: command.commandId,
+                  causationEventId: null,
+                  correlationId: command.commandId,
+                  metadata: {},
+                  type: "project.factory-execution-updated",
+                  payload: {
+                    projectId: command.ref.projectId,
+                    ref: command.ref,
+                    revision: command.revision,
+                  },
+                })
+              : undefined;
+          if (
+            !(yield* commandReceipts.insertIfAbsent({
+              commandId: command.commandId,
+              projectId: command.ref.projectId,
+              commandType: `factory.execution.${operation.type}`,
+              acceptedAt: DateTime.makeUnsafe(command.now),
+              resultSequence: projectEvent?.sequence ?? 0,
+              status: decision.error === null ? "accepted" : "rejected",
+              error: decision.error,
+            }))
+          )
+            return yield* new FactoryExecutionError({ reason: "command-conflict" });
+          yield* effectOutbox.enqueue(effects);
+          return { decision, storedEvents, outcomes, projectEvent, effects };
+        }),
+        (result) =>
+          Effect.gen(function* () {
+            if (result.effects.length) yield* effectOutbox.notifyAvailable(result.effects.length);
+            yield* publishStoredEvents(result.storedEvents, result.outcomes);
+            if (result.projectEvent) yield* eventStore.publishCommitted([result.projectEvent]);
+          }),
+      ).pipe(
+        Effect.mapError((cause) =>
+          isFactoryExecutionError(cause)
+            ? cause
+            : new FactoryExecutionError({ reason: "persistence-failure", cause }),
+        ),
+      );
+      if (committed.decision.error !== null)
+        return yield* new FactoryExecutionError({ reason: committed.decision.error });
+      return { execution: committed.decision.result!, replayed: committed.decision.replayed };
+    });
+
     const existingProjectReceipt = (commandId: CommandId) =>
       commandReceipts.getProjectByCommandId(commandId).pipe(
         Effect.flatMap(
@@ -878,6 +1095,8 @@ const layerBase: Layer.Layer<
     };
 
     return EventSinkV2.of({
+      commitFactoryPlanCommand,
+      commitFactoryExecutionCommand,
       write: (input) =>
         writeEffect({ ...input, effects: [] }).pipe(
           Effect.mapError(
@@ -998,7 +1217,7 @@ const layerBase: Layer.Layer<
         ),
     } satisfies EventSinkV2Shape);
   }),
-);
+).pipe(Layer.provide(Layer.mergeAll(FactoryPlans.layer, FactoryExecutions.layer)));
 
 /** Share the worker's outbox instance: enqueue wakeups are in-memory. */
 export const layerFromStores = layerBase;

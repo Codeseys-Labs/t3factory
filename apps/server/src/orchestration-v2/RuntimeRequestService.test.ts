@@ -10,6 +10,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
@@ -50,6 +51,7 @@ it.effect.each(["expired", "resolved"] as const)(
     const layerTest = RuntimeRequestService.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           Layer.mock(ProjectionStore.ProjectionStoreV2)({
             getRuntimeRequest: (_threadId, requestId) =>
               Effect.succeed(

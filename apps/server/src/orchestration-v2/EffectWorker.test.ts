@@ -31,9 +31,13 @@ import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderTurnControlService from "./ProviderTurnControlService.ts";
 import * as ProviderTurnStartService from "./ProviderTurnStartService.ts";
 import * as RuntimeRequestService from "./RuntimeRequestService.ts";
+import * as ProjectionStore from "./ProjectionStore.ts";
+import * as ThreadLaunchService from "./ThreadLaunchService.ts";
 import * as ThreadTitleRegenerationService from "./ThreadTitleRegenerationService.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as FactoryDeliveryService from "../factory/FactoryDeliveryService.ts";
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
 const threadId = ThreadId.make("thread:effect-worker-restart");
@@ -159,6 +163,10 @@ function layerExecutorFor(input: {
     Layer.provide(
       Layer.mergeAll(
         layerDependencies,
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+        FactoryExecutionTestkit.layerExecutionServiceMock,
+        Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+        ProjectionStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
         Layer.mock(ThreadManagementService.ThreadManagementService)(input.threads ?? {}),
         Layer.mock(FactoryDeliveryService.FactoryDeliveryService)({}),
         ServerSettings.layerTest(

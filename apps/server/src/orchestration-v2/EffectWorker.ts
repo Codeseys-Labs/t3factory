@@ -1,3 +1,7 @@
+import * as ProjectionStore from "./ProjectionStore.ts";
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
+import * as FactoryExecutionService from "../factory/FactoryExecutionService.ts";
+import * as ThreadLaunchService from "./ThreadLaunchService.ts";
 import { CommandId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -72,6 +76,10 @@ export class OrchestrationEffectExecutorV2 extends Context.Service<
 export const layerExecutor: Layer.Layer<
   OrchestrationEffectExecutorV2,
   never,
+  | ProjectionStore.ProjectionStoreV2
+  | FactoryExecutionLifecycle.FactoryExecutionLifecycle
+  | FactoryExecutionService.FactoryExecutionService
+  | ThreadLaunchService.ThreadLaunchService
   | ProviderSessionManager.ProviderSessionManagerV2
   | RunFinalizationService.RunFinalizationService
   | CheckpointRollbackService.CheckpointRollbackServiceV2
@@ -85,6 +93,10 @@ export const layerExecutor: Layer.Layer<
 > = Layer.effect(
   OrchestrationEffectExecutorV2,
   Effect.gen(function* () {
+    const factoryProjections = yield* ProjectionStore.ProjectionStoreV2;
+    const factoryLifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
+    const factoryExecution = yield* FactoryExecutionService.FactoryExecutionService;
+    const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
     const runFinalization = yield* RunFinalizationService.RunFinalizationService;
     const resourceCleanup = yield* ResourceCleanupService.ResourceCleanupService;
     const checkpointRollback = yield* CheckpointRollbackService.CheckpointRollbackServiceV2;
@@ -97,13 +109,59 @@ export const layerExecutor: Layer.Layer<
     const threads = yield* ThreadManagementService.ThreadManagementService;
     const factoryDelivery = yield* FactoryDeliveryService.FactoryDeliveryService;
     const settings = yield* ServerSettings.ServerSettingsService;
-    return OrchestrationEffectExecutorV2.of({
-      execute: Effect.fn("OrchestrationEffectExecutorV2.execute")(function (effect, options) {
+    const executeNative = (effect: EffectOutbox.OrchestrationEffectV2, options?: { readonly willRetry: boolean }): Effect.Effect<void, OrchestrationEffectExecutionError> => {
         const willRetry = options?.willRetry ?? false;
         switch (effect.request.type) {
+          case "factory.execution.finalize": {
+            const request = effect.request;
+            const context = { threadId: effect.threadId, runId: request.runId, runAttemptId: request.runAttemptId,
+              scopeId: request.scopeId, captureGeneration: request.captureGeneration ?? 1, providerThreadId: request.providerThreadId, driver: request.driver,
+              providerInstanceId: request.providerInstanceId };
+            return Effect.gen(function* () {
+              const binding = yield* factoryLifecycle.binding(context);
+              if (binding === null || binding.driver !== request.driver ||
+                binding.spec.modelSelection.instanceId !== request.providerInstanceId) {
+                return yield* Effect.fail("Native finalization identity differs from its immutable admission.");
+              }
+              const retained = yield* factoryExecution.readNativeCapture(context);
+              if (!(yield* factoryLifecycle.quiesce(context))) return yield* Effect.fail("Provider writer ownership remains unknown.");
+              const captured = retained ?? (yield* factoryLifecycle.runPhase({ ...context, phase: "capture" }, Effect.gen(function* () {
+                const projection = yield* factoryProjections.getThreadRecords(effect.threadId, ["runs", "attempts", "providerThreads", "checkpoints"]);
+                const run = projection.runs.find((run) => run.id === request.runId);
+                const attempt = projection.attempts.find((attempt) => attempt.id === request.runAttemptId);
+                if (run?.activeAttemptId !== request.runAttemptId || attempt?.providerThreadId !== request.providerThreadId) {
+                  return yield* Effect.fail("Native checkpoint context is ambiguous; capture stays held.");
+                }
+                const readyCheckpoint = projection.checkpoints.some((checkpoint) => checkpoint.runId === request.runId && checkpoint.scopeId === request.scopeId && checkpoint.status === "ready");
+                if (!readyCheckpoint && run !== undefined && (run.status === "waiting" || run.status === "interrupted" || run.status === "cancelled")) {
+                  yield* runFinalization.finalize({ threadId: effect.threadId, runId: request.runId, scopeId: request.scopeId });
+                }
+                return yield* factoryExecution.captureNativeResult(context);
+              })));
+              if (!(yield* factoryLifecycle.complete(context))) return yield* Effect.fail("Capture/validation writer ownership remains unknown.");
+              yield* factoryExecution.observeResult(captured);
+            }).pipe(Effect.mapError((cause) => new OrchestrationEffectExecutionError({ effectId: effect.id, effectType: request.type, cause })));
+          }
+          case "factory.execution.prepare":
+            return threadLaunch.prepareRun({ commandId: effect.commandId, threadId: effect.threadId,
+              runId: effect.request.runId, runAttemptId: effect.request.runAttemptId });
+          case "factory.execution.advance":
+            return factoryExecution.advanceReady({ ref: effect.request.ref, revision: effect.request.revision }).pipe(
+              Effect.asVoid, Effect.mapError((cause) => new OrchestrationEffectExecutionError({ effectId: effect.id, effectType: effect.request.type, cause })));
+          case "factory.execution.stop": {
+            const request = effect.request;
+            const interrupt = request.nativeInterruptPlanned ? Effect.void : threads.dispatch({
+              type: "run.interrupt", commandId: CommandId.make(`${effect.id}:native-stop`), threadId: effect.threadId, runId: request.runId });
+            return interrupt.pipe(
+              Effect.provideService(FactoryExecutionLifecycle.FactoryNativeAuthority, request.runAttemptId),
+              Effect.ignoreCause,
+              Effect.andThen(factoryLifecycle.stop({ threadId: effect.threadId, runId: request.runId, runAttemptId: request.runAttemptId })),
+              Effect.asVoid, Effect.mapError((cause) => new OrchestrationEffectExecutionError({ effectId: effect.id, effectType: request.type, cause })));
+          }
           case "provider-runtime.continue": {
             const sourceRunId = effect.request.sourceRunId;
             return continueRestartedRun({ threadId: effect.threadId, sourceRunId }).pipe(
+              Effect.provideService(FactoryExecutionLifecycle.FactoryExecutionLifecycle, factoryLifecycle),
               Effect.provideService(ThreadManagementService.ThreadManagementService, threads),
               Effect.provideService(ServerSettings.ServerSettingsService, settings),
               Effect.tapError(() =>
@@ -143,7 +201,7 @@ export const layerExecutor: Layer.Layer<
               );
           case "provider-turn.start":
             return providerTurnStart
-              .start({ threadId: effect.threadId, runId: effect.request.runId, willRetry })
+              .start({ threadId: effect.threadId, runId: effect.request.runId, ...(effect.request.runAttemptId === undefined ? {} : { runAttemptId: effect.request.runAttemptId }), willRetry })
               .pipe(
                 Effect.mapError(
                   (cause) =>
@@ -361,6 +419,7 @@ export const layerExecutor: Layer.Layer<
                   providerTurnStart.start({
                     threadId: effect.threadId,
                     runId: effect.request.runId,
+                    ...(effect.request.runAttemptId === undefined ? {} : { runAttemptId: effect.request.runAttemptId }),
                     willRetry,
                   }),
                 ),
@@ -571,6 +630,34 @@ export const layerExecutor: Layer.Layer<
               ),
             );
         }
+    };
+    // Managed threads require a fresh exact admission; delayed native control is suppressed.
+    const managedControlTypes: Record<string, true> = {
+      "provider-turn.steer": true,
+      "provider-turn.restart": true,
+      "provider-runtime.continue": true,
+      "runtime-request.respond": true,
+      "provider-thread.rollback": true,
+      "checkpoint.capture": true,
+    };
+    return OrchestrationEffectExecutorV2.of({
+      execute: Effect.fn("OrchestrationEffectExecutorV2.execute")(function* (
+        effect: EffectOutbox.OrchestrationEffectV2,
+        options?: { readonly willRetry: boolean },
+      ) {
+        const managed = yield* factoryLifecycle.binding({ threadId: effect.threadId }).pipe(
+          Effect.mapError((cause) =>
+            new OrchestrationEffectExecutionError({ effectId: effect.id, effectType: effect.request.type, cause }),
+          ),
+        );
+        if (managed !== null && managedControlTypes[effect.request.type] === true) {
+          return yield* new OrchestrationEffectExecutionError({
+            effectId: effect.id,
+            effectType: effect.request.type,
+            cause: "Managed execution requires a new exact admission; delayed native control is suppressed.",
+          });
+        }
+        return yield* executeNative(effect, options);
       }),
     });
   }),

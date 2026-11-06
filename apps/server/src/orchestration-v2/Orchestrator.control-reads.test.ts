@@ -28,6 +28,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Metric from "effect/Metric";
 import * as Result from "effect/Result";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -48,6 +49,8 @@ import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
+const isOrchestratorDispatchError = Schema.is(Orchestrator.OrchestratorDispatchError);
+const isFactoryExecutionError = Schema.is(FactoryExecutionError);
 const instanceId = ProviderInstanceId.make("codex");
 const modelSelection = { instanceId, model: "gpt-5.1-codex" };
 const adapter = {
@@ -371,14 +374,14 @@ it.effect.each(["dismiss", "settle"] as const)(
               )
             : answer
         ).pipe(Effect.flip);
-        assert.ok(rejected instanceof Orchestrator.OrchestratorDispatchError);
+        assert.ok(isOrchestratorDispatchError(rejected));
         if (actor === "human") {
           assert.equal(
             rejected.cause,
             "Managed execution requires a human response to one live request without widening permissions.",
           );
         } else {
-          assert.ok(rejected.cause instanceof FactoryExecutionError);
+          assert.ok(isFactoryExecutionError(rejected.cause));
           assert.equal(rejected.cause.reason, "grant-inactive");
         }
         assert.deepEqual(

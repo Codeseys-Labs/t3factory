@@ -238,6 +238,7 @@ import * as DefectReporter from "./observability/DefectReporter.ts";
 import * as EventLoopMonitor from "./observability/EventLoopMonitor.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+import * as FactoryExecutionLifecycle from "./factory/FactoryExecutionLifecycle.ts";
 import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
 import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
 import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
@@ -1293,7 +1294,8 @@ export const layerWsRpc = (
       const factoryWork = yield* FactoryWorkService.FactoryWorkService;
       const factoryPlans = yield* FactoryPlanService.FactoryPlanService;
       const factoryExecution = yield* FactoryExecutionService.FactoryExecutionService;
-      const factoryPreparation = yield* FactoryPreparationAcceptanceService.FactoryPreparationAcceptanceService;
+      const factoryPreparation =
+        yield* FactoryPreparationAcceptanceService.FactoryPreparationAcceptanceService;
       const factoryAcceptance = yield* FactoryAcceptanceService.FactoryAcceptanceService;
       const factoryKnowledge = yield* FactoryKnowledgeService.FactoryKnowledgeService;
       const factoryDelivery = yield* FactoryDeliveryService.FactoryDeliveryService;
@@ -1919,7 +1921,13 @@ export const layerWsRpc = (
                             "creationSource" in command ? command.creationSource : "web",
                         }),
                       )
-                  ).pipe(Effect.provide(intakeContext)),
+                  ).pipe(
+                    Effect.provide(intakeContext),
+                    Effect.provideService(
+                      FactoryExecutionLifecycle.FactoryRuntimeResponseSession,
+                      currentSessionId,
+                    ),
+                  ),
                 )
                 .pipe(
                   Effect.tap((result) =>
@@ -3388,7 +3396,8 @@ export const layer = Layer.unwrap(
     const factoryWork = yield* FactoryWorkService.FactoryWorkService;
     const factoryPlans = yield* FactoryPlanService.FactoryPlanService;
     const factoryExecution = yield* FactoryExecutionService.FactoryExecutionService;
-    const factoryPreparation = yield* FactoryPreparationAcceptanceService.FactoryPreparationAcceptanceService;
+    const factoryPreparation =
+      yield* FactoryPreparationAcceptanceService.FactoryPreparationAcceptanceService;
     const factoryAcceptance = yield* FactoryAcceptanceService.FactoryAcceptanceService;
     const factoryKnowledge = yield* FactoryKnowledgeService.FactoryKnowledgeService;
     const factoryDelivery = yield* FactoryDeliveryService.FactoryDeliveryService;
@@ -3484,8 +3493,15 @@ export const layer = Layer.unwrap(
                 ),
                 Layer.provide(Layer.succeed(FactoryWorkService.FactoryWorkService, factoryWork)),
                 Layer.provide(Layer.succeed(FactoryPlanService.FactoryPlanService, factoryPlans)),
-                Layer.provide(Layer.succeed(FactoryExecutionService.FactoryExecutionService, factoryExecution)),
-                Layer.provide(Layer.succeed(FactoryPreparationAcceptanceService.FactoryPreparationAcceptanceService, factoryPreparation)),
+                Layer.provide(
+                  Layer.succeed(FactoryExecutionService.FactoryExecutionService, factoryExecution),
+                ),
+                Layer.provide(
+                  Layer.succeed(
+                    FactoryPreparationAcceptanceService.FactoryPreparationAcceptanceService,
+                    factoryPreparation,
+                  ),
+                ),
                 Layer.provide(
                   Layer.succeed(
                     FactoryAcceptanceService.FactoryAcceptanceService,

@@ -113,7 +113,7 @@ public static class T3OwnedJob {
   }
 }`;
 
-export function quoteWindowsArgument(value: string): string {
+function quoteWindowsArgument(value: string): string {
   return `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/g, "$1$1")}"`;
 }
 

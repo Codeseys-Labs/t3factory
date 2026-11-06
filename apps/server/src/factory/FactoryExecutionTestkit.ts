@@ -22,8 +22,11 @@ export const layerUnmanagedExecutionLifecycle = Layer.succeed(
   FactoryExecutionLifecycle.FactoryExecutionLifecycle,
   FactoryExecutionLifecycle.FactoryExecutionLifecycle.of({
     binding: Effect.fn("FactoryExecutionTestkit.binding")(() => Effect.succeed(null)),
-    guardCommand: Effect.fn("FactoryExecutionTestkit.guardCommand")((): Effect.Effect<void, never> => Effect.void),
+    guardCommand: Effect.fn("FactoryExecutionTestkit.guardCommand")(
+      (): Effect.Effect<void, never> => Effect.void,
+    ),
     runPhase: unmanagedRunPhase as LifecycleService["runPhase"],
+    respond: Effect.fn("FactoryExecutionTestkit.respond")((_input, work) => work),
     recover: Effect.fn("FactoryExecutionTestkit.recover")(() => Effect.void),
     stop: Effect.fn("FactoryExecutionTestkit.stop")(() => Effect.succeed(true)),
     quiesce: Effect.fn("FactoryExecutionTestkit.quiesce")(() => Effect.succeed(true)),
@@ -31,7 +34,9 @@ export const layerUnmanagedExecutionLifecycle = Layer.succeed(
   }),
 );
 
-export const layerExecutionServiceMock = Layer.mock(FactoryExecutionService.FactoryExecutionService)({});
+export const layerExecutionServiceMock = Layer.mock(
+  FactoryExecutionService.FactoryExecutionService,
+)({});
 
 export const layerPreparationAcceptanceMock = Layer.mock(
   FactoryPreparationAcceptanceService.FactoryPreparationAcceptanceService,

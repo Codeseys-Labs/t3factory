@@ -1488,7 +1488,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         readonly queuedRunId?: RunId;
       },
     ) {
-      if ((yield* factoryLifecycle.binding({ threadId }).pipe(Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause })))) !== null) return;
+      if (
+        (yield* factoryLifecycle
+          .binding({ threadId })
+          .pipe(
+            Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause })),
+          )) !== null
+      )
+        return;
       if (!(yield* projectionStore.canStartQueuedRun(threadId))) return;
       const projection = yield* readCommandProjection(threadId);
       if (
@@ -2188,7 +2195,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             id: `effect:${commandId}:provider-turn.start:${queuedRun.id}`,
             commandId,
             threadId,
-            request: { type: "provider-turn.start", runId: queuedRun.id, ...(queuedRun.activeAttemptId === null ? {} : { runAttemptId: queuedRun.activeAttemptId }) },
+            request: {
+              type: "provider-turn.start",
+              runId: queuedRun.id,
+              ...(queuedRun.activeAttemptId === null
+                ? {}
+                : { runAttemptId: queuedRun.activeAttemptId }),
+            },
           },
         ],
       );
@@ -2541,7 +2554,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const thread: OrchestrationV2AppThread = {
       ...nativeThreadRecord({ ...command, now }),
       ...(command.linkOrigin === undefined ? {} : { linkOrigin: command.linkOrigin }),
-      ...(command.linkOrigin === undefined || command.delegatedFrom === undefined ? {} : { delegatedFrom: command.delegatedFrom }),
+      ...(command.linkOrigin === undefined || command.delegatedFrom === undefined
+        ? {}
+        : { delegatedFrom: command.delegatedFrom }),
     };
 
     yield* emitEvent({
@@ -6035,8 +6050,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...(continuedTaskId === undefined ? {} : { delegatedTaskId: continuedTaskId }),
         ...wakeWorkStartedAt(projection.runs, command),
       };
-      const attempt = nativePendingAttempt({ id: attemptId, runId, rootNodeId,
-        providerInstanceId: modelSelection.instanceId, providerThreadId });
+      const attempt = nativePendingAttempt({
+        id: attemptId,
+        runId,
+        rootNodeId,
+        providerInstanceId: modelSelection.instanceId,
+        providerThreadId,
+      });
       const rootNode: OrchestrationV2ExecutionNode = {
         id: rootNodeId,
         threadId: command.threadId,
@@ -8524,6 +8544,28 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           cause: `Provider session ${providerSessionId} was not found.`,
         });
       }
+      const managed = yield* factoryLifecycle
+        .binding({ threadId: command.threadId })
+        .pipe(mapDispatchError(command));
+      const respondingSessionId = yield* FactoryExecutionLifecycle.FactoryRuntimeResponseSession;
+      if (
+        managed !== null &&
+        (respondingSessionId === undefined ||
+          providerSessionId === null ||
+          command.decision === "acceptForSession" ||
+          command.decision === "acceptAlways")
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause:
+            "Managed execution requires a human response to one live request without widening permissions.",
+        });
+      }
+      const factoryAuthorization =
+        managed !== null && respondingSessionId !== undefined
+          ? { sessionId: respondingSessionId, runAttemptId: managed.runAttemptId }
+          : undefined;
       let answers = command.answers;
       if (runtimeRequest.kind === "user_input" && answers !== undefined) {
         const decoded = yield* decodeUserInputAnswers(answers).pipe(mapDispatchError(command));
@@ -8813,6 +8855,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ...(command.decision === undefined ? {} : { decision: command.decision }),
             ...(command.feedback === undefined ? {} : { feedback: command.feedback }),
             ...(answers === undefined ? {} : { answers }),
+            ...(factoryAuthorization === undefined ? {} : { factoryAuthorization }),
           },
         } satisfies PendingOrchestrationEffectV2,
       ]);
@@ -9598,7 +9641,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           id: `effect:${command.commandId}:provider-turn.start:${state.run.id}`,
           commandId: command.commandId,
           threadId: command.threadId,
-          request: { type: "provider-turn.start", runId: state.run.id, runAttemptId: state.attempt.id },
+          request: {
+            type: "provider-turn.start",
+            runId: state.run.id,
+            runAttemptId: state.attempt.id,
+          },
         } satisfies PendingOrchestrationEffectV2,
       ]);
     },
@@ -12864,8 +12911,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     }
 
     yield* factoryLifecycle.guardCommand(command).pipe(mapDispatchError(command));
-    const managedStop = command.type === "thread.stop" || command.type === "run.interrupt" || command.type === "queued-run.cancel"
-      ? yield* factoryLifecycle.binding({ threadId: command.threadId }).pipe(mapDispatchError(command)) : null;
+    const managedStop =
+      command.type === "thread.stop" ||
+      command.type === "run.interrupt" ||
+      command.type === "queued-run.cancel"
+        ? yield* factoryLifecycle
+            .binding({ threadId: command.threadId })
+            .pipe(mapDispatchError(command))
+        : null;
     const plan = yield* dispatchOnce(command).pipe(
       Effect.filterOrFail(
         (planned) =>
@@ -12923,29 +12976,55 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
     // Managed stop effects plan with the command's own events in one commit.
     let plannedStopEffects: ReadonlyArray<PendingOrchestrationEffectV2> = plan.effects;
-    if (command.type === "thread.stop" || command.type === "run.interrupt" || command.type === "queued-run.cancel") {
+    if (
+      command.type === "thread.stop" ||
+      command.type === "run.interrupt" ||
+      command.type === "queued-run.cancel"
+    ) {
       const owner = managedStop;
       const authority = yield* FactoryExecutionLifecycle.FactoryNativeAuthority;
       const extra: Array<PendingOrchestrationEffectV2> = [];
       if (owner !== null && authority !== owner.runAttemptId) {
         extra.push({
           id: `effect:${command.commandId}:factory.execution.stop:${owner.runAttemptId}`,
-          commandId: command.commandId, threadId: command.threadId,
-          request: { type: "factory.execution.stop", runId: owner.runId, runAttemptId: owner.runAttemptId, nativeInterruptPlanned: true },
+          commandId: command.commandId,
+          threadId: command.threadId,
+          request: {
+            type: "factory.execution.stop",
+            runId: owner.runId,
+            runAttemptId: owner.runAttemptId,
+            nativeInterruptPlanned: true,
+          },
         });
       }
       if (owner !== null) {
-        const native = yield* projectionStore.getThreadRecords(command.threadId, ["runs", "attempts", "nodes"]).pipe(mapDispatchError(command));
+        const native = yield* projectionStore
+          .getThreadRecords(command.threadId, ["runs", "attempts", "nodes"])
+          .pipe(mapDispatchError(command));
         const run = native.runs.find((run) => run.id === owner.runId);
         const attempt = native.attempts.find((attempt) => attempt.id === owner.runAttemptId);
         const node = native.nodes.find((node) => node.id === run?.rootNodeId);
-        if (run?.activeAttemptId === owner.runAttemptId && attempt !== undefined && node?.checkpointScopeId != null) {
+        if (
+          run?.activeAttemptId === owner.runAttemptId &&
+          attempt !== undefined &&
+          node?.checkpointScopeId != null
+        ) {
           extra.push({
             id: `effect:factory.execution.finalize:${owner.runAttemptId}`,
-            commandId: CommandId.make(`command:effect:factory.execution.finalize:${owner.runAttemptId}`), threadId: owner.threadId,
-            request: { type: "factory.execution.finalize", runId: owner.runId, runAttemptId: owner.runAttemptId,
-              scopeId: node.checkpointScopeId, captureGeneration: 1, providerThreadId: attempt.providerThreadId,
-              driver: owner.driver, providerInstanceId: owner.spec.modelSelection.instanceId },
+            commandId: CommandId.make(
+              `command:effect:factory.execution.finalize:${owner.runAttemptId}`,
+            ),
+            threadId: owner.threadId,
+            request: {
+              type: "factory.execution.finalize",
+              runId: owner.runId,
+              runAttemptId: owner.runAttemptId,
+              scopeId: node.checkpointScopeId,
+              captureGeneration: 1,
+              providerThreadId: attempt.providerThreadId,
+              driver: owner.driver,
+              providerInstanceId: owner.spec.modelSelection.instanceId,
+            },
           });
         }
       }

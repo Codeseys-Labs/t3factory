@@ -8,6 +8,7 @@ import {
   FactoryExecutionAssembly,
   FactoryExecutionReadResult,
   FactoryPreparationAcceptance,
+  OrchestrationV2RuntimeRequestJson,
   sessionGrantsScope,
   type FactoryExecutionAdmitInput,
   type FactoryExecutionRetryInput,
@@ -30,6 +31,8 @@ import {
   type ThreadId,
   type RunId,
   type RunAttemptId,
+  type RuntimeRequestId,
+  type ProviderSessionId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -59,7 +62,8 @@ export type FactoryExecutionPhase =
   | "session"
   | "native-thread"
   | "turn"
-  | "capture";
+  | "capture"
+  | `response:${string}`;
 export interface ObserveResultInput {
   readonly runId: RunId;
   readonly runAttemptId: RunAttemptId;
@@ -117,11 +121,23 @@ type BindingLookup = {
   readonly runId?: RunId;
   readonly runAttemptId?: RunAttemptId;
 };
+export type FactoryRuntimeResponseAuthorization = {
+  readonly sessionId: AuthSessionId;
+  readonly runAttemptId: RunAttemptId;
+};
+export type FactoryRuntimeResponseCheck = {
+  readonly threadId: ThreadId;
+  readonly requestId: RuntimeRequestId;
+  readonly providerSessionId: ProviderSessionId;
+  readonly authorization: FactoryRuntimeResponseAuthorization;
+  readonly expectedStatus: "pending" | "resolved";
+};
 type Claim = {
   readonly runAttemptId: RunAttemptId;
   readonly phase: FactoryExecutionPhase;
   readonly claimantId: string;
   readonly captureGeneration?: number;
+  readonly runtimeResponse?: Omit<FactoryRuntimeResponseCheck, "expectedStatus">;
 };
 type Observation = "no-start" | "quiescent" | "unknown";
 export class FactoryExecutionStore extends Context.Service<
@@ -155,6 +171,9 @@ export class FactoryExecutionStore extends Context.Service<
     ) => Effect.Effect<FactoryExecutionBinding | null, FactoryExecutionError>;
     readonly getBinding: (
       attemptId: RunAttemptId,
+    ) => Effect.Effect<FactoryExecutionBinding, FactoryExecutionError>;
+    readonly authorizeRuntimeResponse: (
+      input: FactoryRuntimeResponseCheck,
     ) => Effect.Effect<FactoryExecutionBinding, FactoryExecutionError>;
     readonly hasNativeClaims: (
       attemptId: RunAttemptId,
@@ -207,6 +226,9 @@ const failure = (cause: unknown) =>
     : new FactoryExecutionError({ reason: "persistence-failure", cause });
 const decodeBinding = Schema.decodeUnknownEffect(Schema.fromJsonString(FactoryExecutionBinding));
 const decodeGrant = Schema.decodeUnknownEffect(Schema.fromJsonString(FactoryExecutionGrant));
+const decodeRuntimeRequest = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(OrchestrationV2RuntimeRequestJson),
+);
 const decodeOutput = Schema.decodeUnknownEffect(Schema.fromJsonString(FactoryExecutionOutput));
 const decodeAssembly = Schema.decodeUnknownEffect(Schema.fromJsonString(FactoryExecutionAssembly));
 const decodeAcceptance = Schema.decodeUnknownEffect(
@@ -276,17 +298,15 @@ const make = Effect.gen(function* () {
     version: number,
     now: string,
   ) {
-    const plan = yield* plans
-      .requireHead(ref, revision)
-      .pipe(
-        Effect.mapError(
-          (cause) =>
-            new FactoryExecutionError({
-              reason: cause.reason === "revision-conflict" ? "revision-conflict" : "missing-plan",
-              cause,
-            }),
-        ),
-      );
+    const plan = yield* plans.requireHead(ref, revision).pipe(
+      Effect.mapError(
+        (cause) =>
+          new FactoryExecutionError({
+            reason: cause.reason === "revision-conflict" ? "revision-conflict" : "missing-plan",
+            cause,
+          }),
+      ),
+    );
     const grant = yield* getGrant(ref);
     if (!grant || grant.revision !== revision || grant.version !== version)
       return yield* new FactoryExecutionError({ reason: "grant-conflict" });
@@ -327,6 +347,94 @@ const make = Effect.gen(function* () {
       resultId: string | null;
     }>`SELECT task_id AS taskId, version, attempt_id AS attemptId, selected_result_id AS resultId FROM factory_execution_tasks WHERE root_id = ${input.ref.rootId} AND revision = ${input.revision}`;
   }, Effect.mapError(failure));
+  const authorizeRuntimeResponse = Effect.fn("FactoryExecutionStore.authorizeRuntimeResponse")(
+    function* (input: FactoryRuntimeResponseCheck) {
+      yield* requireSession(input.authorization.sessionId);
+      const binding = yield* getBinding(input.authorization.runAttemptId);
+      if (binding.threadId !== input.threadId)
+        return yield* new FactoryExecutionError({ reason: "task-conflict" });
+      if (binding.stopRequested || binding.quiescent)
+        return yield* new FactoryExecutionError({ reason: "grant-inactive" });
+      const { plan, grant } = yield* liveGrant(
+        binding.selection.ref,
+        binding.selection.revision,
+        binding.grantVersion,
+        DateTime.formatIso(yield* DateTime.now),
+      );
+      if (
+        !plan.tasks.some((task) => task.id === binding.selection.taskId && !task.retired) ||
+        !grant.policy.tasks.some((task) => task.taskId === binding.selection.taskId)
+      )
+        return yield* new FactoryExecutionError({ reason: "task-conflict" });
+      const tasks = yield* taskRows({
+        ref: binding.selection.ref,
+        revision: binding.selection.revision,
+      });
+      const current = tasks.find((task) => task.taskId === binding.selection.taskId);
+      if (current?.attemptId !== binding.runAttemptId || current.version !== binding.taskVersion)
+        return yield* new FactoryExecutionError({ reason: "task-conflict" });
+      const rows = yield* sql<{ json: string }>`
+        SELECT request.payload_json AS json
+        FROM orchestration_v2_projection_runtime_requests AS request
+        JOIN orchestration_v2_projection_nodes AS node
+          ON node.node_id = request.node_id
+          AND node.thread_id = request.thread_id
+          AND node.provider_turn_id = request.provider_turn_id
+        JOIN orchestration_v2_projection_provider_turns AS turn
+          ON turn.provider_turn_id = request.provider_turn_id
+          AND turn.thread_id = request.thread_id
+          AND turn.provider_thread_id = node.provider_thread_id
+        JOIN orchestration_v2_projection_run_attempts AS attempt
+          ON attempt.attempt_id = turn.run_attempt_id
+          AND attempt.thread_id = request.thread_id
+          AND attempt.run_id = node.run_id
+          AND attempt.provider_thread_id = turn.provider_thread_id
+        JOIN orchestration_v2_projection_runs AS run
+          ON run.run_id = attempt.run_id
+          AND run.thread_id = request.thread_id
+          AND run.provider_thread_id = attempt.provider_thread_id
+          AND json_extract(run.payload_json, '$.activeAttemptId') = attempt.attempt_id
+        JOIN orchestration_v2_projection_provider_threads AS native
+          ON native.provider_thread_id = attempt.provider_thread_id
+          AND native.thread_id = request.thread_id
+          AND native.provider_session_id = ${input.providerSessionId}
+        JOIN orchestration_v2_projection_provider_session_bindings AS session_binding
+          ON session_binding.thread_id = request.thread_id
+          AND session_binding.provider_session_id = native.provider_session_id
+        JOIN orchestration_v2_projection_provider_sessions AS session
+          ON session.provider_session_id = session_binding.provider_session_id
+        WHERE request.runtime_request_id = ${input.requestId}
+          AND request.thread_id = ${input.threadId}
+          AND request.status = ${input.expectedStatus}
+          AND run.run_id = ${binding.runId}
+          AND attempt.attempt_id = ${binding.runAttemptId}
+          AND run.status IN ('starting', 'running', 'waiting')
+          AND attempt.status IN ('pending', 'running')
+          AND turn.status IN ('pending', 'running')
+          AND NOT EXISTS (
+            SELECT 1 FROM orchestration_v2_projection_provider_turns AS newer
+            WHERE newer.run_attempt_id = attempt.attempt_id
+              AND newer.provider_thread_id = turn.provider_thread_id
+              AND newer.ordinal > turn.ordinal
+          )
+          AND session.status IN ('ready', 'running', 'waiting')
+          AND native.status IN ('idle', 'active')
+      `;
+      if (!rows[0]) return yield* new FactoryExecutionError({ reason: "task-conflict" });
+      const request = yield* decodeRuntimeRequest(rows[0].json);
+      if (
+        request.id !== input.requestId ||
+        request.status !== input.expectedStatus ||
+        request.responseCapability.type !== "live" ||
+        request.responseCapability.providerSessionId !== input.providerSessionId ||
+        (input.expectedStatus === "resolved" &&
+          (request.decision === "acceptForSession" || request.decision === "acceptAlways"))
+      )
+        return yield* new FactoryExecutionError({ reason: "forbidden" });
+      return binding;
+    },
+    Effect.mapError(failure),
+  );
   const latestCapture = Effect.fn("FactoryExecutionStore.latestCapture")(function* (
     attemptId: RunAttemptId,
   ) {
@@ -1034,6 +1142,25 @@ const make = Effect.gen(function* () {
       input: Claim,
     ): Effect.fn.Return<{ status: "claimed" | "suppressed" | "held" }, FactoryExecutionError> {
       const binding = yield* getBinding(input.runAttemptId);
+      if (input.phase.startsWith("response:")) {
+        const response = input.runtimeResponse;
+        if (
+          response === undefined ||
+          input.phase !== `response:${response.requestId}` ||
+          input.runAttemptId !== response.authorization.runAttemptId
+        )
+          return yield* new FactoryExecutionError({ reason: "forbidden" });
+        yield* authorizeRuntimeResponse({ ...response, expectedStatus: "resolved" });
+        const existing =
+          yield* sql`SELECT phase FROM factory_execution_phases WHERE attempt_id = ${input.runAttemptId} AND phase = ${input.phase}`.pipe(
+            Effect.mapError(failure),
+          );
+        if (existing.length > 0) return { status: "held" };
+        yield* sql`INSERT INTO factory_execution_phases(attempt_id, phase, claimant_id, observation, detail) VALUES (${input.runAttemptId}, ${input.phase}, ${input.claimantId}, 'claimed', '')`.pipe(
+          Effect.mapError(failure),
+        );
+        return { status: "claimed" };
+      }
       if (
         input.phase === "capture" &&
         (yield* captureKey(input.runAttemptId)) !== `native-final/${input.captureGeneration ?? 1}`
@@ -1178,6 +1305,7 @@ const make = Effect.gen(function* () {
     hasNativeClaims,
     canBeginCapture,
     findNativeBinding,
+    authorizeRuntimeResponse,
     claimPhase,
     settlePhase,
     settleAttempt,

@@ -226,6 +226,10 @@ approvals are refused, as are ordinary chat follow-ups in managed worker threads
 cannot resume stopped work or work whose grant expired, was revoked, or no longer matches
 the current plan. Responding does not authorize publishing or merging.
 
+Message-mode questions cannot be answered on managed workers because answering would start
+a new turn. You can still dismiss these questions or settle an otherwise inactive thread;
+neither action resumes work or creates a new run.
+
 ### Start a task from an issue
 
 Open **Factory → Issues**, choose a checkout, and check the repository and host shown above the

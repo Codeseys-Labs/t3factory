@@ -17,6 +17,7 @@ import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import * as ThreadManagementService from "../ThreadManagementService.ts";
 import * as FactoryDeliveryService from "../../factory/FactoryDeliveryService.ts";
+import type * as FactoryExecutionLifecycle from "../../factory/FactoryExecutionLifecycle.ts";
 import * as FactoryExecutionTestkit from "../../factory/FactoryExecutionTestkit.ts";
 import * as ThreadLaunchService from "../ThreadLaunchService.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
@@ -275,6 +276,7 @@ export function layerWithRegistry<Error>(
     readonly runContinuationWorker?: boolean;
     readonly recoverOnStartup?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
+    readonly factoryLifecycleLayer?: Layer.Layer<FactoryExecutionLifecycle.FactoryExecutionLifecycle>;
   } = {},
 ): Layer.Layer<
   | Orchestrator.OrchestratorV2
@@ -295,6 +297,8 @@ export function layerWithRegistry<Error>(
           Layer.provide(RuntimePolicy.layer),
         );
   const layerDatabase = options.databaseLayer ?? SqlitePersistence.layerMemory;
+  const layerFactoryLifecycle =
+    options.factoryLifecycleLayer ?? FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle;
   // Share one continuation queue across adapters, orchestrator, and worker through layer memoization.
   const layerContinuationRequests =
     options.runContinuationWorker === true ? ProviderContinuationRequests.layer : Layer.empty;
@@ -377,7 +381,7 @@ export function layerWithRegistry<Error>(
         McpSessionRegistryTestkit.layer,
         layerProviderEventIngestorProvided,
         layerStores,
-        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+        layerFactoryLifecycle,
       ),
     ),
   );
@@ -392,7 +396,7 @@ export function layerWithRegistry<Error>(
         layerCheckpointServiceProvided,
         layerEventSinkProvided,
         IdAllocator.layer,
-        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+        layerFactoryLifecycle,
         layerProviderEventIngestorProvided,
         layerServerSettings,
         layerStores,
@@ -405,7 +409,7 @@ export function layerWithRegistry<Error>(
         layerContextHandoffServiceProvided,
         layerEventSinkProvided,
         IdAllocator.layer,
-        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+        layerFactoryLifecycle,
         layerStores,
         layerProviderSessionManagerProvided,
         Layer.mock(ProviderAuthService.ProviderAuthService)({
@@ -420,20 +424,12 @@ export function layerWithRegistry<Error>(
   );
   const layerProviderTurnControlServiceProvided = ProviderTurnControlService.layer.pipe(
     Layer.provide(
-      Layer.mergeAll(
-        layerStores,
-        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
-        layerProviderSessionManagerProvided,
-      ),
+      Layer.mergeAll(layerStores, layerFactoryLifecycle, layerProviderSessionManagerProvided),
     ),
   );
   const layerRuntimeRequestServiceProvided = RuntimeRequestService.layer.pipe(
     Layer.provide(
-      Layer.mergeAll(
-        layerStores,
-        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
-        layerProviderSessionManagerProvided,
-      ),
+      Layer.mergeAll(layerStores, layerFactoryLifecycle, layerProviderSessionManagerProvided),
     ),
   );
   const layerCheckpointRollbackServiceProvided = CheckpointRollbackService.layer.pipe(
@@ -482,7 +478,7 @@ export function layerWithRegistry<Error>(
         layerProvidedRegistry,
         layerContinuationRequests,
         layerRuntime,
-        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+        layerFactoryLifecycle,
         layerProviderSessionManagerProvided,
         layerProviderSwitchServiceProvided,
         layerRunExecutionServiceProvided,
@@ -520,7 +516,7 @@ export function layerWithRegistry<Error>(
       Layer.mergeAll(
         layerRunFinalizationServiceProvided,
         layerCheckpointRollbackServiceProvided,
-        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+        layerFactoryLifecycle,
         FactoryExecutionTestkit.layerExecutionServiceMock,
         Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
         layerStores,
@@ -567,7 +563,7 @@ export function layerWithRegistry<Error>(
               layerStores,
               layerEventSinkProvided,
               IdAllocator.layer,
-              FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+              layerFactoryLifecycle,
               layerServerSettings,
             ),
           ),

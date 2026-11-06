@@ -1,8 +1,13 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import {
+  AuthSessionId,
   CommandId,
   MessageId,
   EventId,
+  EnvironmentId,
+  FactoryExecutionError,
+  type FactoryExecutionBinding,
   NodeId,
   type OrchestrationV2DomainEvent,
   PlanId,
@@ -26,6 +31,8 @@ import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
+import * as FactoryExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import {
   orchestrationCommandDuration,
   orchestrationCommandsTotal,
@@ -196,6 +203,210 @@ it.effect(
         ],
       );
     }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect.each(["dismiss", "settle"] as const)(
+  "cancels managed message-mode questions through %s without dispatching provider work",
+  (control) => {
+    const threadId = ThreadId.make(`thread:managed-question-${control}`);
+    const projectId = ProjectId.make(`project:managed-question-${control}`);
+    const binding: FactoryExecutionBinding = {
+      selection: {
+        ref: { environmentId: EnvironmentId.make("local"), projectId, rootId: "plan" },
+        revision: 1,
+        taskId: "question",
+      },
+      grantVersion: 1,
+      taskVersion: 1,
+      commandId: CommandId.make(`admit:managed-question-${control}`),
+      threadId,
+      runId: RunId.make(`run:managed-question-${control}`),
+      runAttemptId: RunAttemptId.make(`attempt:managed-question-${control}`),
+      driver: adapter.driver,
+      spec: {
+        taskId: "question",
+        modelSelection,
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        workspaceStrategy: { type: "root" },
+        setup: "deny",
+        output: { slot: "draft", kind: "sealed-draft" },
+      },
+      inputDigest: "a".repeat(64),
+      inputText: "Frozen question",
+      prerequisites: [],
+      admittedAt: "2026-11-05T00:00:00.000Z",
+      stopRequested: true,
+      quiescent: true,
+    };
+    const factoryLifecycleLayer = FactoryExecutionLifecycle.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          NodeCrypto.layer,
+          Layer.mock(FactoryExecutionStore.FactoryExecutionStore)({
+            findNativeBinding: (input) =>
+              Effect.succeed(input.threadId === threadId ? binding : null),
+          }),
+        ),
+      ),
+    );
+    const layerManagedQuestion = Layer.mergeAll(
+      layerDatabase,
+      ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
+      EffectOutbox.layer.pipe(Layer.provide(layerDatabase)),
+      ProviderReplayHarness.layerWithRegistry(
+        { name: `managed-question-${control}` },
+        ProviderAdapterRegistry.layerFromAdapters([adapter]),
+        { databaseLayer: layerDatabase, runEffectWorker: false, factoryLifecycleLayer },
+      ),
+    );
+
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const outbox = yield* EffectOutbox.EffectOutboxV2;
+      const requestId = RuntimeRequestId.make(`request:managed-question-${control}`);
+      const nodeId = NodeId.make(`node:managed-question-${control}`);
+      const itemId = TurnItemId.make(`item:managed-question-${control}`);
+      const now = yield* DateTime.now;
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make(`create:managed-question-${control}`),
+        threadId,
+        projectId,
+        title: "Managed question",
+        modelSelection,
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* projections.apply({
+        id: EventId.make(`request:managed-question-${control}`),
+        type: "runtime-request.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: requestId,
+          nodeId,
+          providerTurnId: null,
+          nativeRequestRef: null,
+          kind: "user_input",
+          status: "pending",
+          responseCapability: { type: "message" },
+          createdAt: now,
+          resolvedAt: null,
+        },
+      });
+      yield* projections.apply({
+        id: EventId.make(`node:managed-question-${control}`),
+        type: "node.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: nodeId,
+          threadId,
+          runId: null,
+          parentNodeId: null,
+          rootNodeId: nodeId,
+          kind: "user_input_request",
+          status: "waiting",
+          countsForRun: false,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          runtimeRequestId: requestId,
+          checkpointScopeId: null,
+          startedAt: now,
+          completedAt: null,
+        },
+      });
+      yield* projections.apply({
+        id: EventId.make(`item:managed-question-${control}`),
+        type: "turn-item.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: itemId,
+          threadId,
+          runId: null,
+          nodeId,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: 0,
+          status: "waiting",
+          title: null,
+          startedAt: now,
+          completedAt: null,
+          updatedAt: now,
+          type: "user_input_request",
+          requestId,
+          responseMode: "message",
+          questions: [{ id: "choice", header: "Choice", question: "Continue?", options: [] }],
+        },
+      });
+
+      const pending = yield* projections.getRuntimeResponseContext(threadId, requestId);
+      const sequence = yield* orchestrator.getThreadEventSequence(threadId);
+      for (const actor of ["agent", "human"] as const) {
+        const commandId = CommandId.make(`answer:managed-question-${control}-${actor}`);
+        const answer = orchestrator.dispatch({
+          type: "runtime-request.respond",
+          commandId,
+          threadId,
+          requestId,
+          answers: { choice: "Yes" },
+        });
+        const rejected = yield* (
+          actor === "human"
+            ? answer.pipe(
+                Effect.provideService(
+                  FactoryExecutionLifecycle.FactoryRuntimeResponseSession,
+                  AuthSessionId.make("human:managed-question"),
+                ),
+              )
+            : answer
+        ).pipe(Effect.flip);
+        assert.ok(rejected instanceof Orchestrator.OrchestratorDispatchError);
+        if (actor === "human") {
+          assert.equal(
+            rejected.cause,
+            "Managed execution requires a human response to one live request without widening permissions.",
+          );
+        } else {
+          assert.ok(rejected.cause instanceof FactoryExecutionError);
+          assert.equal(rejected.cause.reason, "grant-inactive");
+        }
+        assert.deepEqual(
+          yield* projections.getRuntimeResponseContext(threadId, requestId),
+          pending,
+        );
+        assert.equal(yield* orchestrator.getThreadEventSequence(threadId), sequence);
+        assert.deepEqual(yield* outbox.listByCommandId(commandId), []);
+      }
+
+      const commandId = CommandId.make(`cancel:managed-question-${control}`);
+      yield* orchestrator.dispatch(
+        control === "dismiss"
+          ? { type: "thread.user-input.dismiss", commandId, threadId, requestId }
+          : { type: "thread.settle", commandId, threadId },
+      );
+      const projection = yield* projections.getThreadProjection(threadId);
+      const response = yield* projections.getRuntimeResponseContext(threadId, requestId);
+      assert.equal(response.request?.status, "resolved");
+      assert.equal(response.request?.decision, "cancel");
+      assert.equal(response.node?.status, "cancelled");
+      assert.equal(response.item?.status, "cancelled");
+      assert.equal(projection.thread.settledOverride, control === "settle" ? "settled" : null);
+      assert.deepEqual(projection.messages, []);
+      assert.deepEqual(projection.runs, []);
+      assert.deepEqual(yield* outbox.listByCommandId(commandId), []);
+    }).pipe(Effect.provide(layerManagedQuestion));
+  },
 );
 
 it.effect("marks a never-visited thread's first completion unread", () =>

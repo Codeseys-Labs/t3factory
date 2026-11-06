@@ -8548,8 +8548,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         .binding({ threadId: command.threadId })
         .pipe(mapDispatchError(command));
       const respondingSessionId = yield* FactoryExecutionLifecycle.FactoryRuntimeResponseSession;
+      const cancelsMessageQuestion =
+        runtimeRequest.kind === "user_input" &&
+        runtimeRequest.responseCapability.type === "message" &&
+        command.decision === "cancel" &&
+        command.answers === undefined &&
+        command.feedback === undefined &&
+        command.attachmentsByQuestionId === undefined;
       if (
         managed !== null &&
+        !cancelsMessageQuestion &&
         (respondingSessionId === undefined ||
           providerSessionId === null ||
           command.decision === "acceptForSession" ||

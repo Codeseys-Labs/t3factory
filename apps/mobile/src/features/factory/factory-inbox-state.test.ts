@@ -52,6 +52,7 @@ function setup(patch: Partial<FactoryInboxSelection> = {}): void {
     cursors: {},
     selected: null,
     history: null,
+    histories: {},
   });
   appAtomRegistry.set(factoryInboxSelectionAtom, {
     environmentId: null,
@@ -244,7 +245,14 @@ describe("Factory Work review return", () => {
   it("opens the review project's issues and returns to the exact Work scope and item", () => {
     setup({ section: "work", filter: "closed", modelSelection, baseRef: "release/other" });
 
-    openFactoryWorkReview({ environmentId, projectId: reviewProject, section: "issues", work });
+    const returnTo = { work: "original-selection", returnTo: { work: "first-selection" } };
+    openFactoryWorkReview({
+      environmentId,
+      projectId: reviewProject,
+      section: "issues",
+      work,
+      returnTo,
+    });
 
     expect(appAtomRegistry.get(factoryInboxSelectionAtom)).toMatchObject({
       environmentId,
@@ -253,9 +261,9 @@ describe("Factory Work review return", () => {
       filter: "all",
       modelSelection: null,
       baseRef: null,
-      workReturn: { environmentId: null, projectId: null, filter: "closed", work },
+      workReturn: { environmentId: null, projectId: null, filter: "closed", work, returnTo },
     });
-    expect(returnToFactoryWork()).toBe(work);
+    expect(returnToFactoryWork()).toEqual({ work, returnTo });
     expect(appAtomRegistry.get(factoryInboxSelectionAtom)).toMatchObject({
       environmentId: null,
       projectId: null,
@@ -323,6 +331,11 @@ describe("Factory Work view", () => {
       selection: { section: "executions" },
       cursors: [],
     });
+    selectFactoryWorkHistory("work-b", { section: "outputs", threadId: ThreadId.make("blocker") });
+    moveFactoryWorkHistoryPage("work-b", "blocker-cursor");
+    expect(factoryWorkHistoryFor(appAtomRegistry.get(factoryWorkViewAtom), "work-a")).toEqual(
+      factoryWorkHistoryFor(view, "work-a"),
+    );
     moveFactoryWorkHistoryPage("work-a", null);
     expect(
       factoryWorkHistoryFor(appAtomRegistry.get(factoryWorkViewAtom), "work-a").cursors,

@@ -137,6 +137,7 @@ vi.mock(import("../settings/SettingsScopeContext"), () => ({
   })) as never,
 }));
 vi.mock(import("./FactoryOverviewPage"), () => ({ FactoryOverviewPage: () => null }));
+vi.mock(import("./FactoryPlanEditor"), () => ({ FactoryPlanEditor: () => <></> }));
 
 import { act, render } from "../../../test/render";
 import { FactoryWorkPage } from "./FactoryWorkPage";

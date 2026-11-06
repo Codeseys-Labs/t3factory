@@ -1,3 +1,4 @@
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
@@ -180,9 +181,9 @@ export const make = Effect.gen(function* () {
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const eventSink = yield* EventSink.EventSinkV2;
   const ids = yield* IdAllocator.IdAllocatorV2;
+  const factoryLifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
   const outbox = yield* EffectOutbox.EffectOutboxV2;
   type RecoverySession = ProjectionStore.ProjectionRuntimeRecoveryState["providerSessions"][number];
-  /** Shared sessions stop on their first recovered thread; later threads still decide wakes from pre-recovery liveness. */
   const sessionsLiveAtStart = (
     projection: ProjectionStore.ProjectionRuntimeRecoveryState,
     stoppedThisPass: ReadonlyMap<string, RecoverySession>,
@@ -205,6 +206,33 @@ export const make = Effect.gen(function* () {
       continueAfterRestart: boolean,
       stoppedThisPass: ReadonlyMap<string, RecoverySession> = new Map(),
     ) {
+      const managed = yield* factoryLifecycle.binding({ threadId: projection.thread.id }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ProviderRuntimeRecoveryError({
+              operation: "reconcile",
+              threadId: projection.thread.id,
+              cause,
+            }),
+        ),
+      );
+      if (managed !== null) {
+        yield* factoryLifecycle.recover(managed).pipe(Effect.ignore);
+        const settled = yield* factoryLifecycle.binding({ threadId: projection.thread.id }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ProviderRuntimeRecoveryError({
+                operation: "reconcile",
+                threadId: projection.thread.id,
+                cause,
+              }),
+          ),
+        );
+        // A quiescent binding has no owner, live claims or blocking effects; its orphaned
+        // run must be terminalized by the pass below or retry admission stays blocked.
+        if (settled === null || !settled.quiescent)
+          return { terminalizedRuns: 0, stoppedSessions: 0, closedRequests: 0, retiredEffects: 0 };
+      }
       const now = yield* DateTime.now;
       const runs = [] as Array<OrchestrationV2ThreadProjection["runs"][number]>;
       for (const run of nonterminalRuns(projection)) {
@@ -885,6 +913,7 @@ export const make = Effect.gen(function* () {
     for (const threadId of threadIds) {
       yield* Effect.gen(function* () {
         const projection = yield* projections.getRuntimeRecoveryProjection(threadId);
+        if ((yield* factoryLifecycle.binding({ threadId })) !== null) return;
         if (
           !resolveProjectSettings(enabled, projection.thread.projectId).settings
             .continueThreadsAfterServerUpdate

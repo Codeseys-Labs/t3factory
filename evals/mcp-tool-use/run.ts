@@ -173,12 +173,13 @@ const PriorToolCall = Schema.Struct({
 });
 
 /**
- * One expected call. `args` match partially: `~text` is a case-insensitive substring,
- * `"<=N"` / `">=N"` bound a number, and keys may be dotted paths.
+ * One expected call. Unless `exactArgs` is true, `args` match partially: `~text` is a
+ * case-insensitive substring, `"<=N"` / `">=N"` bound a number, and keys may be dotted paths.
  */
 const McpToolUseCall = Schema.Struct({
   tool: Schema.String,
   args: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  exactArgs: Schema.optional(Schema.Boolean),
 });
 type McpToolUseCall = typeof McpToolUseCall.Type;
 
@@ -191,6 +192,8 @@ const McpToolUseExpect = Schema.Struct({
   notCalls: Schema.optional(Schema.Array(Schema.String)),
   /** First calls of these tools happen in this order. */
   order: Schema.optional(Schema.Array(Schema.String)),
+  /** Matching calls occur in sequence on strictly increasing run steps. */
+  orderedCalls: Schema.optional(Schema.Array(McpToolUseCall)),
   minCalls: Schema.optional(Schema.Record(Schema.String, Schema.Number)),
   maxCalls: Schema.optional(Schema.Record(Schema.String, Schema.Number)),
   /** The last step with tool calls includes this tool, then the turn ends. */
@@ -293,6 +296,7 @@ export const McpToolUseCase = Schema.Struct({
         Schema.Array(
           Schema.Struct({
             args: Schema.Record(Schema.String, Schema.Unknown),
+            exactArgs: Schema.optional(Schema.Boolean),
             result: Schema.Unknown,
           }),
         ).check(Schema.isMinLength(1)),
@@ -435,8 +439,13 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
         "factory_get_orchestrator",
         "factory_start_orchestrator",
         "factory_assign_orchestrator",
+        "factory_list_work",
         "factory_read_work_prerequisites",
         "factory_read_issue_readiness",
+        "factory_list_plans",
+        "factory_read_plan",
+        "factory_read_plan_history",
+        "factory_apply_plan",
       ].includes(tool.name),
     ),
   );
@@ -1349,7 +1358,9 @@ const answerToolCall = Effect.fn("evaluateMcpToolUse.answerToolCall")(function* 
     return loadTools(tools, call.id, found);
   }
   const responses = testCase.setup.mockResponses?.[name];
-  const selected = responses?.filter(({ args }) => matches(args, input));
+  const selected = responses?.filter((response) =>
+    matchesArgs(response, response.exactArgs ? call.input : input),
+  );
   if (selected?.length === 0)
     return failed(`EvalFixtureMismatch: no response for ${name} ${valueText(input)}.`);
   if (selected !== undefined && selected.length !== 1)
@@ -1422,6 +1433,14 @@ const matches = (expected: unknown, actual: unknown): boolean => {
   return Object.entries(expected).every(([path, value]) => matches(value, at(path)));
 };
 
+const matchesArgs = (
+  { args = {}, exactArgs }: Pick<McpToolUseCall, "args" | "exactArgs">,
+  input: unknown,
+) =>
+  exactArgs
+    ? NodeUtil.isDeepStrictEqual(args, input === undefined ? {} : input)
+    : matches(args, input);
+
 /** delegate_task takes `target.options` as an object or `[{id, value}]`. Grade both as an object. */
 const withOptionsObject = (input: unknown) => {
   if (!isRecord(input) || !isRecord(input.target) || !Array.isArray(input.target.options)) {
@@ -1438,13 +1457,15 @@ const withOptionsObject = (input: unknown) => {
 export const gradeSample = (expect: McpToolUseCase["expect"], run: SampleRun) => {
   const checks: Array<{ readonly check: string; readonly pass: boolean }> = [];
   const add = (check: string, pass: boolean) => checks.push({ check, pass });
-  const calls = run.calls.map((call) => ({ ...call, input: withOptionsObject(call.input) }));
+  const calls = run.calls;
   if (calls.some((call) => call.failed && call.output?.startsWith("EvalFixtureMismatch:")))
     add("fixtureArguments", false);
   const count = (tool: string) => calls.filter((call) => call.tool === tool).length;
   // `tool` may list alternatives, as in "link_pull_request|watch_pull_request".
-  const found = ({ tool, args = {} }: McpToolUseCall) =>
-    calls.some((call) => tool.split("|").includes(call.tool) && matches(args, call.input));
+  const matchesCall = (expected: McpToolUseCall, call: Call) =>
+    expected.tool.split("|").includes(call.tool) &&
+    matchesArgs(expected, expected.exactArgs ? call.input : withOptionsObject(call.input));
+  const found = (expected: McpToolUseCall) => calls.some((call) => matchesCall(expected, call));
   const label = ({ tool, args }: McpToolUseCall) => (args ? `${tool} ${valueText(args)}` : tool);
   for (const call of expect.calls ?? []) add(`calls ${label(call)}`, found(call));
   for (const call of expect.callsMustNot ?? []) add(`callsMustNot ${label(call)}`, !found(call));
@@ -1453,6 +1474,21 @@ export const gradeSample = (expect: McpToolUseCase["expect"], run: SampleRun) =>
     const firsts = expect.order.map((tool) => calls.findIndex((call) => call.tool === tool));
     const inOrder = firsts.every((at, i) => at > (firsts[i - 1] ?? -1));
     add(`order ${expect.order.join(" > ")}`, inOrder);
+  }
+  if (expect.orderedCalls !== undefined) {
+    let at = 0;
+    let previousStep = -Infinity;
+    for (const call of calls) {
+      const expected = expect.orderedCalls[at];
+      if (expected !== undefined && call.step > previousStep && matchesCall(expected, call)) {
+        at++;
+        previousStep = call.step;
+      }
+    }
+    add(
+      `orderedCalls ${expect.orderedCalls.map(label).join(" > ")}`,
+      at === expect.orderedCalls.length,
+    );
   }
   for (const [t, n] of Object.entries(expect.minCalls ?? {}))
     add(`minCalls ${t} >= ${n}`, count(t) >= n);

@@ -7,6 +7,8 @@ import {
   type FactoryKnowledgeError,
   type FactoryFeedError,
   type FactoryWorkError,
+  type FactoryPlanError,
+  type FactoryExecutionError,
   type ProjectCoordinatorError,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -19,11 +21,14 @@ import * as Acceptance from "../../../factory/FactoryAcceptanceService.ts";
 import * as Delivery from "../../../factory/FactoryDeliveryService.ts";
 import * as Knowledge from "../../../factory/FactoryKnowledgeService.ts";
 import * as Work from "../../../factory/FactoryWorkService.ts";
+import * as Plans from "../../../factory/FactoryPlanService.ts";
+import * as Execution from "../../../factory/FactoryExecutionService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { DispatchModeLimit } from "../../../orchestration-v2/DispatchModeLimit.ts";
 import * as Coordinators from "../../../project/ProjectCoordinatorService.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
+import { callerLinkOrigin } from "../../linkOrigin.ts";
 import { FactoryToolkit } from "./tools.ts";
 
 const failure = (
@@ -35,6 +40,8 @@ const failure = (
     | FactoryDeliveryError
     | FactoryKnowledgeError
     | FactoryWorkError
+    | FactoryPlanError
+    | FactoryExecutionError
     | ProjectCoordinatorError,
 ) =>
   new OrchestratorMcpFailure({
@@ -43,6 +50,113 @@ const failure = (
     message: error.message,
   });
 export const layer = McpToolAccess.toLayer(FactoryToolkit, {
+  factory_read_execution: McpToolAccess.reads((input) =>
+    Effect.gen(function* () {
+      yield* readCaller();
+      return yield* (yield* Execution.FactoryExecutionService)
+        .readExecution(input)
+        .pipe(Effect.mapError(failure));
+    }),
+  ),
+  factory_read_execution_outputs: McpToolAccess.reads((input) =>
+    Effect.gen(function* () {
+      yield* readCaller();
+      return yield* (yield* Execution.FactoryExecutionService)
+        .readOutputs(input)
+        .pipe(Effect.mapError(failure));
+    }),
+  ),
+  factory_read_execution_output: McpToolAccess.reads((input) =>
+    Effect.gen(function* () {
+      yield* readCaller();
+      return yield* (yield* Execution.FactoryExecutionService)
+        .readOutput(input)
+        .pipe(Effect.mapError(failure));
+    }),
+  ),
+  factory_admit_execution: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const caller = yield* readCaller();
+      if (caller.scope.client !== undefined || callerLinkOrigin(caller) !== undefined)
+        return yield* new OrchestratorMcpFailure({
+          code: "capability_denied",
+          message: "Local execution admission requires a granted local requesting thread.",
+        });
+      const { thread } = yield* McpInvocationContext.requireThreadScope(caller.scope, "This tool");
+      return yield* (yield* Execution.FactoryExecutionService)
+        .admit(input, { kind: "agent", threadId: thread.threadId })
+        .pipe(Effect.provideService(DispatchModeLimit, caller.limits), Effect.mapError(failure));
+    }),
+  ),
+  factory_retry_execution: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const caller = yield* readCaller();
+      if (caller.scope.client !== undefined || callerLinkOrigin(caller) !== undefined)
+        return yield* new OrchestratorMcpFailure({
+          code: "capability_denied",
+          message: "Local execution retry requires a granted local requesting thread.",
+        });
+      const { thread } = yield* McpInvocationContext.requireThreadScope(caller.scope, "This tool");
+      return yield* (yield* Execution.FactoryExecutionService)
+        .retry(input, { kind: "agent", threadId: thread.threadId })
+        .pipe(Effect.provideService(DispatchModeLimit, caller.limits), Effect.mapError(failure));
+    }),
+  ),
+  factory_stop_execution: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const caller = yield* readCaller();
+      if (caller.scope.client !== undefined || callerLinkOrigin(caller) !== undefined)
+        return yield* new OrchestratorMcpFailure({
+          code: "capability_denied",
+          message: "Local execution stop requires its granted local requesting thread.",
+        });
+      const { thread } = yield* McpInvocationContext.requireThreadScope(caller.scope, "This tool");
+      return yield* (yield* Execution.FactoryExecutionService)
+        .requestStop(input, { kind: "agent", threadId: thread.threadId })
+        .pipe(Effect.mapError(failure));
+    }),
+  ),
+  factory_list_plans: McpToolAccess.reads((input) =>
+    Effect.gen(function* () {
+      yield* readCaller();
+      return yield* (yield* Plans.FactoryPlanService).list(input).pipe(Effect.mapError(failure));
+    }),
+  ),
+  factory_read_plan: McpToolAccess.reads((input) =>
+    Effect.gen(function* () {
+      yield* readCaller();
+      return yield* (yield* Plans.FactoryPlanService).read(input).pipe(Effect.mapError(failure));
+    }),
+  ),
+  factory_read_plan_history: McpToolAccess.reads((input) =>
+    Effect.gen(function* () {
+      yield* readCaller();
+      return yield* (yield* Plans.FactoryPlanService).history(input).pipe(Effect.mapError(failure));
+    }),
+  ),
+  factory_apply_plan: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const caller = yield* readCaller();
+      if (caller.scope.client !== undefined || callerLinkOrigin(caller) !== undefined)
+        return yield* new OrchestratorMcpFailure({
+          code: "capability_denied",
+          message: "Only a local thread with an explicit plan edit grant can edit this plan.",
+        });
+      const { thread } = yield* McpInvocationContext.requireThreadScope(caller.scope, "This tool");
+      if (
+        input.operations.some(
+          (operation) => operation.type === "editor.grant" || operation.type === "editor.revoke",
+        )
+      )
+        return yield* new OrchestratorMcpFailure({
+          code: "capability_denied",
+          message: "Only a person can grant or revoke plan editor authority from the app.",
+        });
+      return yield* (yield* Plans.FactoryPlanService)
+        .apply(input, { kind: "agent", threadId: thread.threadId })
+        .pipe(Effect.mapError(failure));
+    }),
+  ),
   factory_list_research_protocols: McpToolAccess.reads((input) =>
     Effect.gen(function* () {
       yield* readCaller();
@@ -199,6 +313,12 @@ export const layer = McpToolAccess.toLayer(FactoryToolkit, {
       yield* readCaller();
       const relations = yield* Relations.FactoryIssueRelations;
       return yield* relations.readFrontier(input).pipe(Effect.mapError(failure));
+    }),
+  ),
+  factory_list_work: McpToolAccess.reads((input) =>
+    Effect.gen(function* () {
+      yield* readCaller();
+      return yield* (yield* Work.FactoryWorkService).list(input).pipe(Effect.mapError(failure));
     }),
   ),
   factory_read_work_prerequisites: McpToolAccess.reads((input) =>

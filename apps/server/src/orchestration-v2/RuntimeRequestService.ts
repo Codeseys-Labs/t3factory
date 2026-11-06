@@ -1,3 +1,4 @@
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
 import {
   ProviderApprovalDecision,
   ProviderSessionId,
@@ -67,16 +68,22 @@ export class RuntimeRequestServiceV2 extends Context.Service<
 export const layer: Layer.Layer<
   RuntimeRequestServiceV2,
   never,
-  ProjectionStore.ProjectionStoreV2 | ProviderSessionManager.ProviderSessionManagerV2
+  FactoryExecutionLifecycle.FactoryExecutionLifecycle | ProjectionStore.ProjectionStoreV2 | ProviderSessionManager.ProviderSessionManagerV2
 > = Layer.effect(
   RuntimeRequestServiceV2,
   Effect.gen(function* () {
+    const factoryLifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
     const projections = yield* ProjectionStore.ProjectionStoreV2;
     const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
 
     return RuntimeRequestServiceV2.of({
       respond: Effect.fn("RuntimeRequestService.respond")(
         function* (input) {
+          const managed = yield* factoryLifecycle.binding({ threadId: input.threadId });
+          if (managed !== null) return yield* new RuntimeRequestResponseExecutionError({
+            reason: "request-not-resumable", threadId: input.threadId, providerSessionId: input.providerSessionId, requestId: input.requestId,
+            cause: "Ordinary runtime responses cannot resume a managed execution without an exact granted action.",
+          });
           const request = yield* projections.getRuntimeRequest(input.threadId, input.requestId);
           if (request === undefined) {
             return yield* new RuntimeRequestResponseExecutionError({

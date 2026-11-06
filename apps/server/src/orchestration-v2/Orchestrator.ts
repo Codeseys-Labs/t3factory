@@ -1,3 +1,5 @@
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
+import { nativeThreadRecord, nativePendingAttempt } from "./NativeExecutionPlan.ts";
 import type {
   GuestShareId,
   OrchestrationV2SearchThreadInput,
@@ -975,6 +977,7 @@ function lastDeliveredRunForProviderThread(
 }
 
 const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(function* () {
+  const factoryLifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
   const checkpointService = yield* CheckpointServiceV2;
   const commandPolicy = yield* CommandPolicyV2;
   const contextHandoffService = yield* ContextHandoffServiceV2;
@@ -1485,6 +1488,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         readonly queuedRunId?: RunId;
       },
     ) {
+      if ((yield* factoryLifecycle.binding({ threadId }).pipe(Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause })))) !== null) return;
       if (!(yield* projectionStore.canStartQueuedRun(threadId))) return;
       const projection = yield* readCommandProjection(threadId);
       if (
@@ -2184,7 +2188,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             id: `effect:${commandId}:provider-turn.start:${queuedRun.id}`,
             commandId,
             threadId,
-            request: { type: "provider-turn.start", runId: queuedRun.id },
+            request: { type: "provider-turn.start", runId: queuedRun.id, ...(queuedRun.activeAttemptId === null ? {} : { runAttemptId: queuedRun.activeAttemptId }) },
           },
         ],
       );
@@ -2535,39 +2539,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const now = yield* DateTime.now;
     const emitEvent = emit(events, command);
     const thread: OrchestrationV2AppThread = {
-      createdBy: command.createdBy,
-      creationSource: command.creationSource,
-      id: command.threadId,
-      projectId: command.projectId,
-      title: command.title,
-      providerInstanceId: command.modelSelection.instanceId,
-      modelSelection: command.modelSelection,
-      runtimeMode: command.runtimeMode,
-      interactionMode: command.interactionMode,
-      branch: command.branch,
-      worktreePath: command.worktreePath,
-      activeProviderThreadId: null,
-      pullRequests: [],
+      ...nativeThreadRecord({ ...command, now }),
       ...(command.linkOrigin === undefined ? {} : { linkOrigin: command.linkOrigin }),
-      // Only stamped work names a remote parent, so a client cannot claim one.
-      ...(command.linkOrigin === undefined || command.delegatedFrom === undefined
-        ? {}
-        : { delegatedFrom: command.delegatedFrom }),
-      lineage: {
-        parentThreadId: null,
-        relationshipToParent: null,
-        rootThreadId: command.threadId,
-      },
-      forkedFrom: null,
-      createdAt: now,
-      updatedAt: now,
-      archivedAt: null,
-      settledOverride: null,
-      settledAt: null,
-      snoozedUntil: null,
-      snoozedAt: null,
-      lastVisitedAt: null,
-      deletedAt: null,
+      ...(command.linkOrigin === undefined || command.delegatedFrom === undefined ? {} : { delegatedFrom: command.delegatedFrom }),
     };
 
     yield* emitEvent({
@@ -6061,19 +6035,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...(continuedTaskId === undefined ? {} : { delegatedTaskId: continuedTaskId }),
         ...wakeWorkStartedAt(projection.runs, command),
       };
-      const attempt: OrchestrationV2RunAttempt = {
-        id: attemptId,
-        runId,
-        attemptOrdinal: 1,
-        rootNodeId,
-        providerInstanceId: modelSelection.instanceId,
-        providerThreadId,
-        providerTurnId: null,
-        reason: "initial",
-        status: "pending",
-        startedAt: null,
-        completedAt: null,
-      };
+      const attempt = nativePendingAttempt({ id: attemptId, runId, rootNodeId,
+        providerInstanceId: modelSelection.instanceId, providerThreadId });
       const rootNode: OrchestrationV2ExecutionNode = {
         id: rootNodeId,
         threadId: command.threadId,
@@ -6257,7 +6220,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         id: `effect:${command.commandId}:provider-turn.start:${runId}`,
         commandId: command.commandId,
         threadId: command.threadId,
-        request: { type: "provider-turn.start", runId },
+        request: { type: "provider-turn.start", runId, runAttemptId: attemptId },
       } satisfies PendingOrchestrationEffectV2;
       if (dispatchMode.type !== "defer_start") {
         yield* Ref.update(effects, (existing) => [...existing, pendingEffect]);
@@ -7189,7 +7152,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       id: `effect:${command.commandId}:provider-turn.start:${runId}`,
       commandId: command.commandId,
       threadId: command.threadId,
-      request: { type: "provider-turn.start", runId },
+      request: { type: "provider-turn.start", runId, runAttemptId: attemptId },
     } satisfies PendingOrchestrationEffectV2;
     yield* Ref.update(effects, (existing) => [...existing, pendingEffect]);
   });
@@ -9635,7 +9598,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           id: `effect:${command.commandId}:provider-turn.start:${state.run.id}`,
           commandId: command.commandId,
           threadId: command.threadId,
-          request: { type: "provider-turn.start", runId: state.run.id },
+          request: { type: "provider-turn.start", runId: state.run.id, runAttemptId: state.attempt.id },
         } satisfies PendingOrchestrationEffectV2,
       ]);
     },
@@ -12900,10 +12863,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       if (shell !== null) yield* refuseAboveDispatchModeLimit(command, threadId, shell);
     }
 
+    yield* factoryLifecycle.guardCommand(command).pipe(mapDispatchError(command));
+    const managedStop = command.type === "thread.stop" || command.type === "run.interrupt" || command.type === "queued-run.cancel"
+      ? yield* factoryLifecycle.binding({ threadId: command.threadId }).pipe(mapDispatchError(command)) : null;
     const plan = yield* dispatchOnce(command).pipe(
       Effect.filterOrFail(
         (planned) =>
           planned.events.length > 0 ||
+          managedStop !== null ||
           command.type === "thread.background-work.settle" ||
           command.type === "thread.stop" ||
           command.type === "subagent.stop" ||
@@ -12954,7 +12921,37 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ),
     );
 
-    if (plan.events.length === 0 && plan.effects.length === 0) {
+    // Managed stop effects plan with the command's own events in one commit.
+    let plannedStopEffects: ReadonlyArray<PendingOrchestrationEffectV2> = plan.effects;
+    if (command.type === "thread.stop" || command.type === "run.interrupt" || command.type === "queued-run.cancel") {
+      const owner = managedStop;
+      const authority = yield* FactoryExecutionLifecycle.FactoryNativeAuthority;
+      const extra: Array<PendingOrchestrationEffectV2> = [];
+      if (owner !== null && authority !== owner.runAttemptId) {
+        extra.push({
+          id: `effect:${command.commandId}:factory.execution.stop:${owner.runAttemptId}`,
+          commandId: command.commandId, threadId: command.threadId,
+          request: { type: "factory.execution.stop", runId: owner.runId, runAttemptId: owner.runAttemptId, nativeInterruptPlanned: true },
+        });
+      }
+      if (owner !== null) {
+        const native = yield* projectionStore.getThreadRecords(command.threadId, ["runs", "attempts", "nodes"]).pipe(mapDispatchError(command));
+        const run = native.runs.find((run) => run.id === owner.runId);
+        const attempt = native.attempts.find((attempt) => attempt.id === owner.runAttemptId);
+        const node = native.nodes.find((node) => node.id === run?.rootNodeId);
+        if (run?.activeAttemptId === owner.runAttemptId && attempt !== undefined && node?.checkpointScopeId != null) {
+          extra.push({
+            id: `effect:factory.execution.finalize:${owner.runAttemptId}`,
+            commandId: CommandId.make(`command:effect:factory.execution.finalize:${owner.runAttemptId}`), threadId: owner.threadId,
+            request: { type: "factory.execution.finalize", runId: owner.runId, runAttemptId: owner.runAttemptId,
+              scopeId: node.checkpointScopeId, captureGeneration: 1, providerThreadId: attempt.providerThreadId,
+              driver: owner.driver, providerInstanceId: owner.spec.modelSelection.instanceId },
+          });
+        }
+      }
+      plannedStopEffects = extra.length === 0 ? plan.effects : [...plan.effects, ...extra];
+    }
+    if (plan.events.length === 0 && plannedStopEffects.length === 0) {
       // A settle that ended nothing still records its receipt: a replayed Stop
       // effect then finds it instead of settling work that appeared since.
       const { resultSequence, inserted } = yield* Effect.gen(function* () {
@@ -12989,11 +12986,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const committed = yield* eventSink
       .commitCommand({
         commandId: command.commandId,
+        events: plan.events,
         threadId: commandThreadId(command),
         commandType: command.type,
         acceptedAt,
-        events: plan.events,
-        effects: plan.effects,
+        effects: plannedStopEffects,
         ...(plan.cancelUnsettledEffects === undefined
           ? {}
           : { cancelUnsettledEffects: plan.cancelUnsettledEffects }),
@@ -13511,6 +13508,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 export const layer: Layer.Layer<
   OrchestratorV2,
   never,
+  | FactoryExecutionLifecycle.FactoryExecutionLifecycle
   | CheckpointServiceV2
   | FileSystem.FileSystem
   | Path.Path

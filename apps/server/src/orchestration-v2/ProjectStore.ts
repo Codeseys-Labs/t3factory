@@ -214,6 +214,8 @@ export const make = Effect.gen(function* () {
 
   const apply: ProjectStoreV2["Service"]["apply"] = Effect.fn("ProjectStoreV2.apply")(
     function* (event) {
+      if (event.type === "project.factory-plan-revised") return;
+      if (event.type === "project.factory-execution-updated") return;
       if (event.type === "project.created") {
         const payload = event.payload;
         return yield* upsertRow({

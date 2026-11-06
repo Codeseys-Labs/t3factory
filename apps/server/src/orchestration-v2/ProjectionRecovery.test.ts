@@ -24,6 +24,7 @@ import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
@@ -46,6 +47,7 @@ const layerRecoveryTest = ProviderRuntimeRecovery.layer.pipe(
           ProjectionStore.layer,
           EffectOutbox.layer,
           IdAllocator.layer,
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         ).pipe(Layer.provideMerge(SqlitePersistence.layerMemory)),
       ),
     ),

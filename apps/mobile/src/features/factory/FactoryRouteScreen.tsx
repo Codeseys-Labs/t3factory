@@ -5,7 +5,7 @@ import {
   type ProjectId,
   type ScheduledTaskId,
 } from "@t3tools/contracts";
-import { useNavigation, usePreventRemove } from "@react-navigation/native";
+import { StackActions, useNavigation, usePreventRemove } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -247,8 +247,8 @@ export function FactoryRouteScreen() {
     selection.workReturn !== null &&
     (selection.section === "issues" || selection.section === "briefs");
   const backToWork = () => {
-    const work = returnToFactoryWork();
-    if (work !== null) navigation.navigate("SettingsFactoryWork", { work });
+    const detail = returnToFactoryWork();
+    if (detail !== null) navigation.dispatch(StackActions.popTo("SettingsFactoryWork", detail));
   };
   usePreventRemove(reviewingWork, ({ data }) => {
     if (data.action.type === "GO_BACK" || data.action.type === "POP") backToWork();

@@ -6,34 +6,44 @@ import {
   FactoryDeliveryError,
   FactoryFeedError,
   FactoryIssueError,
+  FactoryPlanError,
   FactoryResearchError,
   FactoryResearchProtocolId,
   FactoryFeedSourceId,
   MessageId,
   ProjectId,
   FactoryOriginKey,
+  FactoryWorkError,
   ProjectCoordinatorError,
   ProviderInstanceId,
   SourceControlProviderKind,
   ThreadId,
   type AuthMcpClientAccess,
+  type FactoryIssueReadinessReadResult,
+  type FactoryReadinessEdge,
   type OrchestratorMcpFailure,
   type ProviderInteractionMode,
   type RuntimeMode,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Stream from "effect/Stream";
+import * as Stream from "effect/stream";
+import * as SqlClient from "effect/sql/SqlClient";
+import type { Tool } from "effect/ai";
+import { ServerEnvironmentIdentity } from "../../../environment/ServerEnvironment.ts";
 import * as Factory from "../../../factory/FactoryIssueService.ts";
 import * as Relations from "../../../factory/FactoryIssueRelations.ts";
 import * as Feeds from "../../../factory/FactoryFeedService.ts";
 import * as Research from "../../../factory/FactoryResearchService.ts";
 import * as Claims from "../../../factory/FactoryClaimsService.ts";
 import * as Delivery from "../../../factory/FactoryDeliveryService.ts";
+import * as Plans from "../../../factory/FactoryPlanService.ts";
+import * as Work from "../../../factory/FactoryWorkService.ts";
 import { DispatchModeLimit } from "../../../orchestration-v2/DispatchModeLimit.ts";
 import * as Threads from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as Coordinators from "../../../project/ProjectCoordinatorService.ts";
 import * as Bindings from "../../../persistence/ProjectCoordinators.ts";
+import * as Sqlite from "../../../persistence/Sqlite.ts";
 import * as Receipts from "../../../orchestration-v2/CommandReceiptStore.ts";
 import * as ThreadLaunch from "../../../orchestration-v2/ThreadLaunchService.ts";
 import * as Projects from "../../../project/ProjectService.ts";
@@ -42,6 +52,98 @@ import * as Access from "../../McpToolAccess.ts";
 import { liveThreadShell } from "../../McpToolAccess.testkit.ts";
 import * as Handlers from "./handlers.ts";
 import { FactoryToolkit } from "./tools.ts";
+it.effect.each([
+  { caller: "local", operation: "task.update", invoked: true, code: "invalid_request" },
+  { caller: "linked", operation: "task.update", invoked: false, code: "capability_denied" },
+  {
+    caller: "external",
+    operation: "task.update",
+    invoked: false,
+    code: "thread_credential_required",
+  },
+  { caller: "idle", operation: "task.update", invoked: false, code: "parent_not_active" },
+  { caller: "local", operation: "editor.grant", invoked: false, code: "capability_denied" },
+  { caller: "local", operation: "editor.revoke", invoked: false, code: "capability_denied" },
+] as const)(
+  "plan $operation from $caller keeps editor authority server-owned",
+  ({ caller, operation, invoked, code }) =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("editor");
+      const providerInstanceId = ProviderInstanceId.make("codex");
+      const ref = {
+        environmentId: EnvironmentId.make("owner"),
+        projectId: ProjectId.make("project:mcp-test"),
+        rootId: "root",
+      };
+      let called = false;
+      const dependencies = Layer.mergeAll(
+        Layer.succeed(Context.McpInvocationContext, {
+          environmentId: ref.environmentId,
+          requestNamespace: "plan-test",
+          issuedAt: 0,
+          thread:
+            caller === "external"
+              ? undefined
+              : {
+                  threadId,
+                  providerSessionId: "session",
+                  providerInstanceId,
+                },
+          client:
+            caller === "external"
+              ? {
+                  sessionId: "outside",
+                  label: "Outside",
+                  access: "full-access",
+                }
+              : undefined,
+          capabilities: new Set<Context.McpCapability>(["orchestration"]),
+        }),
+        Layer.mock(Threads.ThreadManagementService)({
+          getThreadShell: (id) =>
+            Effect.succeed({
+              ...liveThreadShell(id, caller === "idle" ? { activeRunId: null } : {}),
+              ...(caller === "linked"
+                ? {
+                    linkOrigin: {
+                      sessionId: "peer",
+                      label: "Peer",
+                      access: "full-access" as const,
+                    },
+                  }
+                : {}),
+            }),
+        }),
+        Layer.mock(Plans.FactoryPlanService)({
+          apply: (input, actor) => {
+            called = true;
+            assert.deepEqual(input.ref, ref);
+            assert.deepEqual(actor, { kind: "agent", threadId });
+            return Effect.fail(new FactoryPlanError({ reason: "forbidden" }));
+          },
+        }),
+      );
+      const toolkit = yield* FactoryToolkit.pipe(
+        Effect.provide(
+          Access.HandlersLayer.layer(Handlers.layer).pipe(Layer.provide(dependencies)),
+        ),
+      );
+      const operations =
+        operation === "task.update"
+          ? [{ type: operation, id: "root", title: "Updated brief" }]
+          : [{ type: operation, threadId }];
+      const outputs = yield* toolkit
+        .handle("factory_apply_plan", {
+          commandId: CommandId.make("edit"),
+          ref,
+          expectedRevision: 1,
+          operations,
+        })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+      assert.deepInclude(outputs.at(-1)?.result, { code });
+      assert.equal(called, invoked);
+    }),
+);
 
 it.effect.each([
   {
@@ -1124,4 +1226,326 @@ it.effect(
         [],
       );
     }),
+);
+
+it.effect(
+  "refuses Work listing and prerequisite reads without orchestration capability before fetching",
+  () =>
+    Effect.gen(function* () {
+      let called = false;
+      const dependencies = Layer.mergeAll(
+        Layer.succeed(Context.McpInvocationContext, {
+          environmentId: EnvironmentId.make("test"),
+          requestNamespace: "work-denied",
+          issuedAt: 0,
+          thread: undefined,
+          client: { sessionId: "test", label: "test", access: "full-access" },
+          capabilities: new Set<Context.McpCapability>(["worktree"]),
+        }),
+        Layer.mock(Threads.ThreadManagementService)({}),
+        Layer.mock(Work.FactoryWorkService)({
+          list: () => {
+            called = true;
+            return Effect.die("An unauthorized Work listing reached the projection");
+          },
+          readPrerequisites: () => {
+            called = true;
+            return Effect.die("An unauthorized prerequisite read reached the projection");
+          },
+        }),
+      );
+      const toolkit = yield* FactoryToolkit.pipe(
+        Effect.provide(
+          Access.HandlersLayer.layer(Handlers.layer).pipe(Layer.provide(dependencies)),
+        ),
+      );
+      const listed = yield* toolkit
+        .handle("factory_list_work", { projectIds: [ProjectId.make("project")] })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+      assert.deepInclude(listed.at(-1)?.result, { code: "capability_denied" });
+      assert.isFalse(called);
+      const prerequisites = yield* toolkit
+        .handle("factory_read_work_prerequisites", {
+          ref: {
+            version: 1,
+            environmentId: EnvironmentId.make("test"),
+            kind: "issue",
+            id: "issue-root",
+          },
+        })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+      assert.deepInclude(prerequisites.at(-1)?.result, { code: "capability_denied" });
+      assert.isFalse(called);
+    }),
+);
+
+it.effect(
+  "a read-only caller pages retained Work of every kind and follows a listed issue ref to a distinct retained blocker",
+  () => {
+    const observedAt = "2026-11-01T00:00:00.000Z";
+    const answeringEnvironment = EnvironmentId.make("work-owner");
+    const workProject = ProjectId.make("work-project");
+    const blockerProject = ProjectId.make("blocker-project");
+    const blocker = (
+      targetRepository: string,
+      targetNumber: number,
+      fields: Partial<FactoryReadinessEdge> = {},
+    ): FactoryReadinessEdge => ({
+      targetId: targetNumber,
+      targetHost: "github.com",
+      targetRepository,
+      targetNumber,
+      targetUrl: `https://github.com/${targetRepository}/issues/${targetNumber}`,
+      title: `Blocker ${targetNumber}`,
+      state: "open",
+      stateReason: null,
+      closedAt: null,
+      resolution: "open",
+      status: "present",
+      firstObservedAt: observedAt,
+      lastObservedAt: observedAt,
+      fingerprint: `edge-${targetRepository}-${targetNumber}`,
+      override: null,
+      ...fields,
+    });
+    const observed = (edges: readonly FactoryReadinessEdge[]): FactoryIssueReadinessReadResult => ({
+      repository: {
+        provider: SourceControlProviderKind.make("github"),
+        host: "github.com",
+        repository: "test/repo",
+        canonicalKey: "github.com/test/repo",
+        url: "https://github.com/test/repo",
+      },
+      issueNumber: 1,
+      readiness: {
+        status: "blocked",
+        reasons: ["open-blocker"],
+        basis: null,
+        edges,
+        overrides: [],
+        complete: true,
+        listedCount: edges.length,
+        summaryTotal: edges.length,
+        observedAt,
+      },
+    });
+    const calls: unknown[] = [];
+    let threadReads = 0;
+    const launch = (
+      threadId: string,
+      canonicalKey: string,
+      issueNumber: number,
+      options: { readonly projectId: ProjectId; readonly previous?: string },
+    ) =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO factory_issue_launches (thread_id, canonical_key, issue_number, request_command_id, intent_json, origin_key, superseded, accepted)
+          VALUES (${threadId}, ${canonicalKey}, ${issueNumber}, ${threadId}, ${JSON.stringify({
+            projectId: options.projectId,
+            createdAt: observedAt,
+            previousThreadId: options.previous ?? null,
+            issue: {
+              number: issueNumber,
+              title: `Issue ${issueNumber}`,
+              body: "",
+              state: "open",
+              url: `https://${canonicalKey}/issues/${issueNumber}`,
+            },
+          })}, ${`github:${canonicalKey}#${issueNumber}`}, ${options.previous === undefined ? 1 : 0}, 1)`;
+      });
+    // Retained roots of every kind plus a distinct retained blocker; the projection answers, not mocks.
+    const seed = Effect.gen(function* () {
+      yield* launch("issue-root", "github.com/test/repo", 1, { projectId: workProject });
+      yield* launch("issue-live", "github.com/test/repo", 1, {
+        projectId: workProject,
+        previous: "issue-root",
+      });
+      yield* launch("blocker-root", "github.com/acme/blocker", 77, { projectId: blockerProject });
+      yield* launch("blocker-live", "github.com/acme/blocker", 77, {
+        projectId: blockerProject,
+        previous: "blocker-root",
+      });
+      yield* launch("orphan-live", "github.com/acme/orphan", 8, {
+        projectId: blockerProject,
+        previous: "gone",
+      });
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO factory_feed_launches (thread_id, source_id, item_key, request_command_id, intent_json, origin_key, origin_conflict)
+        VALUES ('feed-one', 'feed-source', 'item', 'feed-one', ${JSON.stringify({
+          projectId: workProject,
+          createdAt: observedAt,
+          previousThreadId: null,
+          title: "Feed candidate",
+          revision: "admitted-feed-revision",
+          snapshot: { content: "Frozen feed content", link: "https://example.com/item" },
+        })}, 'feed:feed-source', 0)`;
+      yield* sql`INSERT INTO factory_knowledge_briefs (id, project_id, revision, brief_json, request_command_id, created_at, created_by)
+        VALUES ('brief-one', ${workProject}, 'brief-revision', ${JSON.stringify({
+          title: "Brief question",
+          question: "How does paging behave?",
+        })}, 'brief-one', ${observedAt}, 'author')`;
+      yield* sql`INSERT INTO factory_research_protocols (protocol_id, canonical_key, project_id, request_command_id, protocol_json, revision, sealed_at)
+        VALUES ('protocol-one', 'github.com/test/repo', ${workProject}, 'protocol-one', ${JSON.stringify(
+          {
+            hypothesis: "Improve the metric",
+            repository: { url: "https://github.com/test/repo" },
+          },
+        )}, 'sealed-revision', ${observedAt})`;
+    });
+    return Effect.gen(function* () {
+      const database = yield* Sqlite.layerMemory.pipe(Layer.build);
+      yield* seed.pipe(Effect.provideContext(database), Effect.orDie);
+      const dependencies = Layer.mergeAll(
+        Layer.succeed(Context.McpInvocationContext, {
+          environmentId: EnvironmentId.make("test"),
+          requestNamespace: "work-discovery",
+          issuedAt: 0,
+          thread: undefined,
+          client: { sessionId: "test", label: "test", access: "read-only" },
+          capabilities: new Set<Context.McpCapability>(["orchestration"]),
+        }),
+        Layer.mock(Threads.ThreadManagementService)({
+          getThreadShell: () => {
+            threadReads += 1;
+            return Effect.die("Read-only Work discovery cannot start or inspect threads");
+          },
+        }),
+        // Every ref the pages return is qualified by the answering environment, not the request.
+        Work.layer.pipe(
+          Layer.provideMerge(
+            Layer.mergeAll(
+              Layer.succeedContext(database),
+              Layer.succeed(ServerEnvironmentIdentity, {
+                getEnvironmentId: Effect.succeed(answeringEnvironment),
+              }),
+              Layer.mock(Relations.FactoryIssueRelations)({
+                readAdmitted: (input) =>
+                  Effect.sync(() => {
+                    calls.push(input);
+                    return observed([
+                      blocker("acme/blocker", 77),
+                      blocker("acme/orphan", 8),
+                      blocker("acme/unadmitted", 4),
+                      blocker("acme/stale", 9, { resolution: "unverified" }),
+                    ]);
+                  }),
+              }),
+            ),
+          ),
+        ),
+      );
+      const toolkit = yield* FactoryToolkit.pipe(
+        Effect.provide(
+          Access.HandlersLayer.layer(Handlers.layer).pipe(Layer.provide(dependencies)),
+        ),
+      );
+      const firstOutputs = yield* toolkit
+        .handle("factory_list_work", { projectIds: [workProject], limit: 2 })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+      const first = firstOutputs.at(-1)!.result as Tool.Success<
+        (typeof FactoryToolkit.tools)["factory_list_work"]
+      >;
+      assert.equal(first.environmentId, answeringEnvironment);
+      assert.deepEqual(
+        first.items.map((item) => [
+          item.ref.kind,
+          item.ref.id,
+          item.ref.environmentId,
+          item.projectId,
+        ]),
+        [
+          ["brief", "brief-one", answeringEnvironment, workProject],
+          ["feed", "feed-one", answeringEnvironment, workProject],
+        ],
+      );
+      assert.isNotNull(first.nextCursor);
+      // A cursor is bound to its scope; another project's page cannot continue it.
+      const refused = yield* toolkit
+        .handle("factory_list_work", {
+          projectIds: [ProjectId.make("another-project")],
+          cursor: first.nextCursor ?? "",
+          limit: 2,
+        })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+      assert.deepInclude(refused.at(-1)?.result, {
+        code: "invalid_request",
+        message: new FactoryWorkError({ reason: "invalid-cursor" }).message,
+      });
+      const secondOutputs = yield* toolkit
+        .handle("factory_list_work", {
+          projectIds: [workProject],
+          cursor: first.nextCursor ?? "",
+          limit: 2,
+        })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+      const second = secondOutputs.at(-1)!.result as Tool.Success<
+        (typeof FactoryToolkit.tools)["factory_list_work"]
+      >;
+      assert.deepEqual(
+        second.items.map((item) => [item.ref.kind, item.ref.id]),
+        [
+          ["issue", "issue-root"],
+          ["protocol", "protocol-one"],
+        ],
+      );
+      assert.isNull(second.nextCursor);
+      const listedIssue = second.items.find((item) => item.ref.kind === "issue")?.ref;
+      assert.isDefined(listedIssue);
+      const prerequisiteOutputs = yield* toolkit
+        .handle("factory_read_work_prerequisites", { ref: listedIssue! })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+      const prerequisites = prerequisiteOutputs.at(-1)!.result as Tool.Success<
+        (typeof FactoryToolkit.tools)["factory_read_work_prerequisites"]
+      >;
+      assert.equal(prerequisites.status, "observed");
+      if (prerequisites.status !== "observed") return;
+      assert.deepEqual(calls, [
+        { projectId: workProject, issueNumber: 1, canonicalKey: "github.com/test/repo" },
+      ]);
+      assert.equal(prerequisites.reviewProjectId, workProject);
+      assert.deepEqual(
+        prerequisites.prerequisites.map(({ edge, link }) => [edge.targetNumber, link]),
+        [
+          [
+            77,
+            {
+              kind: "retained",
+              ref: {
+                version: 1,
+                environmentId: answeringEnvironment,
+                kind: "issue",
+                id: "blocker-root",
+              },
+              projectId: blockerProject,
+            },
+          ],
+          [8, { kind: "unresolved", reason: "missing-ancestry" }],
+          [4, { kind: "none" }],
+          [9, { kind: "not-current" }],
+        ],
+      );
+      assert.equal(prerequisites.omittedCount, 0);
+      // A foreign environment's ref is refused, never answered from this database.
+      const foreign = yield* toolkit
+        .handle("factory_read_work_prerequisites", {
+          ref: { ...listedIssue!, environmentId: EnvironmentId.make("copied-database") },
+        })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+      assert.deepInclude(foreign.at(-1)?.result, {
+        code: "invalid_request",
+        message: new FactoryWorkError({ reason: "wrong-environment" }).message,
+      });
+      const outbox = yield* SqlClient.SqlClient.pipe(
+        Effect.flatMap(
+          (sql) =>
+            sql<{
+              readonly count: number;
+            }>`SELECT count(*) AS count FROM orchestration_v2_effect_outbox`,
+        ),
+        Effect.provideContext(database),
+      );
+      assert.equal(outbox[0]?.count, 0);
+      assert.equal(threadReads, 0);
+    });
+  },
 );

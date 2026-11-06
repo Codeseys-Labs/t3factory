@@ -5,6 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as VcsStatusBroadcaster from "../vcs/VcsStatusBroadcaster.ts";
@@ -22,6 +23,7 @@ import * as RuntimeRequests from "./RuntimeRequestService.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 import * as FactoryDelivery from "../factory/FactoryDeliveryService.ts";
 import * as ThreadTitles from "./ThreadTitleRegenerationService.ts";
+import * as ThreadLaunchService from "./ThreadLaunchService.ts";
 
 it.effect.each([
   ["starts the next turn after a post-capture Git status failure", false],
@@ -85,6 +87,10 @@ it.effect.each([
     Layer.provide(
       Layer.mergeAll(
         finalization,
+        projections,
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+        FactoryExecutionTestkit.layerExecutionServiceMock,
+        Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
         Layer.mock(ProviderSessions.ProviderSessionManagerV2)({}),
         Layer.mock(ProviderTurnControl.ProviderTurnControlServiceV2)({}),
         Layer.mock(CheckpointRollback.CheckpointRollbackServiceV2)({}),

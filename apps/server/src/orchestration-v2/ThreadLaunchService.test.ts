@@ -42,6 +42,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -227,6 +228,7 @@ function makeHarness(options: HarnessOptions = {}) {
   const layerLaunch = ThreadLaunch.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         layerExternalServices,
         layerThreadManagement,
         layerReceipts,

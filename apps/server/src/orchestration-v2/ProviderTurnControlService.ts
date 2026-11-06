@@ -1,3 +1,4 @@
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import {
   MessageId,
@@ -84,10 +85,11 @@ export class ProviderTurnControlServiceV2 extends Context.Service<
 export const layer: Layer.Layer<
   ProviderTurnControlServiceV2,
   never,
-  ProjectionStore.ProjectionStoreV2 | ProviderSessionManager.ProviderSessionManagerV2
+  FactoryExecutionLifecycle.FactoryExecutionLifecycle | ProjectionStore.ProjectionStoreV2 | ProviderSessionManager.ProviderSessionManagerV2
 > = Layer.effect(
   ProviderTurnControlServiceV2,
   Effect.gen(function* () {
+    const factoryLifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
     const projections = yield* ProjectionStore.ProjectionStoreV2;
     const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
 
@@ -100,6 +102,13 @@ export const layer: Layer.Layer<
       readonly operation: "interrupt" | "restart" | "steer";
       readonly messageId?: MessageId;
     }) {
+      const managed = yield* factoryLifecycle.binding({ threadId: input.threadId }).pipe(
+        Effect.mapError((cause) => new ProviderTurnControlError({ threadId: input.threadId, operation: input.operation, providerTurnId: input.providerTurnId, cause })),
+      );
+      if (managed !== null && input.operation !== "interrupt") return yield* new ProviderTurnControlError({
+        threadId: input.threadId, operation: input.operation, providerTurnId: input.providerTurnId,
+        cause: "Managed native control requires explicit execution admission; ordinary steer/restart is suppressed.",
+      });
       const context = yield* projections.getProviderControlContext(input.threadId, input);
       const { providerThread, providerTurn } = context;
       const targetsRecordedSession = providerThread?.providerSessionId === input.providerSessionId;

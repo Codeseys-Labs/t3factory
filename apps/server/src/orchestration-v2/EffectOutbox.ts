@@ -2,6 +2,9 @@ import {
   CheckpointId,
   CheckpointScopeId,
   CommandId,
+  FactoryPlanRef,
+  ProviderDriverKind,
+  ProviderInstanceId,
   MessageId,
   NodeId,
   ProviderSessionId,
@@ -30,6 +33,12 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { forkParked } from "../serverActivation.ts";
 
 export const OrchestrationEffectRequestV2 = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("factory.execution.prepare"), runId: RunId, runAttemptId: RunAttemptId }),
+  Schema.Struct({ type: Schema.Literal("factory.execution.stop"), runId: RunId, runAttemptId: RunAttemptId, nativeInterruptPlanned: Schema.optional(Schema.Boolean) }),
+  Schema.Struct({ type: Schema.Literal("factory.execution.advance"), ref: FactoryPlanRef, revision: Schema.Number }),
+  Schema.Struct({ type: Schema.Literal("factory.execution.finalize"), runId: RunId, runAttemptId: RunAttemptId,
+    scopeId: CheckpointScopeId, providerThreadId: ProviderThreadId, driver: ProviderDriverKind, providerInstanceId: ProviderInstanceId,
+    captureGeneration: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))) }),
   Schema.Struct({
     type: Schema.Literal("provider-runtime.continue"),
     sourceRunId: RunId,
@@ -43,6 +52,7 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("provider-turn.start"),
     runId: RunId,
+    runAttemptId: Schema.optional(RunAttemptId),
   }),
   Schema.Struct({
     type: Schema.Literal("provider-turn.interrupt"),
@@ -64,6 +74,7 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     providerThreadId: ProviderThreadId,
     providerTurnId: ProviderTurnId,
     interruptedAttemptId: RunAttemptId,
+    runAttemptId: Schema.optional(RunAttemptId),
     runId: RunId,
     sessionTransition: Schema.optional(
       Schema.Union([
@@ -127,6 +138,10 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
 export type OrchestrationEffectRequestV2 = typeof OrchestrationEffectRequestV2.Type;
 
 export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
+  "factory.execution.finalize",
+  "factory.execution.prepare",
+  "factory.execution.stop",
+  "factory.execution.advance",
   "provider-runtime.continue",
   "provider-session.detach",
   "provider-thread.rollback",

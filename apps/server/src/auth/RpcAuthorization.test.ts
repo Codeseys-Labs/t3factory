@@ -5,6 +5,7 @@ import {
   FactoryAcceptanceError,
   FactoryFeedError,
   FactoryKnowledgeError,
+  FactoryPlanError,
   FactoryResearchError,
   FactoryResearchProtocolId,
   FactoryIssueError,
@@ -87,6 +88,9 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.factoryReadWork,
       WS_METHODS.factoryReadWorkHistory,
       WS_METHODS.factoryReadWorkPrerequisites,
+      WS_METHODS.factoryReadPlan,
+      WS_METHODS.factoryListPlans,
+      WS_METHODS.factoryReadPlanHistory,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
     }
@@ -634,6 +638,69 @@ describe("feed factory authorization", () => {
         expect(yield* request.pipe(Effect.asVoid, Effect.flip)).toMatchObject({
           _tag: "FactoryFeedError",
           reason: "missing-project",
+        });
+      }).pipe(Effect.scoped),
+  );
+});
+
+describe("local plan authorization", () => {
+  const cases = [
+    { method: WS_METHODS.factoryReadPlan, scopes: [AuthOrchestrationReadScope] },
+    { method: WS_METHODS.factoryListPlans, scopes: [AuthOrchestrationReadScope] },
+    { method: WS_METHODS.factoryReadPlanHistory, scopes: [AuthOrchestrationReadScope] },
+    { method: WS_METHODS.factoryCreatePlan, scopes: [AuthOrchestrationOperateScope] },
+    { method: WS_METHODS.factoryApplyPlan, scopes: [AuthOrchestrationOperateScope] },
+  ] as const;
+  const input = {
+    commandId: CommandId.make("plan-auth"),
+    projectId: ProjectId.make("project"),
+    ref: {
+      environmentId: EnvironmentId.make("owner"),
+      projectId: ProjectId.make("project"),
+      rootId: "root",
+    },
+    title: "Prepare findings",
+    expectedRevision: 1,
+    operations: [{ type: "editor.grant" as const, threadId: ThreadId.make("editor") }],
+  };
+  const tested = cases.map(({ method }) => method);
+  const group = WsRpcGroup.omit(
+    ...[...WsRpcGroup.requests.keys()].filter(
+      (tag): tag is Exclude<keyof typeof RPC_REQUIRED_SCOPES, (typeof tested)[number]> =>
+        !(tested as ReadonlyArray<string>).includes(tag),
+    ),
+  );
+  const refused = () => Effect.fail(new FactoryPlanError({ reason: "missing-plan" }));
+  const handlers = group.toLayer({
+    [WS_METHODS.factoryReadPlan]: refused,
+    [WS_METHODS.factoryListPlans]: refused,
+    [WS_METHODS.factoryReadPlanHistory]: refused,
+    [WS_METHODS.factoryCreatePlan]: refused,
+    [WS_METHODS.factoryApplyPlan]: refused,
+  });
+  it.effect.each(cases)(
+    "requires the destination scope for $method before calling the service",
+    ({ method, scopes }) =>
+      Effect.gen(function* () {
+        const denied = yield* RpcTest.makeClient(group).pipe(
+          Effect.provide(Layer.merge(handlers, RpcAuthorization.layer([]))),
+        );
+        const deniedCall: Effect.Effect<unknown, EnvironmentAuthorizationError | FactoryPlanError> =
+          denied[method](input);
+        expect(yield* deniedCall.pipe(Effect.asVoid, Effect.flip)).toMatchObject({
+          _tag: "EnvironmentAuthorizationError",
+          requiredPermission: scopes[0],
+        });
+        const allowed = yield* RpcTest.makeClient(group).pipe(
+          Effect.provide(Layer.merge(handlers, RpcAuthorization.layer(scopes))),
+        );
+        const allowedCall: Effect.Effect<
+          unknown,
+          EnvironmentAuthorizationError | FactoryPlanError
+        > = allowed[method](input);
+        expect(yield* allowedCall.pipe(Effect.asVoid, Effect.flip)).toMatchObject({
+          _tag: "FactoryPlanError",
+          reason: "missing-plan",
         });
       }).pipe(Effect.scoped),
   );

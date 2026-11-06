@@ -30,6 +30,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
 import { ChildProcessSpawner } from "effect/process";
 import * as Factory from "./FactoryResearchService.ts";
+import * as FactoryExecutionTestkit from "./FactoryExecutionTestkit.ts";
 import * as Store from "../persistence/FactoryResearchStore.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Projects from "../project/ProjectService.ts";
@@ -223,7 +224,16 @@ const makeHarness = Effect.fn("ResearchTest.harness")(function* (origin: string)
   );
   const folders = ManagedFolders.layer.pipe(Layer.provide(Layer.mergeAll(projects, external)));
   const launcher = ThreadLaunch.layer.pipe(
-    Layer.provide(Layer.mergeAll(projects, folders, threads, receipts, external)),
+    Layer.provide(
+      Layer.mergeAll(
+        projects,
+        folders,
+        threads,
+        receipts,
+        external,
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+      ),
+    ),
   );
   const dependencies = Layer.mergeAll(
     projects,

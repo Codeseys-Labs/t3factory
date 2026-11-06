@@ -10,11 +10,15 @@ import {
   ProjectId,
   ProviderItemId,
   TrimmedNonEmptyString,
+  ThreadId,
+  AuthSessionId,
 } from "./baseSchemas.ts";
 import { RepositoryIdentity, ThreadEnvMode } from "./environment.ts";
 import { ModelSelection } from "./modelSelection.ts";
 import type { OrchestrationV2StoredEvent } from "./orchestrationV2.ts";
 import { ProjectScript, StoredProjectIcon } from "./project.ts";
+import { FactoryPlanSnapshot } from "./factoryPlan.ts";
+import { FactoryExecutionReadInput } from "./factoryExecution.ts";
 
 export const OrchestrationClientOrigin = Schema.Struct({
   surface: Schema.optional(ClientSurface),
@@ -103,10 +107,29 @@ export const ApplicationProjectDeletedEvent = Schema.Struct({
 });
 export type ApplicationProjectDeletedEvent = typeof ApplicationProjectDeletedEvent.Type;
 
+export const ApplicationProjectFactoryPlanRevisedEvent = Schema.Struct({
+  ...ApplicationProjectEventBaseFields,
+  type: Schema.Literal("project.factory-plan-revised"),
+  payload: Schema.Struct({
+    projectId: ProjectId,
+    expectedRevision: NonNegativeInt,
+    plan: FactoryPlanSnapshot,
+    requestDigest: Schema.String,
+    actor: Schema.Union([
+      Schema.Struct({ kind: Schema.Literal("human"), sessionId: AuthSessionId }),
+      Schema.Struct({ kind: Schema.Literal("agent"), threadId: ThreadId }),
+    ]),
+  }),
+});
+export type ApplicationProjectFactoryPlanRevisedEvent =
+  typeof ApplicationProjectFactoryPlanRevisedEvent.Type;
+
 export const ApplicationProjectEvent = Schema.Union([
+  Schema.Struct({ ...ApplicationProjectEventBaseFields, type: Schema.Literal("project.factory-execution-updated"), payload: Schema.Struct({ projectId: ProjectId, ...FactoryExecutionReadInput.fields }) }),
   ApplicationProjectCreatedEvent,
   ApplicationProjectMetaUpdatedEvent,
   ApplicationProjectDeletedEvent,
+  ApplicationProjectFactoryPlanRevisedEvent,
 ]);
 export type ApplicationProjectEvent = typeof ApplicationProjectEvent.Type;
 

@@ -20,6 +20,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
 import * as Factory from "./FactoryFeedService.ts";
+import * as FactoryExecutionTestkit from "./FactoryExecutionTestkit.ts";
 import * as FeedFetch from "./FeedFetch.ts";
 import * as Store from "../persistence/FactoryFeedStore.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
@@ -172,7 +173,16 @@ function harness(
   );
   const folders = ManagedFolders.layer.pipe(Layer.provide(Layer.mergeAll(projects, external)));
   const launcher = ThreadLaunch.layer.pipe(
-    Layer.provide(Layer.mergeAll(projects, folders, threads, receipts, external)),
+    Layer.provide(
+      Layer.mergeAll(
+        projects,
+        folders,
+        threads,
+        receipts,
+        external,
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+      ),
+    ),
   );
   const dependencies = Layer.mergeAll(
     projects,

@@ -22,6 +22,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -286,7 +287,13 @@ it.effect(
         }),
       );
       const layerControl = ProviderTurnControlService.layer.pipe(
-        Layer.provide(Layer.merge(layerProjection, layerSessionManager)),
+        Layer.provide(
+          Layer.mergeAll(
+            layerProjection,
+            layerSessionManager,
+            FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+          ),
+        ),
       );
 
       const [ordinaryInterrupt, unrelatedRestart] = yield* Effect.gen(function* () {

@@ -28,6 +28,7 @@ import * as Stream from "effect/Stream";
 
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as ServerConfig from "../config.ts";
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import * as McpSessionRegistryTestkit from "../mcp/McpSessionRegistry.testkit.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
@@ -113,6 +114,7 @@ const layerTest = Layer.mergeAll(
   RuntimeLayerTestkit.layer,
   RuntimeLayer.layerEventSink,
   ThreadCommandExecutor.layer,
+  FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
 ).pipe(
   Layer.provideMerge(RuntimeLayer.layerProjectService),
   Layer.provide(

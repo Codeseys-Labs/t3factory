@@ -17,6 +17,8 @@ import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import * as ThreadManagementService from "../ThreadManagementService.ts";
 import * as FactoryDeliveryService from "../../factory/FactoryDeliveryService.ts";
+import * as FactoryExecutionTestkit from "../../factory/FactoryExecutionTestkit.ts";
+import * as ThreadLaunchService from "../ThreadLaunchService.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as McpSessionRegistryTestkit from "../../mcp/McpSessionRegistry.testkit.ts";
 import * as VcsDriverRegistry from "../../vcs/VcsDriverRegistry.ts";
@@ -375,6 +377,7 @@ export function layerWithRegistry<Error>(
         McpSessionRegistryTestkit.layer,
         layerProviderEventIngestorProvided,
         layerStores,
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
       ),
     ),
   );
@@ -389,6 +392,7 @@ export function layerWithRegistry<Error>(
         layerCheckpointServiceProvided,
         layerEventSinkProvided,
         IdAllocator.layer,
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         layerProviderEventIngestorProvided,
         layerServerSettings,
         layerStores,
@@ -401,6 +405,7 @@ export function layerWithRegistry<Error>(
         layerContextHandoffServiceProvided,
         layerEventSinkProvided,
         IdAllocator.layer,
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         layerStores,
         layerProviderSessionManagerProvided,
         Layer.mock(ProviderAuthService.ProviderAuthService)({
@@ -414,10 +419,22 @@ export function layerWithRegistry<Error>(
     ),
   );
   const layerProviderTurnControlServiceProvided = ProviderTurnControlService.layer.pipe(
-    Layer.provide(Layer.merge(layerStores, layerProviderSessionManagerProvided)),
+    Layer.provide(
+      Layer.mergeAll(
+        layerStores,
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+        layerProviderSessionManagerProvided,
+      ),
+    ),
   );
   const layerRuntimeRequestServiceProvided = RuntimeRequestService.layer.pipe(
-    Layer.provide(Layer.merge(layerStores, layerProviderSessionManagerProvided)),
+    Layer.provide(
+      Layer.mergeAll(
+        layerStores,
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+        layerProviderSessionManagerProvided,
+      ),
+    ),
   );
   const layerCheckpointRollbackServiceProvided = CheckpointRollbackService.layer.pipe(
     Layer.provide(
@@ -465,6 +482,7 @@ export function layerWithRegistry<Error>(
         layerProvidedRegistry,
         layerContinuationRequests,
         layerRuntime,
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         layerProviderSessionManagerProvided,
         layerProviderSwitchServiceProvided,
         layerRunExecutionServiceProvided,
@@ -502,6 +520,10 @@ export function layerWithRegistry<Error>(
       Layer.mergeAll(
         layerRunFinalizationServiceProvided,
         layerCheckpointRollbackServiceProvided,
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+        FactoryExecutionTestkit.layerExecutionServiceMock,
+        Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+        layerStores,
         layerProviderSessionManagerProvided,
         layerProviderTurnControlServiceProvided,
         layerProviderTurnStartServiceProvided,
@@ -545,6 +567,7 @@ export function layerWithRegistry<Error>(
               layerStores,
               layerEventSinkProvided,
               IdAllocator.layer,
+              FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
               layerServerSettings,
             ),
           ),

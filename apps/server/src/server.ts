@@ -9,7 +9,9 @@ import * as FactoryResearchService from "./factory/FactoryResearchService.ts";
 import * as FactoryResearchStore from "./persistence/FactoryResearchStore.ts";
 import * as FactoryClaimsService from "./factory/FactoryClaimsService.ts";
 import * as FactoryWorkService from "./factory/FactoryWorkService.ts";
+import * as FactoryPlanService from "./factory/FactoryPlanService.ts";
 import * as FactoryAcceptanceService from "./factory/FactoryAcceptanceService.ts";
+import * as FactoryPreparationAcceptanceService from "./factory/FactoryPreparationAcceptanceService.ts";
 import * as FactoryKnowledgeService from "./factory/FactoryKnowledgeService.ts";
 import * as FactoryDeliveryService from "./factory/FactoryDeliveryService.ts";
 import * as FactoryAcceptanceStore from "./persistence/FactoryAcceptanceStore.ts";
@@ -781,11 +783,17 @@ const layerMakeRoutes = Layer.mergeAll(
       FactoryResearchService.layer,
       FactoryClaimsService.layer,
       FactoryWorkService.layer.pipe(Layer.provide(FactoryIssueRelations.layer)),
+      FactoryPlanService.layer.pipe(
+        Layer.provide(FactoryWorkService.layer.pipe(Layer.provide(FactoryIssueRelations.layer))),
+        Layer.provide(RuntimeLayer.layerEventSink),
+      ),
       FactoryAcceptanceService.layer,
       FactoryKnowledgeService.layer,
       FactoryDeliveryService.layer.pipe(
         Layer.provide(Layer.merge(FactoryAcceptanceService.layer, FactoryKnowledgeService.layer)),
       ),
+      RuntimeLayer.layerFactoryExecutionServiceProvided,
+      FactoryPreparationAcceptanceService.layer.pipe(Layer.provide(RuntimeLayer.layerEventSink)),
       ProjectCoordinatorService.layer,
     ).pipe(
       Layer.provide(

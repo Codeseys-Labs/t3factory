@@ -22,13 +22,16 @@ export type FactorySection =
   | "workflows"
   | "orchestrator";
 
+export interface FactoryWorkDetailParams {
+  readonly work: string;
+  readonly returnTo?: FactoryWorkDetailParams;
+}
+
 /** The Work scope and item a native review was opened from; the review inbox offers the way back. */
-export interface FactoryWorkReturn {
+export interface FactoryWorkReturn extends FactoryWorkDetailParams {
   readonly environmentId: EnvironmentId | null;
   readonly projectId: ProjectId | null;
   readonly filter: FactoryIssueFilter;
-  /** Serialized work ref, the detail route's param. */
-  readonly work: string;
 }
 
 /**
@@ -142,6 +145,7 @@ export function openFactoryWorkReview(target: {
   readonly projectId: ProjectId;
   readonly section: "issues" | "briefs";
   readonly work: string;
+  readonly returnTo?: FactoryWorkDetailParams;
 }): void {
   appAtomRegistry.update(factoryInboxSelectionAtom, (current) => ({
     ...current,
@@ -155,6 +159,7 @@ export function openFactoryWorkReview(target: {
       projectId: current.projectId,
       filter: current.filter,
       work: target.work,
+      ...(target.returnTo ? { returnTo: target.returnTo } : {}),
     },
     ...(current.environmentId === target.environmentId && current.projectId === target.projectId
       ? {}
@@ -163,7 +168,7 @@ export function openFactoryWorkReview(target: {
 }
 
 /** Restores the Work scope a review was opened from; returns the work to reopen, if any. */
-export function returnToFactoryWork(): string | null {
+export function returnToFactoryWork(): FactoryWorkDetailParams | null {
   const pending = appAtomRegistry.get(factoryInboxSelectionAtom).workReturn;
   if (pending === null) return null;
   appAtomRegistry.update(factoryInboxSelectionAtom, (current) => ({
@@ -178,7 +183,7 @@ export function returnToFactoryWork(): string | null {
       ? {}
       : { modelSelection: null, baseRef: null }),
   }));
-  return pending.work;
+  return { work: pending.work, ...(pending.returnTo ? { returnTo: pending.returnTo } : {}) };
 }
 
 export type FactoryWorkHistorySelection = Omit<FactoryWorkHistoryInput, "ref" | "cursor" | "limit">;
@@ -197,6 +202,7 @@ export interface FactoryWorkView {
     readonly selection: FactoryWorkHistorySelection;
     readonly cursors: readonly string[];
   } | null;
+  readonly histories: Readonly<Record<string, NonNullable<FactoryWorkView["history"]>>>;
 }
 
 const INITIAL_WORK_VIEW: FactoryWorkView = {
@@ -205,6 +211,7 @@ const INITIAL_WORK_VIEW: FactoryWorkView = {
   cursors: {},
   selected: null,
   history: null,
+  histories: {},
 };
 
 export const factoryWorkViewAtom = Atom.make<FactoryWorkView>(INITIAL_WORK_VIEW).pipe(
@@ -267,17 +274,26 @@ export function selectFactoryWorkItem(key: string | null): void {
 export function factoryWorkHistoryFor(view: FactoryWorkView, work: string) {
   return view.history?.work === work
     ? view.history
-    : { work, selection: { section: "executions" as const }, cursors: [] };
+    : (view.histories[work] ?? {
+        work,
+        selection: { section: "executions" as const },
+        cursors: [],
+      });
+}
+
+function rememberHistory(view: FactoryWorkView, history: NonNullable<FactoryWorkView["history"]>) {
+  const entries = Object.entries(view.histories).filter(([key]) => key !== history.work);
+  return Object.fromEntries([...entries, [history.work, history]].slice(-32));
 }
 
 export function selectFactoryWorkHistory(
   work: string,
   selection: FactoryWorkHistorySelection,
 ): void {
-  appAtomRegistry.update(factoryWorkViewAtom, (current) => ({
-    ...current,
-    history: { work, selection, cursors: [] },
-  }));
+  appAtomRegistry.update(factoryWorkViewAtom, (current) => {
+    const history = { work, selection, cursors: [] };
+    return { ...current, history, histories: rememberHistory(current, history) };
+  });
 }
 
 export function moveFactoryWorkHistoryPage(work: string, next: string | null): void {
@@ -285,12 +301,10 @@ export function moveFactoryWorkHistoryPage(work: string, next: string | null): v
     const history = factoryWorkHistoryFor(current, work);
     if (next !== null && history.cursors.length + 1 >= FACTORY_WORK_HISTORY_MAX_PAGES)
       return current;
-    return {
-      ...current,
-      history: {
-        ...history,
-        cursors: next === null ? history.cursors.slice(0, -1) : [...history.cursors, next],
-      },
+    const updated = {
+      ...history,
+      cursors: next === null ? history.cursors.slice(0, -1) : [...history.cursors, next],
     };
+    return { ...current, history: updated, histories: rememberHistory(current, updated) };
   });
 }

@@ -9,6 +9,7 @@ import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import { TestClock } from "effect/testing";
 
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
@@ -58,6 +59,7 @@ const makeHarness = Effect.fn(function* (options: {
     Effect.provide(
       Layer.mergeAll(
         terminals,
+        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         Layer.mock(ProjectService.ProjectService)({}),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getThreadShell: () => Effect.succeed(null),

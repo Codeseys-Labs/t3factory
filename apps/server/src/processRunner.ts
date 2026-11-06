@@ -1,3 +1,4 @@
+import { spawnOwnedProcess } from "@t3tools/shared/ownedProcess";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -290,8 +291,7 @@ const runProcessCore = Effect.fn("processRunner.runProcessCore")(function* (
       cause,
     });
 
-  const child = yield* spawner
-    .spawn(
+  const child = yield* spawnOwnedProcess(spawner,
       ChildProcess.make(spawnCommand.command, spawnCommand.args, {
         ...((input.spawnCwd ?? input.cwd) ? { cwd: input.spawnCwd ?? input.cwd } : {}),
         ...(input.env !== undefined

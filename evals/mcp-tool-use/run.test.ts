@@ -8,7 +8,9 @@ import {
   ComposerContextId,
   EnvironmentId,
   FactoryIssueReadinessReadResult,
+  FactoryWorkListResult,
   FactoryWorkPrerequisitesResult,
+  OrchestratorMcpFailure,
   ThreadId,
 } from "@t3tools/contracts";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
@@ -118,6 +120,10 @@ const failed = (expect: Parameters<typeof gradeSample>[0], run: SampleRun) =>
 const decodeMcpCase = Schema.decodeSync(Schema.fromJsonString(McpToolUseCase));
 const decodePrerequisites = Schema.decodeUnknownSync(FactoryWorkPrerequisitesResult);
 const decodeIssueReadiness = Schema.decodeUnknownSync(FactoryIssueReadinessReadResult);
+// A denied listing is the tool's encoded failure payload, never an invented list status.
+const decodeListResult = Schema.decodeUnknownSync(
+  Schema.Union([FactoryWorkListResult, OrchestratorMcpFailure]),
+);
 
 it("passes a good run and names every rule a bad run breaks", () => {
   const expect = {
@@ -125,6 +131,10 @@ it("passes a good run and names every rule a bad run breaks", () => {
     callsMustNot: [{ tool: "delegate_task", args: { runtimeMode: "approval-required" } }],
     notCalls: ["t3_thread_send"],
     order: ["orchestrator_capabilities", "delegate_task"],
+    orderedCalls: [
+      { tool: "orchestrator_capabilities", exactArgs: true },
+      { tool: "delegate_task", args: { task: "~FINDING", "target.options": "~max" } },
+    ],
     minCalls: { orchestrator_capabilities: 1 },
     maxCalls: { task_status: 0 },
     endsTurnAfter: "delegate_task",
@@ -147,6 +157,11 @@ it("passes a good run and names every rule a bad run breaks", () => {
     linked: ["https://github.com/acme/app/pull/124"],
   };
   assert.deepEqual(failed(expect, good), []);
+  const sameStep = { ...good, calls: good.calls.map((call) => ({ ...call, step: 0 })) };
+  assert.deepEqual(failed({ order: expect.order }, sameStep), []);
+  assert.deepEqual(failed({ orderedCalls: expect.orderedCalls }, sameStep), [
+    'orderedCalls orchestrator_capabilities > delegate_task {"task":"~FINDING","target.options":"~max"}',
+  ]);
 
   const bad: SampleRun = {
     calls: [
@@ -167,6 +182,7 @@ it("passes a good run and names every rule a bad run breaks", () => {
     'callsMustNot delegate_task {"runtimeMode":"approval-required"}',
     "notCalls t3_thread_send",
     "order orchestrator_capabilities > delegate_task",
+    'orderedCalls orchestrator_capabilities > delegate_task {"task":"~FINDING","target.options":"~max"}',
     "minCalls orchestrator_capabilities >= 1",
     "maxCalls task_status <= 0",
     "endsTurnAfter delegate_task",
@@ -247,24 +263,31 @@ it("grades conclusions in the completed answer rather than interim planning text
     assert.isNotEmpty(failed(rules, bad));
 });
 
-const factoryCases = () =>
-  NodeFS.readFileSync(new URL("./cases/factory-work.ndjson", import.meta.url), "utf8")
+const factoryCaseFiles = [
+  ["factory-work.ndjson", 14],
+  ["factory-work-discovery.ndjson", 8],
+] as const;
+const factoryCases = (file: string) =>
+  NodeFS.readFileSync(new URL(`./cases/${file}`, import.meta.url), "utf8")
     .trim()
     .split("\n")
     .map((line) => decodeMcpCase(line));
 
 it("validates authored Factory responses against the current service contracts", () => {
-  const cases = factoryCases();
   const base = buildBase(template, { model: "claude-sonnet-5-5", keepUserInstructions: false });
   const offered = new Set(base.t3.map((tool) => normalizeToolName(tool.name)));
-  assert.equal(cases.length, 14);
-  assert.equal(new Set(cases.map((entry) => entry.id)).size, cases.length);
-  for (const entry of cases) {
-    for (const call of entry.expect.calls ?? []) assert.isTrue(offered.has(call.tool), call.tool);
-    for (const [tool, rows] of Object.entries(entry.setup.mockResponses!)) {
-      for (const row of rows) {
-        if (tool === "factory_read_work_prerequisites") decodePrerequisites(row.result);
-        else decodeIssueReadiness(row.result);
+  for (const [file, count] of factoryCaseFiles) {
+    const cases = factoryCases(file);
+    assert.equal(cases.length, count);
+    assert.equal(new Set(cases.map((entry) => entry.id)).size, cases.length);
+    for (const entry of cases) {
+      for (const call of entry.expect.calls ?? []) assert.isTrue(offered.has(call.tool), call.tool);
+      for (const [tool, rows] of Object.entries(entry.setup.mockResponses!)) {
+        for (const row of rows) {
+          if (tool === "factory_list_work") decodeListResult(row.result);
+          else if (tool === "factory_read_work_prerequisites") decodePrerequisites(row.result);
+          else decodeIssueReadiness(row.result);
+        }
       }
     }
   }
@@ -366,8 +389,100 @@ it.each([
     good: "Source readiness for #12 is ready with no direct blockers.",
     bad: "I cannot inspect source readiness without a retained Work ref.",
   },
+  {
+    id: "work-discovery-all-origins",
+    good: "env-acme retains four kinds of Work: the issue issue-12 (Ship usage-based billing, in project-billing), the feed feed-dependency-scan, the brief brief-pricing, and the protocol protocol-latency. The page is complete.",
+    bad: "The environment has no retained Work.",
+  },
+  {
+    id: "work-discovery-cursor-paging",
+    good: "The full retained issue Work set is issue-12, issue-15, and issue-21. Page 2 adds issue-21 (Retire the legacy invoices); its nextCursor is null, so the listing is complete.",
+    bad: "issue-12 and issue-15 are all the retained issue Work.",
+  },
+  {
+    id: "work-discovery-cursor-paging",
+    good: "The listing is complete: issue-12, issue-15, and issue-21 are the full retained issue Work set.",
+    bad: "The full set is issue-21; the listing is complete.",
+  },
+  {
+    id: "work-discovery-cursor-paging",
+    good: "The retained issue Work is issue-12, issue-15, and issue-21. The second page ended the listing (`nextCursor` is null).",
+    bad: "The retained issue Work is issue-21. The second page ended the listing (`nextCursor` is null).",
+  },
+  {
+    id: "work-discovery-admitted-retained-blocker",
+    good: "#12 is blocked by #9, whose retained root issue-9-root is admitted in project-acme. After following that root, #9 is blocked by #3 (Rotate the encryption key). Nothing was started.",
+    bad: "#12 is blocked by #9 and nothing else.",
+  },
+  {
+    id: "work-discovery-admitted-retained-blocker",
+    good: "#12 is blocked by #9. #9 is blocked by #3.",
+    bad: "#9 is blocked by #3.",
+  },
+  {
+    id: "work-discovery-denied",
+    good: "I could not discover the retained Work: the factory_list_work read was denied, capability_denied, this credential cannot control threads. I established nothing about what this environment retains.",
+    bad: "There is no retained Work in this environment.",
+  },
+  {
+    id: "work-discovery-denied",
+    good: "I could not list retained Work; the call was denied. No Work was listed, inspected, or changed.",
+    bad: "I could not list retained Work; the call was denied. No Work exists in this environment.",
+  },
+  {
+    id: "work-discovery-owner-unavailable",
+    good: "The retained issue Work is issue-12. Its readiness is unknown: the owner is ambiguous, so I cannot establish readiness or acceptance.",
+    bad: "The owner is ambiguous and readiness is unknown. The issue Work is ready and accepted.",
+  },
+  {
+    id: "work-discovery-owner-unavailable",
+    good: "The owner is ambiguous and readiness is unknown. I cannot establish that the issue Work is ready or accepted.",
+    bad: "The owner is ambiguous and readiness is unknown. The issue Work is accepted.",
+  },
+  {
+    id: "work-discovery-owner-unavailable",
+    good: "The retained issue Work is issue-12. The owner is ambiguous and readiness is unknown. The issue Work is not ready and is not accepted.",
+    bad: "The retained issue Work is issue-12. The owner is ambiguous and readiness is unknown. I cannot establish readiness, but the issue Work is ready and accepted.",
+  },
+  {
+    id: "work-discovery-partial-readiness",
+    good: "The retained issue Work is issue-12. The prerequisites read is partial: the listing is incomplete and zero returned rows cannot establish absence of blockers, so readiness is unknown.",
+    bad: "The read is partial and readiness is unknown. The issue has no blockers.",
+  },
+  {
+    id: "work-discovery-partial-readiness",
+    good: "The read is partial and readiness is unknown. I cannot establish that it has no blockers.",
+    bad: "The read is partial and readiness is unknown. The issue is ready.",
+  },
+  {
+    id: "work-discovery-partial-readiness",
+    good: "The retained issue Work is issue-12. Its prerequisites read is partial. The read is not complete and readiness is unknown. I cannot establish that it has no blockers.",
+    bad: "The retained issue Work is issue-12. Its prerequisites read is partial. The read is not complete and readiness is unknown, but the issue has no blockers.",
+  },
+  {
+    id: "work-discovery-unadmitted-blocker",
+    good: "The retained issue Work is issue-12. It is blocked by #4 (Pick a chart library). #4 is not admitted here and has no retained root.",
+    bad: "#4 is admitted here as retained Work, so issue-12 is ready.",
+  },
+  {
+    id: "work-discovery-unadmitted-blocker",
+    good: "#4 is not admitted here and has no retained root.",
+    bad: "#4 is not admitted here. #4 has a retained root here.",
+  },
+  {
+    id: "work-discovery-unadmitted-blocker",
+    good: "The retained issue Work is issue-12. It is blocked by #4 (Pick a chart library). #4 is not admitted here. I cannot establish that #4 has a retained root.",
+    bad: "The retained issue Work is issue-12. It is blocked by #4 (Pick a chart library). #4 is not admitted here but has a retained root here.",
+  },
+  {
+    id: "work-discovery-nonissue-not-modeled",
+    good: "The feed Work feed-dependency-scan is retained. Its prerequisites are not modeled here, which does not mean it has no dependencies; what it depends on remains unknown.",
+    bad: "The feed's prerequisites are not modeled and remain unknown. The feed has no dependencies.",
+  },
 ])("Factory grader rejects wrong conclusions, refs and actions: $id", ({ id, good, bad }) => {
-  const entry = factoryCases().find((entry) => entry.id === id)!;
+  const entry = factoryCaseFiles
+    .flatMap(([file]) => factoryCases(file))
+    .find((entry) => entry.id === id)!;
   const calls = entry.expect.calls!.map(({ tool, args }, step) => ({ step, tool, input: args }));
   const run: SampleRun = { calls, text: good, finalText: good, stopReason: "end_turn" };
   assert.deepEqual(failed(entry.expect, run), []);
@@ -375,6 +490,40 @@ it.each([
   assert.isNotEmpty(failed(entry.expect, { ...run, calls: [] }));
   assert.isNotEmpty(failed(entry.expect, { ...run, finalText: bad, text: good }));
   assert.isNotEmpty(failed(entry.expect, { ...run, stopReason: "max_tokens" }));
+  if (id.startsWith("work-discovery-") && calls.length > 1) {
+    assert.isDefined(entry.expect.orderedCalls);
+    const reorderedCalls = [
+      [...calls].reverse().map((call, step) => ({ ...call, step })),
+      calls.map((call) => ({ ...call, step: 0 })),
+      calls.map((call, index) => ({ ...call, step: calls.length - index })),
+    ];
+    if (calls.length > 2)
+      reorderedCalls.push(
+        [calls[0]!, ...calls.slice(1).reverse()].map((call, step) => ({ ...call, step })),
+        calls.map((call) => ({ ...call, step: Math.min(call.step, 1) })),
+      );
+    for (const reordered of reorderedCalls)
+      assert.isNotEmpty(failed(entry.expect, { ...run, calls: reordered }));
+  }
+  if (id.startsWith("work-discovery-"))
+    for (const extra of [
+      { projectIds: [] },
+      { projectIds: ["project-other"] },
+      { kind: "protocol" },
+      { scope: "project" },
+      { cursor: "wrong-page" },
+      { limit: 1 },
+    ])
+      assert.isNotEmpty(
+        failed(entry.expect, {
+          ...run,
+          calls: calls.map((call) =>
+            call.tool === "factory_list_work"
+              ? { ...call, input: { ...call.input, ...extra } }
+              : call,
+          ),
+        }),
+      );
   for (const tool of [
     "Write",
     "Bash",
@@ -384,6 +533,10 @@ it.each([
     "delegate_task",
     "factory_start_issue",
     "factory_prepare_delivery",
+    "factory_apply_plan",
+    "factory_admit_execution",
+    "factory_retry_execution",
+    "factory_stop_execution",
   ])
     assert.isNotEmpty(
       failed(entry.expect, {
@@ -391,16 +544,18 @@ it.each([
         calls: [...calls, { step: calls.length, tool, input: {} }],
       }),
     );
-  for (const wrong of [
-    { ref: { version: 1, environmentId: "env-acme", kind: "issue", id: "wrong-root" } },
-    { ref: { version: 1, environmentId: "env-other", kind: "issue", id: "thread-issue-12" } },
-  ])
-    assert.isNotEmpty(
-      failed(entry.expect, {
-        ...run,
-        calls: calls.map((call) => ({ ...call, input: wrong })),
-      }),
-    );
+  // Wrong refs cannot earn credit even when the answer repeats the expected conclusion.
+  if (calls.some((call) => call.input !== undefined))
+    for (const wrong of [
+      { ref: { version: 1, environmentId: "env-acme", kind: "issue", id: "wrong-root" } },
+      { ref: { version: 1, environmentId: "env-other", kind: "issue", id: "thread-issue-12" } },
+    ])
+      assert.isNotEmpty(
+        failed(entry.expect, {
+          ...run,
+          calls: calls.map((call) => (call.input !== undefined ? { ...call, input: wrong } : call)),
+        }),
+      );
 });
 
 it("bounds numbers and reads target.options in either schema form", () => {
@@ -422,6 +577,81 @@ it("bounds numbers and reads target.options in either schema form", () => {
   assert.deepEqual(failed(expect, run(5, { effort: "max" }, 90_000)), []);
   assert.lengthOf(failed(expect, run(21, [{ id: "effort", value: "high" }], 59_999)), 2);
   assert.lengthOf(failed(expect, run("10", {}, 60_000)), 2);
+  const exact = {
+    calls: [
+      {
+        tool: "delegate_task",
+        args: { target: { options: { effort: "max" } }, timeoutMs: 60_000 },
+        exactArgs: true,
+      },
+    ],
+  };
+  assert.deepEqual(failed(exact, run(20, { effort: "max" }, 60_000)), []);
+  assert.lengthOf(failed(exact, run(20, [{ id: "effort", value: "max" }], 60_000)), 1);
+  assert.lengthOf(failed(exact, run(20, { effort: "~max" }, 60_000)), 1);
+});
+
+it("uses exact arguments for required, forbidden and ordered calls without partial operators", () => {
+  const rule = {
+    tool: "factory_list_work|factory_read_work_prerequisites",
+    args: { kind: "issue", limit: 50 },
+    exactArgs: true,
+  };
+  for (const { input, match } of [
+    { input: { limit: 50, kind: "issue" }, match: true },
+    { input: { kind: "issue", limit: 50, projectIds: [] }, match: false },
+    { input: { kind: "issue" }, match: false },
+    { input: { kind: "issue", limit: "50" }, match: false },
+    { input: { kind: "~issue", limit: "<=50" }, match: false },
+  ]) {
+    const run: SampleRun = {
+      calls: [{ step: 0, tool: "factory_list_work", input }],
+      text: "",
+      stopReason: "end_turn",
+    };
+    assert.equal(failed({ calls: [rule] }, run).length, match ? 0 : 1);
+    assert.equal(failed({ callsMustNot: [rule] }, run).length, match ? 1 : 0);
+    assert.equal(failed({ orderedCalls: [rule] }, run).length, match ? 0 : 1);
+  }
+  for (const input of [undefined, {}]) {
+    const run: SampleRun = {
+      calls: [{ step: 0, tool: "factory_list_work", input }],
+      text: "",
+      stopReason: "end_turn",
+    };
+    for (const args of [undefined, {}])
+      assert.deepEqual(failed({ calls: [{ ...rule, args }] }, run), []);
+  }
+  const literalRule = {
+    ...rule,
+    args: { "ref.id": "~issue", limit: "<=50", projectIds: ["a", "b"] },
+  };
+  for (const input of [
+    { "ref.id": "issue-12", limit: 50, projectIds: ["a", "b"] },
+    { ref: { id: "~issue" }, limit: "<=50", projectIds: ["a", "b"] },
+    { "ref.id": "~issue", limit: "<=50", projectIds: ["b", "a"] },
+  ])
+    assert.isNotEmpty(
+      failed(
+        { calls: [literalRule] },
+        {
+          calls: [{ step: 0, tool: "factory_list_work", input }],
+          text: "",
+          stopReason: "end_turn",
+        },
+      ),
+    );
+  assert.deepEqual(
+    failed(
+      { calls: [literalRule] },
+      {
+        calls: [{ step: 0, tool: "factory_list_work", input: literalRule.args }],
+        text: "",
+        stopReason: "end_turn",
+      },
+    ),
+    [],
+  );
 });
 
 const template = {
@@ -515,7 +745,7 @@ it.effect("answers argument-specific fixtures without falling back to the root p
       }),
     );
     const base = buildBase(template, { model: "claude-sonnet-5-5", keepUserInstructions: false });
-    const replay = (inputs: Array<unknown>, fixture = testCase) => {
+    const replay = (inputs: Array<unknown>, fixture = testCase, toolName = tool) => {
       let step = 0;
       const http = HttpClient.make((request) =>
         Effect.sync(() =>
@@ -527,7 +757,7 @@ it.effect("answers argument-specific fixtures without falling back to the root p
                   ? inputs.map((input, i) => ({
                       type: "tool_use",
                       id: `call-${i}`,
-                      name: `mcp__t3-code__${tool}`,
+                      name: `mcp__t3-code__${toolName}`,
                       input,
                     }))
                   : [{ type: "text", text: "Done." }],
@@ -553,7 +783,7 @@ it.effect("answers argument-specific fixtures without falling back to the root p
         },
       ).pipe(Effect.provideService(HttpClient.HttpClient, http));
     };
-    const run = yield* replay([{ ref }, { ref: blocker }, { ref }]);
+    const run = yield* replay([{ ref, extra: "still partial" }, { ref: blocker }, { ref }]);
     assert.deepEqual(
       run.calls.map((call) => JSON.parse(call.output!)),
       [rootResult, blockerResult, rootResult],
@@ -588,6 +818,52 @@ it.effect("answers argument-specific fixtures without falling back to the root p
       },
     }).pipe(Effect.exit);
     assert.equal(ambiguous._tag, "Failure");
+    const listTool = "factory_list_work";
+    for (const args of [{}, { limit: 50 }]) {
+      const fixture = decodeMcpCase(
+        JSON.stringify({
+          ...testCase,
+          setup: {
+            role: "top",
+            mocks: { [listTool]: blockerResult },
+            mockResponses: { [listTool]: [{ args, exactArgs: true, result: rootResult }] },
+          },
+        }),
+      );
+      const valid = yield* replay([args], fixture, listTool);
+      assert.deepEqual(
+        valid.calls.map((call) => JSON.parse(call.output!)),
+        [rootResult],
+      );
+      for (const extra of [
+        { projectIds: [] },
+        { projectIds: ["project-other"] },
+        { kind: "issue" },
+        { scope: "project" },
+        { cursor: "cursor-issue-2" },
+        { limit: 1 },
+      ]) {
+        const input = { ...args, ...extra };
+        const result = yield* replay([input], fixture, listTool);
+        assert.isTrue(result.calls[0]!.failed, JSON.stringify(input));
+        assert.include(result.calls[0]!.output!, "EvalFixtureMismatch:");
+        assert.deepEqual(gradeSample({}, result), [{ check: "fixtureArguments", pass: false }]);
+      }
+      for (const exactArgs of [undefined, false]) {
+        const partial = yield* replay(
+          [{ ...args, projectIds: [], kind: "issue" }],
+          {
+            ...fixture,
+            setup: {
+              role: "top",
+              mockResponses: { [listTool]: [{ args, exactArgs, result: rootResult }] },
+            },
+          },
+          listTool,
+        );
+        assert.deepEqual(JSON.parse(partial.calls[0]!.output!), rootResult);
+      }
+    }
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 

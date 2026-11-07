@@ -4,12 +4,19 @@ import {
   AuthOrchestrationOperateScope,
   CommandId,
   EnvironmentId,
+  EventId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   RunId,
   RunAttemptId,
   ThreadId,
+  NodeId,
+  ProviderSessionId,
+  ProviderTurnId,
+  RuntimeRequestId,
+  TurnItemId,
+  type ProviderApprovalOption,
   type FactoryExecutionPolicy,
   type FactoryExecutionRetryInput,
   type FactoryExecutionAdmitInput,
@@ -22,6 +29,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
+import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Store from "./FactoryExecutionStore.ts";
 import * as Sqlite from "./Sqlite.ts";
@@ -568,6 +576,100 @@ it.effect(
         })).replayed,
       );
       assert.equal((yield* sql`SELECT effect_id FROM orchestration_v2_effect_outbox`).length, 2);
+      const approvalOptions: ReadonlyArray<ProviderApprovalOption> = [
+        { decision: "accept", label: "Allow once", warning: "Review the command" },
+        { decision: "acceptForSession", label: "Allow session" },
+        { decision: "acceptAlways", label: "Always allow" },
+        { decision: "decline", label: "Decline" },
+        { decision: "cancel", label: "Cancel" },
+      ];
+      for (const options of [approvalOptions, undefined]) {
+        const itemId = TurnItemId.make(`approval:${options ? "advertised" : "default"}`);
+        yield* sink.write({
+          events: [
+            {
+              id: EventId.make(`event:${itemId}`),
+              threadId: binding.threadId,
+              type: "turn-item.updated",
+              occurredAt: DateTime.makeUnsafe(at),
+              payload: {
+                id: itemId,
+                threadId: binding.threadId,
+                runId: native.runId,
+                nodeId: null,
+                providerThreadId: null,
+                providerTurnId: null,
+                nativeItemRef: null,
+                parentItemId: null,
+                ordinal: 0,
+                status: "waiting",
+                title: null,
+                startedAt: DateTime.makeUnsafe(at),
+                completedAt: null,
+                updatedAt: DateTime.makeUnsafe(at),
+                type: "approval_request",
+                requestId: RuntimeRequestId.make(`request:${itemId}`),
+                requestKind: "command",
+                ...(options === undefined ? {} : { options }),
+              },
+            },
+          ],
+        });
+        const projection = yield* (yield* ProjectionStore.ProjectionStoreV2).getThreadProjection(
+          binding.threadId,
+        );
+        const approval = projection.turnItems.find((item) => item.id === itemId);
+        assert.equal(approval?.type, "approval_request");
+        if (approval?.type === "approval_request") {
+          assert.deepEqual(
+            approval.options?.map((option) => option.decision),
+            ["accept", "decline", "cancel"],
+          );
+          if (options !== undefined) assert.deepEqual(approval.options?.[0], approvalOptions[0]);
+        }
+      }
+      const threadEvent = native.events.find((event) => event.type === "thread.created");
+      if (threadEvent?.type !== "thread.created")
+        return yield* Effect.die("Native admission must create a thread");
+      const ordinaryThreadId = ThreadId.make("ordinary-approval");
+      const managedProjection =
+        yield* (yield* ProjectionStore.ProjectionStoreV2).getThreadProjection(binding.threadId);
+      const item = managedProjection.turnItems.find((entry) => entry.type === "approval_request");
+      if (item?.type !== "approval_request")
+        return yield* Effect.die("Managed approval must remain inspectable");
+      yield* sink.write({
+        events: [
+          {
+            ...threadEvent,
+            id: EventId.make("ordinary-thread"),
+            threadId: ordinaryThreadId,
+            payload: {
+              ...threadEvent.payload,
+              id: ordinaryThreadId,
+              lineage: {
+                parentThreadId: null,
+                relationshipToParent: null,
+                rootThreadId: ordinaryThreadId,
+              },
+            },
+          },
+          {
+            id: EventId.make("ordinary-approval"),
+            threadId: ordinaryThreadId,
+            type: "turn-item.updated",
+            occurredAt: DateTime.makeUnsafe(at),
+            payload: { ...item, threadId: ordinaryThreadId, runId: null, options: approvalOptions },
+          },
+        ],
+      });
+      const ordinaryProjection =
+        yield* (yield* ProjectionStore.ProjectionStoreV2).getThreadProjection(ordinaryThreadId);
+      const ordinaryApproval = ordinaryProjection.turnItems.find(
+        (entry) => entry.type === "approval_request",
+      );
+      assert.equal(ordinaryApproval?.type, "approval_request");
+      if (ordinaryApproval?.type === "approval_request")
+        assert.deepEqual(ordinaryApproval.options, approvalOptions);
     }).pipe(Effect.provide(atomicLayer)),
 );
 
@@ -870,5 +972,554 @@ it.effect(
           .length,
         2,
       );
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "claims a live runtime response phase only through an authorized human response on the exact attempt",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse(at));
+      yield* seed;
+      yield* grant;
+      const admitted = yield* bindingFor("respond");
+      yield* decide({ type: "admit", ...admitted });
+      const store = yield* Store.FactoryExecutionStore;
+      const sql = yield* SqlClient.SqlClient;
+      const binding = admitted.binding;
+      const unscoped = AuthSessionId.make("human-unscoped");
+      const responder = AuthSessionId.make("human-responder");
+      const sessions = yield* AuthSessions.AuthSessionRepository;
+      for (const sessionId of [unscoped, responder])
+        yield* sessions.create({
+          sessionId,
+          subject: sessionId,
+          scopes: sessionId === responder ? [AuthOrchestrationOperateScope] : [],
+          method: "browser-session-cookie",
+          client: {
+            label: null,
+            ipAddress: null,
+            userAgent: null,
+            deviceType: "unknown",
+            os: null,
+            browser: null,
+          },
+          issuedAt: DateTime.makeUnsafe(at),
+          expiresAt: DateTime.makeUnsafe("2099-01-01T00:00:00.000Z"),
+        });
+      const providerSessionId = ProviderSessionId.make("session-live");
+      const providerThreadId = "provider-thread-live";
+      yield* sql`INSERT INTO orchestration_v2_projection_provider_sessions(provider_session_id,thread_id,provider,status,model,updated_at,payload_json) VALUES (${providerSessionId},${binding.threadId},'devReplay','ready','replay',${at},${canonicalExecutionJson({ status: "ready" })})`;
+      yield* sql`INSERT INTO orchestration_v2_projection_provider_session_bindings(provider_session_id,thread_id) VALUES (${providerSessionId},${binding.threadId})`;
+      yield* sql`INSERT INTO orchestration_v2_projection_provider_threads(provider_thread_id,thread_id,owner_node_id,provider,provider_session_id,status,first_run_ordinal,last_run_ordinal,updated_at,payload_json) VALUES (${providerThreadId},${binding.threadId},NULL,'devReplay',${providerSessionId},'active',1,1,${at},${canonicalExecutionJson({ status: "active" })})`;
+      yield* sql`INSERT INTO orchestration_v2_projection_runs(run_id,thread_id,ordinal,provider,provider_instance_id,provider_thread_id,status,requested_at,payload_json) VALUES (${binding.runId},${binding.threadId},1,'devReplay','devReplay',${providerThreadId},'running',${at},${canonicalExecutionJson({ status: "running", activeAttemptId: binding.runAttemptId })})`;
+      yield* sql`INSERT INTO orchestration_v2_projection_run_attempts(attempt_id,thread_id,run_id,attempt_ordinal,root_node_id,provider,provider_instance_id,provider_thread_id,status,payload_json) VALUES (${binding.runAttemptId},${binding.threadId},${binding.runId},1,'root-node','devReplay','devReplay',${providerThreadId},'running',${canonicalExecutionJson({ status: "running", providerTurnId: null })})`;
+      let turnOrdinal = 0;
+      const seedRuntimeRequest = Effect.fn("test.seedRuntimeRequest")(function* (input: {
+        readonly name: string;
+        readonly runId: string | null;
+        readonly linked: boolean;
+        readonly kind: "command" | "user_input";
+        readonly capability:
+          | { readonly type: "live"; readonly providerSessionId: string }
+          | { readonly type: "message" };
+        readonly status?: "pending" | "resolved";
+        readonly decision?: "acceptForSession" | "acceptAlways";
+      }) {
+        const requestId = RuntimeRequestId.make(`request:${input.name}`);
+        const nodeId = NodeId.make(`node:${input.name}`);
+        const providerTurnId = input.linked ? ProviderTurnId.make(`turn:${input.name}`) : null;
+        if (providerTurnId !== null) {
+          const ordinal = ++turnOrdinal;
+          yield* sql`INSERT INTO orchestration_v2_projection_provider_turns(provider_turn_id,thread_id,provider_thread_id,node_id,run_attempt_id,ordinal,status,started_at,completed_at,payload_json) VALUES (${providerTurnId},${binding.threadId},${providerThreadId},${nodeId},${binding.runAttemptId},${ordinal},'running',${at},NULL,${canonicalExecutionJson({ id: providerTurnId, threadId: binding.threadId, providerThreadId, nodeId, runAttemptId: binding.runAttemptId, ordinal, status: "running", startedAt: at, completedAt: null })})`;
+        }
+        const node = {
+          id: nodeId,
+          threadId: binding.threadId,
+          runId: input.runId,
+          parentNodeId: null,
+          rootNodeId: nodeId,
+          kind:
+            input.kind === "command"
+              ? ("approval_request" as const)
+              : ("user_input_request" as const),
+          status: "waiting" as const,
+          countsForRun: false,
+          providerThreadId,
+          providerTurnId,
+          nativeItemRef: null,
+          runtimeRequestId: null,
+          checkpointScopeId: null,
+          startedAt: at,
+          completedAt: null,
+        };
+        yield* sql`INSERT INTO orchestration_v2_projection_nodes(node_id,thread_id,run_id,parent_node_id,root_node_id,kind,status,provider_thread_id,provider_turn_id,runtime_request_id,checkpoint_scope_id,started_at,completed_at,payload_json) VALUES (${nodeId},${binding.threadId},${input.runId},NULL,${nodeId},${node.kind},${node.status},${providerThreadId},${providerTurnId},NULL,NULL,${at},NULL,${canonicalExecutionJson(node)})`;
+        const request = {
+          id: requestId,
+          nodeId,
+          providerTurnId,
+          nativeRequestRef: {
+            driver: "acpRegistry",
+            nativeId: input.name,
+            strength: "strong" as const,
+          },
+          kind: input.kind,
+          status: input.status ?? "resolved",
+          responseCapability:
+            input.capability.type === "live"
+              ? { type: "live" as const, providerSessionId: input.capability.providerSessionId }
+              : { type: "message" as const },
+          createdAt: at,
+          resolvedAt: at,
+          ...(input.decision === undefined ? {} : { decision: input.decision }),
+        };
+        yield* sql`INSERT INTO orchestration_v2_projection_runtime_requests(runtime_request_id,thread_id,node_id,provider_turn_id,kind,status,created_at,resolved_at,payload_json) VALUES (${requestId},${binding.threadId},${nodeId},${providerTurnId},${input.kind},${request.status},${at},${at},${canonicalExecutionJson(request)})`;
+        return requestId;
+      });
+      const claimResponse = Effect.fn("test.claimResponse")(function* (input: {
+        readonly requestId: RuntimeRequestId;
+        readonly authorization?: {
+          readonly sessionId: AuthSessionId;
+          readonly runAttemptId: RunAttemptId;
+        };
+      }) {
+        const runtimeResponse =
+          input.authorization === undefined
+            ? undefined
+            : {
+                threadId: binding.threadId,
+                requestId: input.requestId,
+                providerSessionId,
+                authorization: input.authorization,
+              };
+        return yield* store.claimPhase({
+          runAttemptId: binding.runAttemptId,
+          phase: `response:${input.requestId}`,
+          claimantId: "responder",
+          ...(runtimeResponse === undefined ? {} : { runtimeResponse }),
+        });
+      });
+      const durable = (requestId: RuntimeRequestId) =>
+        sql`SELECT phase FROM factory_execution_phases WHERE attempt_id = ${binding.runAttemptId} AND phase = ${`response:${requestId}`}`;
+      // An ordinary caller without response authorization must not claim the response phase.
+      const ordinary = yield* seedRuntimeRequest({
+        name: "ordinary",
+        runId: binding.runId,
+        linked: true,
+        kind: "command",
+        capability: { type: "live", providerSessionId },
+      });
+      assert.isTrue(
+        Result.isFailure(yield* claimResponse({ requestId: ordinary }).pipe(Effect.result)),
+      );
+      assert.deepEqual(yield* durable(ordinary), []);
+      // A session without orchestration-operate scope cannot authorize its own response.
+      const unscopedRequest = yield* seedRuntimeRequest({
+        name: "unscoped",
+        runId: binding.runId,
+        linked: true,
+        kind: "command",
+        capability: { type: "live", providerSessionId },
+      });
+      assert.isTrue(
+        Result.isFailure(
+          yield* claimResponse({
+            requestId: unscopedRequest,
+            authorization: { sessionId: unscoped, runAttemptId: binding.runAttemptId },
+          }).pipe(Effect.result),
+        ),
+      );
+      assert.deepEqual(yield* durable(unscopedRequest), []);
+      // A historical request from an earlier run of the thread stays rejected.
+      const stale = yield* seedRuntimeRequest({
+        name: "stale",
+        runId: RunId.make("run:old"),
+        linked: false,
+        kind: "command",
+        capability: { type: "live", providerSessionId },
+      });
+      assert.isTrue(
+        Result.isFailure(
+          yield* claimResponse({
+            requestId: stale,
+            authorization: { sessionId: human.sessionId, runAttemptId: binding.runAttemptId },
+          }).pipe(Effect.result),
+        ),
+      );
+      assert.deepEqual(yield* durable(stale), []);
+      // Message-mode questions are answered by chat, never by a runtime response claim.
+      const question = yield* seedRuntimeRequest({
+        name: "question",
+        runId: binding.runId,
+        linked: true,
+        kind: "user_input",
+        capability: { type: "message" },
+      });
+      assert.isTrue(
+        Result.isFailure(
+          yield* claimResponse({
+            requestId: question,
+            authorization: { sessionId: human.sessionId, runAttemptId: binding.runAttemptId },
+          }).pipe(Effect.result),
+        ),
+      );
+      assert.deepEqual(yield* durable(question), []);
+      // The authorization must name the exact admitted attempt.
+      const foreign = yield* seedRuntimeRequest({
+        name: "foreign",
+        runId: binding.runId,
+        linked: true,
+        kind: "command",
+        capability: { type: "live", providerSessionId },
+      });
+      assert.isTrue(
+        Result.isFailure(
+          yield* claimResponse({
+            requestId: foreign,
+            authorization: {
+              sessionId: human.sessionId,
+              runAttemptId: RunAttemptId.make("attempt:foreign"),
+            },
+          }).pipe(Effect.result),
+        ),
+      );
+      assert.deepEqual(yield* durable(foreign), []);
+      // The exact authorized response claims once; the durable phase row holds every replay.
+      const live = yield* seedRuntimeRequest({
+        name: "live",
+        runId: binding.runId,
+        linked: true,
+        kind: "command",
+        capability: { type: "live", providerSessionId },
+      });
+      const authorized = {
+        requestId: live,
+        authorization: { sessionId: human.sessionId, runAttemptId: binding.runAttemptId },
+      } as const;
+      assert.equal((yield* claimResponse(authorized)).status, "claimed");
+      assert.equal((yield* claimResponse(authorized)).status, "held");
+      assert.deepEqual(yield* durable(live), [{ phase: `response:${live}` }]);
+      const responseAuthorization = { sessionId: responder, runAttemptId: binding.runAttemptId };
+      const grantRows = yield* sql<{ json: string }>`
+        SELECT grant_json AS json FROM factory_execution_grants WHERE root_id = ${ref.rootId}
+      `;
+      const grantJson = grantRows[0]!.json;
+      const restoreGrant = sql`UPDATE factory_execution_grants SET grant_json = ${grantJson} WHERE root_id = ${ref.rootId}`;
+      const runPayload = canonicalExecutionJson({
+        status: "running",
+        activeAttemptId: binding.runAttemptId,
+      });
+      const cases = [
+        {
+          name: "revoked-grant",
+          change: sql`UPDATE factory_execution_grants SET grant_json = json_set(grant_json, '$.revokedAt', ${at}) WHERE root_id = ${ref.rootId}`,
+          restore: restoreGrant,
+          reason: "grant-inactive",
+        },
+        {
+          name: "expired-grant",
+          change: sql`UPDATE factory_execution_grants SET grant_json = json_set(grant_json, '$.policy.expiresAt', ${at}) WHERE root_id = ${ref.rootId}`,
+          restore: restoreGrant,
+          reason: "grant-inactive",
+        },
+        {
+          name: "grant-version",
+          change: sql`UPDATE factory_execution_grants SET grant_json = json_set(grant_json, '$.version', 2) WHERE root_id = ${ref.rootId}`,
+          restore: restoreGrant,
+          reason: "grant-conflict",
+        },
+        {
+          name: "changed-plan-head",
+          change: sql`UPDATE factory_plan_heads SET revision = 2, snapshot_json = ${canonicalExecutionJson({ ...plan, revision: 2 })} WHERE root_id = ${ref.rootId}`,
+          restore: sql`UPDATE factory_plan_heads SET revision = 1, snapshot_json = ${canonicalExecutionJson(plan)} WHERE root_id = ${ref.rootId}`,
+          reason: "revision-conflict",
+        },
+        {
+          name: "stopping",
+          change: sql`UPDATE factory_execution_bindings SET stop_requested = 1 WHERE attempt_id = ${binding.runAttemptId}`,
+          restore: sql`UPDATE factory_execution_bindings SET stop_requested = 0 WHERE attempt_id = ${binding.runAttemptId}`,
+          reason: "grant-inactive",
+        },
+        {
+          name: "quiescent",
+          change: sql`UPDATE factory_execution_bindings SET quiescent = 1 WHERE attempt_id = ${binding.runAttemptId}`,
+          restore: sql`UPDATE factory_execution_bindings SET quiescent = 0 WHERE attempt_id = ${binding.runAttemptId}`,
+          reason: "grant-inactive",
+        },
+        {
+          name: "replaced-task",
+          change: sql`UPDATE factory_execution_tasks SET attempt_id = 'replacement' WHERE root_id = ${ref.rootId}`,
+          restore: sql`UPDATE factory_execution_tasks SET attempt_id = ${binding.runAttemptId} WHERE root_id = ${ref.rootId}`,
+          reason: "task-conflict",
+        },
+        {
+          name: "changed-task-version",
+          change: sql`UPDATE factory_execution_tasks SET version = version + 1 WHERE root_id = ${ref.rootId}`,
+          restore: sql`UPDATE factory_execution_tasks SET version = ${binding.taskVersion} WHERE root_id = ${ref.rootId}`,
+          reason: "task-conflict",
+        },
+        {
+          name: "replaced-active-attempt",
+          change: sql`UPDATE orchestration_v2_projection_runs SET payload_json = json_set(payload_json, '$.activeAttemptId', 'replacement') WHERE run_id = ${binding.runId}`,
+          restore: sql`UPDATE orchestration_v2_projection_runs SET payload_json = ${runPayload} WHERE run_id = ${binding.runId}`,
+          reason: "task-conflict",
+        },
+        ...["completed", "failed", "interrupted", "cancelled", "rolled_back"].map((status) => ({
+          name: `terminal-run-${status}`,
+          change: sql`UPDATE orchestration_v2_projection_runs SET status = ${status}, payload_json = json_set(payload_json, '$.status', ${status}) WHERE run_id = ${binding.runId}`,
+          restore: sql`UPDATE orchestration_v2_projection_runs SET status = 'running', payload_json = ${runPayload} WHERE run_id = ${binding.runId}`,
+          reason: "task-conflict",
+        })),
+        ...["completed", "failed", "interrupted", "cancelled", "superseded"].map((status) => ({
+          name: `terminal-attempt-${status}`,
+          change: sql`UPDATE orchestration_v2_projection_run_attempts SET status = ${status}, payload_json = json_set(payload_json, '$.status', ${status}) WHERE attempt_id = ${binding.runAttemptId}`,
+          restore: sql`UPDATE orchestration_v2_projection_run_attempts SET status = 'running', payload_json = ${canonicalExecutionJson({ status: "running", providerTurnId: null })} WHERE attempt_id = ${binding.runAttemptId}`,
+          reason: "task-conflict",
+        })),
+        ...["completed", "failed", "interrupted", "cancelled"].map((status) => ({
+          name: `terminal-turn-${status}`,
+          change: sql`UPDATE orchestration_v2_projection_provider_turns SET status = ${status} WHERE run_attempt_id = ${binding.runAttemptId}`,
+          restore: sql`UPDATE orchestration_v2_projection_provider_turns SET status = 'running' WHERE run_attempt_id = ${binding.runAttemptId}`,
+          reason: "task-conflict",
+        })),
+        {
+          name: "request-linked-to-foreign-attempt",
+          change: sql`UPDATE orchestration_v2_projection_provider_turns SET run_attempt_id = 'replacement' WHERE run_attempt_id = ${binding.runAttemptId}`,
+          restore: sql`UPDATE orchestration_v2_projection_provider_turns SET run_attempt_id = ${binding.runAttemptId} WHERE run_attempt_id = 'replacement'`,
+          reason: "task-conflict",
+        },
+        {
+          name: "revoked-responder",
+          change: sessions.revoke({ sessionId: responder, revokedAt: DateTime.makeUnsafe(at) }),
+          restore: sql`UPDATE auth_sessions SET revoked_at = NULL WHERE session_id = ${responder}`,
+          reason: "forbidden",
+        },
+        {
+          name: "revoked-issuer",
+          change: sessions.revoke({
+            sessionId: human.sessionId,
+            revokedAt: DateTime.makeUnsafe(at),
+          }),
+          restore: sql`UPDATE auth_sessions SET revoked_at = NULL WHERE session_id = ${human.sessionId}`,
+          reason: "forbidden",
+        },
+        {
+          name: "expired-responder",
+          change: sql`UPDATE auth_sessions SET expires_at = ${at} WHERE session_id = ${responder}`,
+          restore: sql`UPDATE auth_sessions SET expires_at = '2099-01-01T00:00:00.000Z' WHERE session_id = ${responder}`,
+          reason: "forbidden",
+        },
+        {
+          name: "expired-issuer",
+          change: sql`UPDATE auth_sessions SET expires_at = ${at} WHERE session_id = ${human.sessionId}`,
+          restore: sql`UPDATE auth_sessions SET expires_at = '2099-01-01T00:00:00.000Z' WHERE session_id = ${human.sessionId}`,
+          reason: "forbidden",
+        },
+        {
+          name: "rebound-native-session",
+          change: sql`UPDATE orchestration_v2_projection_provider_threads SET provider_session_id = 'replacement' WHERE provider_thread_id = ${providerThreadId}`,
+          restore: sql`UPDATE orchestration_v2_projection_provider_threads SET provider_session_id = ${providerSessionId} WHERE provider_thread_id = ${providerThreadId}`,
+          reason: "task-conflict",
+        },
+        {
+          name: "detached-native-session",
+          change: sql`DELETE FROM orchestration_v2_projection_provider_session_bindings WHERE provider_session_id = ${providerSessionId}`,
+          restore: sql`INSERT INTO orchestration_v2_projection_provider_session_bindings(provider_session_id,thread_id) VALUES (${providerSessionId},${binding.threadId})`,
+          reason: "task-conflict",
+        },
+        {
+          name: "stopped-native-session",
+          change: sql`UPDATE orchestration_v2_projection_provider_sessions SET status = 'stopped' WHERE provider_session_id = ${providerSessionId}`,
+          restore: sql`UPDATE orchestration_v2_projection_provider_sessions SET status = 'ready' WHERE provider_session_id = ${providerSessionId}`,
+          reason: "task-conflict",
+        },
+      ];
+      for (const scenario of cases) {
+        const requestId = yield* seedRuntimeRequest({
+          name: scenario.name,
+          runId: binding.runId,
+          linked: true,
+          kind: "command",
+          capability: { type: "live", providerSessionId },
+        });
+        yield* store.authorizeRuntimeResponse({
+          threadId: binding.threadId,
+          requestId,
+          providerSessionId,
+          authorization: responseAuthorization,
+          expectedStatus: "resolved",
+        });
+        yield* scenario.change;
+        const denied = yield* claimResponse({
+          requestId,
+          authorization: responseAuthorization,
+        }).pipe(Effect.flip);
+        assert.equal(denied.reason, scenario.reason, scenario.name);
+        assert.deepEqual(yield* durable(requestId), [], scenario.name);
+        yield* scenario.restore;
+      }
+      for (const scenario of [
+        {
+          name: "missing-attempt-link",
+          linked: false,
+          capability: { type: "live", providerSessionId },
+        },
+        {
+          name: "foreign-capability",
+          linked: true,
+          capability: { type: "live", providerSessionId: ProviderSessionId.make("foreign") },
+        },
+        {
+          name: "pending",
+          linked: true,
+          status: "pending",
+          capability: { type: "live", providerSessionId },
+        },
+        {
+          name: "session-approval",
+          linked: true,
+          decision: "acceptForSession",
+          capability: { type: "live", providerSessionId },
+        },
+        {
+          name: "permanent-approval",
+          linked: true,
+          decision: "acceptAlways",
+          capability: { type: "live", providerSessionId },
+        },
+      ] as const) {
+        const requestId = yield* seedRuntimeRequest({
+          ...scenario,
+          runId: binding.runId,
+          kind: "command",
+        });
+        if (scenario.name === "pending")
+          assert.equal(
+            (yield* store.authorizeRuntimeResponse({
+              threadId: binding.threadId,
+              requestId,
+              providerSessionId,
+              authorization: responseAuthorization,
+              expectedStatus: "pending",
+            })).runAttemptId,
+            binding.runAttemptId,
+          );
+        assert.isTrue(
+          Result.isFailure(
+            yield* claimResponse({ requestId, authorization: responseAuthorization }).pipe(
+              Effect.result,
+            ),
+          ),
+          scenario.name,
+        );
+        assert.deepEqual(yield* durable(requestId), [], scenario.name);
+      }
+      const answers = yield* seedRuntimeRequest({
+        name: "live-answers",
+        runId: binding.runId,
+        linked: true,
+        kind: "user_input",
+        capability: { type: "live", providerSessionId },
+      });
+      const response = {
+        threadId: binding.threadId,
+        requestId: answers,
+        providerSessionId,
+        authorization: responseAuthorization,
+      };
+      assert.isTrue(
+        Result.isFailure(
+          yield* store
+            .claimPhase({
+              runAttemptId: binding.runAttemptId,
+              phase: "response:another-request",
+              claimantId: "mismatched-request",
+              runtimeResponse: response,
+            })
+            .pipe(Effect.result),
+        ),
+      );
+      assert.isTrue(
+        Result.isFailure(
+          yield* store
+            .authorizeRuntimeResponse({
+              ...response,
+              threadId: ThreadId.make("another-thread"),
+              expectedStatus: "resolved",
+            })
+            .pipe(Effect.result),
+        ),
+      );
+      assert.isTrue(
+        Result.isFailure(
+          yield* store
+            .authorizeRuntimeResponse({
+              ...response,
+              expectedStatus: "pending",
+            })
+            .pipe(Effect.result),
+        ),
+      );
+      assert.deepEqual(yield* durable(answers), []);
+      assert.equal(
+        (yield* claimResponse({ requestId: answers, authorization: responseAuthorization })).status,
+        "claimed",
+      );
+      const historical = yield* seedRuntimeRequest({
+        name: "historical-same-attempt",
+        runId: binding.runId,
+        linked: true,
+        kind: "command",
+        status: "pending",
+        capability: { type: "live", providerSessionId },
+      });
+      yield* store.authorizeRuntimeResponse({
+        ...response,
+        requestId: historical,
+        expectedStatus: "pending",
+      });
+      const next = yield* seedRuntimeRequest({
+        name: "next-turn-same-attempt",
+        runId: binding.runId,
+        linked: true,
+        kind: "command",
+        capability: { type: "live", providerSessionId },
+      });
+      assert.equal(
+        (yield* store
+          .authorizeRuntimeResponse({
+            ...response,
+            requestId: historical,
+            expectedStatus: "pending",
+          })
+          .pipe(Effect.flip)).reason,
+        "task-conflict",
+      );
+      assert.deepEqual(yield* durable(historical), []);
+      assert.equal(
+        (yield* claimResponse({ requestId: next, authorization: responseAuthorization })).status,
+        "claimed",
+      );
+      yield* store.requestNativeStop({
+        threadId: binding.threadId,
+        runId: binding.runId,
+        detail: "Join response claims.",
+      });
+      const settleAttempt = store.settleAttempt({
+        runAttemptId: binding.runAttemptId,
+        observation: "quiescent",
+        detail: "All response work joined.",
+      });
+      assert.equal((yield* settleAttempt.pipe(Effect.flip)).reason, "not-quiescent");
+      for (const requestId of [live, answers, next])
+        yield* store.settlePhase({
+          runAttemptId: binding.runAttemptId,
+          phase: `response:${requestId}`,
+          claimantId: "responder",
+          observation: "quiescent",
+          detail: "Response claimant joined.",
+        });
+      yield* settleAttempt;
+      assert.isTrue((yield* store.getBinding(binding.runAttemptId)).quiescent);
     }).pipe(Effect.provide(layer)),
 );

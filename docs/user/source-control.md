@@ -219,6 +219,17 @@ your draft stays available; reload the current revision and deliberately reapply
 Plan editing does not accept artifacts, publish results or authorize execution. Local plan
 authoring is not yet available in the mobile app or to agents on linked environments.
 
+For a worker running under a local plan's execution grant, open its thread to respond to a
+live approval or question. You can approve one request, decline or cancel it, or answer the
+question with operate permission on the owning environment. Session-wide and permanent
+approvals are refused, as are ordinary chat follow-ups in managed worker threads. A response
+cannot resume stopped work or work whose grant expired, was revoked, or no longer matches
+the current plan. Responding does not authorize publishing or merging.
+
+Message-mode questions remain visible but cannot be answered on managed workers: answering
+would start a new turn. You can dismiss them even after reconnecting, or settle an otherwise
+inactive thread; neither action resumes work or creates a new run.
+
 ### Start a task from an issue
 
 Open **Factory → Issues**, choose a checkout, and check the repository and host shown above the

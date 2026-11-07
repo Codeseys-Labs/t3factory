@@ -881,7 +881,7 @@ it.effect("serves an image on the host only when an agent reply the guest sees s
     const { orchestrator, guestShares } = yield* shareThread;
     const runId = yield* ownerRun;
     const fileSystem = yield* FileSystem.FileSystem;
-    const directory = yield* fileSystem.makeTempDirectoryScoped();
+    const directory = (yield* fileSystem.makeTempDirectoryScoped()).replaceAll("\\", "/");
     const shot = `${directory}/my shot.png`;
     const fileUrl = `${directory}/file-url.png`;
     const page = `${directory}/page.png`;

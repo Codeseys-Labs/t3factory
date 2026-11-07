@@ -15,6 +15,7 @@ import {
   RuntimeRequestId,
   NodeId,
   type ProjectId,
+  type ProviderApprovalOption,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -44,6 +45,11 @@ import * as FactoryExecutions from "../persistence/FactoryExecutionStore.ts";
 
 const isFactoryPlanError = Schema.is(FactoryPlanError);
 const isFactoryExecutionError = Schema.is(FactoryExecutionError);
+const MANAGED_APPROVAL_OPTIONS = [
+  { decision: "accept", label: "Allow once" },
+  { decision: "decline", label: "Decline" },
+  { decision: "cancel", label: "Cancel" },
+] satisfies ReadonlyArray<ProviderApprovalOption>;
 
 export class EventSinkWriteError extends Schema.TaggedError<EventSinkWriteError>()(
   "EventSinkWriteError",
@@ -360,14 +366,25 @@ const layerBase: Layer.Layer<
       return Effect.forEach(
         events,
         (event): Effect.Effect<OrchestrationV2DomainEvent, unknown> =>
-          event.type === "turn-item.updated"
-            ? turnItemPositions
-                .normalize(
+          event.type !== "turn-item.updated"
+            ? Effect.succeed(event)
+            : Effect.gen(function* () {
+                const payload = yield* turnItemPositions.normalize(
                   event.payload,
                   event.payload.runId === null ? undefined : runOrdinals.get(event.payload.runId),
+                );
+                if (
+                  payload.type !== "approval_request" ||
+                  (yield* factoryExecutions.findNativeBinding({ threadId: event.threadId })) ===
+                    null
                 )
-                .pipe(Effect.map((payload) => ({ ...event, payload })))
-            : Effect.succeed(event),
+                  return { ...event, payload };
+                const options = (payload.options ?? MANAGED_APPROVAL_OPTIONS).filter(
+                  (option) =>
+                    option.decision !== "acceptForSession" && option.decision !== "acceptAlways",
+                );
+                return { ...event, payload: { ...payload, options } };
+              }),
         { concurrency: 1 },
       );
     };
@@ -669,6 +686,27 @@ const layerBase: Layer.Layer<
           if (!reserved) {
             const existing = yield* existingCommandResult(input.commandId);
             return { ...existing, committed: false as const, cancelledEffectIds: [] };
+          }
+          for (const effect of input.effects) {
+            if (effect.request.type !== "runtime-request.respond") continue;
+            const managed = yield* factoryExecutions.findNativeBinding({
+              threadId: effect.threadId,
+            });
+            if (managed === null) continue;
+            const authorization = effect.request.factoryAuthorization;
+            if (
+              authorization === undefined ||
+              effect.request.decision === "acceptForSession" ||
+              effect.request.decision === "acceptAlways"
+            )
+              return yield* new FactoryExecutionError({ reason: "forbidden" });
+            yield* factoryExecutions.authorizeRuntimeResponse({
+              threadId: effect.threadId,
+              requestId: effect.request.requestId,
+              providerSessionId: effect.request.providerSessionId,
+              authorization,
+              expectedStatus: "pending",
+            });
           }
 
           const runId = input.updateDelegatedCompletionOnlyRunId;
@@ -1074,13 +1112,20 @@ const layerBase: Layer.Layer<
             }
           }
           if (input?.bounded === true) {
+            const managedThread =
+              input.threadId !== undefined &&
+              (yield* factoryExecutions.findNativeBinding({ threadId: input.threadId })) !== null;
+            const managedWireOptions = managedThread ? { managedThread: true } : undefined;
             return replayAndBufferProjectedLiveEvents({
               subscribe: PubSub.subscribe(pubsub),
               latestSequence: eventStore.latestSequence(),
               afterSequence,
               filter: matches,
               replay,
-              project: (stored) => ({ ...stored, event: projectDomainEventForWire(stored.event) }),
+              project: (stored) => ({
+                ...stored,
+                event: projectDomainEventForWire(stored.event, managedWireOptions),
+              }),
             });
           }
           const subscription = yield* PubSub.subscribe(pubsub);

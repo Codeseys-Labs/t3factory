@@ -5,6 +5,7 @@ import {
   type RunAttemptId,
   type RunId,
   type ThreadId,
+  type AuthSessionId,
 } from "@t3tools/contracts";
 import type { WindowsOwnedProcess } from "../process/WindowsOwnedProcess.ts";
 import * as Context from "effect/Context";
@@ -19,7 +20,14 @@ import * as Crypto from "effect/Crypto";
 import * as Schema from "effect/Schema";
 const isFactoryExecutionError = Schema.is(FactoryExecutionError);
 
-type Phase = "workspace" | "setup" | "session" | "native-thread" | "turn" | "capture";
+type Phase = FactoryExecutionStore.FactoryExecutionPhase;
+type PhaseInput = Identity & {
+  readonly phase: Phase;
+  readonly runtimeResponse?: Omit<
+    FactoryExecutionStore.FactoryRuntimeResponseCheck,
+    "expectedStatus"
+  >;
+};
 type Identity = {
   readonly threadId: ThreadId;
   readonly runId: RunId;
@@ -36,6 +44,11 @@ export class FactoryNativeAuthority extends Context.Reference<RunAttemptId | und
   { defaultValue: (): RunAttemptId | undefined => undefined },
 ) {}
 
+export class FactoryRuntimeResponseSession extends Context.Reference<AuthSessionId | undefined>(
+  "t3/FactoryRuntimeResponseSession",
+  { defaultValue: (): AuthSessionId | undefined => undefined },
+) {}
+
 export class FactoryExecutionLifecycle extends Context.Service<
   FactoryExecutionLifecycle,
   {
@@ -48,7 +61,11 @@ export class FactoryExecutionLifecycle extends Context.Service<
       command: OrchestrationV2ServerCommand,
     ) => Effect.Effect<void, FactoryExecutionError>;
     readonly runPhase: <A, E, R>(
-      input: Identity & { readonly phase: Phase },
+      input: PhaseInput,
+      work: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E | FactoryExecutionError, R>;
+    readonly respond: <A, E, R>(
+      input: Omit<FactoryExecutionStore.FactoryRuntimeResponseCheck, "expectedStatus">,
       work: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E | FactoryExecutionError, R>;
     readonly recover: (input: Identity) => Effect.Effect<void, FactoryExecutionError>;
@@ -154,6 +171,93 @@ const make = Effect.gen(function* () {
       });
     return true;
   });
+  const runPhase = Effect.fn("FactoryExecutionLifecycle.runPhase")(function* <A, E, R>(
+    input: PhaseInput,
+    work: Effect.Effect<A, E, R>,
+  ) {
+    const managed = yield* binding(input);
+    if (managed === null) {
+      if (input.phase.startsWith("response:"))
+        return yield* new FactoryExecutionError({ reason: "task-conflict" });
+      return yield* work;
+    }
+    const claimantId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    return yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const claim = yield* store.claimPhase({
+          runAttemptId: input.runAttemptId,
+          phase: input.phase,
+          claimantId,
+          ...(input.runtimeResponse === undefined
+            ? {}
+            : { runtimeResponse: input.runtimeResponse }),
+          ...(input.phase === "capture" ? { captureGeneration: input.captureGeneration ?? 1 } : {}),
+        });
+        if (claim.status !== "claimed") {
+          if (claim.status === "suppressed")
+            yield* reconcile(input).pipe(
+              Effect.catchIf(
+                (error): error is FactoryExecutionError => isFactoryExecutionError(error),
+                (error) =>
+                  error.reason === "not-quiescent" ? Effect.succeed(false) : Effect.fail(error),
+              ),
+            );
+          return yield* new FactoryExecutionError({
+            reason: claim.status === "held" ? "not-quiescent" : "grant-inactive",
+          });
+        }
+        let owner = owners.get(input.runAttemptId);
+        if (owner === undefined) {
+          owner = { process: yield* processFactory.make(), claims: new Map() };
+          owners.set(input.runAttemptId, owner);
+        }
+        if (input.phase === "capture") {
+          const previous = owner.claims.get("capture");
+          if (previous !== undefined && (!previous.joined || !previous.settled))
+            return yield* new FactoryExecutionError({ reason: "not-quiescent" });
+          owner.captureProcess = yield* processFactory.make();
+        }
+        const processOwner = input.phase === "capture" ? owner.captureProcess! : owner.process;
+        const record = {
+          claimantId,
+          joined: false,
+          settled: false,
+          done: yield* Deferred.make<void>(),
+        };
+        owner.claims.set(input.phase, record);
+        const result = yield* restore(
+          work.pipe(
+            Effect.provideService(OwnedProcess, processOwner.spawner),
+            Effect.provideService(FactoryNativeAuthority, input.runAttemptId),
+          ),
+        ).pipe(Effect.exit);
+        record.joined = true;
+        yield* Deferred.succeed(record.done, undefined);
+        if (Exit.isFailure(result)) {
+          yield* store.requestNativeStop({
+            threadId: input.threadId,
+            runId: input.runId,
+            detail:
+              "Phase claimant failed or was interrupted; reconcile ownership before replacement.",
+          });
+          yield* reconcile(
+            input,
+            (!owner.claims.has("session") && !owner.claims.has("turn")) ||
+              input.phase === "capture",
+          );
+          return yield* Effect.failCause(result.cause);
+        }
+        const current = yield* binding(input);
+        if (current?.stopRequested)
+          yield* reconcile(
+            input,
+            (!owner.claims.has("session") && !owner.claims.has("turn")) ||
+              input.phase === "capture",
+          );
+        return result.value;
+      }),
+    );
+  });
   return FactoryExecutionLifecycle.of({
     binding,
     guardCommand: Effect.fn("FactoryExecutionLifecycle.guardCommand")(function* (command) {
@@ -187,6 +291,16 @@ const make = Effect.gen(function* () {
       if (command.type === "prepared-run.fail" && command.runId === managed.runId) return;
       if (command.type === "thread.delete" && !managed.quiescent)
         return yield* new FactoryExecutionError({ reason: "not-quiescent" });
+      if (command.type === "runtime-request.respond") {
+        const sessionId = yield* FactoryRuntimeResponseSession;
+        if (
+          sessionId !== undefined &&
+          command.decision !== "acceptForSession" &&
+          command.decision !== "acceptAlways" &&
+          (command.decision !== undefined || command.answers !== undefined)
+        )
+          return;
+      }
       const authority = yield* FactoryNativeAuthority;
       if (
         authority === managed.runAttemptId &&
@@ -216,86 +330,18 @@ const make = Effect.gen(function* () {
         return yield* new FactoryExecutionError({ reason: "grant-inactive" });
       }
     }),
-    runPhase: Effect.fn("FactoryExecutionLifecycle.runPhase")(function* <A, E, R>(
-      input: Identity & { readonly phase: Phase },
+    runPhase,
+    respond: Effect.fn("FactoryExecutionLifecycle.respond")(function* <A, E, R>(
+      input: Omit<FactoryExecutionStore.FactoryRuntimeResponseCheck, "expectedStatus">,
       work: Effect.Effect<A, E, R>,
     ) {
-      const managed = yield* binding(input);
-      if (managed === null) return yield* work;
-      const claimantId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
-      return yield* Effect.uninterruptibleMask((restore) =>
-        Effect.gen(function* () {
-          const claim = yield* store.claimPhase({
-            runAttemptId: input.runAttemptId,
-            phase: input.phase,
-            claimantId,
-            ...(input.phase === "capture"
-              ? { captureGeneration: input.captureGeneration ?? 1 }
-              : {}),
-          });
-          if (claim.status !== "claimed") {
-            if (claim.status === "suppressed")
-              yield* reconcile(input).pipe(
-                Effect.catchIf(
-                  (error): error is FactoryExecutionError => isFactoryExecutionError(error),
-                  (error) =>
-                    error.reason === "not-quiescent" ? Effect.succeed(false) : Effect.fail(error),
-                ),
-              );
-            return yield* new FactoryExecutionError({
-              reason: claim.status === "held" ? "not-quiescent" : "grant-inactive",
-            });
-          }
-          let owner = owners.get(input.runAttemptId);
-          if (owner === undefined) {
-            owner = { process: yield* processFactory.make(), claims: new Map() };
-            owners.set(input.runAttemptId, owner);
-          }
-          if (input.phase === "capture") {
-            const previous = owner.claims.get("capture");
-            if (previous !== undefined && (!previous.joined || !previous.settled))
-              return yield* new FactoryExecutionError({ reason: "not-quiescent" });
-            owner.captureProcess = yield* processFactory.make();
-          }
-          const processOwner = input.phase === "capture" ? owner.captureProcess! : owner.process;
-          const record = {
-            claimantId,
-            joined: false,
-            settled: false,
-            done: yield* Deferred.make<void>(),
-          };
-          owner.claims.set(input.phase, record);
-          const result = yield* restore(
-            work.pipe(
-              Effect.provideService(OwnedProcess, processOwner.spawner),
-              Effect.provideService(FactoryNativeAuthority, input.runAttemptId),
-            ),
-          ).pipe(Effect.exit);
-          record.joined = true;
-          yield* Deferred.succeed(record.done, undefined);
-          if (Exit.isFailure(result)) {
-            yield* store.requestNativeStop({
-              threadId: input.threadId,
-              runId: input.runId,
-              detail:
-                "Phase claimant failed or was interrupted; reconcile ownership before replacement.",
-            });
-            yield* reconcile(
-              input,
-              (!owner.claims.has("session") && !owner.claims.has("turn")) ||
-                input.phase === "capture",
-            );
-            return yield* Effect.failCause(result.cause);
-          }
-          const current = yield* binding(input);
-          if (current?.stopRequested)
-            yield* reconcile(
-              input,
-              (!owner.claims.has("session") && !owner.claims.has("turn")) ||
-                input.phase === "capture",
-            );
-          return result.value;
-        }),
+      const managed = yield* store.authorizeRuntimeResponse({
+        ...input,
+        expectedStatus: "resolved",
+      });
+      return yield* runPhase(
+        { ...managed, phase: `response:${input.requestId}`, runtimeResponse: input },
+        work,
       );
     }),
     recover: Effect.fn("FactoryExecutionLifecycle.recover")(function* (input) {

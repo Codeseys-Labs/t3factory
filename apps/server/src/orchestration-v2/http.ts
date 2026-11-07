@@ -8,6 +8,7 @@ import * as Result from "effect/Result";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
+import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import {
@@ -19,6 +20,7 @@ import {
 } from "../auth/http.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { traceLocalHandlerWork } from "../cloud/traceRelayRequest.ts";
+import * as FactoryExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
 import {
@@ -56,6 +58,7 @@ export const layer = HttpApiBuilder.group(
     const threadManagement = yield* ThreadManagementService.ThreadManagementService;
     const applicationEvents = yield* OrchestrationEventStore.OrchestrationEventStore;
     const projectStore = yield* ProjectStore.ProjectStoreV2;
+    const factoryBindings = yield* FactoryExecutionStore.FactoryExecutionStore;
     const projectEnrichment = yield* ProjectEnrichmentService.ProjectEnrichmentService;
 
     const enrichProjectShells = Effect.fn("http.orchestration.enrichProjectShells")(
@@ -104,10 +107,16 @@ export const layer = HttpApiBuilder.group(
         | "orchestration_thread_history_failed",
     ) {
       return yield* threadManagement.getThreadSnapshot(threadId).pipe(
-        Effect.map((snapshot) => ({
-          ...snapshot,
-          projection: projectThreadProjectionForWire(snapshot.projection),
-        })),
+        Effect.flatMap((snapshot) =>
+          factoryBindings.findNativeBinding({ threadId }).pipe(
+            Effect.map((binding) => ({
+              ...snapshot,
+              projection: projectThreadProjectionForWire(snapshot.projection, {
+                managedThread: binding !== null,
+              }),
+            })),
+          ),
+        ),
         Effect.catch(
           Effect.fnUntraced(function* (error) {
             if (isThreadNotFound(error)) {
@@ -142,10 +151,16 @@ export const layer = HttpApiBuilder.group(
             ...(anchorThreadId === undefined ? {} : { anchorThreadId }),
           })
           .pipe(
-            Effect.map((snapshot) => ({
-              ...snapshot,
-              projection: projectThreadProjectionForWire(snapshot.projection),
-            })),
+            Effect.flatMap((snapshot) =>
+              factoryBindings.findNativeBinding({ threadId }).pipe(
+                Effect.map((binding) => ({
+                  ...snapshot,
+                  projection: projectThreadProjectionForWire(snapshot.projection, {
+                    managedThread: binding !== null,
+                  }),
+                })),
+              ),
+            ),
             Effect.catch(
               Effect.fnUntraced(function* (error) {
                 if (isThreadNotFound(error)) {
@@ -286,4 +301,4 @@ export const layer = HttpApiBuilder.group(
         }),
       );
   }),
-);
+).pipe(Layer.provide(FactoryExecutionStore.layer));

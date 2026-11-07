@@ -1,4 +1,5 @@
 import {
+  AuthSessionId,
   CheckpointId,
   CheckpointScopeId,
   CommandId,
@@ -33,12 +34,32 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { forkParked } from "../serverActivation.ts";
 
 export const OrchestrationEffectRequestV2 = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("factory.execution.prepare"), runId: RunId, runAttemptId: RunAttemptId }),
-  Schema.Struct({ type: Schema.Literal("factory.execution.stop"), runId: RunId, runAttemptId: RunAttemptId, nativeInterruptPlanned: Schema.optional(Schema.Boolean) }),
-  Schema.Struct({ type: Schema.Literal("factory.execution.advance"), ref: FactoryPlanRef, revision: Schema.Number }),
-  Schema.Struct({ type: Schema.Literal("factory.execution.finalize"), runId: RunId, runAttemptId: RunAttemptId,
-    scopeId: CheckpointScopeId, providerThreadId: ProviderThreadId, driver: ProviderDriverKind, providerInstanceId: ProviderInstanceId,
-    captureGeneration: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))) }),
+  Schema.Struct({
+    type: Schema.Literal("factory.execution.prepare"),
+    runId: RunId,
+    runAttemptId: RunAttemptId,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("factory.execution.stop"),
+    runId: RunId,
+    runAttemptId: RunAttemptId,
+    nativeInterruptPlanned: Schema.optional(Schema.Boolean),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("factory.execution.advance"),
+    ref: FactoryPlanRef,
+    revision: Schema.Number,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("factory.execution.finalize"),
+    runId: RunId,
+    runAttemptId: RunAttemptId,
+    scopeId: CheckpointScopeId,
+    providerThreadId: ProviderThreadId,
+    driver: ProviderDriverKind,
+    providerInstanceId: ProviderInstanceId,
+    captureGeneration: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
+  }),
   Schema.Struct({
     type: Schema.Literal("provider-runtime.continue"),
     sourceRunId: RunId,
@@ -93,6 +114,12 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     decision: Schema.optional(ProviderApprovalDecision),
     feedback: Schema.optional(Schema.String),
     answers: Schema.optional(ProviderUserInputAnswers),
+    factoryAuthorization: Schema.optional(
+      Schema.Struct({
+        sessionId: AuthSessionId,
+        runAttemptId: RunAttemptId,
+      }),
+    ),
   }),
   Schema.Struct({
     type: Schema.Literal("provider-thread.rollback"),

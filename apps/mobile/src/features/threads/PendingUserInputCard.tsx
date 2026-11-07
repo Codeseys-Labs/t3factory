@@ -209,8 +209,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
       >
         {!canRespond ? (
           <Text className="font-sans text-sm leading-5 text-foreground-muted">
-            The provider process for this request is no longer available. Interrupt or restart the
-            run to continue.
+            This request cannot be answered in this thread.
           </Text>
         ) : null}
         {props.pendingUserInput.questions.map((question) => {

@@ -53,6 +53,9 @@ it.effect(
         ),
         guardCommand: Effect.fn("Testkit.guardCommand")(() => Effect.void),
         runPhase: (() => Effect.void) as never,
+        respond: Effect.fn("Testkit.respond")(() =>
+          Effect.die("Recovery must not answer requests"),
+        ),
         recover: Effect.fn("Testkit.recover")(() => Effect.void),
         stop: Effect.fn("Testkit.stop")(() => Effect.succeed(true)),
         quiesce: Effect.fn("Testkit.quiesce")(() => Effect.succeed(true)),

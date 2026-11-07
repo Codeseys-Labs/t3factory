@@ -1205,16 +1205,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     hiddenBlockCount: expandedControlsHiddenBlockCount,
     iconOnlyBlockCount: expandedControlsIconOnlyBlockCount,
   } = useRestingComposerControlsLayout(null, true);
+  const pendingQuestionUnavailable = activePendingUserInput?.responseCapability === "not_resumable";
   const pendingPrimaryAction = activePendingProgress
     ? {
         questionIndex: activePendingProgress.questionIndex,
         isLastQuestion: activePendingProgress.isLastQuestion,
         canAdvance:
           activePendingProgress.canAdvance &&
+          !pendingQuestionUnavailable &&
           !attachmentBlockReason &&
           !(questionPreparations[attachmentTargetKey] ?? 0),
-        isResponding: activePendingIsResponding,
-        isComplete: Boolean(activePendingResolvedAnswers),
+        isResponding: activePendingIsResponding && !pendingQuestionUnavailable,
+        isComplete: Boolean(activePendingResolvedAnswers) && !pendingQuestionUnavailable,
       }
     : null;
   const showResumeAction =

@@ -39,6 +39,9 @@ import {
   orchestrationCommandsTotal,
 } from "../observability/Metrics.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
+import { subscribeOrchestrationV2Thread } from "../ws.ts";
+import * as ThreadManagement from "./ThreadManagementService.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as DelegatedTaskQuestionReactor from "./DelegatedTaskQuestionReactor.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
@@ -47,6 +50,7 @@ import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
+import * as WireProjection from "./WireProjection.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
 const isOrchestratorDispatchError = Schema.is(Orchestrator.OrchestratorDispatchError);
@@ -409,6 +413,230 @@ it.effect.each(["dismiss", "settle"] as const)(
       assert.deepEqual(projection.runs, []);
       assert.deepEqual(yield* outbox.listByCommandId(commandId), []);
     }).pipe(Effect.provide(layerManagedQuestion));
+  },
+);
+
+it.effect(
+  "presents managed message-mode questions as not resumable on the wire while keeping them dismissable",
+  () => {
+    const threadId = ThreadId.make("thread:managed-question-wire");
+    const projectId = ProjectId.make("project:managed-question-wire");
+    const requestId = RuntimeRequestId.make("request:managed-question-wire");
+    const nodeId = NodeId.make("node:managed-question-wire");
+    const itemId = TurnItemId.make("item:managed-question-wire");
+    const binding: FactoryExecutionBinding = {
+      selection: {
+        ref: { environmentId: EnvironmentId.make("local"), projectId, rootId: "plan" },
+        revision: 1,
+        taskId: "question",
+      },
+      grantVersion: 1,
+      taskVersion: 1,
+      commandId: CommandId.make("admit:managed-question-wire"),
+      threadId,
+      runId: RunId.make("run:managed-question-wire"),
+      runAttemptId: RunAttemptId.make("attempt:managed-question-wire"),
+      driver: adapter.driver,
+      spec: {
+        taskId: "question",
+        modelSelection,
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        workspaceStrategy: { type: "root" },
+        setup: "deny",
+        output: { slot: "draft", kind: "sealed-draft" },
+      },
+      inputDigest: "a".repeat(64),
+      inputText: "Frozen question",
+      prerequisites: [],
+      admittedAt: "2026-11-05T00:00:00.000Z",
+      stopRequested: true,
+      quiescent: true,
+    };
+    const factoryLifecycleLayer = FactoryExecutionLifecycle.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          NodeCrypto.layer,
+          Layer.mock(FactoryExecutionStore.FactoryExecutionStore)({
+            findNativeBinding: (input) =>
+              Effect.succeed(input.threadId === threadId ? binding : null),
+          }),
+        ),
+      ),
+    );
+    const layerManagedQuestionWire = Layer.mergeAll(
+      layerDatabase,
+      ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
+      OrchestrationEventStore.layer.pipe(Layer.provide(layerDatabase)),
+      EffectOutbox.layer.pipe(Layer.provide(layerDatabase)),
+      ProviderReplayHarness.layerWithRegistry(
+        { name: "managed-question-wire" },
+        ProviderAdapterRegistry.layerFromAdapters([adapter]),
+        { databaseLayer: layerDatabase, runEffectWorker: false, factoryLifecycleLayer },
+      ),
+    );
+
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const outbox = yield* EffectOutbox.EffectOutboxV2;
+      const now = yield* DateTime.now;
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("create:managed-question-wire"),
+        threadId,
+        projectId,
+        title: "Managed question",
+        modelSelection,
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* projections.apply({
+        id: EventId.make("request:managed-question-wire"),
+        type: "runtime-request.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: requestId,
+          nodeId,
+          providerTurnId: null,
+          nativeRequestRef: null,
+          kind: "user_input",
+          status: "pending",
+          responseCapability: { type: "message" },
+          createdAt: now,
+          resolvedAt: null,
+        },
+      });
+      yield* projections.apply({
+        id: EventId.make("node:managed-question-wire"),
+        type: "node.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: nodeId,
+          threadId,
+          runId: null,
+          parentNodeId: null,
+          rootNodeId: nodeId,
+          kind: "user_input_request",
+          status: "waiting",
+          countsForRun: false,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          runtimeRequestId: requestId,
+          checkpointScopeId: null,
+          startedAt: now,
+          completedAt: null,
+        },
+      });
+      yield* projections.apply({
+        id: EventId.make("item:managed-question-wire"),
+        type: "turn-item.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: itemId,
+          threadId,
+          runId: null,
+          nodeId,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: 0,
+          status: "waiting",
+          title: null,
+          startedAt: now,
+          completedAt: null,
+          updatedAt: now,
+          type: "user_input_request",
+          requestId,
+          responseMode: "message",
+          questions: [{ id: "choice", header: "Choice", question: "Continue?", options: [] }],
+        },
+      });
+
+      const projection = yield* projections.getThreadProjection(threadId);
+      // The authoritative rows keep message-mode eligibility: dismissal and settle
+      // cancellation read this, so they must not be rewritten at persist time.
+      assert.equal(
+        projection.runtimeRequests.find((request) => request.id === requestId)?.responseCapability
+          .type,
+        "message",
+      );
+      // Unmanaged readers see the request unchanged.
+      assert.equal(
+        WireProjection.projectThreadProjectionForWire(projection).runtimeRequests.find(
+          (request) => request.id === requestId,
+        )?.responseCapability.type,
+        "message",
+      );
+      // Managed readers see the pending question as not resumable, while the turn item keeps
+      // responseMode "message" so dismissal stays available.
+      const wire = WireProjection.projectThreadProjectionForWire(projection, {
+        managedThread: true,
+      });
+      const wireRequest = wire.runtimeRequests.find((request) => request.id === requestId);
+      assert.equal(wireRequest?.status, "pending");
+      assert.equal(wireRequest?.responseCapability.type, "not_resumable");
+      const wireItem = wire.turnItems.find((item) => item.id === itemId);
+      assert.ok(wireItem?.type === "user_input_request");
+      assert.equal(wireItem?.responseMode, "message");
+      assert.deepEqual(wireItem?.questions, [
+        { id: "choice", header: "Choice", question: "Continue?", options: [] },
+      ]);
+
+      const applicationEvents = yield* OrchestrationEventStore.OrchestrationEventStore;
+      const snapshotSequence = yield* applicationEvents.latestAgentSequence(threadId);
+      const resumed = yield* subscribeOrchestrationV2Thread({
+        threadId,
+        managedThread: true,
+        afterSequence: snapshotSequence,
+        requestCompletionMarker: true,
+      }).pipe(
+        Effect.flatMap((stream) => stream.pipe(Stream.take(1), Stream.runCollect)),
+        Effect.provide(
+          Layer.mock(ThreadManagement.ThreadManagementService)({
+            ensureLegacyTranscript: () => Effect.void,
+            getThreadRecords: orchestrator.getThreadRecords,
+            getThreadSnapshot: orchestrator.getThreadSnapshot,
+            streamStoredEventsFrom: () => Stream.empty,
+          }),
+        ),
+      );
+      assert.equal(resumed[0]?.kind, "snapshot");
+      if (resumed[0]?.kind === "snapshot") {
+        assert.equal(
+          resumed[0].projection.runtimeRequests.find((request) => request.id === requestId)
+            ?.responseCapability.type,
+          "not_resumable",
+        );
+      }
+
+      // Read-path projection must not disturb cancellation: dismissal stays metadata-only.
+      const commandId = CommandId.make("cancel:managed-question-wire");
+      yield* orchestrator.dispatch({
+        type: "thread.user-input.dismiss",
+        commandId,
+        threadId,
+        requestId,
+      });
+      const response = yield* projections.getRuntimeResponseContext(threadId, requestId);
+      assert.equal(response.request?.status, "resolved");
+      assert.equal(response.request?.decision, "cancel");
+      assert.equal(response.node?.status, "cancelled");
+      assert.equal(response.item?.status, "cancelled");
+      const after = yield* projections.getThreadProjection(threadId);
+      assert.deepEqual(after.messages, []);
+      assert.deepEqual(after.runs, []);
+      assert.deepEqual(yield* outbox.listByCommandId(commandId), []);
+    }).pipe(Effect.provide(layerManagedQuestionWire));
   },
 );
 

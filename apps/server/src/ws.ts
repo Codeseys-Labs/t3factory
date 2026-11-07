@@ -178,6 +178,7 @@ import {
 import { dedupeSnapshotBodies } from "@t3tools/shared/orchestrationV2DedupedBodies";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
 import * as ThreadSearch from "./orchestration-v2/ThreadSearch.ts";
+import * as FactoryExecutionStore from "./persistence/FactoryExecutionStore.ts";
 import * as OrchestrationEventStore from "./persistence/OrchestrationEventStore.ts";
 import { userFacingDispatchErrorMessage } from "./orchestration-v2/UserFacingErrors.ts";
 import * as ProviderRegistry from "./provider/ProviderRegistry.ts";
@@ -786,6 +787,7 @@ export const subscribeOrchestrationV2Thread = Effect.fn("ws.orchestrationV2.subs
   function* (input: {
     readonly threadId: ThreadId;
     readonly afterSequence?: number;
+    readonly managedThread?: boolean;
     readonly requestCompletionMarker?: boolean;
     readonly acceptBoundedSnapshot?: boolean;
     readonly acceptDeferredWork?: boolean;
@@ -795,6 +797,8 @@ export const subscribeOrchestrationV2Thread = Effect.fn("ws.orchestrationV2.subs
   }) {
     const threadManagement = yield* ThreadManagementService.ThreadManagementService;
     const dedupeBodies = input.acceptDedupedBodies === true;
+    const managedThread = input.managedThread === true;
+    const managedWireOptions = managedThread ? { managedThread: true } : undefined;
     // Replay, snapshot, and live tail share one deduper: it must see every delivered record.
     const withLiveDedupe = <E, R>(stream: Stream.Stream<OrchestrationV2ThreadStreamItem, E, R>) =>
       dedupeBodies ? Stream.suspend(() => Stream.map(stream, makeLiveBodyDeduper())) : stream;
@@ -824,7 +828,7 @@ export const subscribeOrchestrationV2Thread = Effect.fn("ws.orchestrationV2.subs
           Stream.map((stored) => ({
             kind: "event" as const,
             sequence: stored.sequence,
-            event: projectDomainEventForWire(stored.event),
+            event: projectDomainEventForWire(stored.event, managedWireOptions),
           })),
           coalesceThreadLiveStream,
           Stream.mapError(
@@ -851,7 +855,7 @@ export const subscribeOrchestrationV2Thread = Effect.fn("ws.orchestrationV2.subs
           Stream.map((stored) => ({
             kind: "event" as const,
             sequence: stored.sequence,
-            event: projectDomainEventForWire(stored.event),
+            event: projectDomainEventForWire(stored.event, managedWireOptions),
           })),
           Stream.runCollect,
           Effect.map((items) => Array.from(items)),
@@ -894,12 +898,16 @@ export const subscribeOrchestrationV2Thread = Effect.fn("ws.orchestrationV2.subs
       const snapshotItem = useBoundedSnapshot
         ? buildBoundedThreadStreamSnapshot({
             ...snapshot,
+            managedThread,
             compactTurnItems: input.acceptCompactTurnItems === true,
             dedupeBodies,
             compactIds: input.acceptCompactIds === true,
           })
         : (() => {
-            const projection = projectThreadProjectionForWire(snapshot.projection);
+            const projection = projectThreadProjectionForWire(
+              snapshot.projection,
+              managedWireOptions,
+            );
             return {
               kind: "snapshot" as const,
               snapshotSequence,
@@ -915,6 +923,31 @@ export const subscribeOrchestrationV2Thread = Effect.fn("ws.orchestrationV2.subs
 
     // Subscribe before reading persisted events to retain concurrent publishes; clients dedupe overlap by sequence.
     if (input.afterSequence !== undefined) {
+      if (managedThread) {
+        const { runtimeRequests } = yield* threadManagement
+          .getThreadRecords(input.threadId, ["runtimeRequests"])
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new OrchestrationV2GetThreadProjectionError({
+                  threadId: input.threadId,
+                  message: `Failed to refresh managed question availability for ${input.threadId}`,
+                  cause,
+                }),
+            ),
+          );
+        // A replay cursor cannot invalidate answerability already cached before managed policy applied.
+        if (
+          runtimeRequests.some(
+            (request) =>
+              request.status === "pending" &&
+              request.kind === "user_input" &&
+              request.responseCapability.type === "message",
+          )
+        ) {
+          return yield* snapshotThenLive();
+        }
+      }
       const highWater = yield* applicationEvents.latestAgentSequence(input.threadId).pipe(
         Effect.mapError(
           (cause) =>
@@ -1242,6 +1275,22 @@ export const layerWsRpc = (
       const currentSessionId = currentSession.sessionId;
       const sql = yield* SqlClient.SqlClient;
       const threadManagement = yield* ThreadManagementService.ThreadManagementService;
+      const factoryBindings = yield* FactoryExecutionStore.FactoryExecutionStore;
+      const managedThreadOf = Effect.fn("ws.orchestrationV2.managedThreadOf")(function* (
+        threadId: ThreadId,
+      ) {
+        return yield* factoryBindings.findNativeBinding({ threadId }).pipe(
+          Effect.map((binding) => binding !== null),
+          Effect.mapError(
+            (cause) =>
+              new OrchestrationV2GetThreadProjectionError({
+                threadId,
+                message: `Failed to read the factory binding for thread ${threadId}`,
+                cause,
+              }),
+          ),
+        );
+      });
       const intakeContext = yield* Effect.context<
         | ThreadManagementService.ThreadManagementService
         | ThreadLaunchService.ThreadLaunchService
@@ -2034,29 +2083,33 @@ export const layerWsRpc = (
           ).pipe(Effect.map(({ threads }) => ({ threadIds: threads.map((thread) => thread.id) }))),
         [ORCHESTRATION_V2_WS_METHODS.getThreadProjection]: (input) =>
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
+            Effect.andThen(managedThreadOf(input.threadId)),
             Effect.andThen(
               // Bound compatibility snapshots so pre-pagination clients cannot materialize unlimited transcripts.
-              threadManagement
-                .getThreadSnapshotWindow(input.threadId, {
-                  rowLimit: THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,
-                })
-                .pipe(
-                  Effect.map(
-                    (snapshot) =>
-                      buildBoundedThreadProjection({
-                        projection: projectThreadProjectionForWire(snapshot.projection),
-                        snapshotSequence: snapshot.snapshotSequence,
-                      }).projection,
+              (managedThread) =>
+                threadManagement
+                  .getThreadSnapshotWindow(input.threadId, {
+                    rowLimit: THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,
+                  })
+                  .pipe(
+                    Effect.map(
+                      (snapshot) =>
+                        buildBoundedThreadProjection({
+                          projection: projectThreadProjectionForWire(snapshot.projection, {
+                            managedThread,
+                          }),
+                          snapshotSequence: snapshot.snapshotSequence,
+                        }).projection,
+                    ),
+                    Effect.mapError(
+                      (cause) =>
+                        new OrchestrationV2GetThreadProjectionError({
+                          threadId: input.threadId,
+                          message: `Failed to load orchestration V2 thread ${input.threadId}`,
+                          cause,
+                        }),
+                    ),
                   ),
-                  Effect.mapError(
-                    (cause) =>
-                      new OrchestrationV2GetThreadProjectionError({
-                        threadId: input.threadId,
-                        message: `Failed to load orchestration V2 thread ${input.threadId}`,
-                        cause,
-                      }),
-                  ),
-                ),
             ),
           ),
         [ORCHESTRATION_V2_WS_METHODS.launchThread]: (input) =>
@@ -2119,10 +2172,28 @@ export const layerWsRpc = (
                             Effect.ignore,
                           ),
                   ),
-                  Effect.map((result) => ({
-                    ...result,
-                    projection: projectThreadProjectionForWire(result.projection),
-                  })),
+                  Effect.andThen((result) =>
+                    factoryBindings
+                      .findNativeBinding({ threadId: result.projection.thread.id })
+                      .pipe(
+                        Effect.map((binding) => binding !== null),
+                        Effect.map((managedThread) => ({
+                          ...result,
+                          projection: projectThreadProjectionForWire(result.projection, {
+                            managedThread,
+                          }),
+                        })),
+                        Effect.mapError(
+                          (cause) =>
+                            new OrchestrationV2ThreadLaunchError({
+                              commandId: input.commandId,
+                              projectId: input.projectId,
+                              message: "Failed to read the factory binding for the launched thread",
+                              cause,
+                            }),
+                        ),
+                      ),
+                  ),
                   Effect.catchTags({
                     AttachmentClaimError: (cause) =>
                       new OrchestrationV2ThreadLaunchError({
@@ -2161,7 +2232,10 @@ export const layerWsRpc = (
         [ORCHESTRATION_V2_WS_METHODS.subscribeThread]: (input) =>
           Stream.unwrap(
             Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
-              Effect.andThen(subscribeOrchestrationV2Thread(input)),
+              Effect.andThen(managedThreadOf(input.threadId)),
+              Effect.andThen((managedThread) =>
+                subscribeOrchestrationV2Thread({ ...input, managedThread }),
+              ),
             ),
           ),
         [ORCHESTRATION_V2_WS_METHODS.subscribeCommandOutput]: (input) =>
@@ -3396,6 +3470,7 @@ export const layer = Layer.unwrap(
     const factoryWork = yield* FactoryWorkService.FactoryWorkService;
     const factoryPlans = yield* FactoryPlanService.FactoryPlanService;
     const factoryExecution = yield* FactoryExecutionService.FactoryExecutionService;
+    const factoryBindings = yield* FactoryExecutionStore.FactoryExecutionStore;
     const factoryPreparation =
       yield* FactoryPreparationAcceptanceService.FactoryPreparationAcceptanceService;
     const factoryAcceptance = yield* FactoryAcceptanceService.FactoryAcceptanceService;
@@ -3497,6 +3572,9 @@ export const layer = Layer.unwrap(
                   Layer.succeed(FactoryExecutionService.FactoryExecutionService, factoryExecution),
                 ),
                 Layer.provide(
+                  Layer.succeed(FactoryExecutionStore.FactoryExecutionStore, factoryBindings),
+                ),
+                Layer.provide(
                   Layer.succeed(
                     FactoryPreparationAcceptanceService.FactoryPreparationAcceptanceService,
                     factoryPreparation,
@@ -3568,4 +3646,4 @@ export const layer = Layer.unwrap(
       ),
     );
   }),
-);
+).pipe(Layer.provide(FactoryExecutionStore.layer));

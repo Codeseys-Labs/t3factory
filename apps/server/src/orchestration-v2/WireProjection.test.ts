@@ -5,6 +5,7 @@ import {
   MessageId,
   ContextHandoffId,
   ProviderThreadId,
+  ProviderSessionId,
   NodeId,
   EventId,
   ProjectId,
@@ -12,6 +13,8 @@ import {
   ProviderInstanceId,
   ThreadId,
   TurnItemId,
+  type OrchestrationV2RuntimeRequest,
+  RuntimeRequestId,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2ThreadStreamItem,
@@ -316,6 +319,56 @@ describe("orchestration V2 wire projection", () => {
     expect(JSON.stringify(projected)).not.toContain("PRIVATE_BODY");
     expect(event.payload.output).toBe(output);
     expect(projectDomainEventForWire(projected)).toEqual(projected);
+  });
+
+  it("applies the managed policy to runtime-request events without allocating for other reads", () => {
+    const managedQuestion: OrchestrationV2RuntimeRequest = {
+      id: RuntimeRequestId.make("request:managed-event"),
+      nodeId: NodeId.make("node:managed-event"),
+      providerTurnId: null,
+      nativeRequestRef: null,
+      kind: "user_input",
+      status: "pending",
+      responseCapability: { type: "message" },
+      createdAt: base.startedAt,
+      resolvedAt: null,
+    };
+    const event = {
+      id: EventId.make("event:managed-request"),
+      type: "runtime-request.updated" as const,
+      threadId: base.threadId,
+      occurredAt: base.updatedAt,
+      payload: managedQuestion,
+    };
+
+    const projected = projectDomainEventForWire(event, { managedThread: true });
+    expect(projected).toMatchObject({
+      type: "runtime-request.updated",
+      payload: { responseCapability: { type: "not_resumable" } },
+    });
+    expect(projectDomainEventForWire(projected, { managedThread: true })).toEqual(projected);
+    expect(event.payload.responseCapability).toEqual({ type: "message" });
+    expect(projectDomainEventForWire(event)).toBe(event);
+    const unchanged = [
+      {
+        ...managedQuestion,
+        status: "resolved",
+        decision: "cancel",
+        resolvedAt: base.updatedAt,
+      },
+      {
+        ...managedQuestion,
+        responseCapability: {
+          type: "live",
+          providerSessionId: ProviderSessionId.make("session:live-question"),
+        },
+      },
+      { ...managedQuestion, kind: "command" },
+    ] satisfies ReadonlyArray<OrchestrationV2RuntimeRequest>;
+    for (const payload of unchanged) {
+      const untouched = { ...event, payload };
+      expect(projectDomainEventForWire(untouched, { managedThread: true })).toBe(untouched);
+    }
   });
 });
 

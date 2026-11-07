@@ -1112,13 +1112,20 @@ const layerBase: Layer.Layer<
             }
           }
           if (input?.bounded === true) {
+            const managedThread =
+              input.threadId !== undefined &&
+              (yield* factoryExecutions.findNativeBinding({ threadId: input.threadId })) !== null;
+            const managedWireOptions = managedThread ? { managedThread: true } : undefined;
             return replayAndBufferProjectedLiveEvents({
               subscribe: PubSub.subscribe(pubsub),
               latestSequence: eventStore.latestSequence(),
               afterSequence,
               filter: matches,
               replay,
-              project: (stored) => ({ ...stored, event: projectDomainEventForWire(stored.event) }),
+              project: (stored) => ({
+                ...stored,
+                event: projectDomainEventForWire(stored.event, managedWireOptions),
+              }),
             });
           }
           const subscription = yield* PubSub.subscribe(pubsub);

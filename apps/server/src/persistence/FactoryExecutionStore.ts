@@ -242,6 +242,34 @@ const decodeOutcome = Schema.decodeEffect(
     }),
   ),
 );
+type PrerequisiteProvenance = {
+  readonly checkpoint: NonNullable<FactoryExecutionOutput["checkpoint"]>;
+  readonly passed: boolean;
+  readonly exitCode: number | null;
+  readonly baseRef: string | null;
+};
+const prerequisiteInputText = (
+  edge: FactoryPlanSnapshot["edges"][number],
+  output: FactoryExecutionOutput,
+  text: string,
+  provenance: PrerequisiteProvenance | null,
+) =>
+  [
+    `Prerequisite ${edge.id} from task ${edge.toTaskId}: ${output.kind} output in slot ${output.slot}, status ${output.status}.`,
+    ...(provenance
+      ? [
+          "Checkpoint:",
+          `commit: ${provenance.checkpoint.commit}`,
+          `tree: ${provenance.checkpoint.tree}`,
+          `retainedRef: ${provenance.checkpoint.retainedRef}`,
+          `verification: ${provenance.passed ? "passed" : "failed"} (exit code ${provenance.exitCode ?? "none"})`,
+          `The commit is reachable from any worktree of this repository: git show ${provenance.checkpoint.commit}${provenance.baseRef ? `; git diff ${provenance.baseRef}..${provenance.checkpoint.commit}` : ""}`,
+          "The retained text below is the producer's own account; the checkpoint above is authoritative when they disagree.",
+        ]
+      : []),
+    `Retained text digest: ${output.digest}`,
+    text,
+  ].join("\n");
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -310,8 +338,10 @@ const make = Effect.gen(function* () {
     const grant = yield* getGrant(ref);
     if (!grant || grant.revision !== revision || grant.version !== version)
       return yield* new FactoryExecutionError({ reason: "grant-conflict" });
-    if (grant.revokedAt !== null || Date.parse(grant.policy.expiresAt) <= Date.parse(now))
+    if (grant.revokedAt !== null)
       return yield* new FactoryExecutionError({ reason: "grant-inactive" });
+    if (Date.parse(grant.policy.expiresAt) <= Date.parse(now))
+      return yield* new FactoryExecutionError({ reason: "grant-expired" });
     yield* requireSession(AuthSessionId.make(grant.issuerSessionId));
     return { grant, plan };
   });
@@ -544,7 +574,26 @@ const make = Effect.gen(function* () {
         runId: result.runId,
         runAttemptId: result.runAttemptId,
       });
-      inputs.push(`Prerequisite ${edge.id} (${result.digest}):\n${retained.text}`);
+      let provenance: PrerequisiteProvenance | null = null;
+      if (result.kind === "verified-code" && result.checkpoint) {
+        const evidence = yield* sql<{
+          passed: number | null;
+          code: number | null;
+        }>`SELECT json_extract(evidence_json, '$.passed') AS passed, json_extract(evidence_json, '$.evidence.code') AS code FROM factory_execution_verifications WHERE digest = ${result.checkpoint.verificationDigest} AND attempt_id = ${result.runAttemptId}`.pipe(
+          Effect.mapError(failure),
+        );
+        if (!evidence[0]) return yield* new FactoryExecutionError({ reason: "prerequisite-held" });
+        provenance = {
+          checkpoint: result.checkpoint,
+          passed: evidence[0].passed === 1,
+          exitCode: evidence[0].code,
+          baseRef:
+            producer.spec.workspaceStrategy.type === "worktree"
+              ? producer.spec.workspaceStrategy.baseRef
+              : null,
+        };
+      }
+      inputs.push(prerequisiteInputText(edge, result, retained.text, provenance));
     }
     const inputText = inputs.join("\n\n");
     return {

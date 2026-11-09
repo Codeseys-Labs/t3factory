@@ -402,6 +402,7 @@ const make = Effect.gen(function* () {
             "budget-exhausted",
             "task-conflict",
             "grant-inactive",
+            "grant-expired",
             "grant-conflict",
             "revision-conflict",
           ].includes(launched.failure.reason)

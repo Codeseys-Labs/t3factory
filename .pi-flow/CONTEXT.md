@@ -1,6 +1,6 @@
 # Factory context
 
-This glossary preserves T3's existing terms and the software/research distinction agreed for t3code-factory. It does not specify an implementation.
+This glossary preserves T3's existing terms and the software/research distinction agreed for T3Factory. It does not specify an implementation.
 
 | Term                  | Meaning                                                                                                                                             |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |

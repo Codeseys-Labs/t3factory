@@ -275,6 +275,7 @@ export class FactoryExecutionError extends Schema.TaggedError<FactoryExecutionEr
       "revision-conflict",
       "grant-conflict",
       "grant-inactive",
+      "grant-expired",
       "command-conflict",
       "task-conflict",
       "budget-exhausted",

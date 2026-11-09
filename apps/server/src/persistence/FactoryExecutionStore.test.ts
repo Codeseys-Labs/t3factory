@@ -858,10 +858,20 @@ it.effect(
         ...policy,
         maxConcurrent: 2,
         maxAttempts: 4,
-        tasks: ["R", "C", "D"].map((taskId) => ({ ...policy.tasks[0]!, taskId })),
+        tasks: [
+          { ...policy.tasks[0]!, taskId: "R" },
+          {
+            ...policy.tasks[0]!,
+            taskId: "C",
+            workspaceStrategy: { type: "worktree", baseRef: "a".repeat(40) },
+            verification: { command: "node", args: ["--test"] },
+            output: { slot: "code", kind: "verified-code" },
+          },
+          { ...policy.tasks[0]!, taskId: "D" },
+        ],
         edges: [
           { edgeId: "D-R", slot: "draft", rule: "sealed-draft" },
-          { edgeId: "D-C", slot: "draft", rule: "sealed-draft" },
+          { edgeId: "D-C", slot: "code", rule: "verified-code" },
         ],
       };
       yield* decide({
@@ -931,6 +941,7 @@ it.effect(
       const finish = Effect.fn("test.finish")(function* (
         binding: FactoryExecutionBinding,
         status: "sealed" | "failed",
+        checkpoint: Store.ObserveResultInput["checkpoint"] = null,
       ) {
         yield* nativeTerminal(binding, status === "sealed" ? "completed" : "failed");
         yield* sql`UPDATE factory_execution_bindings SET quiescent = 1, stop_requested = 1 WHERE attempt_id = ${binding.runAttemptId}`;
@@ -941,10 +952,10 @@ it.effect(
               runId: binding.runId,
               runAttemptId: binding.runAttemptId,
               captureKey: "native-final/1",
-              slot: "draft",
+              slot: binding.spec.output.slot,
               text: binding.selection.taskId + " exact bytes",
               status,
-              checkpoint: null,
+              checkpoint,
             },
           },
           { kind: "automation" },
@@ -957,13 +968,54 @@ it.effect(
         .resultId;
       assert.isTrue(Result.isFailure(yield* admitTask("D", "held-draft").pipe(Effect.result)));
       const retried = yield* admitTask("C", "code-retry", code);
-      yield* finish(retried, "sealed");
+      const checkpoint = {
+        commit: "b".repeat(40),
+        tree: "c".repeat(40),
+        retainedRef: `refs/t3/factory/outputs/${executionDigest(retried.runAttemptId)}`,
+        verificationDigest: "d".repeat(64),
+      };
+      yield* sql`INSERT INTO factory_execution_verifications(digest,attempt_id,repository_path,evidence_json) VALUES (${checkpoint.verificationDigest},${retried.runAttemptId},'/fixture',${canonicalExecutionJson({ ...checkpoint, evidence: { code: 0, timedOut: false }, passed: true })})`;
+      yield* finish(retried, "sealed", checkpoint);
+      yield* sql`UPDATE factory_execution_verifications SET attempt_id = 'foreign-attempt'`;
+      const draftInput = {
+        commandId: CommandId.make("draft"),
+        selection: { ...selection, taskId: "D" },
+        grantVersion: 1,
+        expectedTaskVersion: 0,
+      };
+      assert.equal(
+        (yield* store.prepareAdmission(draftInput, human, at).pipe(Effect.flip)).reason,
+        "prerequisite-held",
+      );
+      yield* sql`UPDATE factory_execution_verifications SET attempt_id = ${retried.runAttemptId}`;
       const draft = yield* admitTask("D", "draft");
       assert.equal(draft.prerequisites.length, 2);
-      assert.equal(draft.prerequisites.find((pin) => pin.taskId === "R")!.resultId, researchResult);
+      const [researchPin, codePin] = draft.prerequisites;
+      assert.equal(researchPin!.resultId, researchResult);
+      assert.equal(codePin!.runAttemptId, retried.runAttemptId);
       assert.equal(
-        draft.prerequisites.find((pin) => pin.taskId === "C")!.runAttemptId,
-        retried.runAttemptId,
+        draft.inputText,
+        [
+          "D",
+          "D task",
+          [
+            "Prerequisite D-R from task R: sealed-draft output in slot draft, status sealed.",
+            `Retained text digest: ${researchPin!.digest}`,
+            "R exact bytes",
+          ].join("\n"),
+          [
+            "Prerequisite D-C from task C: verified-code output in slot code, status sealed.",
+            "Checkpoint:",
+            `commit: ${checkpoint.commit}`,
+            `tree: ${checkpoint.tree}`,
+            `retainedRef: ${checkpoint.retainedRef}`,
+            "verification: passed (exit code 0)",
+            `The commit is reachable from any worktree of this repository: git show ${checkpoint.commit}; git diff ${"a".repeat(40)}..${checkpoint.commit}`,
+            "The retained text below is the producer's own account; the checkpoint above is authoritative when they disagree.",
+            `Retained text digest: ${codePin!.digest}`,
+            "C exact bytes",
+          ].join("\n"),
+        ].join("\n\n"),
       );
       const complete = yield* finish(draft, "sealed");
       assert.isTrue(complete.result!.assembly!.complete);
@@ -1220,7 +1272,7 @@ it.effect(
           name: "expired-grant",
           change: sql`UPDATE factory_execution_grants SET grant_json = json_set(grant_json, '$.policy.expiresAt', ${at}) WHERE root_id = ${ref.rootId}`,
           restore: restoreGrant,
-          reason: "grant-inactive",
+          reason: "grant-expired",
         },
         {
           name: "grant-version",

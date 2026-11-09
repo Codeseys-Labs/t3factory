@@ -36,7 +36,7 @@ log beside the receipt, and appends the exit code and output SHA-256:
 
 ```sh
 factory() { vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 -- node scripts/factory-check.ts "$@"; }
-evidence=(--receipt ../factory-evidence/receipt.json --repository baladithyab/t3code-factory --base "$BASE")
+evidence=(--receipt ../factory-evidence/receipt.json --repository Codeseys-Labs/t3factory --base "$BASE")
 factory record "${evidence[@]}" --kind check-changed -- vp run check:changed "$BASE"
 factory record "${evidence[@]}" --kind test -- vp test run <focused test files>
 factory record "${evidence[@]}" --kind build-desktop -- vp run build:desktop
@@ -84,7 +84,7 @@ and must consume this artifact, never rebuild it.
 
    ```sh
    build() { vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 -- node scripts/factory-build.ts "$@"; }
-   evidence=(--receipt ../factory-package/receipt.json --repository baladithyab/t3code-factory --base "$BASE")
+   evidence=(--receipt ../factory-package/receipt.json --repository Codeseys-Labs/t3factory --base "$BASE")
    build record "${evidence[@]}" --kind check-changed -- vp run check:changed "$BASE"
    build record "${evidence[@]}" --kind test -- vp test run <focused test files>
    build record "${evidence[@]}" --kind package -- vp run dist:desktop:artifact --distribution factory-preview --output-dir ../factory-package/zip

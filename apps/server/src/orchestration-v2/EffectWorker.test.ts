@@ -4,6 +4,8 @@ import {
   CheckpointScopeId,
   CommandId,
   NodeId,
+  ProviderDriverKind,
+  ProviderInstanceId,
   ProviderSessionId,
   ProviderThreadId,
   ProviderTurnId,
@@ -12,6 +14,8 @@ import {
   RuntimeRequestId,
   ThreadId,
   VcsProcessExitError,
+  type FactoryExecutionBinding,
+  type OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
@@ -36,6 +40,8 @@ import * as ThreadLaunchService from "./ThreadLaunchService.ts";
 import * as ThreadTitleRegenerationService from "./ThreadTitleRegenerationService.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as FactoryDeliveryService from "../factory/FactoryDeliveryService.ts";
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
+import * as FactoryExecutionService from "../factory/FactoryExecutionService.ts";
 import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -89,8 +95,13 @@ function layerExecutorFor(input: {
   readonly interrupt?: ProviderTurnControlService.ProviderTurnControlServiceV2Shape["interrupt"];
   readonly rollback?: CheckpointRollbackService.CheckpointRollbackServiceV2Shape["execute"];
   readonly respond?: RuntimeRequestService.RuntimeRequestServiceV2["Service"]["respond"];
+  readonly liveSessions?: ReadonlyArray<ProviderSessionId>;
+  readonly lifecycle?: Partial<FactoryExecutionLifecycle.FactoryExecutionLifecycle["Service"]>;
+  readonly execution?: Partial<FactoryExecutionService.FactoryExecutionService["Service"]>;
+  readonly projection?: OrchestrationV2ThreadProjection;
 }) {
   const record = (event: string) => Ref.update(input.events, (events) => [...events, event]);
+  const projection = input.projection;
   const layerDependencies = Layer.mergeAll(
     Layer.succeed(
       ProviderTurnControlService.ProviderTurnControlServiceV2,
@@ -111,10 +122,11 @@ function layerExecutorFor(input: {
         shutdown: Effect.void,
         open: () => Effect.die("unused open"),
         get: () => Effect.succeedNone,
-        isLive: () => Effect.succeed(false),
+        isLive: (providerSessionId) =>
+          Effect.succeed(input.liveSessions?.includes(providerSessionId) ?? false),
         close: () => Effect.void,
         closeInstance: () => Effect.void,
-        release: () => record("release"),
+        release: (request) => record(`release:${request.reason}:${request.providerSessionId}`),
         detach: () => record("detach"),
       }),
     ),
@@ -163,10 +175,16 @@ function layerExecutorFor(input: {
     Layer.provide(
       Layer.mergeAll(
         layerDependencies,
-        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
-        FactoryExecutionTestkit.layerExecutionServiceMock,
+        input.lifecycle === undefined
+          ? FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle
+          : Layer.mock(FactoryExecutionLifecycle.FactoryExecutionLifecycle)(input.lifecycle),
+        Layer.mock(FactoryExecutionService.FactoryExecutionService)(input.execution ?? {}),
         Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
-        ProjectionStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
+        projection === undefined
+          ? ProjectionStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory))
+          : Layer.mock(ProjectionStore.ProjectionStoreV2)({
+              getThreadRecords: () => Effect.succeed(projection),
+            }),
         Layer.mock(ThreadManagementService.ThreadManagementService)(input.threads ?? {}),
         Layer.mock(FactoryDeliveryService.FactoryDeliveryService)({}),
         ServerSettings.layerTest(
@@ -629,5 +647,79 @@ it.effect.each(["confirmed", "unconfirmed", "failed"] as const)(
         yield* Ref.get(events),
         outcome === "confirmed" ? ["stop-child", "settle-child"] : ["stop-child"],
       );
+    }),
+);
+
+it.effect.each([
+  { name: "live session", live: true, attemptStatus: "completed", released: true },
+  { name: "session no longer live", live: false, attemptStatus: "completed", released: false },
+  { name: "attempt still running", live: true, attemptStatus: "running", released: false },
+] as const)(
+  "factory finalization releases only a live terminal session before quiesce: $name",
+  ({ live, attemptStatus, released }) =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const events = yield* Ref.make<ReadonlyArray<string>>([]);
+      const record = (event: string) => Ref.update(events, (current) => [...current, event]);
+      const driver = ProviderDriverKind.make("codex");
+      const providerInstanceId = ProviderInstanceId.make("codex");
+      const captured = {
+        runId,
+        runAttemptId: attemptId,
+        captureKey: "native-final/1",
+        slot: "draft",
+        text: "Sealed draft",
+        status: "sealed" as const,
+        checkpoint: null,
+      };
+      const layer = layerExecutorFor({
+        events,
+        liveSessions: live ? [oldSessionId] : [],
+        lifecycle: {
+          binding: () =>
+            Effect.succeed({
+              driver,
+              spec: { modelSelection: { instanceId: providerInstanceId } },
+            } as FactoryExecutionBinding),
+          runPhase: (_input, work) => work,
+          quiesce: () => record("quiesce").pipe(Effect.as(true)),
+          complete: () => record("complete").pipe(Effect.as(true)),
+        },
+        execution: {
+          readNativeCapture: () => Effect.succeed(null),
+          captureNativeResult: () => record("capture").pipe(Effect.as(captured)),
+          observeResult: (result) =>
+            record(`observe:${result.captureKey}`).pipe(Effect.as({} as never)),
+        },
+        projection: {
+          runs: [{ id: runId, activeAttemptId: attemptId, status: "waiting" }],
+          attempts: [{ id: attemptId, providerThreadId, status: attemptStatus }],
+          providerThreads: [{ id: providerThreadId, providerSessionId: oldSessionId }],
+          checkpoints: [],
+        } as unknown as OrchestrationV2ThreadProjection,
+      });
+      yield* Effect.gen(function* () {
+        const executor = yield* EffectWorker.OrchestrationEffectExecutorV2;
+        yield* executor.execute({
+          ...restartEffect(now, { type: "detach" }),
+          request: {
+            type: "factory.execution.finalize",
+            runId,
+            runAttemptId: attemptId,
+            scopeId: CheckpointScopeId.make("checkpoint-scope:effect-worker-finalize"),
+            captureGeneration: 1,
+            providerThreadId,
+            driver,
+            providerInstanceId,
+          },
+        });
+      }).pipe(Effect.provide(layer));
+      assert.deepEqual(yield* Ref.get(events), [
+        ...(released ? [`release:manual_shutdown:${oldSessionId}`] : []),
+        "quiesce",
+        "capture",
+        "complete",
+        "observe:native-final/1",
+      ]);
     }),
 );

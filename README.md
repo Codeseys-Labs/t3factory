@@ -16,12 +16,12 @@ Open **Factory** for Overview, Issues, Sources, Workflows, and Orchestrator. Use
 explains scope selection, reviewed issue and feed-item starts, orchestrator orientation, and
 workflow dispatch limits.
 
-Fork work is tracked in [this repository's issues](https://github.com/baladithyab/t3code-factory/issues),
-including [the Factory UX specification](https://github.com/baladithyab/t3code-factory/issues/29).
+Fork work is tracked in [this repository's issues](https://github.com/Codeseys-Labs/t3factory/issues),
+including [the Factory UX specification](https://github.com/Codeseys-Labs/t3factory/issues/29).
 Inspiration sources, research, and parity evidence remain in
-[the source register](https://github.com/baladithyab/t3code-factory/issues/1),
-[research](https://github.com/baladithyab/t3code-factory/issues/27), and
-[the design decision](https://github.com/baladithyab/t3code-factory/issues/28).
+[the source register](https://github.com/Codeseys-Labs/t3factory/issues/1),
+[research](https://github.com/Codeseys-Labs/t3factory/issues/27), and
+[the design decision](https://github.com/Codeseys-Labs/t3factory/issues/28).
 Those references do not imply feature parity or source reuse.
 
 The [T3 Factory vision](./docs/factory/vision.md) describes a shared thread-first experience

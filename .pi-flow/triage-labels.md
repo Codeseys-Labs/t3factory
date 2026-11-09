@@ -8,4 +8,4 @@
 | `ready-for-human` | `ready-for-human` | Human implementation needed       |
 | `wontfix`         | `wontfix`         | Will not be actioned              |
 
-These roles apply to issues in `baladithyab/t3code-factory`. A ready label does not grant publication, merge, release, credentials, or compute-spending permission. Wayfinder decision types use separate `wayfinder:*` labels.
+These roles apply to issues in `Codeseys-Labs/t3factory`. A ready label does not grant publication, merge, release, credentials, or compute-spending permission. Wayfinder decision types use separate `wayfinder:*` labels.

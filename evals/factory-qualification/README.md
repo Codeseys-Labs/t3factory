@@ -1,6 +1,6 @@
 # Factory role qualification v1.0.0
 
-Bounded dataset for [#80](https://github.com/baladithyab/t3code-factory/issues/80).
+Bounded dataset for [#80](https://github.com/Codeseys-Labs/t3factory/issues/80).
 This increment contains **60 authored scenarios**, not the requested target of 120.
 None has been run on a model as part of this increment. Source paths, source hashes,
 original case IDs, and acceptance contracts make the curation reviewable.

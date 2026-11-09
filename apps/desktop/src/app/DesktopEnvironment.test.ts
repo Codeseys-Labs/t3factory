@@ -84,7 +84,7 @@ describe("DesktopEnvironment", () => {
 
       assert.equal(factory.baseDir, "/Users/alice/.t3factory");
       assert.equal(factory.stateDir, "/Users/alice/.t3factory/userdata");
-      assert.equal(factory.appUserModelId, "io.github.baladithyab.t3factory");
+      assert.equal(factory.appUserModelId, "io.github.codeseys-labs.t3factory");
       assert.equal(factory.displayName, "T3Factory (Preview)");
       assert.equal(upstream.baseDir, "/Users/alice/.t3");
       assert.equal(upstream.appUserModelId, "com.t3tools.t3code");

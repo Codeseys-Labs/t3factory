@@ -5,7 +5,7 @@ export const DESKTOP_DISTRIBUTIONS = ["t3code", "factory-preview"] as const;
 export type DesktopDistribution = (typeof DESKTOP_DISTRIBUTIONS)[number];
 
 export const FACTORY_PREVIEW_IDENTITY = {
-  appId: "io.github.baladithyab.t3factory",
+  appId: "io.github.codeseys-labs.t3factory",
   productName: "T3Factory (Preview)",
   baseName: "T3Factory",
   artifactPrefix: "T3Factory-",

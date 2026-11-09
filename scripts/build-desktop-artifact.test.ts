@@ -563,14 +563,14 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "factory-preview",
       );
 
-      assert.equal(factory.appId, "io.github.baladithyab.t3factory");
+      assert.equal(factory.appId, "io.github.codeseys-labs.t3factory");
       assert.equal(factory.productName, "T3Factory (Preview)");
       assert.equal(factory.artifactName, "T3Factory-${version}-${arch}.${ext}");
       assert.isNull(factory.publish);
     }).pipe(
       Effect.provide(
         ConfigProvider.layer(
-          ConfigProvider.fromEnv({ env: { GITHUB_REPOSITORY: "baladithyab/t3code-factory" } }),
+          ConfigProvider.fromEnv({ env: { GITHUB_REPOSITORY: "Codeseys-Labs/t3factory" } }),
         ),
       ),
     ),

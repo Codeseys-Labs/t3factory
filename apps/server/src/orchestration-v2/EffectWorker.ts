@@ -139,6 +139,28 @@ export const layerExecutor: Layer.Layer<
               );
             }
             const retained = yield* factoryExecution.readNativeCapture(context);
+            const records = yield* factoryProjections.getThreadRecords(effect.threadId, [
+              "attempts",
+              "providerThreads",
+            ]);
+            const attempt = records.attempts.find((attempt) => attempt.id === request.runAttemptId);
+            const providerSessionId = records.providerThreads.find(
+              (providerThread) => providerThread.id === request.providerThreadId,
+            )?.providerSessionId;
+            // Quiesce kills the owned job; a live session's pump would record that as a crash.
+            if (
+              attempt?.providerThreadId === request.providerThreadId &&
+              attempt.status !== "pending" &&
+              attempt.status !== "running" &&
+              providerSessionId != null &&
+              (yield* providerSessions.isLive(providerSessionId))
+            ) {
+              yield* providerSessions.release({
+                providerSessionId,
+                reason: "manual_shutdown",
+                detail: "Factory finalization: provider writers joined before retained capture.",
+              });
+            }
             if (!(yield* factoryLifecycle.quiesce(context)))
               return yield* Effect.fail("Provider writer ownership remains unknown.");
             const captured =

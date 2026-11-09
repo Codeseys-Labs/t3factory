@@ -49,6 +49,7 @@ import {
 } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 import { CloudManagedEndpointRuntime } from "../cloud/ManagedEndpointRuntime.ts";
+import * as FactoryExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as CommandOutputHub from "../orchestration-v2/CommandOutputHub.ts";
 import { GUEST_FAILURE } from "../orchestration-v2/GuestShareDecider.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
@@ -228,6 +229,7 @@ const threadOf = (event: OrchestrationV2DomainEvent): OrchestrationV2AppThread |
 const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const commandOutputs = yield* CommandOutputHub.CommandOutputHub;
+  const factoryBindings = yield* FactoryExecutionStore.FactoryExecutionStore;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const managedEndpoint = yield* CloudManagedEndpointRuntime;
@@ -523,6 +525,13 @@ const make = Effect.gen(function* () {
    */
   const stream = Effect.fn("GuestShareService.stream")(function* (session: string) {
     const { thread, share } = yield* authorize(session, "session");
+    // Resolve once per stream: a factory binding owns this thread's pending answers, so the
+    // share shows them as not resumable, in the snapshot and the live tail alike.
+    const managedBinding = yield* factoryBindings
+      .findNativeBinding({ threadId: thread.id })
+      .pipe(Effect.mapError(() => inactive));
+    const managedThread = managedBinding !== null;
+    const managedWireOptions = managedThread ? { managedThread: true } : undefined;
     const snapshot = yield* orchestrator
       .getThreadSnapshotWindow(thread.id, {
         rowLimit: SNAPSHOT_ROW_LIMIT,
@@ -556,7 +565,7 @@ const make = Effect.gen(function* () {
         Stream.map((stored) => ({
           kind: "event" as const,
           sequence: stored.sequence,
-          event: projectDomainEventForWire(stored.event),
+          event: projectDomainEventForWire(stored.event, managedWireOptions),
         })),
         // Ending the source here flushes what the coalescer holds, so `ended` is not held back.
         Stream.takeUntil((item) => endsShare(item.event)),
@@ -585,6 +594,7 @@ const make = Effect.gen(function* () {
     const openingSnapshot = buildBoundedThreadStreamSnapshot({
       snapshotSequence: snapshot.snapshotSequence,
       projection: snapshot.projection,
+      managedThread,
     });
     const opening: ReadonlyArray<GuestStreamEvent> = [
       { type: "view", view: initialView },
@@ -745,4 +755,6 @@ const make = Effect.gen(function* () {
   });
 });
 
-export const layer = Layer.effect(GuestShareService, make);
+export const layer = Layer.effect(GuestShareService, make).pipe(
+  Layer.provide(FactoryExecutionStore.layer),
+);

@@ -64,13 +64,16 @@ export function boundedSnapshotResponseFields(input: {
 export function buildBoundedThreadStreamSnapshot(input: {
   readonly snapshotSequence: number;
   readonly projection: OrchestrationV2ThreadProjection;
+  readonly managedThread?: boolean;
   readonly compactTurnItems?: boolean;
   readonly dedupeBodies?: boolean;
   readonly compactIds?: boolean;
 }): ThreadSnapshotStreamItem {
   const bounded = buildBoundedThreadProjection({
     snapshotSequence: input.snapshotSequence,
-    projection: projectThreadProjectionForWire(input.projection),
+    projection: projectThreadProjectionForWire(input.projection, {
+      managedThread: input.managedThread === true,
+    }),
   });
   return {
     kind: "snapshot",

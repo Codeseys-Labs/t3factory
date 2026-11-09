@@ -6,6 +6,9 @@ import {
   type OrchestrationV2ProjectedTurnItem,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2TurnItem,
+  type OrchestrationV2RuntimeRequest,
+  NodeId,
+  RuntimeRequestId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import * as DateTime from "effect/DateTime";
@@ -161,6 +164,37 @@ describe("decideThreadResume", () => {
     expect(snapshot.historyCursor).not.toBeNull();
     expect(snapshot.hasMoreHistory).toBe(true);
     expect(snapshot.latestLocalTurnOrdinal).toBe(80);
+  });
+  it("projects managed message-mode questions as not resumable in bounded snapshots", () => {
+    const pendingQuestion: OrchestrationV2RuntimeRequest = {
+      id: RuntimeRequestId.make("request:managed-bounded"),
+      nodeId: NodeId.make("node:managed-bounded"),
+      providerTurnId: null,
+      nativeRequestRef: null,
+      kind: "user_input",
+      status: "pending",
+      responseCapability: { type: "message" },
+      createdAt: NOW,
+      resolvedAt: null,
+    };
+    const projection = {
+      ...timelineProjection(4),
+      runtimeRequests: [pendingQuestion],
+    } as unknown as OrchestrationV2ThreadProjection;
+
+    const managed = buildBoundedThreadStreamSnapshot({
+      snapshotSequence: 44,
+      projection,
+      managedThread: true,
+    });
+    expect(managed.kind).toBe("snapshot");
+    expect(managed.projection.runtimeRequests[0]?.responseCapability.type).toBe("not_resumable");
+    // Unmanaged snapshots keep the stored row, dismissal included.
+    const unmanaged = buildBoundedThreadStreamSnapshot({
+      snapshotSequence: 44,
+      projection,
+    });
+    expect(unmanaged.projection.runtimeRequests[0]).toBe(pendingQuestion);
   });
 
   it("rejects a 10 MiB raw replay even when its projected form fits the wire budget", () => {

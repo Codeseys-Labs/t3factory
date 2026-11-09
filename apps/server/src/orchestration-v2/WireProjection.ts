@@ -4,6 +4,7 @@ import type {
   NodeId,
   OrchestrationV2Checkpoint,
   OrchestrationV2DomainEvent,
+  OrchestrationV2RuntimeRequest,
   OrchestrationV2ContextHandoff,
   OrchestrationV2Subagent,
   OrchestrationV2ThreadProjection,
@@ -279,9 +280,33 @@ export function projectContextHandoffForWire(
   const { history: _history, delivery: _delivery, ...projected } = handoff;
   return { ...projected, summaryText: "" };
 }
+interface WireProjectionOptions {
+  readonly managedThread?: boolean;
+}
+
+const MANAGED_THREAD_QUESTION_REASON = "This question belongs to a factory-managed thread.";
+
+function projectRuntimeRequestForWire(
+  request: OrchestrationV2RuntimeRequest,
+  options?: WireProjectionOptions,
+): OrchestrationV2RuntimeRequest {
+  if (
+    options?.managedThread !== true ||
+    request.kind !== "user_input" ||
+    request.status !== "pending" ||
+    request.responseCapability.type !== "message"
+  ) {
+    return request;
+  }
+  return {
+    ...request,
+    responseCapability: { type: "not_resumable", reason: MANAGED_THREAD_QUESTION_REASON },
+  };
+}
 
 export function projectThreadProjectionForWire(
   projection: OrchestrationV2ThreadProjection,
+  options?: WireProjectionOptions,
 ): OrchestrationV2ThreadProjection {
   const projectedById = new Map<string, OrchestrationV2TurnItem>();
   const project = (item: OrchestrationV2TurnItem) => {
@@ -294,6 +319,12 @@ export function projectThreadProjectionForWire(
   };
   return {
     ...projection,
+    runtimeRequests:
+      options?.managedThread === true
+        ? projection.runtimeRequests.map((request) =>
+            projectRuntimeRequestForWire(request, options),
+          )
+        : projection.runtimeRequests,
     checkpoints: projection.checkpoints.map(capCheckpointFiles),
     contextHandoffs: projection.contextHandoffs.map(projectContextHandoffForWire),
     turnItems: projection.turnItems.map(project),
@@ -306,6 +337,7 @@ export function projectThreadProjectionForWire(
 
 export function projectDomainEventForWire(
   event: OrchestrationV2DomainEvent,
+  options?: WireProjectionOptions,
 ): OrchestrationV2DomainEvent {
   return event.type === "turn-item.updated"
     ? { ...event, payload: projectTurnItemForWire(event.payload) }
@@ -313,7 +345,17 @@ export function projectDomainEventForWire(
       ? { ...event, payload: projectContextHandoffForWire(event.payload) }
       : event.type === "checkpoint.captured"
         ? { ...event, payload: capCheckpointFiles(event.payload) }
-        : event;
+        : event.type === "runtime-request.updated"
+          ? projectRuntimeRequestEventForWire(event, options)
+          : event;
+}
+
+function projectRuntimeRequestEventForWire(
+  event: Extract<OrchestrationV2DomainEvent, { type: "runtime-request.updated" }>,
+  options?: WireProjectionOptions,
+): OrchestrationV2DomainEvent {
+  const payload = projectRuntimeRequestForWire(event.payload, options);
+  return payload === event.payload ? event : { ...event, payload };
 }
 
 const LIVE_DEDUPE_MEMORY = 32;

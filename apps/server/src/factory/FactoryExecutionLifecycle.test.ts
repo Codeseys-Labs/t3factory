@@ -1,13 +1,17 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import {
+  AuthSessionId,
   CommandId,
   EnvironmentId,
   ProjectId,
+  MessageId,
   FactoryExecutionError,
   ProviderDriverKind,
   ProviderInstanceId,
   RunAttemptId,
+  ProviderSessionId,
+  RuntimeRequestId,
   RunId,
   ThreadId,
   type FactoryExecutionBinding,
@@ -52,6 +56,15 @@ const owner: FactoryExecutionBinding = {
   stopRequested: false,
   quiescent: false,
 };
+const response = {
+  threadId: owner.threadId,
+  requestId: RuntimeRequestId.make("request"),
+  providerSessionId: ProviderSessionId.make("session"),
+  authorization: {
+    sessionId: AuthSessionId.make("human"),
+    runAttemptId: owner.runAttemptId,
+  },
+};
 
 const harness = Effect.gen(function* () {
   let stopped = false;
@@ -67,6 +80,8 @@ const harness = Effect.gen(function* () {
           : null,
       ),
     hasNativeClaims: () => Effect.succeed(claims.size > 0),
+    authorizeRuntimeResponse: () =>
+      Effect.succeed({ ...owner, stopRequested: stopped, quiescent: released }),
     readCapture: () => Effect.succeed(null),
     canBeginCapture: () => Effect.succeed(false),
     claimPhase: ({ phase, claimantId }) =>
@@ -139,36 +154,42 @@ it.effect(
   "keeps a stopped claimant owned until its delayed work joins, and suppresses a subsequent phase",
   () =>
     Effect.gen(function* () {
-      const h = yield* harness;
-      const entered = yield* Deferred.make<void>();
-      const resume = yield* Deferred.make<void>();
-      const work = h.lifecycle.runPhase(
-        { ...owner, phase: "workspace" },
-        Effect.gen(function* () {
+      for (const phase of ["workspace", "response"] as const) {
+        const h = yield* harness;
+        const entered = yield* Deferred.make<void>();
+        const resume = yield* Deferred.make<void>();
+        const work = Effect.gen(function* () {
           yield* Deferred.succeed(entered, undefined);
           yield* Deferred.await(resume);
           h.observations.push("claimant-joined");
-        }),
-      );
-      const fiber = yield* work.pipe(Effect.forkChild);
-      yield* Deferred.await(entered);
-      assert.isFalse(yield* h.lifecycle.stop(owner));
-      assert.isFalse(h.released());
-      let started = false;
-      const denied = yield* h.lifecycle
-        .runPhase(
-          { ...owner, phase: "session" },
-          Effect.sync(() => {
-            started = true;
-          }),
-        )
-        .pipe(Effect.flip);
-      assert.equal(denied.reason, "grant-inactive");
-      assert.isFalse(started);
-      yield* Deferred.succeed(resume, undefined);
-      yield* Fiber.join(fiber);
-      assert.isTrue(h.released());
-      assert.isBelow(h.observations.indexOf("claimant-joined"), h.observations.indexOf("release"));
+        });
+        const fiber = yield* (
+          phase === "response"
+            ? h.lifecycle.respond(response, work)
+            : h.lifecycle.runPhase({ ...owner, phase }, work)
+        ).pipe(Effect.forkChild);
+        yield* Deferred.await(entered);
+        assert.isFalse(yield* h.lifecycle.stop(owner));
+        assert.isFalse(h.released());
+        let started = false;
+        const denied = yield* h.lifecycle
+          .runPhase(
+            { ...owner, phase: "session" },
+            Effect.sync(() => {
+              started = true;
+            }),
+          )
+          .pipe(Effect.flip);
+        assert.equal(denied.reason, "grant-inactive");
+        assert.isFalse(started);
+        yield* Deferred.succeed(resume, undefined);
+        yield* Fiber.join(fiber);
+        assert.isTrue(h.released());
+        assert.isBelow(
+          h.observations.indexOf("claimant-joined"),
+          h.observations.indexOf("release"),
+        );
+      }
     }),
 );
 
@@ -211,6 +232,96 @@ it.effect(
         .pipe(Effect.flip);
       assert.equal(replay.reason, "not-quiescent");
       assert.equal(calls, 1);
+      const respondCommand = {
+        type: "runtime-request.respond",
+        commandId: CommandId.make("respond"),
+        threadId: owner.threadId,
+        requestId: response.requestId,
+        decision: "accept",
+      } as const;
+      const suppliedAuthority = {
+        ...respondCommand,
+        factoryAuthorization: response.authorization,
+      };
+      assert.equal(
+        (yield* h.lifecycle.guardCommand(suppliedAuthority).pipe(Effect.flip)).reason,
+        "grant-inactive",
+      );
+      assert.equal(
+        (yield* h.lifecycle
+          .guardCommand(respondCommand)
+          .pipe(
+            Effect.provideService(Lifecycle.FactoryNativeAuthority, owner.runAttemptId),
+            Effect.flip,
+          )).reason,
+        "grant-inactive",
+      );
+      for (const decision of ["accept", "decline", "cancel"] as const)
+        yield* h.lifecycle
+          .guardCommand({ ...respondCommand, decision })
+          .pipe(
+            Effect.provideService(
+              Lifecycle.FactoryRuntimeResponseSession,
+              response.authorization.sessionId,
+            ),
+          );
+      yield* h.lifecycle
+        .guardCommand({
+          type: "runtime-request.respond",
+          commandId: respondCommand.commandId,
+          threadId: owner.threadId,
+          requestId: response.requestId,
+          answers: { question: ["answer"] },
+        })
+        .pipe(
+          Effect.provideService(
+            Lifecycle.FactoryRuntimeResponseSession,
+            response.authorization.sessionId,
+          ),
+        );
+      for (const decision of ["acceptForSession", "acceptAlways"] as const)
+        assert.equal(
+          (yield* h.lifecycle
+            .guardCommand({
+              ...respondCommand,
+              decision,
+              answers: { question: ["answer"] },
+            })
+            .pipe(
+              Effect.provideService(
+                Lifecycle.FactoryRuntimeResponseSession,
+                response.authorization.sessionId,
+              ),
+              Effect.flip,
+            )).reason,
+          "grant-inactive",
+        );
+      for (const dispatchMode of [
+        { type: "start_immediately" },
+        { type: "steer_active", targetRunId: owner.runId },
+      ] as const)
+        assert.equal(
+          (yield* h.lifecycle
+            .guardCommand({
+              type: "message.dispatch",
+              commandId: CommandId.make("ordinary-send"),
+              threadId: owner.threadId,
+              messageId: MessageId.make("ordinary-message"),
+              text: "No bypass",
+              attachments: [],
+              createdBy: "user",
+              creationSource: "web",
+              dispatchMode,
+            })
+            .pipe(
+              Effect.provideService(
+                Lifecycle.FactoryRuntimeResponseSession,
+                response.authorization.sessionId,
+              ),
+              Effect.flip,
+            )).reason,
+          "grant-inactive",
+        );
       yield* h.lifecycle.complete(owner);
       const command = {
         type: "prepared-run.retry",
@@ -219,7 +330,15 @@ it.effect(
         runId: owner.runId,
       } as const;
       assert.equal(
-        (yield* h.lifecycle.guardCommand(command).pipe(Effect.flip)).reason,
+        (yield* h.lifecycle
+          .guardCommand(command)
+          .pipe(
+            Effect.provideService(
+              Lifecycle.FactoryRuntimeResponseSession,
+              response.authorization.sessionId,
+            ),
+            Effect.flip,
+          )).reason,
         "grant-inactive",
       );
       yield* h.lifecycle.guardCommand({ ...command, threadId: ThreadId.make("unrelated") });
@@ -227,6 +346,56 @@ it.effect(
         .binding({ ...owner, runAttemptId: RunAttemptId.make("foreign") })
         .pipe(Effect.flip);
       assert.equal(mismatch.reason, "task-conflict");
+    }),
+);
+
+it.effect(
+  "keeps an interrupted runtime responder owned until its cancellation finalizer joins",
+  () =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      const entered = yield* Deferred.make<void>();
+      const cancelling = yield* Deferred.make<void>();
+      const resume = yield* Deferred.make<void>();
+      let deliveries = 0;
+      const work = h.lifecycle.respond(
+        response,
+        Effect.gen(function* () {
+          deliveries++;
+          assert.equal(yield* Lifecycle.FactoryNativeAuthority, owner.runAttemptId);
+          yield* Deferred.succeed(entered, undefined);
+          return yield* Effect.never;
+        }).pipe(
+          Effect.ensuring(
+            Effect.gen(function* () {
+              yield* Deferred.succeed(cancelling, undefined);
+              yield* Deferred.await(resume);
+              h.observations.push("response-finalizer-joined");
+            }),
+          ),
+        ),
+      );
+      const fiber = yield* work.pipe(Effect.forkChild);
+      yield* Deferred.await(entered);
+      const interrupted = yield* Fiber.interrupt(fiber).pipe(Effect.forkChild);
+      yield* Deferred.await(cancelling);
+      assert.isFalse(yield* h.lifecycle.stop(owner));
+      assert.isFalse(h.released());
+      const replay = yield* h.lifecycle
+        .respond(
+          response,
+          Effect.sync(() => deliveries++),
+        )
+        .pipe(Effect.flip);
+      assert.equal(replay.reason, "not-quiescent");
+      assert.equal(deliveries, 1);
+      yield* Deferred.succeed(resume, undefined);
+      yield* Fiber.join(interrupted);
+      assert.isTrue(h.released());
+      assert.isBelow(
+        h.observations.indexOf("response-finalizer-joined"),
+        h.observations.indexOf("release"),
+      );
     }),
 );
 
@@ -279,10 +448,12 @@ it.effect("expires orphaned claims from a dead process and settles the attempt o
     const h = yield* harness;
     h.seedOrphan("workspace");
     h.seedOrphan("native-thread");
+    h.seedOrphan(`response:${response.requestId}`);
     yield* h.lifecycle.recover(owner);
     assert.isTrue(h.observations.includes("stop"));
     assert.isTrue(h.observations.includes("expire:workspace"));
     assert.isTrue(h.observations.includes("expire:native-thread"));
+    assert.isTrue(h.observations.includes(`expire:response:${response.requestId}`));
     assert.isTrue(h.released());
   }),
 );

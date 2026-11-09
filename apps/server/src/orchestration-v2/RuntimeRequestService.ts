@@ -1,4 +1,5 @@
 import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
+import type { FactoryRuntimeResponseAuthorization } from "../persistence/FactoryExecutionStore.ts";
 import {
   ProviderApprovalDecision,
   ProviderSessionId,
@@ -57,6 +58,7 @@ export interface RuntimeRequestServiceV2Shape {
     readonly decision?: ProviderApprovalDecision;
     readonly feedback?: string;
     readonly answers?: ProviderUserInputAnswers;
+    readonly factoryAuthorization?: FactoryRuntimeResponseAuthorization;
   }) => Effect.Effect<void, RuntimeRequestResponseExecutionError>;
 }
 
@@ -68,7 +70,9 @@ export class RuntimeRequestServiceV2 extends Context.Service<
 export const layer: Layer.Layer<
   RuntimeRequestServiceV2,
   never,
-  FactoryExecutionLifecycle.FactoryExecutionLifecycle | ProjectionStore.ProjectionStoreV2 | ProviderSessionManager.ProviderSessionManagerV2
+  | FactoryExecutionLifecycle.FactoryExecutionLifecycle
+  | ProjectionStore.ProjectionStoreV2
+  | ProviderSessionManager.ProviderSessionManagerV2
 > = Layer.effect(
   RuntimeRequestServiceV2,
   Effect.gen(function* () {
@@ -79,11 +83,6 @@ export const layer: Layer.Layer<
     return RuntimeRequestServiceV2.of({
       respond: Effect.fn("RuntimeRequestService.respond")(
         function* (input) {
-          const managed = yield* factoryLifecycle.binding({ threadId: input.threadId });
-          if (managed !== null) return yield* new RuntimeRequestResponseExecutionError({
-            reason: "request-not-resumable", threadId: input.threadId, providerSessionId: input.providerSessionId, requestId: input.requestId,
-            cause: "Ordinary runtime responses cannot resume a managed execution without an exact granted action.",
-          });
           const request = yield* projections.getRuntimeRequest(input.threadId, input.requestId);
           if (request === undefined) {
             return yield* new RuntimeRequestResponseExecutionError({
@@ -130,7 +129,35 @@ export const layer: Layer.Layer<
           });
         },
         (effect, input) =>
-          effect.pipe(
+          Effect.gen(function* () {
+            const managed = yield* factoryLifecycle.binding({ threadId: input.threadId });
+            if (managed === null) {
+              if (input.factoryAuthorization !== undefined)
+                return yield* new RuntimeRequestResponseExecutionError({
+                  reason: "request-not-resumable",
+                  threadId: input.threadId,
+                  providerSessionId: input.providerSessionId,
+                  requestId: input.requestId,
+                });
+              return yield* effect;
+            }
+            if (input.factoryAuthorization === undefined)
+              return yield* new RuntimeRequestResponseExecutionError({
+                reason: "request-not-resumable",
+                threadId: input.threadId,
+                providerSessionId: input.providerSessionId,
+                requestId: input.requestId,
+              });
+            return yield* factoryLifecycle.respond(
+              {
+                threadId: input.threadId,
+                providerSessionId: input.providerSessionId,
+                requestId: input.requestId,
+                authorization: input.factoryAuthorization,
+              },
+              effect,
+            );
+          }).pipe(
             Effect.mapError((cause) =>
               isRuntimeRequestResponseExecutionError(cause)
                 ? cause

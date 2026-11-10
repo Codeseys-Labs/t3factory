@@ -26,7 +26,7 @@ describe("CommandPalette open intents", () => {
 
     openCommandPalette({ query: "acme" });
 
-    const input = page.getByPlaceholder("Search commands, projects, and threads...");
+    const input = page.getByPlaceholder("Search tasks, commands, projects, and threads...");
     await expect.element(input).toHaveFocus();
     await expect.element(input).toHaveValue("acme");
   });

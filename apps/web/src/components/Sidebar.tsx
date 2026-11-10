@@ -60,14 +60,7 @@ import {
 } from "@t3tools/contracts";
 import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
 
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  FolderIcon,
-  ListFilterIcon,
-  PlusIcon,
-  SettingsIcon,
-} from "lucide-react";
+import { CheckIcon, ChevronDownIcon, FolderIcon, PlusIcon, SettingsIcon } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -125,7 +118,6 @@ import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
 import { useTerminalFocus } from "../hooks/useTerminalFocus";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { registerSettleAndAdvance } from "../settleAndAdvance";
-import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useBoringSidebarEnabled, useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
@@ -190,7 +182,6 @@ import {
   resolveSidebarDropVerb,
   resolveSidebarThreadSection,
   searchSidebarThreads,
-  shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
   sidebarListItemId,
   sidebarThreadKeyAtY,
@@ -239,9 +230,15 @@ import {
   ComboboxTrigger,
   useComboboxFilter,
 } from "./ui/combobox";
-import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
-import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
-import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
+import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
+import { openNewTask } from "./tasks/taskDialogs";
+import { useTaskScope } from "./tasks/shared/taskScope";
+import {
+  SidebarChromeFooter,
+  SidebarChromeHeader,
+  SidebarTaskNavigation,
+} from "./sidebar/SidebarChrome";
+import { SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { TooltipProvider } from "./ui/tooltip";
 import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
@@ -2867,28 +2864,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
   const showJumpHints = useThreadJumpHintsVisible(shouldShowJumpHintsNow);
 
-  const handleNewThreadClick = (event?: ReactMouseEvent) => {
-    if (
-      boringSidebarEnabled ||
-      shouldCreateNewThreadInCurrentProject(event?.shiftKey ?? false, projectGroups.length)
-    ) {
-      if (isMobile) setOpenMobile(false);
-      void startNewThreadFromContext({
-        activeDraftThread: newThreadContext.activeDraftThread,
-        activeThread: newThreadContext.activeThread ?? undefined,
-        defaultProjectRef: newThreadContext.defaultProjectRef,
-        handleNewThread,
-      });
-      return;
-    }
+  const taskScope = useTaskScope();
+  const handleNewTaskClick = () => {
     if (isMobile) setOpenMobile(false);
-    openCommandPalette({ open: "new-thread-in" });
+    openNewTask(taskScope.single ?? {});
   };
-
-  const newThreadShortcutLabel =
-    shortcutLabelForCommand(keybindings, "chat.new") ??
-    (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
-  const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
+  const newTaskShortcutLabel = shortcutLabelForCommand(keybindings, "tasks.new");
   return (
     <>
       <ThreadContextDragGhost />
@@ -2939,11 +2920,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 >
                   <ComboboxTrigger
                     render={
-                      <SidebarHeaderIconButton
-                        label={
+                      <SidebarMenuButton
+                        aria-label={
                           scopedProjectGroups.length > 0
-                            ? `Filter threads by project: ${scopedProjectGroups.map((project) => project.displayName).join(", ")}`
-                            : "Filter threads by project"
+                            ? `Project scope: ${scopedProjectGroups.map((project) => project.displayName).join(", ")}`
+                            : "Project scope: All projects"
                         }
                       />
                     }
@@ -2963,8 +2944,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         <ProjectFavicon project={scopedProjectGroups[0]} className="size-4" />
                       </span>
                     ) : (
-                      <ListFilterIcon className="size-4" />
+                      <FolderIcon className="size-4" />
                     )}
+                    <span className="min-w-0 flex-1 truncate">{taskScope.label}</span>
+                    <ChevronDownIcon aria-hidden className="size-3.5 shrink-0" />
                   </ComboboxTrigger>
                   <ComboboxPopup
                     align="start"
@@ -3067,11 +3050,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 </Combobox>
               }
               onNewProject={openAddProjectCommandPalette}
-              onNewThread={handleNewThreadClick}
-              newThreadDisabled={projects.length === 0}
-              newThreadShortcutLabel={newThreadShortcutLabel}
-              newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
-              showNewThreadInProjectHint={!boringSidebarEnabled && projectGroups.length > 1}
+              scopeLabel={taskScope.label}
+              onNewTask={handleNewTaskClick}
+              newTaskShortcutLabel={newTaskShortcutLabel}
               searchInputRef={threadSearchInputRef}
               searchQuery={threadSearchQuery}
               onSearchQueryChange={(value) => {
@@ -3084,6 +3065,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               activeSearchResultIndex={activeSearchResultIndex}
               onClearSearch={clearThreadSearch}
             />
+            <SidebarTaskNavigation />
           </SidebarGroup>
         }
       >

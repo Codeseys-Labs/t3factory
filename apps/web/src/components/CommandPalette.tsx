@@ -215,6 +215,7 @@ import {
   sourceControlHostIcon,
 } from "./CommandPaletteAddProject";
 import { useCommandPaletteThreadItems } from "./CommandPaletteThreadItems";
+import { useCommandPaletteTaskItems } from "./CommandPaletteTaskItems";
 import { useCommandPaletteThemeItems } from "./CommandPaletteThemeItems";
 import {
   CommandPaletteVirtualizedResults,
@@ -1154,7 +1155,11 @@ function OpenCommandPaletteDialog(props: {
     if (firstOption) startNewProject(firstOption.environmentId, null);
   };
 
-  const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
+  const { taskItems, taskActions, taskSearchNotice } = useCommandPaletteTaskItems(
+    threadSearchQuery,
+    currentView === null && !isActionsOnly && !isBrowsing,
+  );
+  const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [...taskActions];
 
   if (projects.length > 0) {
     const activeProjectTitle =
@@ -1641,7 +1646,12 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  const rootGroups = buildRootGroups({ actionItems, recentThreadItems });
+  const rootGroups = buildRootGroups({ actionItems, recentThreadItems, taskItems });
+  const openingGroups = rootGroups.map((group) =>
+    group.value === "actions"
+      ? { ...group, items: group.items.slice(0, taskActions.length) }
+      : group,
+  );
   // Every setting goes to the palette's own matcher, so settings get the same
   // word starts and typo tolerance as threads.
   const settingsSearchItems: CommandPaletteActionItem[] = settingsForThisPlatform(
@@ -1681,7 +1691,8 @@ function OpenCommandPaletteDialog(props: {
             ? changeThemeItem.groups
             : currentView?.groups[0]?.value === "appearance"
               ? changeAppearanceItem.groups
-              : (currentView?.groups ?? rootGroups);
+              : (currentView?.groups ??
+                (deferredQuery.trim().length === 0 ? openingGroups : rootGroups));
 
   const isLinkedThreadSearch =
     linkedThreadSearch?.linkedThreads !== undefined && deferredQuery === linkedThreadSearch.query;
@@ -2764,6 +2775,11 @@ function OpenCommandPaletteDialog(props: {
       ) : isBrowsePending && browseResult === null ? (
         <div role="status" className="px-4 py-3 text-sm text-muted-foreground">
           Loading folders...
+        </div>
+      ) : null}
+      {currentView === null && taskSearchNotice ? (
+        <div role="status" className="px-4 py-2 text-xs text-muted-foreground">
+          {taskSearchNotice}
         </div>
       ) : null}
       <CommandPaletteVirtualizedResults

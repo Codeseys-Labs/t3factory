@@ -198,6 +198,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
     when: "composerFocus && !draftThreadRoute",
   },
   { key: "mod+n", command: "chat.new", when: "!terminalFocus" },
+  { key: "c", command: "tasks.new", when: "!editableFocus && !terminalFocus && !previewFocus" },
   { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus" },
   { key: "mod+shift+n", command: "chat.newLocal", when: "!terminalFocus" },
   { key: "mod+alt+n", command: "chat.newWithoutProject", when: "!terminalFocus" },

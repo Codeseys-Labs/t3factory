@@ -49,6 +49,7 @@ export default Effect.gen(function* () {
     accepted_revision INTEGER,
     input_note TEXT,
     status TEXT NOT NULL DEFAULT 'backlog',
+    needs_attention INTEGER NOT NULL DEFAULT 0,
     assignee_key TEXT NOT NULL DEFAULT 'unassigned',
     version INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,

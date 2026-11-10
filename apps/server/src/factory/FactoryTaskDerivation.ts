@@ -20,6 +20,7 @@ interface WorkRunFacts {
 }
 
 const INTERRUPTED = new Set(["interrupted", "cancelled", "rolled_back"]);
+const ENDED = new Set(["completed", "failed", ...INTERRUPTED]);
 
 export function workRunState(facts: WorkRunFacts): {
   readonly state: FactoryTaskRunState;
@@ -30,7 +31,8 @@ export function workRunState(facts: WorkRunFacts): {
     if (facts.outputStatus === "sealed") return { state: "completed", note: null };
     return interrupted ? { state: "stopped", note: null } : { state: "failed", note: "Run failed" };
   }
-  if (!facts.engineStop) return { state: "running", note: null };
+  if (!facts.engineStop && !ENDED.has(facts.nativeStatus ?? ""))
+    return { state: "running", note: null };
   // The run ended or was told to stop. With no effect left to finish it, it waits on a person.
   if (!facts.effectsPending)
     return { state: "held", note: "Waiting for the run's processes to exit" };

@@ -65,6 +65,8 @@ export interface TaskRow extends TaskKey {
   readonly source: FactoryTaskSource;
   readonly acceptedRevision: number | null;
   readonly status: FactoryTaskStatus;
+  /** Indexed: the task, or one of its sub-tasks, waits on a person or has a live run. */
+  readonly needsAttention: boolean;
   readonly assigneeKey: string;
   readonly version: number;
   readonly createdAt: string;
@@ -368,6 +370,7 @@ interface TaskRecord {
   source: string;
   acceptedRevision: number | null;
   status: FactoryTaskStatus;
+  needsAttention: number;
   assigneeKey: string;
   version: number;
   createdAt: string;
@@ -409,6 +412,7 @@ const make = Effect.gen(function* () {
       sql`t.retired = 0`,
       activeProject,
       ...(filter.scope === "all" ? [] : [sql`t.parent_id IS NULL`]),
+      ...(filter.attention === true ? [sql`t.needs_attention = 1`] : []),
       ...(statuses === null ? [] : [oneOf("t.status", statuses)]),
       ...(filter.projectIds === undefined ? [] : [oneOf("t.project_id", filter.projectIds)]),
       ...(filter.types === undefined ? [] : [oneOf("t.type", filter.types)]),
@@ -508,7 +512,7 @@ const make = Effect.gen(function* () {
     const views = new Map<string, RootView>();
     if (rootIds.length === 0) return views;
     const records =
-      yield* sql<TaskRecord>`SELECT root_id AS rootId, task_id AS taskId, project_id AS projectId, parent_id AS parentId, display_id AS displayId, title, plan_order AS planOrder, retired, type, lane, assignment_json AS assignment, source_json AS source, accepted_revision AS acceptedRevision, status, assignee_key AS assigneeKey, version, created_at AS createdAt, updated_at AS updatedAt FROM factory_tasks WHERE root_id IN ${sql.in(rootIds)} ORDER BY root_id, plan_order`;
+      yield* sql<TaskRecord>`SELECT root_id AS rootId, task_id AS taskId, project_id AS projectId, parent_id AS parentId, display_id AS displayId, title, plan_order AS planOrder, retired, type, lane, assignment_json AS assignment, source_json AS source, accepted_revision AS acceptedRevision, status, needs_attention AS needsAttention, assignee_key AS assigneeKey, version, created_at AS createdAt, updated_at AS updatedAt FROM factory_tasks WHERE root_id IN ${sql.in(rootIds)} ORDER BY root_id, plan_order`;
     if (records.length === 0) return views;
     const runRecords =
       yield* sql<RunRecord>`SELECT r.thread_id AS threadId, r.root_id AS rootId, r.task_id AS taskId, r.ordinal, r.purpose, r.run_id AS runId, r.attempt_id AS attemptId, r.setup_json AS setup, r.profile_id AS profileId, r.started_at AS startedAt, r.stop_requested AS stopRequested, r.ended_at AS endedAt, b.revision AS planRevision, b.quiescent, b.stop_requested AS engineStop, json_extract(n.payload_json, '$.status') AS nativeStatus, n.completed_at AS nativeCompletedAt, (SELECT json_extract(o.output_json, '$.status') FROM factory_execution_results o WHERE o.attempt_id = r.attempt_id ORDER BY o.rowid DESC LIMIT 1) AS outputStatus, EXISTS (SELECT 1 FROM orchestration_v2_effect_outbox e WHERE e.thread_id = r.thread_id AND e.status IN ('pending', 'running')) AS effectsPending FROM factory_task_runs r LEFT JOIN factory_execution_bindings b ON b.attempt_id = r.attempt_id LEFT JOIN orchestration_v2_projection_runs n ON n.run_id = r.run_id WHERE r.root_id IN ${sql.in(rootIds)} ORDER BY r.root_id, r.task_id, r.ordinal`;
@@ -552,6 +556,7 @@ const make = Effect.gen(function* () {
         rows.set(record.taskId, {
           ...fields,
           retired: record.retired === 1,
+          needsAttention: record.needsAttention === 1,
           assignment: yield* decodeAssignment(record.assignment),
           source: yield* decodeSource(record.source),
         });
@@ -677,9 +682,15 @@ const make = Effect.gen(function* () {
   )(function* (rootIds) {
     for (const view of (yield* loadRoots(rootIds)).values())
       for (const task of view.tasks.values()) {
-        if (task.row.status === task.derived.status && task.row.assigneeKey === task.assignee.key)
+        const needsAttention =
+          task.derived.attention.length > 0 || task.derived.liveRuns.length > 0;
+        if (
+          task.row.status === task.derived.status &&
+          task.row.needsAttention === needsAttention &&
+          task.row.assigneeKey === task.assignee.key
+        )
           continue;
-        yield* sql`UPDATE factory_tasks SET status = ${task.derived.status}, assignee_key = ${task.assignee.key} WHERE root_id = ${task.row.rootId} AND task_id = ${task.row.taskId}`.pipe(
+        yield* sql`UPDATE factory_tasks SET status = ${task.derived.status}, needs_attention = ${needsAttention ? 1 : 0}, assignee_key = ${task.assignee.key} WHERE root_id = ${task.row.rootId} AND task_id = ${task.row.taskId}`.pipe(
           Effect.mapError(failure),
         );
       }

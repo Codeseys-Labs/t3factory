@@ -746,8 +746,11 @@ const layerCommandReadiness = HttpRouter.middleware(
   { global: true },
 );
 
+const layerFactoryWorkService = FactoryWorkService.layer.pipe(
+  Layer.provide(FactoryIssueRelations.layer),
+);
 const layerFactoryPlanService = FactoryPlanService.layer.pipe(
-  Layer.provide(FactoryWorkService.layer.pipe(Layer.provide(FactoryIssueRelations.layer))),
+  Layer.provide(layerFactoryWorkService),
   Layer.provide(RuntimeLayer.layerEventSink),
 );
 
@@ -789,11 +792,11 @@ const layerMakeRoutes = Layer.mergeAll(
       FactoryFeedService.layer,
       FactoryResearchService.layer,
       FactoryClaimsService.layer,
-      FactoryWorkService.layer.pipe(Layer.provide(FactoryIssueRelations.layer)),
+      layerFactoryWorkService,
       layerFactoryPlanService,
       // Tasks run through the same plan and execution services the Factory pages use.
       FactoryTaskService.layer.pipe(
-        Layer.provide(layerFactoryPlanService),
+        Layer.provide(Layer.merge(layerFactoryPlanService, layerFactoryWorkService)),
         Layer.provide(RuntimeLayer.layerFactoryExecutionServiceProvided),
       ),
       FactoryAgentProfileService.layer,

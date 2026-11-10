@@ -289,6 +289,7 @@ describe("workRunState", () => {
       { engineStop: true, nativeStatus: "interrupted", effectsPending: true },
       "stopping",
     ],
+    ["a failed thread run the engine never closed is held", { nativeStatus: "failed" }, "held"],
     [
       "an ended run nothing is finishing is held",
       { engineStop: true, nativeStatus: "completed" },

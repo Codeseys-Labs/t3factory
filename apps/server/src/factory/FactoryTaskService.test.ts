@@ -18,6 +18,7 @@ import {
   type FactoryTaskCreateInput,
   type FactoryTaskRun,
   type FactoryTaskSummary,
+  type FactoryWorkReadResult,
   type ModelSelection,
 } from "@t3tools/contracts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -69,6 +70,30 @@ const setupOf = (
 const projectHead = "a".repeat(40);
 const resultCommit = "b".repeat(40);
 const command = (name: string) => CommandId.make(name);
+const issueRef = { version: 1, environmentId, kind: "issue", id: "issue-96" } as const;
+const retainedIssue: FactoryWorkReadResult = {
+  item: {
+    ref: issueRef,
+    projectId,
+    title: "GitHub #96",
+    createdAt: at,
+    sourceKey: null,
+    sourceUrl: null,
+    sourceState: null,
+    revision: "issue-v1",
+    supersededBy: null,
+    originConflict: false,
+    planningStage: null,
+  },
+  reviewTarget: { kind: "issue", issueNumber: 96 },
+  snapshot: "Path separators differ on Windows.",
+  snapshotTruncated: false,
+  projectAvailable: true,
+  reviewProjectId: projectId,
+  projectCoordinatorThreadId: null,
+  supersedes: null,
+  fetchedAt: at,
+};
 
 const git = Layer.mock(Processes.ProcessRunner)({
   run: (input) =>
@@ -124,7 +149,10 @@ const layerWith = (environmentDefault: ModelSelection | null = null) => {
     AuthSessions.layer.pipe(Layer.provide(dependencies)),
     ServerSettings.layerTest({ defaultModelSelection: environmentDefault }),
     Layer.mock(Work.FactoryWorkService)({
-      read: () => Effect.fail(new FactoryWorkError({ reason: "missing-work" })),
+      read: ({ ref }) =>
+        ref.id === issueRef.id
+          ? Effect.succeed(retainedIssue)
+          : Effect.fail(new FactoryWorkError({ reason: "missing-work" })),
     }),
   );
   const engine = Layer.mergeAll(Plans.layer, Executions.layer, ExecutionStore.layer).pipe(
@@ -320,6 +348,26 @@ it.effect("numbers top-level tasks, sub-tasks and nested sub-tasks once and neve
         ["T-1.2"],
       );
       assert.equal((yield* summary(second)).progress, null);
+      // A top-level task holds 64 tasks, itself included.
+      assert.equal(
+        (yield* tasks
+          .createSubtasks(
+            {
+              commandId: command("too-many"),
+              parent: second.ref,
+              items: Array.from({ length: 64 }, (_, index) => ({
+                key: `item-${index}`,
+                title: `Sub-task ${index}`,
+                description: "",
+                assignment: { mode: "auto" } as const,
+                after: [],
+              })),
+            },
+            human,
+          )
+          .pipe(Effect.flip)).reason,
+        "task-limit",
+      );
     }),
   ),
 );
@@ -624,6 +672,117 @@ it.effect(
     ),
 );
 
+it.effect("lists only the tasks that wait on a person or have a run that has not finished", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { tasks, create, subtask, start, finish, until } = yield* harness;
+      const proposed = yield* create("Unified task model");
+      yield* tasks.recordProposal({
+        ref: proposed.ref,
+        proposalId: "proposal",
+        itemCount: 4,
+        status: "proposed",
+        actor: human,
+      });
+      const working = yield* create("Thread still shows Working after reconnect", {
+        lane: "ready",
+      });
+      yield* start(working);
+      const parent = yield* create("Benchmark index paths");
+      const child = yield* subtask("Run the benchmark", parent);
+      yield* finish((yield* start(child)).run!, "failed");
+      yield* until(child, (current) => current.attention.length > 0);
+      const quiet = yield* create("Filter the board by assignee", { lane: "ready" });
+      const done = yield* create("Rename repository identity", { lane: "ready" });
+      yield* tasks.update(
+        { commandId: command("done"), ref: done.ref, expectedVersion: done.version, lane: "done" },
+        human,
+      );
+
+      const waiting = yield* tasks.list({ attention: true });
+      assert.deepEqual(
+        waiting.items
+          .map((task) => [
+            task.displayId,
+            task.status,
+            task.attention.map((entry) => `${entry.reason}:${entry.displayId}`).join(),
+            task.liveRuns.length,
+          ])
+          .toSorted(),
+        [
+          [proposed.displayId, "backlog", `plan:${proposed.displayId}`, 0],
+          [working.displayId, "in-progress", "", 1],
+          [parent.displayId, "in-progress", `failed:${child.displayId}`, 0],
+        ],
+      );
+      assert.isFalse(waiting.items.some((task) => task.displayId === quiet.displayId));
+      // A parent counts for its sub-task, and the sub-task counts for itself.
+      assert.deepEqual(
+        (yield* tasks.list({ attention: true, scope: "all", statuses: ["in-progress"] })).items
+          .map((task) => task.displayId)
+          .toSorted(),
+        [working.displayId, parent.displayId, child.displayId].toSorted(),
+      );
+      assert.deepEqual(
+        (yield* tasks.list({ attention: true, statuses: ["backlog"] })).items.map(
+          (task) => task.displayId,
+        ),
+        [proposed.displayId],
+      );
+      for (const filter of [{ attention: true }, { attention: true, scope: "all" }] as const) {
+        const counts = yield* tasks.count(filter);
+        for (const { status, count } of counts.byStatus)
+          assert.equal(
+            (yield* tasks.list({ ...filter, statuses: [status] })).items.length,
+            count,
+            `${canonicalExecutionJson(filter)} ${status}`,
+          );
+      }
+      assert.deepEqual(
+        (yield* tasks.count({ attention: true })).byStatus.flatMap((entry) =>
+          entry.count === 0 ? [] : [[entry.status, entry.count]],
+        ),
+        [
+          ["backlog", 1],
+          ["in-progress", 2],
+        ],
+      );
+      // The filter is part of what a cursor continues.
+      const page = yield* tasks.list({ attention: true, limit: 1 });
+      assert.equal(
+        (yield* tasks.list({ attention: true, limit: 1, cursor: page.nextCursor! })).items.length,
+        1,
+      );
+      assert.equal(
+        (yield* tasks.list({ limit: 1, cursor: page.nextCursor! }).pipe(Effect.flip)).reason,
+        "invalid-cursor",
+      );
+
+      // Dismissing the plan and ending the run take both tasks off the list again.
+      yield* tasks.recordProposal({
+        ref: proposed.ref,
+        proposalId: "proposal",
+        itemCount: 4,
+        status: "dismissed",
+        actor: human,
+      });
+      yield* tasks.update(
+        {
+          commandId: command("give-up"),
+          ref: child.ref,
+          expectedVersion: (yield* tasks.read({ task: { ref: child.ref } })).task.version,
+          lane: "canceled",
+        },
+        human,
+      );
+      assert.deepEqual(
+        (yield* tasks.list({ attention: true })).items.map((task) => task.displayId),
+        [working.displayId],
+      );
+    }),
+  ),
+);
+
 it.effect("follows a run from start through failure, retry, review, acceptance and reopening", () =>
   scenario(
     Effect.gen(function* () {
@@ -657,6 +816,21 @@ it.effect("follows a run from start through failure, retry, review, acceptance a
         human,
       );
       assert.equal((yield* start(byHand.task).pipe(Effect.flip)).reason, "assignee-unresolved");
+      // A finished blocker stops blocking. The task it held stays where it was until a person starts it.
+      yield* tasks.update(
+        {
+          commandId: command("blocker-done"),
+          ref: blocker.ref,
+          expectedVersion: byHand.task.version,
+          lane: "done",
+        },
+        human,
+      );
+      const unblocked = yield* summary(blocked);
+      assert.deepEqual(
+        [unblocked.blockedBy, unblocked.status, unblocked.run, unblocked.liveRuns],
+        [[], "backlog", null, []],
+      );
 
       const started = yield* start(task);
       const firstRun = started.run!;
@@ -813,6 +987,101 @@ it.effect("follows a run from start through failure, retry, review, acceptance a
           "reopened",
         ],
       );
+    }),
+  ),
+);
+
+it.effect(
+  "stopping a run shows Stopping until its writers are gone, then the task can be retried",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, start, attemptOf, until } = yield* harness;
+        const engine = yield* ExecutionStore.FactoryExecutionStore;
+        const task = yield* create("Backtest the momentum signal", { lane: "ready" });
+        assert.equal(
+          (yield* tasks
+            .stop({ commandId: command("idle"), ref: task.ref }, human)
+            .pipe(Effect.flip)).reason,
+          "no-run",
+        );
+        const run = (yield* start(task)).run!;
+        const stop = { commandId: command("stop"), ref: task.ref };
+        const stopping = (yield* tasks.stop(stop, human)).task;
+        assert.deepEqual(
+          [stopping.status, stopping.run?.state, stopping.liveRuns[0]?.state],
+          ["in-progress", "stopping", "stopping"],
+        );
+        assert.isTrue((yield* tasks.stop(stop, human)).replayed);
+
+        // The worker interrupts the thread's run, then confirms nothing of it is still writing.
+        yield* sql`UPDATE orchestration_v2_projection_runs SET status = 'interrupted', payload_json = json_set(payload_json, '$.status', 'interrupted') WHERE run_id = ${run.runId}`;
+        yield* engine.settleAttempt({
+          runAttemptId: yield* attemptOf(run),
+          observation: "no-start",
+          detail: "Stopped before the first turn.",
+        });
+        const stopped = yield* until(task, (current) => current.run?.endedAt != null);
+        assert.deepEqual(
+          [stopped.status, stopped.run?.state, stopped.liveRuns.length, stopped.attention.length],
+          ["in-progress", "stopped", 0, 0],
+        );
+        const retried = (yield* tasks.retry(
+          { commandId: command("retry"), ref: task.ref, expectedVersion: stopped.version },
+          human,
+        )).task;
+        assert.deepEqual([retried.run?.ordinal, retried.run?.state], [2, "running"]);
+        assert.deepEqual(
+          (yield* tasks.activity({ ref: task.ref })).entries.flatMap((entry) =>
+            entry.event.type === "run-ended" ? [[entry.event.ordinal, entry.event.outcome]] : [],
+          ),
+          [[1, "stopped"]],
+        );
+      }),
+    ),
+);
+
+it.effect("a task made from retained Work carries it as its source", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { tasks, create } = yield* harness;
+      const plans = yield* Plans.FactoryPlanService;
+      const task = yield* create("Server Git tests fail on Windows", { workRef: issueRef });
+      assert.deepEqual(task.source, {
+        kind: "issue",
+        label: "GitHub #96",
+        url: null,
+        key: null,
+        workRef: issueRef,
+      });
+      const plan = yield* plans.read({
+        ref: { environmentId, projectId, rootId: task.ref.rootId },
+      });
+      assert.deepEqual(
+        plan.workContexts.map((context) => [context.taskId, context.snapshot]),
+        [[task.ref.taskId, "Path separators differ on Windows."]],
+      );
+      assert.deepEqual(
+        (yield* tasks.list({ sourceKinds: ["issue"] })).items.map((item) => item.displayId),
+        [task.displayId],
+      );
+      const created = (yield* tasks.activity({ ref: task.ref })).entries[0]!.event;
+      assert.deepEqual(created, { type: "created", source: task.source, ruleName: null });
+      assert.equal(
+        (yield* tasks
+          .create(
+            {
+              commandId: command("gone"),
+              projectId,
+              title: "From nothing",
+              workRef: { ...issueRef, id: "issue-404" },
+            },
+            human,
+          )
+          .pipe(Effect.flip)).reason,
+        "invalid-input",
+      );
+      assert.deepEqual((yield* tasks.list({ text: "From nothing" })).items, []);
     }),
   ),
 );

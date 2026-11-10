@@ -68,6 +68,7 @@ import * as Plans from "./FactoryPlanService.ts";
 import { resolveAssignee, setupKey } from "./FactoryTaskAssignee.ts";
 import * as Changes from "./FactoryTaskChanges.ts";
 import { checkLaneMove, isLiveRunState } from "./FactoryTaskDerivation.ts";
+import * as Work from "./FactoryWorkService.ts";
 
 /** Set by intake when a source, not a person typing, is where the task came from. */
 export interface FactoryTaskOrigin {
@@ -228,6 +229,10 @@ const decodeCursor = Effect.fnUntraced(function* (cursor: string, scope: string)
   return decoded;
 });
 
+const decodeTaskKey = Schema.decodeUnknownEffect(
+  Schema.Struct({ rootId: Schema.String, taskId: Schema.String }),
+);
+
 const MAX_TASKS = 64;
 const PERSON: Tasks.TaskActor = { kind: "person", label: "You" };
 const FAILED_NATIVE = new Set(["failed", "interrupted", "cancelled"]);
@@ -304,6 +309,7 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const store = yield* Tasks.FactoryTaskStore;
   const plans = yield* Plans.FactoryPlanService;
+  const work = yield* Work.FactoryWorkService;
   const executions = yield* Executions.FactoryExecutionService;
   const executionStore = yield* ExecutionStore.FactoryExecutionStore;
   const events = yield* OrchestrationEventStore.OrchestrationEventStore;
@@ -806,12 +812,28 @@ const make = Effect.gen(function* () {
       yield* requireHuman(actor);
       const input = yield* decodeCreate(raw).pipe(Effect.mapError(invalid));
       const command = yield* begin("create", input.commandId, actor, [input, origin ?? null]);
-      if (command.replayed) return yield* replay(command.outcome as Tasks.TaskKey);
+      if (command.replayed)
+        return yield* replay(
+          yield* decodeTaskKey(command.outcome).pipe(Effect.mapError(asTaskError)),
+        );
       if ((yield* store.projectWorkspace(input.projectId)) === null)
         return yield* refuse("missing-project");
       yield* requireProfile(input.assignment);
-      if (input.workRef !== undefined && input.workRef.environmentId !== environmentId)
-        return yield* refuse("wrong-environment");
+      // Read before anything is created: a task is never left behind without its Work.
+      const retained =
+        input.workRef === undefined
+          ? null
+          : yield* work.read({ ref: input.workRef }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new FactoryTaskError({
+                    reason:
+                      cause.reason === "wrong-environment" ? "wrong-environment" : "invalid-input",
+                    cause,
+                  }),
+              ),
+            );
+      if (retained !== null && !retained.projectAvailable) return yield* refuse("invalid-input");
       const attach = (taskId: string): ReadonlyArray<FactoryPlanOperation> =>
         input.workRef === undefined
           ? []
@@ -824,7 +846,6 @@ const make = Effect.gen(function* () {
               },
             ];
       let key: Tasks.TaskKey;
-      let plan: FactoryPlanSnapshot;
       if (input.parent === undefined) {
         const created = yield* plans
           .create(
@@ -837,14 +858,14 @@ const make = Effect.gen(function* () {
             actor,
           )
           .pipe(Effect.mapError(planError));
-        plan = created.plan;
-        key = { rootId: plan.ref.rootId, taskId: plan.ref.rootId };
+        const rootId = created.plan.ref.rootId;
+        key = { rootId, taskId: rootId };
         if (input.workRef !== undefined)
-          plan = yield* applyPlan({
+          yield* applyPlan({
             commandId: input.commandId,
-            ref: plan.ref,
+            ref: created.plan.ref,
             actor,
-            operations: () => attach(key.taskId),
+            operations: () => attach(rootId),
           });
       } else {
         const parent = input.parent;
@@ -859,7 +880,7 @@ const make = Effect.gen(function* () {
           return yield* refuse("invalid-input");
         const taskId = executionDigest(["factory-task/1", input.commandId]);
         key = { rootId: parent.rootId, taskId };
-        plan = yield* applyPlan({
+        yield* applyPlan({
           commandId: input.commandId,
           ref: planRef({ ...key, projectId: input.projectId }),
           actor,
@@ -883,19 +904,21 @@ const make = Effect.gen(function* () {
           ],
         });
       }
-      const work = plan.workContexts.find(
-        (context) => context.taskId === key.taskId && !context.retired,
-      );
+      const bounded = (value: string | null) =>
+        value === null || value.length > 2048 ? null : value;
       const source: FactoryTaskSource | undefined =
         origin?.source ??
-        (work === undefined
+        (retained === null
           ? undefined
           : {
-              kind: work.ref.kind === "issue" || work.ref.kind === "feed" ? work.ref.kind : "local",
-              label: work.title,
-              url: null,
-              key: null,
-              workRef: work.ref,
+              kind:
+                retained.item.ref.kind === "issue" || retained.item.ref.kind === "feed"
+                  ? retained.item.ref.kind
+                  : "local",
+              label: retained.item.title,
+              url: bounded(retained.item.sourceUrl),
+              key: bounded(retained.item.sourceKey),
+              workRef: retained.item.ref,
             });
       const at = yield* now;
       yield* transact(
@@ -1571,7 +1594,6 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  // What a previous process left unmirrored, then everything that commits from here on.
   yield* quietly(
     Effect.gen(function* () {
       const current = yield* settings.getSettings.pipe(
@@ -1579,22 +1601,31 @@ const make = Effect.gen(function* () {
         Effect.orElseSucceed(() => null),
       );
       yield* transact(store.setEnvironmentDefault(current));
-      for (const rootId of yield* store.unsyncedRoots) yield* quietly(sync(rootId));
-      yield* transact(store.refreshAll);
     }),
   );
-  const afterSequence = yield* events.latestApplicationSequence.pipe(Effect.orDie);
-  yield* events
-    .streamProjectedApplicationEvents({
-      afterSequence,
-      project: (stored) => stored,
-      filter: relevant,
-    })
-    .pipe(
-      Stream.runForEach((stored) => quietly(onEvent(stored))),
-      quietly,
-      Effect.forkScoped,
-    );
+  // Read here, not in the fiber: nothing committed after this layer is built may be missed.
+  let resumeFrom: number | null = yield* events.latestApplicationSequence.pipe(Effect.orDie);
+  const follow = Effect.gen(function* () {
+    const afterSequence = resumeFrom ?? (yield* events.latestApplicationSequence);
+    resumeFrom = null;
+    // What a previous process, or a stream that fell behind, left unmirrored.
+    for (const rootId of yield* store.unsyncedRoots) yield* quietly(sync(rootId));
+    yield* transact(store.refreshAll);
+    yield* events
+      .streamProjectedApplicationEvents({
+        afterSequence,
+        project: (stored) => stored,
+        filter: relevant,
+      })
+      .pipe(Stream.runForEach((stored) => quietly(onEvent(stored))));
+  });
+  // The event stream ends when its reader falls too far behind. Start over rather than go deaf.
+  yield* follow.pipe(
+    quietly,
+    Effect.andThen(Effect.sleep("5 seconds")),
+    Effect.forever,
+    Effect.forkScoped,
+  );
   yield* executionStore.settlements.pipe(
     Stream.runForEach((attemptId) =>
       quietly(

@@ -70,6 +70,13 @@ Check that the case builds with `--dry-run --case <id>`. Then run it on the text
 
 ## Factory Work cases
 
+`cases/factory-planning.ndjson` covers the Tasks planning run and an ordinary-work control.
+The planning case imports the production first message and tool schema, requires exactly one
+`factory_propose_subtasks` call for the supplied task, and checks a bounded, nonempty, acyclic
+dependency graph with descriptions and an ordering edge. Review the sampled titles and descriptions
+for usefulness; the graph check does not grade their meaning. Run it with
+`pnpm mcp-tool-use --model claude-haiku-5-5 --case factory-planning-submits-once,factory-planning-ordinary-work-control --samples 3 --out runs/factory-planning`.
+
 `cases/factory-work.ndjson` contains 14 authored scenarios (11 guards, 3 controls) for [#79](https://github.com/Codeseys-Labs/t3factory/issues/79), grounded in [#76](https://github.com/Codeseys-Labs/t3factory/issues/76) and the current Work/readiness contracts. They use synthetic Acme identities and argument-selected responses, with no product API addition.
 
 | Cases                                                           | Evidence checked                                                                                                                                                                          |

@@ -480,6 +480,14 @@ export const FactoryTaskByThreadResult = Schema.Struct({
 });
 export type FactoryTaskByThreadResult = typeof FactoryTaskByThreadResult.Type;
 
+/** What `assignment` would run for a new task of this type in this project. Stores nothing. */
+export const FactoryTaskAssigneePreviewInput = Schema.Struct({
+  projectId: ProjectId,
+  type: FactoryTaskType,
+  assignment: FactoryTaskAssignment,
+});
+export type FactoryTaskAssigneePreviewInput = typeof FactoryTaskAssigneePreviewInput.Type;
+
 /** Says which top-level tasks changed. Carries no task data: clients read what they show. */
 export const FactoryTaskChange = Schema.Struct({
   environmentId: EnvironmentId,

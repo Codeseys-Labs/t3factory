@@ -3,6 +3,8 @@ import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   type EnvironmentId,
+  type FactoryTaskAssigneePreviewInput,
+  type FactoryTaskDisplayId,
   type FactoryTaskRef,
   type FactoryTaskSummary,
   type FactoryIntakeArrivalListInput,
@@ -99,6 +101,20 @@ export function useFactoryTaskPlan(ref: FactoryTaskRef) {
 }
 export function useFactoryAgentProfiles(environmentId: EnvironmentId) {
   return useAtomValue(factoryTasks.listAgentProfiles({ environmentId, input: {} }));
+}
+/** What an assignment would run for a task that does not exist yet, as the server resolves it. */
+export function useFactoryTaskAssigneePreview(
+  environmentId: EnvironmentId,
+  input: FactoryTaskAssigneePreviewInput,
+) {
+  return useAtomValue(factoryTasks.previewTaskAssignee({ environmentId, input }));
+}
+/** The task a `/tasks/$environmentId/$displayId` URL names. */
+export function useFactoryTaskDetailByDisplayId(
+  environmentId: EnvironmentId,
+  displayId: FactoryTaskDisplayId,
+) {
+  return useAtomValue(factoryTasks.readTask({ environmentId, input: { task: { displayId } } }));
 }
 
 export function useFactoryIntakeArrivals(

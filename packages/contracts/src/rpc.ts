@@ -125,6 +125,8 @@ import {
   FactoryTaskAcceptInput,
   FactoryTaskActivityInput,
   FactoryTaskActivityResult,
+  FactoryTaskAssignee,
+  FactoryTaskAssigneePreviewInput,
   FactoryTaskBreakdownInput,
   FactoryTaskByThreadInput,
   FactoryTaskByThreadResult,
@@ -652,6 +654,7 @@ export const WS_METHODS = {
   factoryAddTaskComment: "factory.addTaskComment",
   factoryReadTaskActivity: "factory.readTaskActivity",
   factoryFindTaskByThread: "factory.findTaskByThread",
+  factoryPreviewTaskAssignee: "factory.previewTaskAssignee",
   factorySubscribeTaskChanges: "factory.subscribeTaskChanges",
   factoryListAgentProfiles: "factory.listAgentProfiles",
   factorySaveAgentProfile: "factory.saveAgentProfile",
@@ -2531,6 +2534,11 @@ const WsFactoryFindTaskByThreadRpc = Rpc.make(WS_METHODS.factoryFindTaskByThread
   success: FactoryTaskByThreadResult,
   error: factoryTaskError,
 });
+const WsFactoryPreviewTaskAssigneeRpc = Rpc.make(WS_METHODS.factoryPreviewTaskAssignee, {
+  payload: FactoryTaskAssigneePreviewInput,
+  success: FactoryTaskAssignee,
+  error: factoryTaskError,
+});
 const WsFactorySubscribeTaskChangesRpc = Rpc.make(WS_METHODS.factorySubscribeTaskChanges, {
   payload: Schema.Struct({}),
   success: FactoryTaskChange,
@@ -2770,6 +2778,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsFactoryAddTaskCommentRpc,
   WsFactoryReadTaskActivityRpc,
   WsFactoryFindTaskByThreadRpc,
+  WsFactoryPreviewTaskAssigneeRpc,
   WsFactorySubscribeTaskChangesRpc,
   WsFactoryListAgentProfilesRpc,
   WsFactorySaveAgentProfileRpc,

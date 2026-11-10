@@ -97,6 +97,7 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.factoryReadTaskResult,
       WS_METHODS.factoryReadTaskActivity,
       WS_METHODS.factoryFindTaskByThread,
+      WS_METHODS.factoryPreviewTaskAssignee,
       WS_METHODS.factorySubscribeTaskChanges,
       WS_METHODS.factoryListAgentProfiles,
       WS_METHODS.factoryReadTaskPlanProposal,

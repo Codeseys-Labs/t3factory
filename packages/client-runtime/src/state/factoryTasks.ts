@@ -185,6 +185,15 @@ export function createFactoryTaskEnvironmentAtoms<R, E>(
         refreshTrigger: ({ environmentId }) => signals(environmentId)("profiles"),
       }),
     ),
+    previewTaskAssignee: guard(
+      createEnvironmentRpcQueryAtomFamily(runtime, {
+        label: "factory-tasks:assignee-preview",
+        tag: WS_METHODS.factoryPreviewTaskAssignee,
+        staleTimeMs: Number.POSITIVE_INFINITY,
+        idleTtlMs: 0,
+        refreshTrigger: ({ environmentId }) => signals(environmentId)("profiles"),
+      }),
+    ),
     createTask: createEnvironmentRpcCommand(runtime, {
       label: "factory-tasks:create",
       tag: WS_METHODS.factoryCreateTask,

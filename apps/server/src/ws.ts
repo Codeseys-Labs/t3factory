@@ -2758,6 +2758,7 @@ export const layerWsRpc = (
           factoryTasks.comment(input, { kind: "human", sessionId: currentSessionId }),
         [WS_METHODS.factoryReadTaskActivity]: (input) => factoryTasks.activity(input),
         [WS_METHODS.factoryFindTaskByThread]: (input) => factoryTasks.findByThread(input),
+        [WS_METHODS.factoryPreviewTaskAssignee]: (input) => factoryTasks.resolveAssignee(input),
         [WS_METHODS.factorySubscribeTaskChanges]: (_input) => factoryTasks.changes,
         [WS_METHODS.factoryListAgentProfiles]: (_input) => factoryProfiles.list(),
         [WS_METHODS.factorySaveAgentProfile]: (input) =>

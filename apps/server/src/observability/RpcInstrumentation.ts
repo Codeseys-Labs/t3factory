@@ -81,6 +81,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.factoryAddTaskComment]: "factory",
   [WS_METHODS.factoryReadTaskActivity]: "factory",
   [WS_METHODS.factoryFindTaskByThread]: "factory",
+  [WS_METHODS.factoryPreviewTaskAssignee]: "factory",
   [WS_METHODS.factorySubscribeTaskChanges]: "factory",
   [WS_METHODS.factoryListAgentProfiles]: "factory",
   [WS_METHODS.factorySaveAgentProfile]: "factory",

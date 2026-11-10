@@ -63,6 +63,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.factoryReadTaskResult]: AuthOrchestrationReadScope,
   [WS_METHODS.factoryReadTaskActivity]: AuthOrchestrationReadScope,
   [WS_METHODS.factoryFindTaskByThread]: AuthOrchestrationReadScope,
+  [WS_METHODS.factoryPreviewTaskAssignee]: AuthOrchestrationReadScope,
   [WS_METHODS.factorySubscribeTaskChanges]: AuthOrchestrationReadScope,
   [WS_METHODS.factoryListAgentProfiles]: AuthOrchestrationReadScope,
   [WS_METHODS.factoryReadTaskPlanProposal]: AuthOrchestrationReadScope,

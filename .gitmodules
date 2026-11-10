@@ -1,0 +1,11 @@
+# The vendored alchemy-effect reference carries its own submodule links. Git, and
+# actions/checkout with persist-credentials: false, fail on a link that has no entry
+# here. They are reference pointers only, so nothing initializes them.
+[submodule ".repos/alchemy-effect/submodules/distilled"]
+	path = .repos/alchemy-effect/submodules/distilled
+	url = https://github.com/alchemy-run/distilled.git
+	update = none
+[submodule ".repos/alchemy-effect/submodules/floci"]
+	path = .repos/alchemy-effect/submodules/floci
+	url = https://github.com/alchemy-run/floci.git
+	update = none

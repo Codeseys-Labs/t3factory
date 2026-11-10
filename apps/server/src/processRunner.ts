@@ -291,24 +291,24 @@ const runProcessCore = Effect.fn("processRunner.runProcessCore")(function* (
       cause,
     });
 
-  const child = yield* spawnOwnedProcess(spawner,
-      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-        ...((input.spawnCwd ?? input.cwd) ? { cwd: input.spawnCwd ?? input.cwd } : {}),
-        ...(input.env !== undefined
-          ? {
-              env: input.env,
-              extendEnv,
-            }
-          : {}),
-        shell: spawnCommand.shell,
-        forceKillAfter: FORCE_KILL_AFTER,
-      }),
-    )
-    .pipe(
-      Effect.mapError(toSpawnError),
-      // Synchronous spawn throws arrive as defects; recover them too so callers see typed spawn failures.
-      Effect.catchDefect((cause) => Effect.fail(toSpawnError(cause))),
-    );
+  const child = yield* spawnOwnedProcess(
+    spawner,
+    ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+      ...((input.spawnCwd ?? input.cwd) ? { cwd: input.spawnCwd ?? input.cwd } : {}),
+      ...(input.env !== undefined
+        ? {
+            env: input.env,
+            extendEnv,
+          }
+        : {}),
+      shell: spawnCommand.shell,
+      forceKillAfter: FORCE_KILL_AFTER,
+    }),
+  ).pipe(
+    Effect.mapError(toSpawnError),
+    // Synchronous spawn throws arrive as defects; recover them too so callers see typed spawn failures.
+    Effect.catchDefect((cause) => Effect.fail(toSpawnError(cause))),
+  );
 
   const stdin = input.stdin;
   const onStdoutChunk = input.onStdoutChunk;

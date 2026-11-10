@@ -6,6 +6,7 @@ import {
   type ModelSelection,
   type ThreadId,
 } from "@t3tools/contracts";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { useState } from "react";
 import { useThreadShellsForProjectRefs } from "../../state/entities";
@@ -30,7 +31,10 @@ type TaskDraft = {
 };
 type EdgeDraft = { edgeId: string; slot: string; rule: "sealed-draft" | "verified-code" };
 
-const decodePolicy = Schema.decodeUnknownSync(FactoryExecutionPolicy);
+const decodePolicy = Schema.decodeUnknownOption(FactoryExecutionPolicy);
+
+const INVALID_POLICY_MESSAGE =
+  "Choose a model for each task, a future expiry, valid limits, and an exact commit for each isolated workspace. Verified code also needs an isolated workspace and a verification executable.";
 
 export function FactoryExecutionPolicyEditor(props: {
   readonly plan: FactoryPlanSnapshot;
@@ -79,54 +83,59 @@ export function FactoryExecutionPolicyEditor(props: {
   const updateTask = (id: string, patch: Partial<TaskDraft>) =>
     setTasks((old) => old.map((task) => (task.taskId === id ? { ...task, ...patch } : task)));
   const build = () => {
-    try {
-      const time = new Date(expiry);
-      const policy = decodePolicy({
-        version: 1,
-        requesterThreadIds: requesters,
-        tasks: tasks.map((task) => ({
-          taskId: task.taskId,
-          modelSelection: task.model,
-          runtimeMode: "approval-required",
-          interactionMode: "default",
-          workspaceStrategy:
-            task.workspace === "root" ? { type: "root" } : { type: "worktree", baseRef: task.base },
-          setup: "deny",
-          output: { slot: task.slot, kind: task.kind },
-          ...(task.kind === "verified-code"
-            ? {
-                verification: {
-                  command: task.verificationCommand,
-                  args: task.verificationArgs === "" ? [] : task.verificationArgs.split("\n"),
-                },
-              }
-            : {}),
-        })),
-        edges: edges.map((edge) => ({ edgeId: edge.edgeId, slot: edge.slot, rule: edge.rule })),
-        maxAttempts: Number(attempts),
-        maxRetriesPerTask: Number(retries),
-        maxConcurrent: Number(concurrency),
-        expiresAt: time.toISOString(),
-        requiredCapabilities: ownedWriters ? ["owned-writers"] : [],
-      });
-      if (
-        !expiry ||
-        time.getTime() <= Date.now() ||
-        !attempts ||
-        !retries ||
-        !concurrency ||
-        policy.maxAttempts < 1 ||
-        policy.maxConcurrent < 1 ||
-        tasks.some((task) => task.kind === "verified-code" && task.workspace !== "worktree")
-      )
-        throw new Error();
-      setError(null);
-      props.onGrant(policy);
-    } catch {
-      setError(
-        "Choose a model for each task, a future expiry, valid limits, and an exact commit for each isolated workspace. Verified code also needs an isolated workspace and a verification executable.",
-      );
+    const time = new Date(expiry);
+    if (Number.isNaN(time.getTime())) {
+      setError(INVALID_POLICY_MESSAGE);
+      return;
     }
+    const decoded = decodePolicy({
+      version: 1,
+      requesterThreadIds: requesters,
+      tasks: tasks.map((task) => ({
+        taskId: task.taskId,
+        modelSelection: task.model,
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        workspaceStrategy:
+          task.workspace === "root" ? { type: "root" } : { type: "worktree", baseRef: task.base },
+        setup: "deny",
+        output: { slot: task.slot, kind: task.kind },
+        ...(task.kind === "verified-code"
+          ? {
+              verification: {
+                command: task.verificationCommand,
+                args: task.verificationArgs === "" ? [] : task.verificationArgs.split("\n"),
+              },
+            }
+          : {}),
+      })),
+      edges: edges.map((edge) => ({ edgeId: edge.edgeId, slot: edge.slot, rule: edge.rule })),
+      maxAttempts: Number(attempts),
+      maxRetriesPerTask: Number(retries),
+      maxConcurrent: Number(concurrency),
+      expiresAt: time.toISOString(),
+      requiredCapabilities: ownedWriters ? ["owned-writers"] : [],
+    });
+    if (Option.isNone(decoded)) {
+      setError(INVALID_POLICY_MESSAGE);
+      return;
+    }
+    const policy = decoded.value;
+    if (
+      !expiry ||
+      time.getTime() <= Date.now() ||
+      !attempts ||
+      !retries ||
+      !concurrency ||
+      policy.maxAttempts < 1 ||
+      policy.maxConcurrent < 1 ||
+      tasks.some((task) => task.kind === "verified-code" && task.workspace !== "worktree")
+    ) {
+      setError(INVALID_POLICY_MESSAGE);
+      return;
+    }
+    setError(null);
+    props.onGrant(policy);
   };
   return (
     <fieldset className="space-y-4" disabled={props.disabled}>

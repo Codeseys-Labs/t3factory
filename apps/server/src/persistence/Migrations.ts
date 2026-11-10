@@ -288,12 +288,14 @@ const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(funct
       const executed: Array<readonly [number, string]> = [];
       for (const [id, name, migration] of migrationEntries) {
         if (id < 69 || id > 73 || translated.has(id)) continue;
-        yield* Effect.mapError(migration, (cause: unknown) =>
-          new Migrator.MigrationError({
-            kind: "Failed",
-            message: `Failed to install ${id}_${name} while upgrading legacy Factory history.`,
-            cause,
-          }),
+        yield* Effect.mapError(
+          migration,
+          (cause: unknown) =>
+            new Migrator.MigrationError({
+              kind: "Failed",
+              message: `Failed to install ${id}_${name} while upgrading legacy Factory history.`,
+              cause,
+            }),
         );
         yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${id}, ${name})`;
         executed.push([id, name]);

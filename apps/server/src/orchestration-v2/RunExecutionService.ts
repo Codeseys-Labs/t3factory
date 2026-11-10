@@ -733,32 +733,61 @@ export const layer: Layer.Layer<
         const checkpointCaptureCommandId = CommandId.make(
           `command:effect:checkpoint.capture:${input.run.id}`,
         );
-        const managed = yield* factoryLifecycle.binding({ threadId: input.run.threadId, runId: input.run.id, runAttemptId: input.attempt.id }).pipe(Effect.mapError((cause) => new RunExecutionStartError({ commandId: CommandId.make(`command:factory-finalize:${input.attempt.id}`), runId: input.run.id, cause })));
+        const managed = yield* factoryLifecycle
+          .binding({
+            threadId: input.run.threadId,
+            runId: input.run.id,
+            runAttemptId: input.attempt.id,
+          })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new RunExecutionStartError({
+                  commandId: CommandId.make(`command:factory-finalize:${input.attempt.id}`),
+                  runId: input.run.id,
+                  cause,
+                }),
+            ),
+          );
         // Stopped runs capture rollback points for the next message; enqueue before later starts on this effect lane.
         const finalization = {
-          effects: managed !== null ? [{
-            id: `effect:factory.execution.finalize:${input.attempt.id}`,
-            commandId: CommandId.make(`command:effect:factory.execution.finalize:${input.attempt.id}`), threadId: input.run.threadId,
-            request: { type: "factory.execution.finalize" as const, runId: input.run.id, runAttemptId: input.attempt.id,
-              scopeId: input.checkpointScope.id, captureGeneration: 1, providerThreadId: input.providerThread.id,
-              driver: input.terminal.driver, providerInstanceId: input.run.providerInstanceId },
-          }] :
-            input.terminal.status === "completed" ||
-            input.terminal.status === "interrupted" ||
-            input.terminal.status === "cancelled"
+          effects:
+            managed !== null
               ? [
                   {
-                    id: `effect:checkpoint.capture:${input.run.id}`,
-                    commandId: checkpointCaptureCommandId,
+                    id: `effect:factory.execution.finalize:${input.attempt.id}`,
+                    commandId: CommandId.make(
+                      `command:effect:factory.execution.finalize:${input.attempt.id}`,
+                    ),
                     threadId: input.run.threadId,
                     request: {
-                      type: "checkpoint.capture" as const,
+                      type: "factory.execution.finalize" as const,
                       runId: input.run.id,
+                      runAttemptId: input.attempt.id,
                       scopeId: input.checkpointScope.id,
+                      captureGeneration: 1,
+                      providerThreadId: input.providerThread.id,
+                      driver: input.terminal.driver,
+                      providerInstanceId: input.run.providerInstanceId,
                     },
                   },
                 ]
-              : [],
+              : input.terminal.status === "completed" ||
+                  input.terminal.status === "interrupted" ||
+                  input.terminal.status === "cancelled"
+                ? [
+                    {
+                      id: `effect:checkpoint.capture:${input.run.id}`,
+                      commandId: checkpointCaptureCommandId,
+                      threadId: input.run.threadId,
+                      request: {
+                        type: "checkpoint.capture" as const,
+                        runId: input.run.id,
+                        scopeId: input.checkpointScope.id,
+                      },
+                    },
+                  ]
+                : [],
           events: [
             ...cascadedSubagentEvents,
             ...(input.abandonedProviderTurn === undefined
@@ -1681,8 +1710,15 @@ export const layer: Layer.Layer<
               }),
             ))
           : input.session.startTurn(turnInput);
-        const claimedStart = factoryLifecycle.runPhase({ threadId: input.run.threadId, runId: input.run.id,
-          runAttemptId: input.attemptId, phase: "turn" }, startTurn);
+        const claimedStart = factoryLifecycle.runPhase(
+          {
+            threadId: input.run.threadId,
+            runId: input.run.id,
+            runAttemptId: input.attemptId,
+            phase: "turn",
+          },
+          startTurn,
+        );
         yield* Effect.andThen(shouldStart, claimedStart).pipe(
           // Wait for acceptance so abandoned startup cannot leave a refresher
           // on the already-detached ingestion fiber.

@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./ownedProcess": { "types": "./src/ownedProcess.ts", "import": "./src/ownedProcess.ts" },
+    "./ownedProcess": {
+      "types": "./src/ownedProcess.ts",
+      "import": "./src/ownedProcess.ts"
+    },
     "./changedFileKind": {
       "types": "./src/changedFileKind.ts",
       "import": "./src/changedFileKind.ts"

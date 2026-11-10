@@ -166,6 +166,11 @@ vi.mock(import("../settings/SettingsScopeContext"), () => ({
   })) as never,
 }));
 
+// Covered by its own test; its imports need more of state/session than the mock above provides.
+vi.mock(import("./FactoryExecutionPanel"), () => ({
+  FactoryExecutionPanel: (() => null) as never,
+}));
+
 import { act, render } from "../../../test/render";
 import { FactoryPlanEditor } from "./FactoryPlanEditor";
 

@@ -56,9 +56,12 @@ describe("ThemeImportDialog", () => {
     await userEvent.type(page.getByLabelText("Search Open VSX themes"), "night");
 
     await expect.element(page.getByRole("heading", { name: "Nightfall" })).toBeVisible();
-    expect(searchOpenVsxThemes).toHaveBeenCalledWith(
-      "night",
-      expect.objectContaining({ sortBy: "downloadCount" }),
+    // The heading can come from an earlier, shorter query, so the full-word search may still be pending.
+    await vi.waitFor(() =>
+      expect(searchOpenVsxThemes).toHaveBeenCalledWith(
+        "night",
+        expect.objectContaining({ sortBy: "downloadCount" }),
+      ),
     );
   });
 });

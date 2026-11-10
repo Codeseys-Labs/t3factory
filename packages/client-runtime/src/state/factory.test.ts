@@ -877,14 +877,21 @@ it.effect(
       const planDetail = h.atoms.readPlan({ environmentId, input: { ref: plan.ref } });
       const planList = h.atoms.listPlans({ environmentId, input: { projectId } });
       const planHistory = h.atoms.readPlanHistory({ environmentId, input: { ref: plan.ref } });
-      const executionOutput = h.atoms.readExecutionOutput({ environmentId, input: {
-        selection: { ref: plan.ref, revision: 1, taskId: plan.ref.rootId }, resultId: "a".repeat(64),
-      } });
+      const executionOutput = h.atoms.readExecutionOutput({
+        environmentId,
+        input: {
+          selection: { ref: plan.ref, revision: 1, taskId: plan.ref.rootId },
+          resultId: "a".repeat(64),
+        },
+      });
       yield* AtomRegistry.mount(h.registry, planDetail);
       yield* AtomRegistry.mount(h.registry, planList);
       yield* AtomRegistry.mount(h.registry, planHistory);
       yield* AtomRegistry.mount(h.registry, executionOutput);
-      expect((yield* AtomRegistry.getResult(h.registry, executionOutput, { suspendOnWaiting: true })).text).toBe("Protected result");
+      expect(
+        (yield* AtomRegistry.getResult(h.registry, executionOutput, { suspendOnWaiting: true }))
+          .text,
+      ).toBe("Protected result");
       expect(
         (yield* AtomRegistry.getResult(h.registry, planDetail, { suspendOnWaiting: true })).tasks[0]
           ?.context,

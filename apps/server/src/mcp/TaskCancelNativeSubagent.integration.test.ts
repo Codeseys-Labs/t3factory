@@ -42,9 +42,15 @@ import type { McpInvocationScope } from "./McpInvocationContext.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
 
+const projectId = ProjectId.make("project:task-cancel");
+
 const layerOrchestratorService = OrchestratorMcpService.layer.pipe(
   Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
-  Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+  Layer.provide(
+    Layer.mock(GitVcsDriver.GitVcsDriver)({
+      resolveCommit: ({ revision }) => Effect.succeed({ commitSha: revision }),
+    }),
+  ),
 );
 
 const driver = ProviderDriverKind.make("claudeAgent");
@@ -154,7 +160,9 @@ it.effect("task_cancel ends a delegated child's background native subagent", () 
           Layer.mergeAll(
             layerAdapters,
             Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
-            Layer.mock(ProjectService.ProjectService)({}),
+            Layer.mock(ProjectService.ProjectService)({
+              getById: () => Effect.succeedSome({ id: projectId, workspaceRoot: cwd } as never),
+            }),
             Layer.mock(SecretRequests.SecretRequests)({}),
             Layer.mock(RemoteDelegation.RemoteDelegation)({}),
             ServerSettings.layerTest(),
@@ -184,7 +192,7 @@ it.effect("task_cancel ends a delegated child's background native subagent", () 
           type: "thread.create",
           commandId: CommandId.make("create-parent"),
           threadId: parentThreadId,
-          projectId: ProjectId.make("project:task-cancel"),
+          projectId,
           title: "Parent",
           modelSelection,
           runtimeMode: "full-access",

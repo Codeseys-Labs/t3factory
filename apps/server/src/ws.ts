@@ -580,7 +580,7 @@ const ServerWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
 // RpcGroup.toLayer derives each handler's requirements by scanning every RPC in
 // the group, so its type cost grows with handlers × RPCs. Near 200 methods that
 // crosses TypeScript's instantiation limit and the layer's requirements degrade to
-// `any`, so the handlers are registered as two disjoint, smaller groups.
+// `any`, so the handlers are registered as three disjoint, smaller groups.
 type ServerWsRpc = RpcGroup.Rpcs<typeof ServerWsRpcGroup>;
 const SPLIT_WS_RPC_PREFIXES = ["server", "pullRequests", "provider", "orchestration"] as const;
 type SplitWsRpc = Extract<
@@ -589,10 +589,14 @@ type SplitWsRpc = Extract<
 >;
 const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
   SPLIT_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
-const isOtherWsRpc = (rpc: ServerWsRpc): rpc is Exclude<ServerWsRpc, SplitWsRpc> =>
-  !isSplitWsRpc(rpc);
+type FactoryWsRpc = Extract<ServerWsRpc, { readonly _tag: `factory.${string}` }>;
+const isFactoryWsRpc = (rpc: ServerWsRpc): rpc is FactoryWsRpc => rpc._tag.startsWith("factory.");
+type OtherWsRpc = Exclude<ServerWsRpc, SplitWsRpc | FactoryWsRpc>;
+const isOtherWsRpc = (rpc: ServerWsRpc): rpc is OtherWsRpc =>
+  !isSplitWsRpc(rpc) && !isFactoryWsRpc(rpc);
 const serverWsRpcs = Array.from(ServerWsRpcGroup.requests.values());
 const SplitWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isSplitWsRpc));
+const FactoryWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isFactoryWsRpc));
 const OtherWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isOtherWsRpc));
 // Replaying each intervening event costs a shell refetch; past this gap a
 // single O(active-threads) snapshot is cheaper and bounded.
@@ -3502,10 +3506,13 @@ export const layerWsRpc = (
           ),
       });
       const splitHandlers: Pick<typeof handlers, SplitWsRpc["_tag"]> = handlers;
-      const otherHandlers: Pick<typeof handlers, Exclude<ServerWsRpc, SplitWsRpc>["_tag"]> =
-        handlers;
+      const factoryHandlers: Pick<typeof handlers, FactoryWsRpc["_tag"]> = handlers;
+      const otherHandlers: Pick<typeof handlers, OtherWsRpc["_tag"]> = handlers;
       return Context.merge(
-        yield* SplitWsRpcGroup.toHandlers(splitHandlers),
+        Context.merge(
+          yield* SplitWsRpcGroup.toHandlers(splitHandlers),
+          yield* FactoryWsRpcGroup.toHandlers(factoryHandlers),
+        ),
         yield* OtherWsRpcGroup.toHandlers(otherHandlers),
       );
     }),

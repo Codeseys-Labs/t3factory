@@ -1183,6 +1183,79 @@ export function windowsSmokeEnvironment(
   };
 }
 
+const PROTOCOL_HANDLER_KEY = `HKCU\\Software\\Classes\\${FACTORY_PREVIEW_IDENTITY.scheme}`;
+
+interface ProtocolHandlerSnapshot {
+  readonly key: string;
+  readonly file: string;
+  /** The `reg export` of the key held in `file`; null when the key did not exist. */
+  readonly before: Buffer | null;
+}
+
+/** The reg.exe calls that return the handler key to its snapshot, given its current export. */
+export function protocolHandlerRestoreSteps(
+  snapshot: ProtocolHandlerSnapshot,
+  current: Buffer | null,
+) {
+  const remove = ["delete", snapshot.key, "/f"];
+  if (snapshot.before === null) return current === null ? [] : [remove];
+  if (current !== null && snapshot.before.equals(current)) return [];
+  // reg import only adds and overwrites, so values the smoke added go with the delete.
+  return current === null ? [["import", snapshot.file]] : [remove, ["import", snapshot.file]];
+}
+
+/** Runs reg.exe and returns why it failed, or undefined when it succeeded. */
+function regFailure(args: ReadonlyArray<string>) {
+  const reg = NodePath.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "reg.exe");
+  const result = NodeChildProcess.spawnSync(reg, args, {
+    encoding: "utf8",
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  if (result.status === 0) return undefined;
+  if (result.error) return result.error.message;
+  return result.stderr.trim() || `reg.exe exited ${String(result.status ?? result.signal)}`;
+}
+
+/** Exports the key to `file`; null when the key does not exist. */
+function exportProtocolHandler(key: string, file: string) {
+  if (regFailure(["query", key]) !== undefined) {
+    // reg.exe exits 1 whether the key is missing or reg failed; a readable parent tells them apart.
+    const parent = NodePath.win32.dirname(key);
+    const failure = regFailure(["query", parent]);
+    if (failure !== undefined) throw new Error(`reg.exe could not read ${parent}: ${failure}`);
+    return null;
+  }
+  const failure = regFailure(["export", key, file, "/y"]);
+  if (failure !== undefined) throw new Error(`reg.exe could not export ${key}: ${failure}`);
+  return NodeFS.readFileSync(file);
+}
+
+/** Reports a failed restore instead of throwing, so the smoke's own result or error stands. */
+function restoreProtocolHandler(snapshot: ProtocolHandlerSnapshot, scratch: string) {
+  try {
+    const current = exportProtocolHandler(snapshot.key, scratch);
+    const steps = protocolHandlerRestoreSteps(snapshot, current);
+    if (steps.length === 0) return;
+    const failures = steps.flatMap((args) => {
+      const failure = regFailure(args);
+      return failure === undefined ? [] : [`reg ${args.join(" ")}: ${failure}`];
+    });
+    const restored = exportProtocolHandler(snapshot.key, scratch);
+    if (protocolHandlerRestoreSteps(snapshot, restored).length > 0) {
+      throw new Error(failures.join("; ") || "it still differs from before the smoke");
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`Could not restore ${snapshot.key} after the smoke: ${reason}`);
+    if (snapshot.before === null) {
+      console.error("It did not exist before the smoke; delete it.");
+    } else {
+      const exported = snapshot.before.toString("utf16le").trim();
+      console.error(`Before the smoke it held this; import it as a .reg file:\n${exported}`);
+    }
+  }
+}
+
 function runSmoke(options: { package: string; sha256: string; artifactsDir: string }) {
   // oxlint-disable-next-line t3code/no-global-process-runtime -- Dependency-free control script; no Effect runtime to inject.
   if (NodeOS.platform() !== "win32") throw new Error("The T3Factory ZIP smoke runs on Windows");
@@ -1192,6 +1265,7 @@ function runSmoke(options: { package: string; sha256: string; artifactsDir: stri
     throw new Error(`${zip} hashes to ${digest}, not ${options.sha256}`);
   const root = git(process.cwd(), ["rev-parse", "--show-toplevel"]);
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3factory-smoke-"));
+  let handler: ProtocolHandlerSnapshot | undefined;
   try {
     // System tar (bsdtar) reads ZIPs; Git Bash's GNU tar does not.
     const tar = NodePath.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
@@ -1213,6 +1287,13 @@ function runSmoke(options: { package: string; sha256: string; artifactsDir: stri
       "t3-resource-monitor.exe",
     );
     if (!NodeFS.existsSync(monitor)) throw new Error(`${zip} has no bundled resource monitor`);
+    // The app registers its URL handler in HKCU, which the redirected profile does not cover.
+    const saved = NodePath.join(dir, "handler-before.reg");
+    handler = {
+      key: PROTOCOL_HANDLER_KEY,
+      file: saved,
+      before: exportProtocolHandler(PROTOCOL_HANDLER_KEY, saved),
+    };
     const result = NodeChildProcess.spawnSync(
       process.execPath,
       [
@@ -1231,6 +1312,7 @@ function runSmoke(options: { package: string; sha256: string; artifactsDir: stri
     if (result.status !== 0) throw new Error(`Desktop launch smoke failed for ${zip}`);
     console.log(`Smoke passed for ${NodePath.basename(zip)} (${digest}).`);
   } finally {
+    if (handler) restoreProtocolHandler(handler, NodePath.join(dir, "handler-now.reg"));
     cleanupSmokeDirectory(dir);
   }
 }

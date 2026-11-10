@@ -97,9 +97,9 @@ and must consume this artifact, never rebuild it.
    with `T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR` enabled. It needs an empty output directory outside the
    worktree and records the ZIP's SHA-256. `smoke` checks that digest, unpacks the ZIP and opens a
    seeded thread against temporary T3, home and Windows profile directories. It clears inherited
-   T3, Vite and Electron overrides before launch. Like any preview launch, it registers the
-   `t3factory` handler. A ZIP from another commit,
-   or one built with a reused or non-Spectre resource monitor, does not qualify.
+   T3, Vite and Electron overrides before launch. The launch registers the `t3factory` handler,
+   which `smoke` then returns to the state it found, deleting it if there was none. A ZIP from
+   another commit, or one built with a reused or non-Spectre resource monitor, does not qualify.
 
 3. Run the printed `gh workflow run factory-build.yml` command from the same trusted branch after
    filling in the validation values.

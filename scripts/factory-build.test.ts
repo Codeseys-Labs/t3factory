@@ -9,6 +9,7 @@ import {
   CHECK_JOB_NAMES,
   evaluateBuild,
   evaluateValidationRun,
+  protocolHandlerRestoreSteps,
   readZipEntries,
   reusesResourceMonitor,
   validatePackageReceipt,
@@ -279,6 +280,25 @@ it("preserves the smoke result when Windows keeps its extracted files locked", (
       cleanupSmokeDirectory("owned-smoke-directory");
     }
   }).toThrow(smokeFailure);
+});
+
+describe("protocolHandlerRestoreSteps", () => {
+  const key = "HKCU\\Software\\Classes\\scheme";
+  const file = "C:\\smoke\\handler-before.reg";
+  const installed = Buffer.from("installed app handler");
+  const smoked = Buffer.from("smoke copy handler");
+  const remove = ["delete", key, "/f"];
+  const restore = ["import", file];
+
+  it.each([
+    ["leaves a key the smoke never created absent", null, null, []],
+    ["deletes a key the smoke created", null, smoked, [remove]],
+    ["leaves a key the smoke did not change", installed, Buffer.from(installed), []],
+    ["deletes and re-imports a key the smoke changed", installed, smoked, [remove, restore]],
+    ["re-imports a key that disappeared", installed, null, [restore]],
+  ])("%s", (_name, before, now, steps) => {
+    expect(protocolHandlerRestoreSteps({ key, file, before }, now)).toEqual(steps);
+  });
 });
 
 describe("reusesResourceMonitor", () => {

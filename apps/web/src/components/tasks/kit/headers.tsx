@@ -2,7 +2,9 @@ import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { isElectron } from "../../../env";
 import { Button, InlineButton } from "../../ui/button";
+import { WorkspacePageHeader } from "../../WorkspacePageHeader";
 import { TruncatedText } from "./atoms";
 
 export interface PageHeaderCrumb {
@@ -14,8 +16,9 @@ export interface PageHeaderCrumb {
 }
 
 /**
- * The 56px header of a page: a title, or a breadcrumb (`Tasks › T-38 › T-38.2`) with a back
- * button, then a view switch and the page actions.
+ * The header of a page: a title, or a breadcrumb (`Tasks › T-38 › T-38.2`) with a back button,
+ * then a view switch and the page actions. It is the workspace top bar, so the desktop window can
+ * be dragged by it and the window controls keep their room.
  */
 export function PageHeader({
   title,
@@ -31,7 +34,7 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-border px-6">
+    <WorkspacePageHeader electron={isElectron} className="min-w-0 border-b border-border">
       {onBack ? (
         <Button variant="ghost-muted" size="icon-xs" aria-label="Back" onClick={onBack}>
           <ChevronLeftIcon aria-hidden />
@@ -78,7 +81,7 @@ export function PageHeader({
       )}
       {view ? <div className="flex shrink-0 items-center">{view}</div> : null}
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
-    </header>
+    </WorkspacePageHeader>
   );
 }
 

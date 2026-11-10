@@ -211,7 +211,7 @@ describe("task presentation", () => {
   });
   it.each([
     ["unassigned", "Unassigned", ""],
-    ["person", "You", "BB"],
+    ["person", "You", ""],
     ["auto", "Auto → Codex · Sol", "Cx"],
     ["profile", "Codex · Sol", "Cx"],
     ["pinned", "Codex · Sol", "Cx"],

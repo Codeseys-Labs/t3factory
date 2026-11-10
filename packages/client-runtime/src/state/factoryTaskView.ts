@@ -28,8 +28,8 @@ export type FactoryTaskCatalog = readonly (Pick<
   readonly models: readonly {
     readonly slug: string;
     readonly name: string;
-    readonly shortName?: string;
-    readonly subProvider?: string;
+    readonly shortName?: string | undefined;
+    readonly subProvider?: string | undefined;
   }[];
 })[];
 
@@ -38,7 +38,7 @@ export function presentFactoryTaskAssignee(
   catalog: FactoryTaskCatalog,
 ) {
   const mode = assignee.assignment.mode;
-  if (mode === "person") return { label: "You", monogram: "BB", key: assignee.key };
+  if (mode === "person") return { label: "You", monogram: "", key: assignee.key };
   if (mode === "unassigned") return { label: "Unassigned", monogram: "", key: assignee.key };
   const setup =
     assignee.resolved?.setup ??

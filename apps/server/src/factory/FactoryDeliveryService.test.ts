@@ -309,7 +309,9 @@ const harness = (
     NodeServices.layer,
     Layer.succeed(ServerEnvironmentIdentity, { getEnvironmentId: Effect.succeed(environmentId) }),
     issueTrackersLayer(options.trackers),
-    ServerConfig.layerTest("/repo", "/delivery-test-home").pipe(Layer.provide(NodeServices.layer)),
+    ServerConfig.layerTest("/repo", { prefix: "t3-factory-delivery-test-" }).pipe(
+      Layer.provide(NodeServices.layer),
+    ),
     Layer.mock(Folders.ManagedProjectFolders)({
       namedProjectsRoot: "/delivery-test-home/projects",
     }),

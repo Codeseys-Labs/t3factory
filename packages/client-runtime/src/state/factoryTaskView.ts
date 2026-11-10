@@ -185,9 +185,20 @@ export function groupFactoryTaskNeeds(
       if (!previous || previous.threadId === null || entry.threadId !== null)
         unique.set(key, entry);
     }
+  // Within one reason the newer task comes first, as the design lists them (T-36 above T-33).
+  const newerFirst = (a: string, b: string) => {
+    const left = a.slice(2).split(".").map(Number);
+    const right = b.slice(2).split(".").map(Number);
+    for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+      const difference = (right[index] ?? 0) - (left[index] ?? 0);
+      if (difference !== 0) return difference;
+    }
+    return 0;
+  };
   const rows = [...unique.values()].sort(
     (a, b) =>
       attentionOrder.indexOf(a.reason) - attentionOrder.indexOf(b.reason) ||
+      newerFirst(a.displayId, b.displayId) ||
       factoryTaskKey(a.ref).localeCompare(factoryTaskKey(b.ref)),
   );
   const blocking = rows.filter((entry) =>

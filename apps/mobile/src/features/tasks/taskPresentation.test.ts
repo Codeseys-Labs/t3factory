@@ -54,8 +54,8 @@ describe("buildTasksSections", () => {
       ["T-29", "failed"],
       ["T-39", "approve"],
       ["T-38.2", "question"],
-      ["T-33", "review"],
       ["T-36", "review"],
+      ["T-33", "review"],
     ]);
     expect(
       sections.groups.map((group) => [group.status, group.rows.map((r) => r.task.displayId)]),
@@ -75,7 +75,7 @@ describe("buildTasksSections", () => {
 
   it("splits the Inbox into asks that block a run and asks ready to review", () => {
     expect(ids(sections.blocking)).toEqual(["T-29", "T-39", "T-38.2"]);
-    expect(ids(sections.review)).toEqual(["T-33", "T-36"]);
+    expect(ids(sections.review)).toEqual(["T-36", "T-33"]);
   });
 
   it("carries a sub-task's question on its parent without listing the parent twice", () => {

@@ -238,6 +238,9 @@ const TaskFilterFields = {
   text: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
   // `roots` (default) lists top-level tasks; `all` also lists sub-tasks.
   scope: Schema.optional(Schema.Literals(["roots", "all"])),
+  // Only tasks that wait on a person or have a run that has not finished. A parent counts when
+  // one of its sub-tasks does.
+  attention: Schema.optional(Schema.Literal(true)),
 };
 
 export const FactoryTaskListInput = Schema.Struct({

@@ -47,7 +47,10 @@ describe("task attention", () => {
       ["T-39", "approve"],
       ["T-38.2", "question"],
     ]);
-    expect(inbox.review.map((need) => need.reason)).toEqual(["review", "review"]);
+    expect(inbox.review.map((need) => [need.displayId, need.reason])).toEqual([
+      ["T-36", "review"],
+      ["T-33", "review"],
+    ]);
     expect(inbox.count).toBe(5);
     expect(parent.liveRuns[0]?.pill).toBe(fixtures.threadFacts[0]?.pill);
     const failedChild = {

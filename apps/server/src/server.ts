@@ -18,6 +18,8 @@ import * as FactoryDeliveryService from "./factory/FactoryDeliveryService.ts";
 import * as FactoryAcceptanceStore from "./persistence/FactoryAcceptanceStore.ts";
 import * as FactoryKnowledgeStore from "./persistence/FactoryKnowledgeStore.ts";
 import * as FactoryDeliveryStore from "./persistence/FactoryDeliveryStore.ts";
+import * as FactoryIntakeService from "./factory/FactoryIntakeService.ts";
+import * as FactoryIntakeStore from "./persistence/FactoryIntakeStore.ts";
 import * as FeedFetch from "./factory/FeedFetch.ts";
 import * as ProjectCoordinatorService from "./project/ProjectCoordinatorService.ts";
 import * as ProjectCoordinators from "./persistence/ProjectCoordinators.ts";
@@ -797,6 +799,9 @@ const layerMakeRoutes = Layer.mergeAll(
       RuntimeLayer.layerFactoryExecutionServiceProvided,
       FactoryPreparationAcceptanceService.layer.pipe(Layer.provide(RuntimeLayer.layerEventSink)),
       ProjectCoordinatorService.layer,
+      FactoryIntakeService.layer.pipe(
+        Layer.provide(Layer.merge(FactoryIssueService.layer, FactoryFeedService.layer)),
+      ),
     ).pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -807,6 +812,7 @@ const layerMakeRoutes = Layer.mergeAll(
           FactoryAcceptanceStore.layer,
           FactoryKnowledgeStore.layer,
           FactoryDeliveryStore.layer,
+          FactoryIntakeStore.layer,
           // The same instance the effect worker drains, so a grant wakes it.
           EffectOutbox.layer,
           FeedFetch.layer,

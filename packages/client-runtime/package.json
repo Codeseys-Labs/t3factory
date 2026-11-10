@@ -187,6 +187,34 @@
       "types": "./src/state/factoryWork.ts",
       "default": "./src/state/factoryWork.ts"
     },
+    "./state/factory-tasks": {
+      "types": "./src/state/factoryTasks.ts",
+      "default": "./src/state/factoryTasks.ts"
+    },
+    "./state/factory-task-list": {
+      "types": "./src/state/factoryTaskList.ts",
+      "default": "./src/state/factoryTaskList.ts"
+    },
+    "./state/factory-task-view": {
+      "types": "./src/state/factoryTaskView.ts",
+      "default": "./src/state/factoryTaskView.ts"
+    },
+    "./state/factory-task-url": {
+      "types": "./src/state/factoryTaskUrl.ts",
+      "default": "./src/state/factoryTaskUrl.ts"
+    },
+    "./state/factory-task-fixtures": {
+      "types": "./src/state/factoryTaskFixtures.ts",
+      "default": "./src/state/factoryTaskFixtures.ts"
+    },
+    "./state/factory-intake": {
+      "types": "./src/state/factoryIntake.ts",
+      "default": "./src/state/factoryIntake.ts"
+    },
+    "./state/factory-intake-fixtures": {
+      "types": "./src/state/factoryIntakeFixtures.ts",
+      "default": "./src/state/factoryIntakeFixtures.ts"
+    },
     "./state/filesystem": {
       "types": "./src/state/filesystem.ts",
       "default": "./src/state/filesystem.ts"

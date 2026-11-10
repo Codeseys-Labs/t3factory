@@ -12,6 +12,8 @@ export type TaskDialog =
       readonly projectId?: ProjectId;
       // Set to add a sub-task under this task.
       readonly parent?: FactoryTaskRef;
+      // The lane the task is created in. Default `backlog`.
+      readonly lane?: "backlog" | "ready";
     }
   | {
       readonly kind: "task-setup";

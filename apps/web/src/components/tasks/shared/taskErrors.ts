@@ -40,7 +40,7 @@ const TASK: Omit<Record<TaskReason, string>, keyof typeof SHARED> = {
   "result-conflict": "A newer result arrived. Review it first.",
   "assignee-unresolved": "Pick who does this task first.",
   "provider-unavailable": "That agent is unavailable on this machine. Pick another one.",
-  "unsupported-capability": "Update this environment's server to use tasks.",
+  "unsupported-capability": "That agent can't run tasks on this machine yet. Pick another one.",
   "task-limit": "A top-level task holds at most 64 tasks.",
 };
 

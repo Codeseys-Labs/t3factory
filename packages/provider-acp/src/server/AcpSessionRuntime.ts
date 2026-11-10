@@ -1437,27 +1437,27 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
           ELECTRON_RUN_AS_NODE: "1",
           T3_ACP_CGROUP_WRAPPER: "1",
         };
-  const child = yield* spawnOwnedProcess(spawner,
-      ChildProcess.make(containedSpawnCommand.command, containedSpawnCommand.args, {
-        ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
-        ...(spawnEnvironment ? { env: spawnEnvironment } : {}),
-        extendEnv: options.spawn.extendEnv ?? true,
-        ...(options.ownDetachedProcessGroup === undefined
-          ? {}
-          : { detached: options.ownDetachedProcessGroup }),
-        shell: containedSpawnCommand.shell,
-      }),
-    )
-    .pipe(
-      Effect.provideService(Scope.Scope, runtimeScope),
-      Effect.mapError(
-        (cause) =>
-          new EffectAcpErrors.AcpSpawnError({
-            command: options.spawn.command,
-            cause,
-          }),
-      ),
-    );
+  const child = yield* spawnOwnedProcess(
+    spawner,
+    ChildProcess.make(containedSpawnCommand.command, containedSpawnCommand.args, {
+      ...(options.spawn.cwd ? { cwd: options.spawn.cwd } : {}),
+      ...(spawnEnvironment ? { env: spawnEnvironment } : {}),
+      extendEnv: options.spawn.extendEnv ?? true,
+      ...(options.ownDetachedProcessGroup === undefined
+        ? {}
+        : { detached: options.ownDetachedProcessGroup }),
+      shell: containedSpawnCommand.shell,
+    }),
+  ).pipe(
+    Effect.provideService(Scope.Scope, runtimeScope),
+    Effect.mapError(
+      (cause) =>
+        new EffectAcpErrors.AcpSpawnError({
+          command: options.spawn.command,
+          cause,
+        }),
+    ),
+  );
 
   // Detached children can keep stdout open, delaying protocol termination.
   if (scopeUnit !== undefined) {

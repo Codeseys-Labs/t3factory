@@ -109,7 +109,9 @@ function CheckoutPlanEditor(props: {
             projectId={props.projectId}
             projectTitle={props.projectTitle}
             workSupported={owner.serverConfig?.environment.capabilities.factoryWork === true}
-            executionSupported={owner.serverConfig?.environment.capabilities.factoryExecution === true}
+            executionSupported={
+              owner.serverConfig?.environment.capabilities.factoryExecution === true
+            }
             active={active}
           />
         </div>
@@ -353,7 +355,10 @@ function SelectedPlan(props: {
       ) : null}
       {props.active && query.error === null ? <PlanHistory reference={reference} /> : null}
       {props.active && query.isSuccess && query.data && props.executionSupported ? (
-        <FactoryExecutionPanel key={`${reference.rootId}:${query.data.revision}`} plan={query.data} />
+        <FactoryExecutionPanel
+          key={`${reference.rootId}:${query.data.revision}`}
+          plan={query.data}
+        />
       ) : null}
     </div>
   );

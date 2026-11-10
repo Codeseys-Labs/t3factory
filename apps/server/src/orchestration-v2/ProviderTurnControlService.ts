@@ -85,7 +85,9 @@ export class ProviderTurnControlServiceV2 extends Context.Service<
 export const layer: Layer.Layer<
   ProviderTurnControlServiceV2,
   never,
-  FactoryExecutionLifecycle.FactoryExecutionLifecycle | ProjectionStore.ProjectionStoreV2 | ProviderSessionManager.ProviderSessionManagerV2
+  | FactoryExecutionLifecycle.FactoryExecutionLifecycle
+  | ProjectionStore.ProjectionStoreV2
+  | ProviderSessionManager.ProviderSessionManagerV2
 > = Layer.effect(
   ProviderTurnControlServiceV2,
   Effect.gen(function* () {
@@ -103,12 +105,24 @@ export const layer: Layer.Layer<
       readonly messageId?: MessageId;
     }) {
       const managed = yield* factoryLifecycle.binding({ threadId: input.threadId }).pipe(
-        Effect.mapError((cause) => new ProviderTurnControlError({ threadId: input.threadId, operation: input.operation, providerTurnId: input.providerTurnId, cause })),
+        Effect.mapError(
+          (cause) =>
+            new ProviderTurnControlError({
+              threadId: input.threadId,
+              operation: input.operation,
+              providerTurnId: input.providerTurnId,
+              cause,
+            }),
+        ),
       );
-      if (managed !== null && input.operation !== "interrupt") return yield* new ProviderTurnControlError({
-        threadId: input.threadId, operation: input.operation, providerTurnId: input.providerTurnId,
-        cause: "Managed native control requires explicit execution admission; ordinary steer/restart is suppressed.",
-      });
+      if (managed !== null && input.operation !== "interrupt")
+        return yield* new ProviderTurnControlError({
+          threadId: input.threadId,
+          operation: input.operation,
+          providerTurnId: input.providerTurnId,
+          cause:
+            "Managed native control requires explicit execution admission; ordinary steer/restart is suppressed.",
+        });
       const context = yield* projections.getProviderControlContext(input.threadId, input);
       const { providerThread, providerTurn } = context;
       const targetsRecordedSession = providerThread?.providerSessionId === input.providerSessionId;

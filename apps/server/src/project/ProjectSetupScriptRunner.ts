@@ -358,9 +358,18 @@ export const make = Effect.gen(function* () {
       ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
       ...(input.projectCwd === undefined ? {} : { projectCwd: input.projectCwd }),
     };
-    const managed = yield* factoryLifecycle.binding({ threadId: ThreadId.make(input.threadId) }).pipe(
-      Effect.mapError((cause) => new ProjectSetupScriptOperationError({ ...errorContext, operation: "readThread", cause })),
-    );
+    const managed = yield* factoryLifecycle
+      .binding({ threadId: ThreadId.make(input.threadId) })
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new ProjectSetupScriptOperationError({
+              ...errorContext,
+              operation: "readThread",
+              cause,
+            }),
+        ),
+      );
     if (managed !== null) return { status: "no-script" } as const;
     // A thread whose origin cannot be read might be a link's: run nothing.
     const thread = yield* threads.getThreadShell(ThreadId.make(input.threadId)).pipe(

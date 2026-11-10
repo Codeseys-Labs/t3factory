@@ -1648,13 +1648,34 @@ export const layerWithOptions = (
         },
       );
 
-      const guardNativeCall = (threadId: ThreadId, driver: ProviderAdapter.ProviderAdapterV2SessionRuntime["driver"], allowed = true, identity?: { readonly runId: RunId; readonly runAttemptId: RunAttemptId }) =>
-        Effect.fn("ProviderSessionManager.guardNativeCall")(function* <A, E, R>(work: Effect.Effect<A, E, R>) {
-          const managed = yield* factoryLifecycle.binding({ threadId, ...identity }).pipe(Effect.mapError((cause) =>
-            new ProviderAdapter.ProviderAdapterProtocolError({ driver, detail: "Managed native ownership lookup failed", cause })));
+      const guardNativeCall = (
+        threadId: ThreadId,
+        driver: ProviderAdapter.ProviderAdapterV2SessionRuntime["driver"],
+        allowed = true,
+        identity?: { readonly runId: RunId; readonly runAttemptId: RunAttemptId },
+      ) =>
+        Effect.fn("ProviderSessionManager.guardNativeCall")(function* <A, E, R>(
+          work: Effect.Effect<A, E, R>,
+        ) {
+          const managed = yield* factoryLifecycle.binding({ threadId, ...identity }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderAdapter.ProviderAdapterProtocolError({
+                  driver,
+                  detail: "Managed native ownership lookup failed",
+                  cause,
+                }),
+            ),
+          );
           const authority = yield* FactoryExecutionLifecycle.FactoryNativeAuthority;
-          if (managed !== null && (!allowed || authority !== managed.runAttemptId || driver !== managed.driver)) {
-            return yield* new ProviderAdapter.ProviderAdapterProtocolError({ driver, detail: "Managed native operation requires its admitted phase claimant" });
+          if (
+            managed !== null &&
+            (!allowed || authority !== managed.runAttemptId || driver !== managed.driver)
+          ) {
+            return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+              driver,
+              detail: "Managed native operation requires its admitted phase claimant",
+            });
           }
           return yield* work;
         });
@@ -1692,7 +1713,9 @@ export const layerWithOptions = (
                 providerInstanceId: runtime.instanceId,
               }),
             ).pipe(
-              Effect.andThen(guardNativeCall(input.threadId, runtime.driver)(runtime.ensureThread(input))),
+              Effect.andThen(
+                guardNativeCall(input.threadId, runtime.driver)(runtime.ensureThread(input)),
+              ),
               Effect.tap((providerThread) =>
                 markProviderThreadLoaded({
                   providerSessionId,
@@ -1736,7 +1759,9 @@ export const layerWithOptions = (
                 isProviderThreadLoaded({ providerSessionId, threadId, providerThreadKey }),
               ),
               Effect.flatMap((loaded) =>
-                loaded ? Effect.succeed(input.providerThread) : guardNativeCall(threadId, runtime.driver)(runtime.resumeThread(input)),
+                loaded
+                  ? Effect.succeed(input.providerThread)
+                  : guardNativeCall(threadId, runtime.driver)(runtime.resumeThread(input)),
               ),
               Effect.tap((providerThread) =>
                 markProviderThreadLoaded({
@@ -1764,7 +1789,13 @@ export const layerWithOptions = (
                 providerInstanceId: runtime.instanceId,
               }),
             ).pipe(
-              Effect.andThen(guardNativeCall(input.sourceProviderThread.appThreadId ?? input.targetThreadId, runtime.driver, false)(guardNativeCall(input.targetThreadId, runtime.driver)(runtime.forkThread(input)))),
+              Effect.andThen(
+                guardNativeCall(
+                  input.sourceProviderThread.appThreadId ?? input.targetThreadId,
+                  runtime.driver,
+                  false,
+                )(guardNativeCall(input.targetThreadId, runtime.driver)(runtime.forkThread(input))),
+              ),
               Effect.tap((providerThread) =>
                 markProviderThreadLoaded({
                   providerSessionId,
@@ -1808,7 +1839,12 @@ export const layerWithOptions = (
                     ),
                   ),
                   () =>
-                    guardNativeCall(input.threadId, runtime.driver, true, { runId: input.runId, runAttemptId: input.attemptId })(runtime.startTurn(input)).pipe(turnMetrics("send", input.modelSelection.model)),
+                    guardNativeCall(input.threadId, runtime.driver, true, {
+                      runId: input.runId,
+                      runAttemptId: input.attemptId,
+                    })(runtime.startTurn(input)).pipe(
+                      turnMetrics("send", input.modelSelection.model),
+                    ),
                   (_, exit) =>
                     Exit.isFailure(exit)
                       ? observeActivity(
@@ -1821,7 +1857,13 @@ export const layerWithOptions = (
             ),
           steerTurn: (input) =>
             observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
-              Effect.andThen(guardNativeCall(input.threadId, runtime.driver, false)(runtime.steerTurn(input)).pipe(turnMetrics("steer"))),
+              Effect.andThen(
+                guardNativeCall(
+                  input.threadId,
+                  runtime.driver,
+                  false,
+                )(runtime.steerTurn(input)).pipe(turnMetrics("steer")),
+              ),
             ),
           interruptTurn: (input) =>
             observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
@@ -2048,13 +2090,22 @@ export const layerWithOptions = (
             input.providerSessionId,
             Effect.gen(function* () {
               const managed = yield* factoryLifecycle.binding({ threadId: input.threadId }).pipe(
-                Effect.mapError((cause) => new ProviderSessionOpenError({ instanceId: input.modelSelection.instanceId, providerSessionId: input.providerSessionId, cause })),
+                Effect.mapError(
+                  (cause) =>
+                    new ProviderSessionOpenError({
+                      instanceId: input.modelSelection.instanceId,
+                      providerSessionId: input.providerSessionId,
+                      cause,
+                    }),
+                ),
               );
               const authority = yield* FactoryExecutionLifecycle.FactoryNativeAuthority;
-              if (managed !== null && authority !== managed.runAttemptId) return yield* new ProviderSessionOpenError({
-                instanceId: input.modelSelection.instanceId, providerSessionId: input.providerSessionId,
-                cause: "Managed sessions can only open inside their durable native phase claim.",
-              });
+              if (managed !== null && authority !== managed.runAttemptId)
+                return yield* new ProviderSessionOpenError({
+                  instanceId: input.modelSelection.instanceId,
+                  providerSessionId: input.providerSessionId,
+                  cause: "Managed sessions can only open inside their durable native phase claim.",
+                });
               const cwd = input.runtimePolicy.cwd;
               if (cwd !== null) {
                 const workspaceIsDirectory = yield* fileSystem.stat(cwd).pipe(
@@ -2071,9 +2122,16 @@ export const layerWithOptions = (
               const key = sessionKey(input.providerSessionId);
               const existing = (yield* Ref.get(sessions)).get(key);
               if (existing !== undefined) {
-                if (managed !== null && (existing.runtime.driver !== managed.driver || existing.runtime.instanceId !== managed.spec.modelSelection.instanceId)) return yield* new ProviderSessionOpenError({
-                  instanceId: input.modelSelection.instanceId, providerSessionId: input.providerSessionId, cause: "Existing native session differs from admitted harness.",
-                });
+                if (
+                  managed !== null &&
+                  (existing.runtime.driver !== managed.driver ||
+                    existing.runtime.instanceId !== managed.spec.modelSelection.instanceId)
+                )
+                  return yield* new ProviderSessionOpenError({
+                    instanceId: input.modelSelection.instanceId,
+                    providerSessionId: input.providerSessionId,
+                    cause: "Existing native session differs from admitted harness.",
+                  });
                 const attached = existing.attachedThreadIds.has(input.threadId);
                 if (!attached && !existing.supportsMultipleProviderThreads) {
                   return yield* new ProviderSessionOpenError({
@@ -2102,10 +2160,13 @@ export const layerWithOptions = (
                     }),
                 ),
               );
-              if (managed !== null && adapter.driver !== managed.driver) return yield* new ProviderSessionOpenError({
-                instanceId: input.modelSelection.instanceId, providerSessionId: input.providerSessionId,
-                cause: "Provider configuration changed after admission; unsupported native session spawn is suppressed.",
-              });
+              if (managed !== null && adapter.driver !== managed.driver)
+                return yield* new ProviderSessionOpenError({
+                  instanceId: input.modelSelection.instanceId,
+                  providerSessionId: input.providerSessionId,
+                  cause:
+                    "Provider configuration changed after admission; unsupported native session spawn is suppressed.",
+                });
               const prepared = yield* prepareMcpSession(
                 input.threadId,
                 input.modelSelection.instanceId,

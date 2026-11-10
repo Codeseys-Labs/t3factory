@@ -68,7 +68,10 @@ export class FactoryPlanStore extends Context.Service<
   FactoryPlanStore,
   {
     readonly requireProject: (projectId: ProjectId) => Effect.Effect<void, FactoryPlanError>;
-    readonly requireHead: (ref: FactoryPlanRef, revision: number) => Effect.Effect<FactoryPlanSnapshot, FactoryPlanError>;
+    readonly requireHead: (
+      ref: FactoryPlanRef,
+      revision: number,
+    ) => Effect.Effect<FactoryPlanSnapshot, FactoryPlanError>;
     readonly read: (
       input: FactoryPlanReadInput,
     ) => Effect.Effect<FactoryPlanSnapshot, FactoryPlanError>;
@@ -351,7 +354,8 @@ const make = Effect.gen(function* () {
       yield* requireProject(ref.projectId);
       const current = yield* head(ref);
       if (current === null) return yield* new FactoryPlanError({ reason: "missing-plan" });
-      if (current.revision !== revision) return yield* new FactoryPlanError({ reason: "revision-conflict" });
+      if (current.revision !== revision)
+        return yield* new FactoryPlanError({ reason: "revision-conflict" });
       return current;
     }),
     requireProject,

@@ -125,7 +125,11 @@ export type ApplicationProjectFactoryPlanRevisedEvent =
   typeof ApplicationProjectFactoryPlanRevisedEvent.Type;
 
 export const ApplicationProjectEvent = Schema.Union([
-  Schema.Struct({ ...ApplicationProjectEventBaseFields, type: Schema.Literal("project.factory-execution-updated"), payload: Schema.Struct({ projectId: ProjectId, ...FactoryExecutionReadInput.fields }) }),
+  Schema.Struct({
+    ...ApplicationProjectEventBaseFields,
+    type: Schema.Literal("project.factory-execution-updated"),
+    payload: Schema.Struct({ projectId: ProjectId, ...FactoryExecutionReadInput.fields }),
+  }),
   ApplicationProjectCreatedEvent,
   ApplicationProjectMetaUpdatedEvent,
   ApplicationProjectDeletedEvent,

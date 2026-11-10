@@ -9,7 +9,11 @@ export interface OwnedProcessSpawner {
   readonly spawn: (
     command: ChildProcess.Command,
     spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
-  ) => Effect.Effect<ChildProcessSpawner.ChildProcessHandle, PlatformError.PlatformError, Scope.Scope>;
+  ) => Effect.Effect<
+    ChildProcessSpawner.ChildProcessHandle,
+    PlatformError.PlatformError,
+    Scope.Scope
+  >;
 }
 
 // Effect 4 Reference is a function: one call, unlike the Service class constructor.

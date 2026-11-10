@@ -6,7 +6,14 @@ export function canRetryFactoryAttempt(input: {
   readonly quiescent: boolean;
   readonly permitted: boolean;
 }): boolean {
-  return input.status === "failed" && input.hold === null && input.grantActive && input.taskGranted && input.quiescent && input.permitted;
+  return (
+    input.status === "failed" &&
+    input.hold === null &&
+    input.grantActive &&
+    input.taskGranted &&
+    input.quiescent &&
+    input.permitted
+  );
 }
 
 export function hasCompleteAbsenceOfAttemptOutput(input: {
@@ -15,5 +22,10 @@ export function hasCompleteAbsenceOfAttemptOutput(input: {
   readonly seenOnEarlierPages: boolean;
   readonly seenOnCurrentPage: boolean;
 }): boolean {
-  return !input.waiting && input.nextPage === null && !input.seenOnEarlierPages && !input.seenOnCurrentPage;
+  return (
+    !input.waiting &&
+    input.nextPage === null &&
+    !input.seenOnEarlierPages &&
+    !input.seenOnCurrentPage
+  );
 }

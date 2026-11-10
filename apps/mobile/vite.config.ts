@@ -7,6 +7,8 @@ const reactTests = [
   "src/features/factory/FactoryLocalPlans.test.tsx",
   "src/features/factory/FactoryWorkDetailRouteScreen.test.tsx",
   "src/features/factory/FactoryWorkPrerequisites.test.tsx",
+  "src/features/tasks/TaskPanels.test.tsx",
+  "src/features/tasks/TasksList.test.tsx",
   "src/features/threads/git/GitBranchesSheet.occupancy.test.tsx",
   "src/features/files/useFileTreeEntries.test.tsx",
   "src/features/projects/AddProjectScreen.test.ts",

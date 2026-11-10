@@ -1,5 +1,6 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { createFactoryEnvironmentAtoms } from "@t3tools/client-runtime/state/factory";
+import { createFactoryTaskEnvironmentAtoms } from "@t3tools/client-runtime/state/factory-tasks";
 import { EnvironmentId, FactoryWorkListInput } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Atom } from "effect/reactivity";
@@ -9,6 +10,7 @@ import { connectionAtomRuntime } from "../connection/runtime";
 import { environmentPresentations } from "./presentation";
 
 export const factoryEnvironment = createFactoryEnvironmentAtoms(connectionAtomRuntime);
+export const factoryTaskEnvironment = createFactoryTaskEnvironmentAtoms(connectionAtomRuntime);
 
 // Missing capability on an older server is unsupported, never an empty coordinator list.
 export const factoryCoordinatorSupportedAtom = Atom.family((environmentId: EnvironmentId | null) =>

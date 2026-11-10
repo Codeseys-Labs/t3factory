@@ -129,6 +129,8 @@ import { UsageRouteScreen } from "./features/usage/UsageRouteScreen";
 import { SettingsAboutRouteScreen } from "./features/settings/SettingsAboutRouteScreen";
 import { SettingsNotificationsRouteScreen } from "./features/settings/SettingsNotificationsRouteScreen";
 import { FactoryRouteScreen } from "./features/factory/FactoryRouteScreen";
+import { TaskRouteScreen } from "./features/tasks/TaskRouteScreen";
+import { TasksInboxRouteScreen, TasksRouteScreen } from "./features/tasks/TasksRouteScreen";
 import { FactoryWorkDetailRouteScreen } from "./features/factory/FactoryWorkDetailRouteScreen";
 import {
   FactoryBranchPickerRouteScreen,
@@ -650,6 +652,21 @@ const RootStackConfig = createWorkspaceStackNavigator({
         headerBackVisible: false,
         ...getCompactBrandHeaderOptions(),
       },
+    }),
+    Tasks: createNativeStackScreen({
+      screen: TasksRouteScreen,
+      linking: "tasks",
+      options: DETAIL_HEADER_OPTIONS,
+    }),
+    TasksInbox: createNativeStackScreen({
+      screen: TasksInboxRouteScreen,
+      linking: "tasks/inbox",
+      options: DETAIL_HEADER_OPTIONS,
+    }),
+    Task: createNativeStackScreen({
+      screen: TaskRouteScreen,
+      linking: "tasks/:environmentId/:displayId",
+      options: DETAIL_HEADER_OPTIONS,
     }),
     PullRequest: createNativeStackScreen({
       screen: PullRequestRouteScreen,

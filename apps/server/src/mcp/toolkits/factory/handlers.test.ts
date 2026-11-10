@@ -27,7 +27,7 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Stream from "effect/stream";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { Tool } from "effect/ai";
 import { ServerEnvironmentIdentity } from "../../../environment/ServerEnvironment.ts";

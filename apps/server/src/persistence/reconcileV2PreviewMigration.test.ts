@@ -26,34 +26,16 @@ const seedPreview = Effect.gen(function* () {
   `;
 });
 
+// The seeded preview already holds 1..52 and 55 (recorded as 53); the upgrade applies the rest.
+const expectedUpgradeLedger = migrationManifest.filter(([id]) => id >= 53 && id !== 55);
+
 describe("V2 preview upgrade", () => {
   it.effect("upgrades a published preview without replaying V2 or losing import progress", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* seedPreview;
       const imports = yield* sql`SELECT * FROM orchestration_v2_legacy_imports`;
-      assert.deepStrictEqual(yield* runMigrations(), [
-        [53, "PullRequestFilesViewed"],
-        [54, "ProjectionThreadsAutoSettleDisabledAt"],
-        [56, "RemoveRedundantProjectionIndexes"],
-        [57, "ScheduledTaskWebhooks"],
-        [58, "WebhookRelayDeliveries"],
-        [59, "McpAppModelContext"],
-        [60, "ThreadSnapshotWindowIndexes"],
-        [61, "PullRequestReviewGuides"],
-        [62, "ThreadFailureLookupIndex"],
-        [63, "DropUnusedV1Projections"],
-        [64, "CanonicalizeThreadPullRequestLinks"],
-        [65, "CodexUsageNativeTurnIndex"],
-        [66, "RepairClientSettlementTimestamps"],
-        [67, "WebhookDedupe"],
-        [68, "ShellStopRequestIndex"],
-        [69, "ThreadMessageSearch"],
-        [70, "PeerLinks"],
-        [71, "PeerLinkFence"],
-        [72, "WaitingLinkRequestIndex"],
-        [73, "ActiveTurnItemIndexes"],
-      ]);
+      assert.deepStrictEqual(yield* runMigrations(), expectedUpgradeLedger);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
       const history = yield* sql<{ readonly migration_id: number; readonly name: string }>`
@@ -128,28 +110,7 @@ describe("V2 preview upgrade", () => {
       );
       assert.strictEqual((yield* sql`SELECT * FROM orchestration_v2_legacy_imports`).length, 1);
       yield* sql`DROP TRIGGER fail_preview_upgrade`;
-      assert.deepStrictEqual(yield* runMigrations(), [
-        [53, "PullRequestFilesViewed"],
-        [54, "ProjectionThreadsAutoSettleDisabledAt"],
-        [56, "RemoveRedundantProjectionIndexes"],
-        [57, "ScheduledTaskWebhooks"],
-        [58, "WebhookRelayDeliveries"],
-        [59, "McpAppModelContext"],
-        [60, "ThreadSnapshotWindowIndexes"],
-        [61, "PullRequestReviewGuides"],
-        [62, "ThreadFailureLookupIndex"],
-        [63, "DropUnusedV1Projections"],
-        [64, "CanonicalizeThreadPullRequestLinks"],
-        [65, "CodexUsageNativeTurnIndex"],
-        [66, "RepairClientSettlementTimestamps"],
-        [67, "WebhookDedupe"],
-        [68, "ShellStopRequestIndex"],
-        [69, "ThreadMessageSearch"],
-        [70, "PeerLinks"],
-        [71, "PeerLinkFence"],
-        [72, "WaitingLinkRequestIndex"],
-        [73, "ActiveTurnItemIndexes"],
-      ]);
+      assert.deepStrictEqual(yield* runMigrations(), expectedUpgradeLedger);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 

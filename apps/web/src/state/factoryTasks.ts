@@ -141,16 +141,13 @@ export function useFactoryIntakePreview(
 
 export function useFactoryTaskCommand<I, A, E, P>(
   command: AtomCommand<{ readonly environmentId: EnvironmentId; readonly input: I }, A, E> & {
-    readonly permissionAtom: (target: {
-      readonly environmentId: EnvironmentId;
-      readonly input: I;
-    }) => Atom.Atom<P>;
+    readonly permissionAtom: (environmentId: EnvironmentId, input?: I) => Atom.Atom<P>;
   },
   target: { readonly environmentId: EnvironmentId; readonly input: I },
   options?: AtomCommandOptions,
 ) {
   const run = useAtomCommand(command, options);
-  const permission = useAtomValue(command.permissionAtom(target));
+  const permission = useAtomValue(command.permissionAtom(target.environmentId, target.input));
   return { permission, run: () => run(target) };
 }
 

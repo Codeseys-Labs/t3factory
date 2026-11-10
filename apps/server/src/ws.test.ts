@@ -49,6 +49,10 @@ import * as FactoryResearchService from "./factory/FactoryResearchService.ts";
 import * as FactoryClaimsService from "./factory/FactoryClaimsService.ts";
 import * as FactoryWorkService from "./factory/FactoryWorkService.ts";
 import * as FactoryPlanService from "./factory/FactoryPlanService.ts";
+import * as FactoryTaskService from "./factory/FactoryTaskService.ts";
+import * as FactoryAgentProfileService from "./factory/FactoryAgentProfileService.ts";
+import * as FactoryTaskPlanningService from "./factory/FactoryTaskPlanningService.ts";
+import * as FactoryIntakeService from "./factory/FactoryIntakeService.ts";
 import * as FactoryExecutionTestkit from "./factory/FactoryExecutionTestkit.ts";
 import * as FactoryAcceptanceService from "./factory/FactoryAcceptanceService.ts";
 import * as FactoryKnowledgeService from "./factory/FactoryKnowledgeService.ts";
@@ -556,6 +560,10 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(FactoryClaimsService.FactoryClaimsService)({}),
   Layer.mock(FactoryWorkService.FactoryWorkService)({}),
   Layer.mock(FactoryPlanService.FactoryPlanService)({}),
+  Layer.mock(FactoryTaskService.FactoryTaskService)({}),
+  Layer.mock(FactoryAgentProfileService.FactoryAgentProfileService)({}),
+  Layer.mock(FactoryTaskPlanningService.FactoryTaskPlanningService)({}),
+  Layer.mock(FactoryIntakeService.FactoryIntakeService)({}),
   FactoryExecutionTestkit.layerExecutionServiceMock,
   FactoryExecutionTestkit.layerPreparationAcceptanceMock,
   FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,

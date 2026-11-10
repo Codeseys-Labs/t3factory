@@ -5,6 +5,10 @@ import * as FactoryResearchService from "./factory/FactoryResearchService.ts";
 import * as FactoryClaimsService from "./factory/FactoryClaimsService.ts";
 import * as FactoryWorkService from "./factory/FactoryWorkService.ts";
 import * as FactoryPlanService from "./factory/FactoryPlanService.ts";
+import * as FactoryTaskService from "./factory/FactoryTaskService.ts";
+import * as FactoryAgentProfileService from "./factory/FactoryAgentProfileService.ts";
+import * as FactoryTaskPlanningService from "./factory/FactoryTaskPlanningService.ts";
+import * as FactoryIntakeService from "./factory/FactoryIntakeService.ts";
 import * as FactoryExecutionService from "./factory/FactoryExecutionService.ts";
 import * as FactoryPreparationAcceptanceService from "./factory/FactoryPreparationAcceptanceService.ts";
 import * as FactoryAcceptanceService from "./factory/FactoryAcceptanceService.ts";
@@ -1342,6 +1346,10 @@ export const layerWsRpc = (
       const factoryClaims = yield* FactoryClaimsService.FactoryClaimsService;
       const factoryWork = yield* FactoryWorkService.FactoryWorkService;
       const factoryPlans = yield* FactoryPlanService.FactoryPlanService;
+      const factoryTasks = yield* FactoryTaskService.FactoryTaskService;
+      const factoryProfiles = yield* FactoryAgentProfileService.FactoryAgentProfileService;
+      const factoryPlanning = yield* FactoryTaskPlanningService.FactoryTaskPlanningService;
+      const factoryIntake = yield* FactoryIntakeService.FactoryIntakeService;
       const factoryExecution = yield* FactoryExecutionService.FactoryExecutionService;
       const factoryPreparation =
         yield* FactoryPreparationAcceptanceService.FactoryPreparationAcceptanceService;
@@ -2722,6 +2730,58 @@ export const layerWsRpc = (
         [WS_METHODS.factoryStartKnowledgeTask]: (input) => factoryKnowledge.start(input),
         [WS_METHODS.factoryReadKnowledgeTask]: (input) => factoryKnowledge.read(input),
         [WS_METHODS.factoryAcceptKnowledgeArtifact]: (input) => factoryKnowledge.accept(input),
+        [WS_METHODS.factoryListTasks]: (input) => factoryTasks.list(input),
+        [WS_METHODS.factoryCountTasks]: (input) => factoryTasks.count(input),
+        [WS_METHODS.factoryReadTask]: (input) => factoryTasks.read(input),
+        [WS_METHODS.factoryCreateTask]: (input) =>
+          factoryTasks.create(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryUpdateTask]: (input) =>
+          factoryTasks.update(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryStartTask]: (input) =>
+          factoryTasks.start(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryStopTask]: (input) =>
+          factoryTasks.stop(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryRetryTask]: (input) =>
+          factoryTasks.retry(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryAcceptTaskResult]: (input) =>
+          factoryTasks.accept(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryRequestTaskChanges]: (input) =>
+          factoryTasks.requestChanges(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryReopenTask]: (input) =>
+          factoryTasks.reopen(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryReadTaskResult]: (input) => factoryTasks.readResult(input),
+        [WS_METHODS.factoryAddTaskComment]: (input) =>
+          factoryTasks.comment(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryReadTaskActivity]: (input) => factoryTasks.activity(input),
+        [WS_METHODS.factoryFindTaskByThread]: (input) => factoryTasks.findByThread(input),
+        [WS_METHODS.factorySubscribeTaskChanges]: (_input) => factoryTasks.changes,
+        [WS_METHODS.factoryListAgentProfiles]: (_input) => factoryProfiles.list(),
+        [WS_METHODS.factorySaveAgentProfile]: (input) =>
+          factoryProfiles.save(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryDeleteAgentProfile]: (input) =>
+          factoryProfiles.delete(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryRequestTaskBreakdown]: (input) =>
+          factoryPlanning.requestBreakdown(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryReadTaskPlanProposal]: (input) => factoryPlanning.readProposal(input),
+        [WS_METHODS.factoryUpdateTaskPlanProposal]: (input) =>
+          factoryPlanning.updateProposal(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryResolveTaskPlanProposal]: (input) =>
+          factoryPlanning.resolveProposal(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryListIntakeSources]: (input) => factoryIntake.listSources(input),
+        [WS_METHODS.factorySaveIntakeSource]: (input) =>
+          factoryIntake.saveSource(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryDeleteIntakeSource]: (input) =>
+          factoryIntake.deleteSource(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryListIntakeRules]: (_input) => factoryIntake.listRules(),
+        [WS_METHODS.factorySaveIntakeRule]: (input) =>
+          factoryIntake.saveRule(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryDeleteIntakeRule]: (input) =>
+          factoryIntake.deleteRule(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryPreviewIntakeRule]: (input) => factoryIntake.previewRule(input),
+        [WS_METHODS.factoryListIntakeArrivals]: (input) => factoryIntake.listArrivals(input),
+        [WS_METHODS.factoryResolveIntakeArrival]: (input) =>
+          factoryIntake.resolveArrival(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factorySubscribeIntakeChanges]: (_input) => factoryIntake.changes,
         [WS_METHODS.factoryPrepareDelivery]: (input) => factoryDelivery.prepare(input),
         [WS_METHODS.factoryGrantDelivery]: (input) => factoryDelivery.grant(input),
         [WS_METHODS.factoryReadDeliveries]: (input) => factoryDelivery.read(input),
@@ -3469,6 +3529,10 @@ export const layer = Layer.unwrap(
     const factoryClaims = yield* FactoryClaimsService.FactoryClaimsService;
     const factoryWork = yield* FactoryWorkService.FactoryWorkService;
     const factoryPlans = yield* FactoryPlanService.FactoryPlanService;
+    const factoryTasks = yield* FactoryTaskService.FactoryTaskService;
+    const factoryProfiles = yield* FactoryAgentProfileService.FactoryAgentProfileService;
+    const factoryPlanning = yield* FactoryTaskPlanningService.FactoryTaskPlanningService;
+    const factoryIntake = yield* FactoryIntakeService.FactoryIntakeService;
     const factoryExecution = yield* FactoryExecutionService.FactoryExecutionService;
     const factoryBindings = yield* FactoryExecutionStore.FactoryExecutionStore;
     const factoryPreparation =
@@ -3568,6 +3632,20 @@ export const layer = Layer.unwrap(
                 ),
                 Layer.provide(Layer.succeed(FactoryWorkService.FactoryWorkService, factoryWork)),
                 Layer.provide(Layer.succeed(FactoryPlanService.FactoryPlanService, factoryPlans)),
+                Layer.provide(
+                  Layer.mergeAll(
+                    Layer.succeed(FactoryTaskService.FactoryTaskService, factoryTasks),
+                    Layer.succeed(
+                      FactoryAgentProfileService.FactoryAgentProfileService,
+                      factoryProfiles,
+                    ),
+                    Layer.succeed(
+                      FactoryTaskPlanningService.FactoryTaskPlanningService,
+                      factoryPlanning,
+                    ),
+                    Layer.succeed(FactoryIntakeService.FactoryIntakeService, factoryIntake),
+                  ),
+                ),
                 Layer.provide(
                   Layer.succeed(FactoryExecutionService.FactoryExecutionService, factoryExecution),
                 ),

@@ -16,6 +16,8 @@ export * from "./factoryPlan.ts";
 export * from "./factoryAcceptance.ts";
 export * from "./factoryDelivery.ts";
 export * from "./factoryKnowledge.ts";
+export * from "./factoryTask.ts";
+export * from "./factoryIntake.ts";
 export * from "./environmentHttp.ts";
 export * from "./relayClient.ts";
 export * from "./desktopBootstrap.ts";

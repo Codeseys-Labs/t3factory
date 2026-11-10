@@ -118,6 +118,62 @@ import {
   FactoryDeliveryReconcileInput,
 } from "./factoryDelivery.ts";
 import {
+  FactoryAgentProfileDeleteInput,
+  FactoryAgentProfileListResult,
+  FactoryAgentProfileMutationResult,
+  FactoryAgentProfileSaveInput,
+  FactoryTaskAcceptInput,
+  FactoryTaskActivityInput,
+  FactoryTaskActivityResult,
+  FactoryTaskBreakdownInput,
+  FactoryTaskByThreadInput,
+  FactoryTaskByThreadResult,
+  FactoryTaskChange,
+  FactoryTaskCommentInput,
+  FactoryTaskCommentResult,
+  FactoryTaskCountInput,
+  FactoryTaskCountResult,
+  FactoryTaskCreateInput,
+  FactoryTaskDetail,
+  FactoryTaskError,
+  FactoryTaskListInput,
+  FactoryTaskListResult,
+  FactoryTaskMutationResult,
+  FactoryTaskPlanProposalMutationResult,
+  FactoryTaskPlanProposalReadInput,
+  FactoryTaskPlanProposalReadResult,
+  FactoryTaskPlanProposalResolveInput,
+  FactoryTaskPlanProposalUpdateInput,
+  FactoryTaskReadInput,
+  FactoryTaskReopenInput,
+  FactoryTaskRequestChangesInput,
+  FactoryTaskResultReadInput,
+  FactoryTaskResultReadResult,
+  FactoryTaskRetryInput,
+  FactoryTaskStartInput,
+  FactoryTaskStopInput,
+  FactoryTaskUpdateInput,
+} from "./factoryTask.ts";
+import {
+  FactoryIntakeArrivalListInput,
+  FactoryIntakeArrivalListResult,
+  FactoryIntakeArrivalResolveInput,
+  FactoryIntakeArrivalResolveResult,
+  FactoryIntakeChange,
+  FactoryIntakeError,
+  FactoryIntakeRuleDeleteInput,
+  FactoryIntakeRuleListResult,
+  FactoryIntakeRuleMutationResult,
+  FactoryIntakeRulePreviewInput,
+  FactoryIntakeRulePreviewResult,
+  FactoryIntakeRuleSaveInput,
+  FactoryIntakeSourceDeleteInput,
+  FactoryIntakeSourceListInput,
+  FactoryIntakeSourceListResult,
+  FactoryIntakeSourceMutationResult,
+  FactoryIntakeSourceSaveInput,
+} from "./factoryIntake.ts";
+import {
   ProjectCoordinatorAssignInput,
   ProjectCoordinatorAssignResult,
   ProjectCoordinatorEnsureInput,
@@ -581,6 +637,39 @@ export const WS_METHODS = {
   factoryStartKnowledgeTask: "factory.startKnowledgeTask",
   factoryReadKnowledgeTask: "factory.readKnowledgeTask",
   factoryAcceptKnowledgeArtifact: "factory.acceptKnowledgeArtifact",
+  factoryListTasks: "factory.listTasks",
+  factoryCountTasks: "factory.countTasks",
+  factoryReadTask: "factory.readTask",
+  factoryCreateTask: "factory.createTask",
+  factoryUpdateTask: "factory.updateTask",
+  factoryStartTask: "factory.startTask",
+  factoryStopTask: "factory.stopTask",
+  factoryRetryTask: "factory.retryTask",
+  factoryAcceptTaskResult: "factory.acceptTaskResult",
+  factoryRequestTaskChanges: "factory.requestTaskChanges",
+  factoryReopenTask: "factory.reopenTask",
+  factoryReadTaskResult: "factory.readTaskResult",
+  factoryAddTaskComment: "factory.addTaskComment",
+  factoryReadTaskActivity: "factory.readTaskActivity",
+  factoryFindTaskByThread: "factory.findTaskByThread",
+  factorySubscribeTaskChanges: "factory.subscribeTaskChanges",
+  factoryListAgentProfiles: "factory.listAgentProfiles",
+  factorySaveAgentProfile: "factory.saveAgentProfile",
+  factoryDeleteAgentProfile: "factory.deleteAgentProfile",
+  factoryRequestTaskBreakdown: "factory.requestTaskBreakdown",
+  factoryReadTaskPlanProposal: "factory.readTaskPlanProposal",
+  factoryUpdateTaskPlanProposal: "factory.updateTaskPlanProposal",
+  factoryResolveTaskPlanProposal: "factory.resolveTaskPlanProposal",
+  factoryListIntakeSources: "factory.listIntakeSources",
+  factorySaveIntakeSource: "factory.saveIntakeSource",
+  factoryDeleteIntakeSource: "factory.deleteIntakeSource",
+  factoryListIntakeRules: "factory.listIntakeRules",
+  factorySaveIntakeRule: "factory.saveIntakeRule",
+  factoryDeleteIntakeRule: "factory.deleteIntakeRule",
+  factoryPreviewIntakeRule: "factory.previewIntakeRule",
+  factoryListIntakeArrivals: "factory.listIntakeArrivals",
+  factoryResolveIntakeArrival: "factory.resolveIntakeArrival",
+  factorySubscribeIntakeChanges: "factory.subscribeIntakeChanges",
   projectCoordinatorsGet: "projectCoordinators.get",
   projectCoordinatorsList: "projectCoordinators.list",
   projectCoordinatorsAssign: "projectCoordinators.assign",
@@ -2365,6 +2454,177 @@ const WsFactoryAcceptKnowledgeArtifactRpc = Rpc.make(WS_METHODS.factoryAcceptKno
   success: FactoryKnowledgeTaskReadResult,
   error: factoryKnowledgeError,
 });
+
+const factoryTaskError = Schema.Union([FactoryTaskError, EnvironmentAuthorizationError]);
+const WsFactoryListTasksRpc = Rpc.make(WS_METHODS.factoryListTasks, {
+  payload: FactoryTaskListInput,
+  success: FactoryTaskListResult,
+  error: factoryTaskError,
+});
+const WsFactoryCountTasksRpc = Rpc.make(WS_METHODS.factoryCountTasks, {
+  payload: FactoryTaskCountInput,
+  success: FactoryTaskCountResult,
+  error: factoryTaskError,
+});
+const WsFactoryReadTaskRpc = Rpc.make(WS_METHODS.factoryReadTask, {
+  payload: FactoryTaskReadInput,
+  success: FactoryTaskDetail,
+  error: factoryTaskError,
+});
+const WsFactoryCreateTaskRpc = Rpc.make(WS_METHODS.factoryCreateTask, {
+  payload: FactoryTaskCreateInput,
+  success: FactoryTaskMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryUpdateTaskRpc = Rpc.make(WS_METHODS.factoryUpdateTask, {
+  payload: FactoryTaskUpdateInput,
+  success: FactoryTaskMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryStartTaskRpc = Rpc.make(WS_METHODS.factoryStartTask, {
+  payload: FactoryTaskStartInput,
+  success: FactoryTaskMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryStopTaskRpc = Rpc.make(WS_METHODS.factoryStopTask, {
+  payload: FactoryTaskStopInput,
+  success: FactoryTaskMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryRetryTaskRpc = Rpc.make(WS_METHODS.factoryRetryTask, {
+  payload: FactoryTaskRetryInput,
+  success: FactoryTaskMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryAcceptTaskResultRpc = Rpc.make(WS_METHODS.factoryAcceptTaskResult, {
+  payload: FactoryTaskAcceptInput,
+  success: FactoryTaskMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryRequestTaskChangesRpc = Rpc.make(WS_METHODS.factoryRequestTaskChanges, {
+  payload: FactoryTaskRequestChangesInput,
+  success: FactoryTaskMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryReopenTaskRpc = Rpc.make(WS_METHODS.factoryReopenTask, {
+  payload: FactoryTaskReopenInput,
+  success: FactoryTaskMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryReadTaskResultRpc = Rpc.make(WS_METHODS.factoryReadTaskResult, {
+  payload: FactoryTaskResultReadInput,
+  success: FactoryTaskResultReadResult,
+  error: factoryTaskError,
+});
+const WsFactoryAddTaskCommentRpc = Rpc.make(WS_METHODS.factoryAddTaskComment, {
+  payload: FactoryTaskCommentInput,
+  success: FactoryTaskCommentResult,
+  error: factoryTaskError,
+});
+const WsFactoryReadTaskActivityRpc = Rpc.make(WS_METHODS.factoryReadTaskActivity, {
+  payload: FactoryTaskActivityInput,
+  success: FactoryTaskActivityResult,
+  error: factoryTaskError,
+});
+const WsFactoryFindTaskByThreadRpc = Rpc.make(WS_METHODS.factoryFindTaskByThread, {
+  payload: FactoryTaskByThreadInput,
+  success: FactoryTaskByThreadResult,
+  error: factoryTaskError,
+});
+const WsFactorySubscribeTaskChangesRpc = Rpc.make(WS_METHODS.factorySubscribeTaskChanges, {
+  payload: Schema.Struct({}),
+  success: FactoryTaskChange,
+  error: factoryTaskError,
+  stream: true,
+});
+const WsFactoryListAgentProfilesRpc = Rpc.make(WS_METHODS.factoryListAgentProfiles, {
+  payload: Schema.Struct({}),
+  success: FactoryAgentProfileListResult,
+  error: factoryTaskError,
+});
+const WsFactorySaveAgentProfileRpc = Rpc.make(WS_METHODS.factorySaveAgentProfile, {
+  payload: FactoryAgentProfileSaveInput,
+  success: FactoryAgentProfileMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryDeleteAgentProfileRpc = Rpc.make(WS_METHODS.factoryDeleteAgentProfile, {
+  payload: FactoryAgentProfileDeleteInput,
+  success: FactoryAgentProfileMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryRequestTaskBreakdownRpc = Rpc.make(WS_METHODS.factoryRequestTaskBreakdown, {
+  payload: FactoryTaskBreakdownInput,
+  success: FactoryTaskMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryReadTaskPlanProposalRpc = Rpc.make(WS_METHODS.factoryReadTaskPlanProposal, {
+  payload: FactoryTaskPlanProposalReadInput,
+  success: FactoryTaskPlanProposalReadResult,
+  error: factoryTaskError,
+});
+const WsFactoryUpdateTaskPlanProposalRpc = Rpc.make(WS_METHODS.factoryUpdateTaskPlanProposal, {
+  payload: FactoryTaskPlanProposalUpdateInput,
+  success: FactoryTaskPlanProposalMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryResolveTaskPlanProposalRpc = Rpc.make(WS_METHODS.factoryResolveTaskPlanProposal, {
+  payload: FactoryTaskPlanProposalResolveInput,
+  success: FactoryTaskPlanProposalMutationResult,
+  error: factoryTaskError,
+});
+
+const factoryIntakeError = Schema.Union([FactoryIntakeError, EnvironmentAuthorizationError]);
+const WsFactoryListIntakeSourcesRpc = Rpc.make(WS_METHODS.factoryListIntakeSources, {
+  payload: FactoryIntakeSourceListInput,
+  success: FactoryIntakeSourceListResult,
+  error: factoryIntakeError,
+});
+const WsFactorySaveIntakeSourceRpc = Rpc.make(WS_METHODS.factorySaveIntakeSource, {
+  payload: FactoryIntakeSourceSaveInput,
+  success: FactoryIntakeSourceMutationResult,
+  error: factoryIntakeError,
+});
+const WsFactoryDeleteIntakeSourceRpc = Rpc.make(WS_METHODS.factoryDeleteIntakeSource, {
+  payload: FactoryIntakeSourceDeleteInput,
+  success: FactoryIntakeSourceMutationResult,
+  error: factoryIntakeError,
+});
+const WsFactoryListIntakeRulesRpc = Rpc.make(WS_METHODS.factoryListIntakeRules, {
+  payload: Schema.Struct({}),
+  success: FactoryIntakeRuleListResult,
+  error: factoryIntakeError,
+});
+const WsFactorySaveIntakeRuleRpc = Rpc.make(WS_METHODS.factorySaveIntakeRule, {
+  payload: FactoryIntakeRuleSaveInput,
+  success: FactoryIntakeRuleMutationResult,
+  error: factoryIntakeError,
+});
+const WsFactoryDeleteIntakeRuleRpc = Rpc.make(WS_METHODS.factoryDeleteIntakeRule, {
+  payload: FactoryIntakeRuleDeleteInput,
+  success: FactoryIntakeRuleMutationResult,
+  error: factoryIntakeError,
+});
+const WsFactoryPreviewIntakeRuleRpc = Rpc.make(WS_METHODS.factoryPreviewIntakeRule, {
+  payload: FactoryIntakeRulePreviewInput,
+  success: FactoryIntakeRulePreviewResult,
+  error: factoryIntakeError,
+});
+const WsFactoryListIntakeArrivalsRpc = Rpc.make(WS_METHODS.factoryListIntakeArrivals, {
+  payload: FactoryIntakeArrivalListInput,
+  success: FactoryIntakeArrivalListResult,
+  error: factoryIntakeError,
+});
+const WsFactoryResolveIntakeArrivalRpc = Rpc.make(WS_METHODS.factoryResolveIntakeArrival, {
+  payload: FactoryIntakeArrivalResolveInput,
+  success: FactoryIntakeArrivalResolveResult,
+  error: factoryIntakeError,
+});
+const WsFactorySubscribeIntakeChangesRpc = Rpc.make(WS_METHODS.factorySubscribeIntakeChanges, {
+  payload: Schema.Struct({}),
+  success: FactoryIntakeChange,
+  error: factoryIntakeError,
+  stream: true,
+});
 const factoryFeedError = Schema.Union([FactoryFeedError, EnvironmentAuthorizationError]);
 const WsFactoryListFeedSourcesRpc = Rpc.make(WS_METHODS.factoryListFeedSources, {
   payload: FactoryFeedSourceListInput,
@@ -2495,6 +2755,39 @@ export const WsRpcGroup = RpcGroup.make(
   WsFactoryStartKnowledgeTaskRpc,
   WsFactoryReadKnowledgeTaskRpc,
   WsFactoryAcceptKnowledgeArtifactRpc,
+  WsFactoryListTasksRpc,
+  WsFactoryCountTasksRpc,
+  WsFactoryReadTaskRpc,
+  WsFactoryCreateTaskRpc,
+  WsFactoryUpdateTaskRpc,
+  WsFactoryStartTaskRpc,
+  WsFactoryStopTaskRpc,
+  WsFactoryRetryTaskRpc,
+  WsFactoryAcceptTaskResultRpc,
+  WsFactoryRequestTaskChangesRpc,
+  WsFactoryReopenTaskRpc,
+  WsFactoryReadTaskResultRpc,
+  WsFactoryAddTaskCommentRpc,
+  WsFactoryReadTaskActivityRpc,
+  WsFactoryFindTaskByThreadRpc,
+  WsFactorySubscribeTaskChangesRpc,
+  WsFactoryListAgentProfilesRpc,
+  WsFactorySaveAgentProfileRpc,
+  WsFactoryDeleteAgentProfileRpc,
+  WsFactoryRequestTaskBreakdownRpc,
+  WsFactoryReadTaskPlanProposalRpc,
+  WsFactoryUpdateTaskPlanProposalRpc,
+  WsFactoryResolveTaskPlanProposalRpc,
+  WsFactoryListIntakeSourcesRpc,
+  WsFactorySaveIntakeSourceRpc,
+  WsFactoryDeleteIntakeSourceRpc,
+  WsFactoryListIntakeRulesRpc,
+  WsFactorySaveIntakeRuleRpc,
+  WsFactoryDeleteIntakeRuleRpc,
+  WsFactoryPreviewIntakeRuleRpc,
+  WsFactoryListIntakeArrivalsRpc,
+  WsFactoryResolveIntakeArrivalRpc,
+  WsFactorySubscribeIntakeChangesRpc,
   WsProjectCoordinatorsGetRpc,
   WsProjectCoordinatorsListRpc,
   WsProjectCoordinatorsEnsureRpc,

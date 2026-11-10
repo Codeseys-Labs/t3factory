@@ -31,6 +31,7 @@ import {
   type FactoryPlanActor,
 } from "../factory/FactoryPlanReducer.ts";
 import * as AuthSessions from "./AuthSessions.ts";
+import * as Tasks from "./FactoryTaskStore.ts";
 
 export interface FactoryPlanCommit {
   readonly commandId: CommandId;
@@ -114,6 +115,7 @@ function summary(plan: FactoryPlanSnapshot): FactoryPlanSummary {
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const sessions = yield* AuthSessions.AuthSessionRepository;
+  const tasks = yield* Tasks.FactoryTaskStore;
   const failure = (cause: unknown) =>
     new FactoryPlanError({ reason: "persistence-failure", cause });
   const decode = Schema.decodeUnknownEffect(Schema.fromJsonString(FactoryPlanSnapshot));
@@ -331,6 +333,8 @@ const make = Effect.gen(function* () {
     yield* sql`INSERT INTO factory_plan_revisions(root_id, revision, snapshot_json, summary_json) VALUES (${plan.ref.rootId}, ${plan.revision}, ${json}, ${summaryJson})`.pipe(
       Effect.mapError(failure),
     );
+    // Every plan task is a task on the board, whoever edited the plan.
+    yield* tasks.projectPlan(plan).pipe(Effect.mapError(failure));
   });
   const record = Effect.fn("FactoryPlanStore.record")(function* (
     input: FactoryPlanCommit,
@@ -368,4 +372,6 @@ const make = Effect.gen(function* () {
     record,
   });
 });
-export const layer = Layer.effect(FactoryPlanStore, make).pipe(Layer.provide(AuthSessions.layer));
+export const layer = Layer.effect(FactoryPlanStore, make).pipe(
+  Layer.provide(Layer.merge(AuthSessions.layer, Tasks.layer)),
+);

@@ -40,7 +40,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
+import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as AuthSessions from "./AuthSessions.ts";
 import * as Plans from "./FactoryPlanStore.ts";
@@ -216,6 +218,8 @@ export class FactoryExecutionStore extends Context.Service<
       { readonly items: ReadonlyArray<FactoryPreparationAcceptance> },
       FactoryExecutionError
     >;
+    /** One element each time an attempt's writers are confirmed gone. Never replays the past. */
+    readonly settlements: Stream.Stream<RunAttemptId>;
   }
 >()("t3/persistence/FactoryExecutionStore") {}
 
@@ -275,6 +279,7 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const plans = yield* Plans.FactoryPlanStore;
   const sessions = yield* AuthSessions.AuthSessionRepository;
+  const settled = yield* PubSub.unbounded<RunAttemptId>();
   const requireSession = Effect.fn("FactoryExecutionStore.requireSession")(function* (
     sessionId: Parameters<typeof sessions.getById>[0]["sessionId"],
   ) {
@@ -325,6 +330,7 @@ const make = Effect.gen(function* () {
     revision: number,
     version: number,
     now: string,
+    admitted?: RunAttemptId,
   ) {
     const plan = yield* plans.requireHead(ref, revision).pipe(
       Effect.mapError(
@@ -336,7 +342,9 @@ const make = Effect.gen(function* () {
       ),
     );
     const grant = yield* getGrant(ref);
-    if (!grant || grant.revision !== revision || grant.version !== version)
+    // A newer grant replaces the one before it, except for the attempts it names.
+    const continued = admitted !== undefined && grant?.policy.continues?.includes(admitted);
+    if (!grant || grant.revision !== revision || (grant.version !== version && !continued))
       return yield* new FactoryExecutionError({ reason: "grant-conflict" });
     if (grant.revokedAt !== null)
       return yield* new FactoryExecutionError({ reason: "grant-inactive" });
@@ -390,6 +398,7 @@ const make = Effect.gen(function* () {
         binding.selection.revision,
         binding.grantVersion,
         DateTime.formatIso(yield* DateTime.now),
+        binding.runAttemptId,
       );
       if (
         !plan.tasks.some((task) => task.id === binding.selection.taskId && !task.retired) ||
@@ -538,17 +547,26 @@ const make = Effect.gen(function* () {
     )
       return yield* new FactoryExecutionError({ reason: "budget-exhausted" });
     const prerequisites: FactoryExecutionInputPin[] = [];
+    const board = yield* sql<{
+      displayId: string;
+      note: string | null;
+    }>`SELECT display_id AS displayId, input_note AS note FROM factory_tasks WHERE root_id = ${ref.rootId} AND task_id = ${taskId}`.pipe(
+      Effect.mapError(failure),
+    );
     const inputs: string[] = [
       task.title,
       task.context,
       ...plan.workContexts
         .filter((entry) => entry.taskId === taskId && !entry.retired)
         .map((entry) => entry.snapshot),
+      // What a reviewer asked for on the previous result.
+      ...(board[0]?.note ? [board[0].note] : []),
     ];
     for (const edge of plan.edges.filter(
       (entry) => !entry.retired && entry.fromTaskId === taskId,
     )) {
       const rule = grant.policy.edges.find((entry) => entry.edgeId === edge.id);
+      if (!rule && grant.policy.advisoryEdges === true) continue;
       const predecessor = rows.find((entry) => entry.taskId === edge.toTaskId);
       const result = predecessor?.resultId ? yield* outputById(predecessor.resultId) : null;
       if (
@@ -602,7 +620,8 @@ const make = Effect.gen(function* () {
       prerequisites,
       inputDigest: executionDigest({ selection: input.selection, spec, inputText, prerequisites }),
       taskVersion: (row?.version ?? 0) + 1,
-      title: task.title,
+      // The thread sidebar lists a run under its task, as `T-41` followed by the title.
+      title: board[0] ? `${board[0].displayId} ${task.title}` : task.title,
     };
   });
   const readOutputs = Effect.fn("FactoryExecutionStore.readOutputs")(function* (
@@ -868,7 +887,11 @@ const make = Effect.gen(function* () {
       )
     )
       return false;
-    const edges = plan.edges.filter((entry) => !entry.retired && tasks.has(entry.fromTaskId));
+    const granted = plan.edges.filter((entry) => !entry.retired && tasks.has(entry.fromTaskId));
+    const edges =
+      policy.advisoryEdges === true
+        ? granted.filter((edge) => policy.edges.some((rule) => rule.edgeId === edge.id))
+        : granted;
     return (
       edges.length === policy.edges.length &&
       new Set(policy.edges.map((entry) => entry.edgeId)).size === edges.length &&
@@ -905,6 +928,21 @@ const make = Effect.gen(function* () {
         Date.parse(op.input.policy.expiresAt) <= Date.parse(commit.now)
       )
         return yield* new FactoryExecutionError({ reason: "invalid-input" });
+      for (const attemptId of op.input.policy.continues ?? []) {
+        const rows = yield* sql<{
+          json: string;
+        }>`SELECT binding_json AS json FROM factory_execution_bindings WHERE attempt_id = ${attemptId} AND root_id = ${commit.ref.rootId} AND revision = ${commit.revision}`.pipe(
+          Effect.mapError(failure),
+        );
+        const spec = rows[0]
+          ? canonicalExecutionJson(
+              (yield* decodeBinding(rows[0].json).pipe(Effect.mapError(failure))).spec,
+            )
+          : null;
+        // Continuing an attempt never changes what it was admitted to do.
+        if (!op.input.policy.tasks.some((entry) => canonicalExecutionJson(entry) === spec))
+          return yield* new FactoryExecutionError({ reason: "invalid-input" });
+      }
       for (const threadId of op.input.policy.requesterThreadIds) {
         const rows =
           yield* sql`SELECT thread_id FROM orchestration_v2_projection_threads WHERE thread_id = ${threadId} AND project_id = ${commit.ref.projectId} AND deleted_at IS NULL`.pipe(
@@ -1047,6 +1085,7 @@ const make = Effect.gen(function* () {
         commit.revision,
         binding.grantVersion,
         commit.now,
+        binding.runAttemptId,
       ).pipe(Effect.result);
       const state = yield* readExecution({ ref: commit.ref, revision: commit.revision });
       const currentCaptureKey = yield* captureKey(binding.runAttemptId);
@@ -1226,6 +1265,7 @@ const make = Effect.gen(function* () {
         binding.selection.revision,
         binding.grantVersion,
         now,
+        binding.runAttemptId,
       ).pipe(Effect.result);
       const attempts = yield* sql<{
         status: string;
@@ -1305,6 +1345,8 @@ const make = Effect.gen(function* () {
     },
     (effect) => sql.withTransaction(effect),
     Effect.mapError(failure),
+    // After the commit, so a listener reads the settled attempt.
+    (effect, input) => Effect.tap(effect, () => PubSub.publish(settled, input.runAttemptId)),
   );
   // Claimants exist only in the owning process. With no owner registered, outstanding
   // claimed/unknown rows belong to a dead process; settleAttempt's all-settled gate
@@ -1364,6 +1406,7 @@ const make = Effect.gen(function* () {
     readCapture,
     captureKey,
     preparationHistory,
+    settlements: Stream.fromPubSub(settled),
   });
 });
 export const layer = Layer.effect(FactoryExecutionStore, make).pipe(

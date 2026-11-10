@@ -1192,56 +1192,81 @@ interface ProtocolHandlerSnapshot {
   readonly before: Buffer | null;
 }
 
-/** The reg.exe calls that return the handler key to its snapshot, given its current export. */
+/** The reg.exe calls that bring the handler key back to its snapshot, given its current export. */
 export function protocolHandlerRestoreSteps(
   snapshot: ProtocolHandlerSnapshot,
   current: Buffer | null,
+  importTried: boolean,
 ) {
   const remove = ["delete", snapshot.key, "/f"];
   if (snapshot.before === null) return current === null ? [] : [remove];
   if (current !== null && snapshot.before.equals(current)) return [];
-  // reg import only adds and overwrites, so values the smoke added go with the delete.
-  return current === null ? [["import", snapshot.file]] : [remove, ["import", snapshot.file]];
+  const restore = ["import", snapshot.file];
+  // Import keeps the key and its permissions; only what it cannot remove needs the delete.
+  return importTried && current !== null ? [remove, restore] : [restore];
 }
 
-/** Runs reg.exe and returns why it failed, or undefined when it succeeded. */
-function regFailure(args: ReadonlyArray<string>) {
+/** Whether `reg query` output lists `name` as a subkey; values are indented, key paths are not. */
+export function regQueryListsSubkey(output: string, name: string) {
+  const wanted = `\\${name.toLowerCase()}`;
+  const keys = output.split("\n").filter((line) => line.startsWith("HKEY_"));
+  return keys.some((key) => key.trimEnd().toLowerCase().endsWith(wanted));
+}
+
+function runReg(args: ReadonlyArray<string>) {
   const reg = NodePath.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "reg.exe");
   const result = NodeChildProcess.spawnSync(reg, args, {
     encoding: "utf8",
-    stdio: ["ignore", "ignore", "pipe"],
+    stdio: ["ignore", "pipe", "pipe"],
+    // Listing HKCU\Software\Classes can outgrow spawnSync's 1 MiB default.
+    maxBuffer: 64 * 1024 * 1024,
   });
-  if (result.status === 0) return undefined;
-  if (result.error) return result.error.message;
-  return result.stderr.trim() || `reg.exe exited ${String(result.status ?? result.signal)}`;
+  if (result.status === 0) return { stdout: result.stdout, failure: undefined };
+  const failure =
+    result.error?.message ??
+    (result.stderr.trim() || `reg.exe exited ${String(result.status ?? result.signal)}`);
+  return { stdout: "", failure };
 }
 
-/** Exports the key to `file`; null when the key does not exist. */
+/** Exports the key to `file`; null only when its parent's listing shows it is absent. */
 function exportProtocolHandler(key: string, file: string) {
-  if (regFailure(["query", key]) !== undefined) {
-    // reg.exe exits 1 whether the key is missing or reg failed; a readable parent tells them apart.
+  const query = runReg(["query", key]);
+  if (query.failure !== undefined) {
+    // reg.exe exits 1 on any failure, so only the parent's listing proves the key is absent.
     const parent = NodePath.win32.dirname(key);
-    const failure = regFailure(["query", parent]);
-    if (failure !== undefined) throw new Error(`reg.exe could not read ${parent}: ${failure}`);
+    const listing = runReg(["query", parent]);
+    if (listing.failure !== undefined) {
+      throw new Error(`reg.exe could not list ${parent}: ${listing.failure}`);
+    }
+    if (regQueryListsSubkey(listing.stdout, NodePath.win32.basename(key))) {
+      throw new Error(`reg.exe could not read ${key}: ${query.failure}`);
+    }
     return null;
   }
-  const failure = regFailure(["export", key, file, "/y"]);
-  if (failure !== undefined) throw new Error(`reg.exe could not export ${key}: ${failure}`);
+  const exported = runReg(["export", key, file, "/y"]);
+  if (exported.failure !== undefined) {
+    throw new Error(`reg.exe could not export ${key}: ${exported.failure}`);
+  }
   return NodeFS.readFileSync(file);
 }
 
 /** Reports a failed restore instead of throwing, so the smoke's own result or error stands. */
 function restoreProtocolHandler(snapshot: ProtocolHandlerSnapshot, scratch: string) {
   try {
-    const current = exportProtocolHandler(snapshot.key, scratch);
-    const steps = protocolHandlerRestoreSteps(snapshot, current);
-    if (steps.length === 0) return;
-    const failures = steps.flatMap((args) => {
-      const failure = regFailure(args);
-      return failure === undefined ? [] : [`reg ${args.join(" ")}: ${failure}`];
-    });
+    const failures: string[] = [];
+    for (const importTried of [false, true]) {
+      const current = exportProtocolHandler(snapshot.key, scratch);
+      const steps = protocolHandlerRestoreSteps(snapshot, current, importTried);
+      if (steps.length === 0) return;
+      for (const args of steps) {
+        const { failure } = runReg(args);
+        if (failure !== undefined) failures.push(`reg ${args.join(" ")}: ${failure}`);
+      }
+      // After a failed import, the delete would only leave the key missing.
+      if (failures.length > 0) break;
+    }
     const restored = exportProtocolHandler(snapshot.key, scratch);
-    if (protocolHandlerRestoreSteps(snapshot, restored).length > 0) {
+    if (protocolHandlerRestoreSteps(snapshot, restored, true).length > 0) {
       throw new Error(failures.join("; ") || "it still differs from before the smoke");
     }
   } catch (error) {

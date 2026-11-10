@@ -11,6 +11,7 @@ import {
   evaluateValidationRun,
   protocolHandlerRestoreSteps,
   readZipEntries,
+  regQueryListsSubkey,
   reusesResourceMonitor,
   validatePackageReceipt,
   windowsSmokeEnvironment,
@@ -291,13 +292,43 @@ describe("protocolHandlerRestoreSteps", () => {
   const restore = ["import", file];
 
   it.each([
-    ["leaves a key the smoke never created absent", null, null, []],
-    ["deletes a key the smoke created", null, smoked, [remove]],
-    ["leaves a key the smoke did not change", installed, Buffer.from(installed), []],
-    ["deletes and re-imports a key the smoke changed", installed, smoked, [remove, restore]],
-    ["re-imports a key that disappeared", installed, null, [restore]],
-  ])("%s", (_name, before, now, steps) => {
-    expect(protocolHandlerRestoreSteps({ key, file, before }, now)).toEqual(steps);
+    ["leaves a key the smoke never created absent", null, null, false, []],
+    ["deletes a key the smoke created", null, smoked, false, [remove]],
+    ["leaves a key the smoke did not change", installed, Buffer.from(installed), false, []],
+    ["imports over a key the smoke changed", installed, smoked, false, [restore]],
+    ["stops once the import restored the key", installed, Buffer.from(installed), true, []],
+    [
+      "deletes and re-imports a key the import left different",
+      installed,
+      smoked,
+      true,
+      [remove, restore],
+    ],
+    ["re-imports a key that disappeared", installed, null, false, [restore]],
+  ])("%s", (_name, before, current, importTried, steps) => {
+    expect(protocolHandlerRestoreSteps({ key, file, before }, current, importTried)).toEqual(steps);
+  });
+});
+
+describe("regQueryListsSubkey", () => {
+  const subkey = (name: string) => `HKEY_CURRENT_USER\\Software\\Classes\\${name}`;
+  const listing = (...lines: string[]) =>
+    ["", "HKEY_CURRENT_USER\\Software\\Classes", ...lines, ""].join("\n");
+
+  it.each([
+    ["lists the subkey", listing(subkey(".html"), subkey("t3factory")), true],
+    ["lists only other subkeys", listing(subkey(".html"), subkey("t3code")), false],
+    ["lists it in another case", listing(subkey("T3Factory")), true],
+    [
+      "lists only longer names that hold it",
+      listing(subkey("t3factory-dev"), subkey("xt3factory")),
+      false,
+    ],
+    ["names it only as a value", listing("    t3factory    REG_SZ    URL:t3factory"), false],
+    ["ends lines with CRLF", listing(subkey("t3factory")).replaceAll("\n", "\r\n"), true],
+    ["is empty", "", false],
+  ])("when the listing %s", (_name, output, listed) => {
+    expect(regQueryListsSubkey(output, "t3factory")).toBe(listed);
   });
 });
 

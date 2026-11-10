@@ -170,3 +170,7 @@ Hashes pin the inspected source files so changes force re-review. They do not pr
 that a historical test fixture is available, that a native task ran, or that an
 external issue still has the same text. The test-signal references resolve locally
 by ID; their historical commit trees were not fetched or exercised in this increment.
+
+To re-pin after an intended edit, confirm the case's `source.anchor` text still occurs
+in the file, then set its `source.sha256` to the file's new SHA-256. `vp run check:changed`
+runs `dataset.test.ts` whenever a pinned file or `v1/cases.json` changes.

@@ -2,8 +2,8 @@
 // Runs CI's fast checks for this branch's changes: format and lint of the
 // changed files, knip, generated GraphQL operations, typecheck of the affected
 // packages and their dependents, the test files beside the changed files, and
-// the cross-file checks those miss (agent context budget, React Compiler
-// coverage of the changed client files).
+// the cross-file checks those miss (agent context budget, qualification
+// provenance, React Compiler coverage of the changed client files).
 // A dependency change also gets the unused-patch install check below. CI still
 // runs the full test suites and the jobs listed in the summary.
 //
@@ -12,14 +12,21 @@
 //
 // Uncommitted and untracked files count. Affected packages come from
 // .github/scripts/ci-changes.cjs, the same mapping CI uses to gate its jobs.
-// The steps run side by side; each prints its output when it finishes. A
-// rerun on exactly the files of the last passing run prints that run's summary.
+// The steps run side by side; each prints its output when it finishes. A file
+// list too long for one command line runs as several commands, one after
+// another. A rerun on exactly the files of the last passing run prints that
+// run's summary.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { decide, readWorkspace } from "../.github/scripts/ci-changes.cjs";
+import {
+  splitArguments,
+  splitCompilerPattern,
+  touchesQualificationPin,
+} from "./lib/check-changed-plan.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
 const CODE = /\.[cm]?[jt]sx?$/;
@@ -142,6 +149,12 @@ for (const file of code) {
 }
 // It reads files other than the ones beside it, so no changed file selects it.
 if (affected.includes("t3")) tests.add("apps/server/src/provider/AgentContextBudget.test.ts");
+// It hashes every file cases.json pins, across packages, so no changed file selects it.
+if (
+  touchesQualificationPin(files, (path) => NodeFS.readFileSync(NodePath.join(root, path), "utf8"))
+) {
+  tests.add("evals/factory-qualification/dataset.test.ts");
+}
 
 // React Compiler coverage compiles every client source file, so run only the
 // changed files' cases, in one extra step: a -t filter in the main test step
@@ -178,13 +191,7 @@ const compilerApps = [
 });
 const compilerCoverage = compilerApps.length > 0 && {
   name: `react compiler (${compilerApps.reduce((count, app) => count + app.names.length, 0)} files)`,
-  args: [
-    "test",
-    "run",
-    ...compilerApps.map((app) => app.test),
-    "-t",
-    compilerApps.flatMap((app) => app.pattern).join("|"),
-  ],
+  commands: splitCompilerPattern(compilerApps),
 };
 
 // knip:check cannot be scoped to a package. Any code change can leave a file,
@@ -203,7 +210,7 @@ const knipPasses = knipCheck.split(" && ").map((command, index, all) => {
   if (bin !== "knip" || /["'$\\|;&<>]/.test(command)) {
     throw new Error(`check:changed cannot split knip:check: ${command}`);
   }
-  return { name: `knip ${index + 1}/${all.length}`, args: ["exec", "knip", ...args] };
+  return { name: `knip ${index + 1}/${all.length}`, commands: [["exec", "knip", ...args]] };
 });
 
 // A version bump can leave a patch unused, causing pnpm to reject the install
@@ -276,65 +283,90 @@ const steps = [
   runPatchCheck && { name: "unused patches", run: checkPatches },
   present.length > 0 && {
     name: "format",
-    args: ["fmt", "--check", "--no-error-on-unmatched-pattern", ...present],
+    commands: splitArguments(["fmt", "--check", "--no-error-on-unmatched-pattern"], present),
   },
-  code.length > 0 && { name: "lint", args: ["lint", ...code] },
+  code.length > 0 && { name: "lint", commands: splitArguments(["lint"], code) },
   ...(runKnip ? knipPasses : []),
   ...graphql.map((dir) => ({
     name: `graphql (${dir})`,
-    args: ["run", "--filter", `./${dir}`, "generate", "--check"],
+    commands: [["run", "--filter", `./${dir}`, "generate", "--check"]],
   })),
   affected.length > 0 && {
     name: `typecheck (${affected.length} packages)`,
     // `tsc --noEmit` writes nothing another package reads, so dependency order
     // only made dependents wait: --parallel cut a contracts change from 13 s to 9 s.
-    args: [
-      "run",
-      "--cache",
-      "--parallel",
-      "--concurrency-limit",
-      "4",
-      ...filters(affected),
-      "typecheck",
+    commands: [
+      [
+        "run",
+        "--cache",
+        "--parallel",
+        "--concurrency-limit",
+        "4",
+        ...filters(affected),
+        "typecheck",
+      ],
     ],
   },
   // From the repo root, the root vite.config.ts hands each file to its package's config.
   tests.size > 0 && {
     name: `test (${tests.size} files)`,
-    args: ["test", "run", "--passWithNoTests", ...tests],
+    commands: splitArguments(["test", "run", "--passWithNoTests"], [...tests]),
   },
   compilerCoverage,
 ].filter((step) => step !== false);
 
 // Output is piped, so keep the colors a terminal would get.
 const env = process.stdout.isTTY ? { ...process.env, FORCE_COLOR: "1" } : process.env;
-const runStep = (step: (typeof steps)[number]) =>
-  new Promise<{ name: string; ok: boolean; seconds: string }>((resolve) => {
-    const started = performance.now();
-    const finish = (ok: boolean, output?: Buffer) => {
-      const seconds = ((performance.now() - started) / 1000).toFixed(1);
-      console.log(`\n> vp ${step.name}  ${ok ? "pass" : "FAIL"}  ${seconds}s`);
-      if (output) process.stdout.write(output);
-      resolve({ name: step.name, ok, seconds });
-    };
-    // In-process steps print their own output. The patch check is first and
-    // takes about a second, so the commands start right after it.
-    if ("run" in step) return finish(step.run());
-    const output: Array<Buffer> = [];
-    const child = NodeChildProcess.spawn("vp", step.args, { cwd: root, env });
+const runCommand = async (args: ReadonlyArray<string>) => {
+  const output: Array<Buffer> = [];
+  const errors: Array<string> = [];
+  const fail = (cause: unknown) => {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    errors.push(message);
+    output.push(Buffer.from(`${message}\n`));
+  };
+  const closed = Promise.withResolvers<number | null>();
+  try {
+    const child = NodeChildProcess.spawn("vp", args, { cwd: root, env });
+    // Listen first: a spawn that fails emits "error" then "close", and can have no stdio.
+    child.on("error", fail);
+    child.on("close", closed.resolve);
     child.stdout.on("data", (chunk: Buffer) => output.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => output.push(chunk));
-    // A failed spawn emits "error", then "close" with a nonzero code.
-    child.on("error", (error) => output.push(Buffer.from(`${error.message}\n`)));
-    child.on("close", (status) => finish(status === 0, Buffer.concat(output)));
-  });
+  } catch (cause) {
+    // Some spawn failures throw instead, such as ENAMETOOLONG on Windows.
+    fail(cause);
+    closed.resolve(null);
+  }
+  const status = await closed.promise;
+  return { ok: status === 0, output: Buffer.concat(output), errors };
+};
+const runStep = async (step: (typeof steps)[number]) => {
+  const started = performance.now();
+  // In-process steps print their own output. The patch check is first and
+  // takes about a second, so the commands start right after it.
+  let ok = "run" in step ? step.run() : true;
+  const output: Array<Buffer> = [];
+  const errors = new Set<string>();
+  // A step's commands run in turn, so a split Vitest step never overlaps itself.
+  for (const args of "commands" in step ? step.commands : []) {
+    const command = await runCommand(args);
+    ok &&= command.ok;
+    output.push(command.output);
+    for (const error of command.errors) errors.add(error);
+  }
+  const seconds = ((performance.now() - started) / 1000).toFixed(1);
+  console.log(`\n> vp ${step.name}  ${ok ? "pass" : "FAIL"}  ${seconds}s`);
+  if (output.length > 0) process.stdout.write(Buffer.concat(output));
+  return { name: step.name, ok, seconds, error: [...errors].join("; ") };
+};
 
 // Vitest runs started together race to rebuild node_modules/.vitest-cache after
 // an install (ENOTEMPTY), so they run one after another.
 let previousVitest: Promise<unknown> = Promise.resolve();
 const results = await Promise.all(
   steps.map((step) => {
-    if (!("args" in step) || step.args[0] !== "test") return runStep(step);
+    if (!("commands" in step) || step.commands[0]?.[0] !== "test") return runStep(step);
     const result = previousVitest.then(() => runStep(step));
     previousVitest = result;
     return result;
@@ -342,8 +374,8 @@ const results = await Promise.all(
 );
 
 const summary = ["check:changed summary"];
-for (const result of results) {
-  summary.push(`  ${result.ok ? "pass" : "FAIL"}  ${result.name}  ${result.seconds}s`);
+for (const { ok, name, seconds, error } of results) {
+  summary.push(`  ${ok ? "pass" : "FAIL"}  ${name}  ${seconds}s${error ? `  ${error}` : ""}`);
 }
 const ciOnly = Object.entries({
   "full test suites": outputs.test || outputs.test_web || outputs.test_server,

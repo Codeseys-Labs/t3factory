@@ -58,6 +58,7 @@ import {
   FactoryExecutionRetryInput,
   FactoryExecutionStopInput,
   OrchestratorMcpFailure,
+  FactoryTaskPlanProposalReadResult,
   ProjectCoordinatorEnsureInput,
   ProjectCoordinatorAssignInput,
   ProjectCoordinatorAssignResult,
@@ -76,6 +77,7 @@ import * as Delivery from "../../../factory/FactoryDeliveryService.ts";
 import * as Knowledge from "../../../factory/FactoryKnowledgeService.ts";
 import * as Work from "../../../factory/FactoryWorkService.ts";
 import * as Plans from "../../../factory/FactoryPlanService.ts";
+import * as Planning from "../../../factory/FactoryTaskPlanningService.ts";
 import * as Execution from "../../../factory/FactoryExecutionService.ts";
 import * as Threads from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as Coordinators from "../../../project/ProjectCoordinatorService.ts";
@@ -483,7 +485,23 @@ const stopExecution = Tool.make("factory_stop_execution", {
 })
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, true);
+const proposeSubtasks = Tool.make("factory_propose_subtasks", {
+  ...shared,
+  dependencies: [
+    Planning.FactoryTaskPlanningService,
+    Threads.ThreadManagementService,
+    McpInvocationContext.McpInvocationContext,
+  ],
+  description:
+    "Submit sub-tasks for the task assigned to this planning thread. Call once with 1 to 32 items: unique key, actionable title, description, after (keys that must finish first), and optional profile (an agent profile name; unknown or omitted uses Auto). All after keys must be in this submission; dependencies must be acyclic. The person reviews, edits and approves the plan before sub-tasks are created. Only the thread holding this task's open planning request may submit. A later submission replaces the plan awaiting review.",
+  parameters: Planning.ProposeSubtasksInput,
+  success: FactoryTaskPlanProposalReadResult,
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false);
+
 export const FactoryToolkit = Toolkit.make(
+  proposeSubtasks,
   listClaims,
   readAcceptance,
   prepareDelivery,

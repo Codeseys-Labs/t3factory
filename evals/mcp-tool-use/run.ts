@@ -59,6 +59,7 @@ import {
   makeClaudeQueryOptions,
 } from "../../apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import { proxyConfig } from "../shared/proxy.ts";
+import { planningPrompt, usablePlanningSubmission } from "./factory-planning.ts";
 import { changeRequestsCreatedBy } from "../../apps/server/src/orchestration-v2/PullRequestSyncReactor.ts";
 import { DeviceExpect, gradeDevice } from "./device-grading.ts";
 import {
@@ -187,6 +188,7 @@ type McpToolUseCall = typeof McpToolUseCall.Type;
 const McpToolUseExpect = Schema.Struct({
   /** Each entry needs one matching call. */
   calls: Schema.optional(Schema.Array(McpToolUseCall)),
+  taskPlanning: Schema.optional(Schema.Boolean),
   /** No call may match any entry. */
   callsMustNot: Schema.optional(Schema.Array(McpToolUseCall)),
   notCalls: Schema.optional(Schema.Array(Schema.String)),
@@ -1458,6 +1460,13 @@ export const gradeSample = (expect: McpToolUseCase["expect"], run: SampleRun) =>
   const checks: Array<{ readonly check: string; readonly pass: boolean }> = [];
   const add = (check: string, pass: boolean) => checks.push({ check, pass });
   const calls = run.calls;
+  if (expect.taskPlanning)
+    add(
+      "usablePlanningSubmission",
+      calls.some(
+        (call) => call.tool === "factory_propose_subtasks" && usablePlanningSubmission(call.input),
+      ),
+    );
   if (calls.some((call) => call.failed && call.output?.startsWith("EvalFixtureMismatch:")))
     add("fixtureArguments", false);
   const count = (tool: string) => calls.filter((call) => call.tool === tool).length;
@@ -2126,7 +2135,13 @@ const main = Effect.gen(function* () {
       .filter((name) => name.endsWith(".ndjson"))
       .toSorted()
       .map((name) => path.join(casesDir, name));
-  const cases = (yield* Effect.forEach(caseFiles, (file) => readNdjson(file, decodeCase))).flat();
+  const cases = (yield* Effect.forEach(caseFiles, (file) => readNdjson(file, decodeCase)))
+    .flat()
+    .map((testCase) =>
+      testCase.prompt === "{{factory-planning}}"
+        ? { ...testCase, prompt: planningPrompt }
+        : testCase,
+    );
   const wanted = flags.case?.flatMap((ids) => ids.split(","));
   const codex = isCodex(flags.model);
   const harness = codex ? "codex" : "claude";

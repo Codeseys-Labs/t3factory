@@ -26,6 +26,9 @@ const badgeVariants = cva(
         destructive: "bg-destructive text-white [button&,a&]:hover:bg-destructive/90",
         error: "bg-destructive/8 text-destructive-foreground dark:bg-destructive/16",
         info: "bg-info/8 text-info-foreground dark:bg-info/16",
+        // Quiet metadata such as a tag, a count or where something came from.
+        muted: "bg-foreground/[0.06] font-normal text-muted-foreground",
+        "muted-outline": "border-border font-normal text-muted-foreground",
         outline:
           "border-input bg-background text-foreground dark:bg-input/32 [button&,a&]:hover:bg-accent/50 dark:[button&,a&]:hover:bg-input/48",
         secondary: "bg-secondary text-secondary-foreground [button&,a&]:hover:bg-secondary/90",

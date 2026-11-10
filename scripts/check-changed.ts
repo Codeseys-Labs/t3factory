@@ -328,11 +328,11 @@ const runCommand = async (args: ReadonlyArray<string>) => {
   const closed = Promise.withResolvers<number | null>();
   try {
     const child = NodeChildProcess.spawn("vp", args, { cwd: root, env });
-    child.stdout.on("data", (chunk: Buffer) => output.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => output.push(chunk));
-    // A failed spawn emits "error", then "close" with a nonzero code.
+    // Listen first: a spawn that fails emits "error" then "close", and can have no stdio.
     child.on("error", fail);
     child.on("close", closed.resolve);
+    child.stdout.on("data", (chunk: Buffer) => output.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => output.push(chunk));
   } catch (cause) {
     // Some spawn failures throw instead, such as ENAMETOOLONG on Windows.
     fail(cause);

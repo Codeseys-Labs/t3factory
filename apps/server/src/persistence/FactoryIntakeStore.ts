@@ -304,7 +304,8 @@ const make = Effect.gen(function* () {
     yield* sql`DELETE FROM factory_intake_sources WHERE source_id = ${id}`;
   }, Effect.mapError(persistenceError));
   const nextCheckAt = sql<{ readonly next: string | null }>`
-    SELECT MIN(next_check_at) AS next FROM factory_intake_sources WHERE next_check_at IS NOT NULL`.pipe(
+    SELECT MIN(next_check_at) AS next FROM factory_intake_sources
+    WHERE next_check_at IS NOT NULL AND enabled = 1`.pipe(
     Effect.map((rows) => rows[0]?.next ?? null),
     Effect.mapError(persistenceError),
     Effect.withSpan("FactoryIntakeStore.nextCheckAt"),
@@ -312,7 +313,7 @@ const make = Effect.gen(function* () {
   const listDueSources = Effect.fn("FactoryIntakeStore.listDueSources")(function* (now: string) {
     return yield* decodeSources(
       yield* sql`SELECT ${sourceColumns} FROM factory_intake_sources
-        WHERE next_check_at IS NOT NULL AND next_check_at <= ${now}
+        WHERE next_check_at IS NOT NULL AND enabled = 1 AND next_check_at <= ${now}
         ORDER BY next_check_at, rowid`,
     );
   }, Effect.mapError(persistenceError));

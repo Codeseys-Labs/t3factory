@@ -42,6 +42,40 @@ import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
 import { useClientSettings } from "../../hooks/useSettings";
 import { GuestShareIndicator } from "./GuestShareControls";
+import { Link } from "@tanstack/react-router";
+import { AsyncResult } from "effect/reactivity";
+import { factoryTasks } from "../../state/factoryTasks";
+import { TaskStatusIcon, TASK_STATUS_VISUALS } from "../tasks/kit";
+
+function ThreadTaskChip({
+  environmentId,
+  threadId,
+}: {
+  environmentId: EnvironmentId;
+  threadId: ThreadId;
+}) {
+  const result = useAtomValue(
+    factoryTasks.findTaskByThread({ environmentId, input: { threadId } }),
+  );
+  if (!AsyncResult.isSuccess(result) || !result.value.task) return null;
+  const task = result.value.task;
+  return (
+    <Badge
+      aria-label={`${task.displayId} · ${TASK_STATUS_VISUALS[task.status].label}`}
+      variant="muted-outline"
+      size="lg"
+      render={
+        <Link
+          to="/tasks/$environmentId/$displayId"
+          params={{ environmentId, displayId: task.displayId }}
+        />
+      }
+    >
+      <TaskStatusIcon status={task.status} />
+      {task.displayId} · {TASK_STATUS_VISUALS[task.status].label}
+    </Badge>
+  );
+}
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -285,6 +319,9 @@ export const ChatHeader = memo(function ChatHeader({
       )}
       onContextMenu={handleHeaderContextMenu}
     >
+      {isServerThread ? (
+        <ThreadTaskChip environmentId={activeThreadEnvironmentId} threadId={activeThreadId} />
+      ) : null}
       <WorkspaceBreadcrumb
         ariaLabel="Thread breadcrumb"
         className="flex-1 overflow-clip [overflow-clip-margin:2px]"

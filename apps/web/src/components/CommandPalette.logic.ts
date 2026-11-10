@@ -749,6 +749,7 @@ export function getCommandPaletteMode(input: {
 export function buildRootGroups(input: {
   actionItems: ReadonlyArray<CommandPaletteActionItem | CommandPaletteSubmenuItem>;
   recentThreadItems: ReadonlyArray<CommandPaletteActionItem>;
+  taskItems?: ReadonlyArray<CommandPaletteActionItem>;
 }): CommandPaletteGroup[] {
   const groups: CommandPaletteGroup[] = [];
   if (input.actionItems.length > 0) {
@@ -761,13 +762,16 @@ export function buildRootGroups(input: {
       items: input.recentThreadItems,
     });
   }
+  if (input.taskItems && input.taskItems.length > 0) {
+    groups.splice(1, 0, { value: "tasks", label: "Tasks", items: input.taskItems });
+  }
   return groups;
 }
 
 export function getCommandPaletteInputPlaceholder(mode: CommandPaletteMode): string {
   switch (mode) {
     case "root":
-      return "Search commands, projects, and threads...";
+      return "Search tasks, commands, projects, and threads...";
     case "root-browse":
       return "Enter project path (e.g. ~/projects/my-app)";
     case "submenu":

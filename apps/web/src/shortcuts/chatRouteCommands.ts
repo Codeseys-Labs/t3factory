@@ -24,6 +24,8 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
 import { type CommandHandler, registerCommands } from "./dispatcher";
+import { openNewTask } from "../components/tasks/taskDialogs";
+import { readTaskScope } from "../components/tasks/shared/taskScope";
 
 const CHAT_ROUTE_ID = "/_chat";
 
@@ -106,6 +108,11 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
 
   return registerCommands(
     {
+      "tasks.new": (event) => {
+        if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return false;
+        claim(event);
+        openNewTask(readTaskScope().single ?? {});
+      },
       "chat.newLocal": startNewLocal,
       "chat.newWithoutProject": (event) => {
         const { activeThread, activeDraftThread } = readThreadContext();

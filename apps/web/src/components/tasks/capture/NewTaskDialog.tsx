@@ -204,7 +204,9 @@ function NewTaskForm({
     projectId,
     type,
     assignment,
-    ...(parent ? { parent: { displayId: parent.displayId, assignee: parent.assignee } } : {}),
+    ...(parent
+      ? { parent: { ref: parent.ref, displayId: parent.displayId, assignee: parent.assignee } }
+      : {}),
   });
   const canCreate = useAtomValue(
     project ? factoryTasks.createTask.permissionAtom(project.environmentId) : NO_PERMISSION,
@@ -371,7 +373,13 @@ function NewTaskForm({
                     trigger={assigneeTrigger}
                     allowUnassigned={parent === null}
                     {...(parent
-                      ? { parent: { displayId: parent.displayId, assignee: parent.assignee } }
+                      ? {
+                          parent: {
+                            ref: parent.ref,
+                            displayId: parent.displayId,
+                            assignee: parent.assignee,
+                          },
+                        }
                       : {})}
                   />
                 ) : (

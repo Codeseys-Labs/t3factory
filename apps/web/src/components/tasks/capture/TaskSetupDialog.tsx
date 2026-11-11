@@ -42,7 +42,7 @@ import { toastManager } from "../../ui/toast";
 import { assigneeText } from "../kit";
 import { TaskAssigneePicker, useTaskSetup } from "../shared/taskAssignee";
 import { useTaskCatalog } from "../shared/taskCatalog";
-import { autoDetailLine, parentDecidedSetup, presentTaskSetup } from "../shared/taskAssigneeModel";
+import { autoDetailLine, type TaskAssigneeParent } from "../shared/taskAssigneeModel";
 import { useTaskDialogStore } from "../taskDialogs";
 import { useCaptureCommands } from "./captureCommands";
 import { useMachineLabel } from "./captureData";
@@ -118,7 +118,11 @@ function ParentGate({ task, intent }: { task: FactoryTaskSummary; intent: Intent
       intent={intent}
       parent={
         parent !== null && parentDetail._tag === "Success"
-          ? { displayId: parent.displayId, assignee: parentDetail.value.task.assignee }
+          ? {
+              ref: parentDetail.value.task.ref,
+              displayId: parent.displayId,
+              assignee: parentDetail.value.task.assignee,
+            }
           : undefined
       }
     />
@@ -140,7 +144,7 @@ function AssigneeField({ label, ...props }: { label: string } & ComponentProps<"
 function useAssigneeLine(input: {
   task: FactoryTaskSummary;
   assignment: FactoryTaskAssignment;
-  parent: { displayId: string; assignee: FactoryTaskAssignee } | undefined;
+  parent: TaskAssigneeParent | undefined;
 }): string | null {
   const { task, assignment, parent } = input;
   const { environmentId, projectId } = task.ref;
@@ -148,13 +152,17 @@ function useAssigneeLine(input: {
   const profiles = useFactoryAgentProfiles(environmentId);
   const unchangedAuto =
     assignment.mode === "auto" && sameAssignment(assignment, task.assignee.assignment);
-  const inherited = assignment.mode === "auto" ? parentDecidedSetup(parent) : null;
-  const asksServer = assignment.mode === "auto" && !unchangedAuto && inherited === null;
+  const asksServer = assignment.mode === "auto" && !unchangedAuto;
   const preview = useAtomValue(
     asksServer
       ? factoryTasks.previewTaskAssignee({
           environmentId,
-          input: { projectId, type: task.type, assignment },
+          input: {
+            projectId,
+            type: task.type,
+            assignment,
+            ...(parent?.ref ? { parent: parent.ref } : {}),
+          },
         })
       : NO_PREVIEW,
   );
@@ -167,8 +175,6 @@ function useAssigneeLine(input: {
     return name ? `Uses the ${name} profile` : null;
   }
   if (assignment.mode !== "auto") return null;
-  if (inherited !== null && parent)
-    return `Follows ${parent.displayId} · ${presentTaskSetup(inherited, catalog).label}`;
   const context = { type: task.type, catalog, parentDisplayId: parent?.displayId };
   if (unchangedAuto) return autoDetailLine(task.assignee.resolved, context);
   if (preview._tag === "Success") return autoDetailLine(preview.value.resolved, context);
@@ -200,7 +206,7 @@ function TaskSetupForm({
 }: {
   task: FactoryTaskSummary;
   intent: Intent;
-  parent: { displayId: string; assignee: FactoryTaskAssignee } | undefined;
+  parent: TaskAssigneeParent | undefined;
 }) {
   const close = useTaskDialogStore((state) => state.close);
   const registry = useContext(RegistryContext);
@@ -225,6 +231,7 @@ function TaskSetupForm({
     projectId,
     type: task.type,
     assignment,
+    assignee: sameAssignment(assignment, task.assignee.assignment) ? task.assignee : undefined,
     ...(parent ? { parent } : {}),
   });
   const line = useAssigneeLine({ task, assignment, parent });

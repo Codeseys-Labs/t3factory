@@ -6,6 +6,7 @@ import type {
   FactoryAgentSetup,
   FactoryTaskAssignee,
   FactoryTaskAssignment,
+  FactoryTaskRef,
   FactoryTaskType,
 } from "@t3tools/contracts";
 
@@ -13,6 +14,7 @@ import type { AssigneeChipProps, AssigneePickerValue } from "../kit";
 
 /** A task's parent, for resolving Auto the way the server does: the nearest pinned ancestor wins. */
 export interface TaskAssigneeParent {
+  readonly ref?: FactoryTaskRef;
   readonly displayId: string;
   readonly assignee: FactoryTaskAssignee;
 }

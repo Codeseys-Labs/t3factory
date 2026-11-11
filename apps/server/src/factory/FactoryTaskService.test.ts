@@ -6,6 +6,8 @@ import {
   AuthSessionId,
   CommandId,
   EnvironmentId,
+  EventId,
+  MessageId,
   FactoryDeliveryError,
   FactoryWorkError,
   ProjectId,
@@ -208,6 +210,8 @@ const deliveries = Layer.effect(
       reconcile: (input) =>
         Effect.gen(function* () {
           probe.checks.push(input.intentId);
+          if (probe.found.remote && "merged" in probe.found.remote && probe.found.remote.merged)
+            return Option.getOrThrow(yield* store.recordObservedMerge(input.intentId, at));
           const settled = yield* store.settle(input.intentId, { ...probe.found, updatedAt: at });
           return Option.getOrThrow(settled);
         }),
@@ -885,6 +889,97 @@ it.effect("lists only the tasks that wait on a person or have a run that has not
   ),
 );
 
+it.effect.each(
+  (["retry", "requestChanges"] as const).flatMap((operation) =>
+    (["person", "canceled", "done", "blocked"] as const).map((condition) => ({
+      operation,
+      condition,
+    })),
+  ),
+)("$operation refuses a $condition task", ({ operation, condition }) =>
+  scenario(
+    Effect.gen(function* () {
+      const { tasks, create, subtask, summary, start, finish, until } = yield* harness;
+      const plans = yield* Plans.FactoryPlanService;
+
+      const parent = yield* create(`${operation}:${condition}`);
+      const task = yield* subtask("Work", parent);
+      const blocker = yield* subtask("Prerequisite", parent);
+      const running = yield* start(task);
+      yield* finish(running.run!, operation === "retry" ? "failed" : "sealed", "Answer");
+      yield* until(task, (current) =>
+        operation === "retry" ? current.liveRuns.length === 0 : current.status === "in-review",
+      );
+      if (condition === "blocked") {
+        const ref = { environmentId, projectId, rootId: task.ref.rootId };
+        yield* plans.apply(
+          {
+            commandId: command(`block:${operation}`),
+            ref,
+            expectedRevision: (yield* plans.read({ ref })).revision,
+            operations: [
+              {
+                type: "edge.add",
+                id: "blocker",
+                fromTaskId: task.ref.taskId,
+                toTaskId: blocker.ref.taskId,
+                requirement: "",
+              },
+            ],
+          },
+          human,
+        );
+      } else {
+        const current = yield* summary(task);
+        if (condition === "done" && operation === "requestChanges") {
+          yield* tasks.accept(
+            {
+              commandId: command(`done:${operation}`),
+              ref: task.ref,
+              revision: current.result!.revision,
+            },
+            human,
+          );
+        } else {
+          yield* tasks.update(
+            {
+              commandId: command(`change:${operation}:${condition}`),
+              ref: task.ref,
+              expectedVersion: current.version,
+              ...(condition === "person"
+                ? { assignment: { mode: "person" as const } }
+                : { lane: condition }),
+            },
+            human,
+          );
+        }
+      }
+      const current = yield* summary(task);
+      const before = yield* tasks.read({ task: { ref: task.ref } });
+      const activity = yield* tasks.activity({ ref: task.ref });
+      const input = { commandId: command(`refuse:${operation}:${condition}`), ref: task.ref };
+      const error = yield* (
+        operation === "retry"
+          ? tasks.retry({ ...input, expectedVersion: current.version }, human)
+          : tasks.requestChanges(
+              { ...input, revision: current.result!.revision, note: "Try again" },
+              human,
+            )
+      ).pipe(Effect.flip);
+      assert.equal(
+        error.reason,
+        condition === "person"
+          ? "assignee-unresolved"
+          : condition === "blocked"
+            ? "blocked"
+            : "invalid-transition",
+      );
+      assert.deepEqual(yield* tasks.read({ task: { ref: task.ref } }), before);
+      assert.deepEqual(yield* tasks.activity({ ref: task.ref }), activity);
+    }),
+  ),
+);
+
 it.effect("follows a run from start through failure, retry, review, acceptance and reopening", () =>
   scenario(
     Effect.gen(function* () {
@@ -1294,6 +1389,51 @@ it.effect(
     ),
 );
 
+it.effect("Check records a directly merged task PR and its activity without a merge grant", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { tasks, create, start, finish, until } = yield* harness;
+      const store = yield* DeliveryStore.FactoryDeliveryStore;
+      const probe = yield* DeliveryProbe;
+      const task = yield* create("Direct host merge");
+      yield* finish((yield* start(task)).run!, "sealed");
+      yield* until(task, (current) => current.status === "in-review");
+      yield* tasks.accept({ commandId: command("accept-host"), ref: task.ref, revision: 1 }, human);
+      yield* tasks.publish(
+        { commandId: command("publish-host"), ref: task.ref, revision: 1 },
+        human,
+      );
+      const intentId = "delivery:factory-task:publish-pr:publish-host";
+      yield* store.settle(intentId, {
+        status: "confirmed",
+        remote: { number: 12, url: pullUrl },
+        failure: null,
+        updatedAt: at,
+      });
+      yield* until(task, (current) => current.result?.pullRequest?.state === "open");
+      probe.found = {
+        status: "confirmed",
+        remote: { number: 12, url: pullUrl, merged: true },
+        failure: null,
+      };
+      const checked = (yield* tasks.check(
+        { commandId: command("check-host"), ref: task.ref },
+        human,
+      )).task;
+      assert.equal(checked.result?.pullRequest?.state, "merged");
+      assert.deepEqual(probe.grants, ["publish-pr"]);
+      assert.deepEqual(probe.checks, [intentId]);
+      yield* tasks.check({ commandId: command("check-host-again"), ref: task.ref }, human);
+      assert.deepEqual(
+        (yield* tasks.activity({ ref: task.ref })).entries.flatMap((entry) =>
+          entry.event.type === "pull-request" ? [entry.event.action] : [],
+        ),
+        ["opened", "merged"],
+      );
+    }),
+  ),
+);
+
 it.effect("a task made from retained Work carries it as its source", () =>
   scenario(
     Effect.gen(function* () {
@@ -1412,34 +1552,75 @@ it.effect(
     ),
 );
 
-it.effect("a run in the project root gives a document result", () =>
-  scenario(
-    Effect.gen(function* () {
-      const { tasks, create, start, finish, until } = yield* harness;
-      const task = yield* create("Prerequisite view docs", { lane: "ready", type: "docs" });
-      const run = (yield* start(task, setupOf("flash", "root"))).run!;
-      yield* finish(run, "sealed", "# Prerequisite view\n\nA sub-task waits on its blockers.");
-      const review = yield* until(task, (current) => current.status === "in-review");
-      assert.deepEqual(
-        [review.result?.kind, review.result?.summary],
-        ["document", "Prerequisite view"],
-      );
-      const document = yield* tasks.readResult({ ref: task.ref });
-      assert.equal(document.text, "# Prerequisite view\n\nA sub-task waits on its blockers.");
-      assert.deepEqual(document.files, []);
-      assert.equal(
-        (yield* tasks.readResult({ ref: task.ref, revision: 7 }).pipe(Effect.flip)).reason,
-        "no-result",
-      );
-      yield* tasks.accept({ commandId: command("accept-doc"), ref: task.ref, revision: 1 }, human);
-      assert.equal(
-        (yield* tasks
-          .publish({ commandId: command("publish-doc"), ref: task.ref, revision: 1 }, human)
-          .pipe(Effect.flip)).reason,
-        "not-code",
-      );
-    }),
-  ),
+it.effect.each([false, true])(
+  "a document result uses the final answer (messages: %s)",
+  (messages) =>
+    scenario(
+      Effect.gen(function* () {
+        const { tasks, create, start, finish, until } = yield* harness;
+        const task = yield* create("Prerequisite view docs", { lane: "ready", type: "docs" });
+        const run = (yield* start(task, setupOf("flash", "root"))).run!;
+        const text =
+          "I will inspect the prerequisites.\n\n# Prerequisite view\nA sub-task waits on its blockers.";
+        if (messages) {
+          const projection = yield* ProjectionStore.ProjectionStoreV2;
+          for (const [index, body] of [
+            "I will inspect the prerequisites.",
+            "# Prerequisite view\n\nA sub-task waits on its blockers.",
+          ].entries()) {
+            yield* projection.apply({
+              id: EventId.make(`answer-${index}`),
+              type: "message.updated",
+              threadId: run.threadId,
+              occurredAt: DateTime.makeUnsafe(at),
+              payload: {
+                id: MessageId.make(`answer-${index}`),
+                threadId: run.threadId,
+                runId: run.runId,
+                nodeId: null,
+                role: "assistant",
+                text: body,
+                attachments: [],
+                streaming: false,
+                createdBy: "agent",
+                creationSource: "provider",
+                createdAt: DateTime.makeUnsafe(at),
+                updatedAt: DateTime.makeUnsafe(at),
+              },
+            });
+          }
+        }
+        yield* finish(run, "sealed", text);
+        const review = yield* until(task, (current) => current.status === "in-review");
+        assert.deepEqual(
+          [review.result?.kind, review.result?.summary],
+          ["document", "Prerequisite view"],
+        );
+        const document = yield* tasks.readResult({ ref: task.ref });
+        assert.deepEqual(
+          (yield* tasks.activity({ ref: task.ref })).entries.find(
+            (entry) => entry.event.type === "result-ready",
+          )?.actor,
+          { kind: "agent", label: "devReplay · flash", modelSelection: model("flash") },
+        );
+        assert.equal(document.text, text);
+        assert.deepEqual(document.files, []);
+        assert.equal(
+          (yield* tasks.readResult({ ref: task.ref, revision: 7 }).pipe(Effect.flip)).reason,
+          "no-result",
+        );
+        yield* tasks.accept(
+          { commandId: command("accept-doc"), ref: task.ref, revision: 1 },
+          human,
+        );
+        assert.equal(
+          (yield* tasks
+            .publish({ commandId: command("publish-doc"), ref: task.ref, revision: 1 }, human)
+            .pipe(Effect.flip)).reason,
+          "not-code",
+        );
+      }),
+    ),
 );
 
 it.effect(
@@ -1577,6 +1758,32 @@ it.effect(
         assert.deepEqual(resolved(child), ["parent", "devReplay/opus"]);
         assert.deepEqual(child.assignee.resolved?.setup, setupOf("opus", "root"));
         assert.deepEqual(resolved(parent), ["assignment", "devReplay/opus"]);
+
+        const intermediate = yield* create("Person-owned intermediate", {
+          parent: { rootId: parent.ref.rootId, taskId: parent.ref.taskId },
+          assignment: { mode: "person" },
+        });
+        const preview = yield* tasks.resolveAssignee({
+          projectId,
+          type: "bug",
+          assignment: auto,
+          parent: intermediate.ref,
+        });
+        assert.deepEqual(
+          [preview.resolved?.via, preview.resolved?.setup],
+          ["parent", setupOf("opus", "root")],
+        );
+        assert.equal(
+          (yield* tasks
+            .resolveAssignee({
+              projectId: otherProjectId,
+              type: "task",
+              assignment: auto,
+              parent: intermediate.ref,
+            })
+            .pipe(Effect.flip)).reason,
+          "invalid-input",
+        );
 
         const asked = yield* tasks.resolveAssignee({ projectId, type: "bug", assignment: auto });
         assert.deepEqual([asked.resolved?.via, asked.key], ["profile-type", implementer.id]);
@@ -1925,6 +2132,21 @@ it.effect("a planning run and a waiting proposal show on the task and on its par
       assert.deepEqual(
         (yield* summary(parent)).liveRuns.map((run) => run.displayId),
         ["T-1.1"],
+      );
+      const currentParent = yield* summary(parent);
+      assert.equal(
+        (yield* tasks
+          .update(
+            {
+              commandId: command("cancel-live-parent"),
+              ref: parent.ref,
+              expectedVersion: currentParent.version,
+              lane: "canceled",
+            },
+            human,
+          )
+          .pipe(Effect.flip)).reason,
+        "run-active",
       );
       assert.equal(
         (yield* tasks.findByThread({ threadId: planning.threadId })).task?.displayId,

@@ -37,7 +37,8 @@ Publish and Merge reuse `FactoryDeliveryService` through `grantCommit`: the task
 accepted commit, and acceptance is rechecked inside the grant transaction, so a Reopen between the
 click and the grant wins. Delivery is per accepted revision. Check only reads the host, so an
 Unconfirmed send can never be repeated by accident. The task service follows the delivery store's
-change stream, which needs the RPC side and the effect worker to share one `FactoryDeliveryStore`.
+change stream, which needs the RPC side and the effect worker to share one `FactoryDeliveryStore`. A merge made
+on the host is recorded by Check against the publication's pinned head and base branch.
 
 ## Traps
 

@@ -62,6 +62,7 @@ import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import * as DeliveryStore from "../persistence/FactoryDeliveryStore.ts";
 import * as ExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as Tasks from "../persistence/FactoryTaskStore.ts";
+import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as Processes from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -165,6 +166,7 @@ export class FactoryTaskService extends Context.Service<
       readonly projectId: ProjectId;
       readonly type: FactoryTaskType;
       readonly assignment: FactoryTaskAssignment;
+      readonly parent?: FactoryTaskRef | undefined;
     }) => Effect.Effect<FactoryTaskAssignee, FactoryTaskError>;
     /** Adds sub-tasks and their blockers to one parent in a single plan revision. */
     readonly createSubtasks: (
@@ -384,6 +386,7 @@ const make = Effect.gen(function* () {
   const work = yield* Work.FactoryWorkService;
   const executions = yield* Executions.FactoryExecutionService;
   const executionStore = yield* ExecutionStore.FactoryExecutionStore;
+  const projections = yield* Projections.ProjectionStoreV2;
   const events = yield* OrchestrationEventStore.OrchestrationEventStore;
   const settings = yield* ServerSettings.ServerSettingsService;
   const processes = yield* Processes.ProcessRunner;
@@ -578,7 +581,20 @@ const make = Effect.gen(function* () {
         Effect.map((output) => output.text),
         Effect.orElseSucceed(() => ""),
       );
-    return { kind: "document" as const, summary: firstLine(text), files: [], filesOmitted: 0 };
+    const messages = yield* projections
+      .getThreadRecords(pending.threadId, ["messages"], {
+        messageRoles: ["assistant"],
+        messageRunIds: [pending.output.runId],
+      })
+      .pipe(Effect.mapError(asTaskError));
+    const answer =
+      messages.messages.findLast((message) => message.text.trim() !== "")?.text ??
+      text
+        .trim()
+        .split(/\r?\n\s*\r?\n/)
+        .at(-1) ??
+      "";
+    return { kind: "document" as const, summary: firstLine(answer), files: [], filesOmitted: 0 };
   });
 
   /** Brings runs, results and the index up to date with the execution engine. */
@@ -1138,7 +1154,7 @@ const make = Effect.gen(function* () {
           to: input.lane,
           status: task.derived.status,
           accepted: row.acceptedRevision !== null,
-          runLive: task.runs.some((entry) => isLiveRunState(entry.state)),
+          runLive: task.derived.liveRuns.length > 0,
           resultWaiting: latestResult !== null && latestResult.state !== "accepted",
         });
         if (!move.allowed) return yield* refuse(move.reason);
@@ -1203,6 +1219,17 @@ const make = Effect.gen(function* () {
     },
   );
 
+  const requireRunnable = Effect.fn("FactoryTaskService.requireRunnable")(function* (
+    root: Tasks.RootView,
+    task: Tasks.TaskView,
+  ) {
+    if (task.row.assignment.mode === "person") return yield* refuse("assignee-unresolved");
+    if (task.derived.ownStatus === "done" || task.derived.ownStatus === "canceled")
+      return yield* refuse("invalid-transition");
+    if (pointers(root, task.blockedBy).some((blocker) => unfinished(blocker.status)))
+      return yield* refuse("blocked");
+  });
+
   const start: FactoryTaskService["Service"]["start"] = Effect.fn("FactoryTaskService.start")(
     function* (raw, actor) {
       yield* requireHuman(actor);
@@ -1217,13 +1244,11 @@ const make = Effect.gen(function* () {
             reason: "version-conflict",
             currentVersion: task.row.version,
           });
-        if (task.row.assignment.mode === "person") return yield* refuse("assignee-unresolved");
+        yield* requireRunnable(root, task);
         if (task.runs.some((entry) => isLiveRunState(entry.state)))
           return yield* refuse("run-active");
         if (task.derived.ownStatus !== "backlog" && task.derived.ownStatus !== "ready")
           return yield* refuse("invalid-transition");
-        if (pointers(root, task.blockedBy).some((blocker) => unfinished(blocker.status)))
-          return yield* refuse("blocked");
       }
       return yield* run({
         commandId: input.commandId,
@@ -1243,7 +1268,7 @@ const make = Effect.gen(function* () {
       const input = yield* decodeRetry(raw).pipe(Effect.mapError(invalid));
       const command = yield* begin("retry", input.commandId, actor, input);
       if (command.replayed) return yield* replay(input.ref);
-      const { task } = yield* requireTask(input.ref);
+      const { root, task } = yield* requireTask(input.ref);
       const work = task.runs.filter((entry) => entry.purpose === "work");
       const resumed = yield* store.launched(derived(input.commandId, "admit"));
       const previous = resumed ? work.at(-2) : work.at(-1);
@@ -1254,6 +1279,7 @@ const make = Effect.gen(function* () {
             currentVersion: task.row.version,
           });
         if (previous === undefined) return yield* refuse("no-run");
+        yield* requireRunnable(root, task);
         if (task.runs.some((entry) => isLiveRunState(entry.state)))
           return yield* refuse("run-active");
         if (previous.state !== "failed" && previous.state !== "stopped")
@@ -1378,9 +1404,10 @@ const make = Effect.gen(function* () {
     const input = yield* decodeRequestChanges(raw).pipe(Effect.mapError(invalid));
     const command = yield* begin("requestChanges", input.commandId, actor, input);
     if (command.replayed) return yield* replay(input.ref);
-    const { task } = yield* requireTask(input.ref);
+    const { root, task } = yield* requireTask(input.ref);
     const { row } = task;
     const resumed = yield* store.launched(derived(input.commandId, "admit"));
+    if (!resumed) yield* requireRunnable(root, task);
     const latest = resumed
       ? task.results.findLast((result) => result.revision === input.revision)
       : yield* reviewed(task, input.revision);
@@ -1529,16 +1556,22 @@ const make = Effect.gen(function* () {
       const { task } = yield* requireTask(input.ref);
       const { row } = task;
       for (const result of task.results) {
-        if (result.delivery?.state !== "unconfirmed") continue;
+        if (result.delivery?.state !== "unconfirmed" && result.pullRequest?.state !== "open")
+          continue;
         const originKey = taskResultOriginKey(row.rootId, row.taskId, result.revision);
-        for (const kind of ["publish-pr", "merge-pr"] as const) {
+        for (const kind of ["merge-pr", "publish-pr"] as const) {
           const live = yield* deliveryStore
             .getLive(originKey, kind)
             .pipe(Effect.mapError(deliveryRefusal));
-          if (live._tag === "Some" && live.value.status === "unknown")
+          if (
+            live._tag === "Some" &&
+            (live.value.status === "unknown" ||
+              (kind === "publish-pr" && live.value.status === "confirmed"))
+          )
             yield* delivery
               .reconcile({ projectId: row.projectId, intentId: live.value.id })
               .pipe(Effect.mapError(deliveryRefusal));
+          if (kind === "merge-pr" && live._tag === "Some") break;
         }
       }
       yield* followDeliveries(row);
@@ -1568,13 +1601,25 @@ const make = Effect.gen(function* () {
         const live = yield* deliveryStore
           .getLive(originKey, kind)
           .pipe(Effect.mapError(asTaskError));
-        if (live._tag === "Some" && live.value.status === "confirmed" && live.value.remote !== null)
+        if (
+          live._tag === "Some" &&
+          live.value.status === "confirmed" &&
+          live.value.remote !== null
+        ) {
           entries.push({
             id: live.value.id,
             revision: result.revision,
             event: kind === "publish-pr" ? "opened" : "merged",
             remote: live.value.remote,
           });
+          if (kind === "publish-pr" && live.value.remote.merged)
+            entries.push({
+              id: `${live.value.id}:merged`,
+              revision: result.revision,
+              event: "merged",
+              remote: live.value.remote,
+            });
+        }
       }
     }
     yield* transact(
@@ -1720,9 +1765,20 @@ const make = Effect.gen(function* () {
   )(function* (input) {
     if ((yield* store.projectWorkspace(input.projectId)) === null)
       return yield* refuse("missing-project");
+    const ancestors: FactoryTaskAssignment[] = [];
+    if (input.parent !== undefined) {
+      if (input.parent.projectId !== input.projectId) return yield* refuse("invalid-input");
+      const { root, task } = yield* requireTask(input.parent);
+      let ancestor: Tasks.TaskView | undefined = task;
+      while (ancestor !== undefined) {
+        ancestors.push(ancestor.row.assignment);
+        ancestor =
+          ancestor.row.parentId === null ? undefined : root.tasks.get(ancestor.row.parentId);
+      }
+    }
     return resolveAssignee(input.assignment, {
       type: input.type,
-      ancestors: [],
+      ancestors,
       ...(yield* store.assigneeDefaults(input.projectId)),
     });
   });

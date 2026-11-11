@@ -41,7 +41,8 @@ commit to a new branch named after the task (`t3/T-36-audio-ring-demo`) and open
 against the repository's default branch; **Merge** merges it, and only while it still points at the
 commit you accepted. Both need source-control write access and are always your click. If T3 Code lost
 the host's answer, the task shows **Unconfirmed**; **Check** reads the host and settles it without
-sending again. Publishing and merging happen on the desktop and web; the phone shows the state.
+sending again. Publishing and merging happen on the desktop and web; the phone shows the state. If you merged the
+pull request on the host, **Check** brings that in too.
 
 ## Automations
 

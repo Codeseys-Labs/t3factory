@@ -23,7 +23,11 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
-const Remote = Schema.Struct({ number: Schema.Int, url: Schema.String });
+const Remote = Schema.Struct({
+  number: Schema.Int,
+  url: Schema.String,
+  merged: Schema.optional(Schema.Literal(true)),
+});
 const StoredIntent = FactoryCommitDeliveryIntent.mapFields((fields) => ({
   ...fields,
   repository: Schema.fromJsonString(FactoryRepository),
@@ -106,6 +110,10 @@ export class FactoryDeliveryStore extends Context.Service<
     readonly settle: (
       id: string,
       settlement: FactoryDeliverySettlement,
+    ) => Effect.Effect<Option.Option<FactoryDeliveryIntent>, FactoryDeliveryError>;
+    readonly recordObservedMerge: (
+      id: string,
+      updatedAt: string,
     ) => Effect.Effect<Option.Option<FactoryDeliveryIntent>, FactoryDeliveryError>;
     /** A `sending` row at startup lost its response: it becomes `unknown`, never `pending`. */
     readonly recoverInterrupted: (updatedAt: string) => Effect.Effect<number, FactoryDeliveryError>;
@@ -348,6 +356,16 @@ const make = Effect.gen(function* () {
     if (Option.isSome(settled)) yield* PubSub.publish(changed, settled.value.originKey);
     return settled;
   }, Effect.mapError(persistenceError));
+  const recordObservedMerge = Effect.fn("FactoryDeliveryStore.recordObservedMerge")(function* (
+    id: string,
+    updatedAt: string,
+  ) {
+    const rows = yield* sql<{
+      originKey: FactoryOriginKey;
+    }>`UPDATE factory_delivery_intents SET remote_json = json_set(remote_json, '$.merged', json('true')), updated_at = ${updatedAt} WHERE id = ${id} AND kind = 'publish-pr' AND status = 'confirmed' AND remote_json IS NOT NULL AND json_extract(remote_json, '$.merged') IS NOT 1 RETURNING origin_key AS originKey`;
+    for (const row of rows) yield* PubSub.publish(changed, row.originKey);
+    return yield* get(id);
+  }, Effect.mapError(persistenceError));
   const recoverInterrupted = Effect.fn("FactoryDeliveryStore.recoverInterrupted")(function* (
     updatedAt: string,
   ) {
@@ -375,6 +393,7 @@ const make = Effect.gen(function* () {
     grant,
     markSending,
     settle,
+    recordObservedMerge,
     recoverInterrupted,
     changes: Stream.fromPubSub(changed),
   });

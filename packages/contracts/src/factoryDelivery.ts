@@ -114,7 +114,13 @@ export const FactoryCommitDeliveryIntent = Schema.Struct({
   baseSha: Schema.String,
   headSha: Schema.String,
   payload: FactoryDeliveryCommitPayload,
-  remote: Schema.NullOr(Schema.Struct({ number: Schema.Int, url: Schema.String })),
+  remote: Schema.NullOr(
+    Schema.Struct({
+      number: Schema.Int,
+      url: Schema.String,
+      merged: Schema.optional(Schema.Literal(true)),
+    }),
+  ),
 });
 export type FactoryCommitDeliveryIntent = typeof FactoryCommitDeliveryIntent.Type;
 
@@ -341,7 +347,7 @@ export class FactoryDeliveryError extends Schema.TaggedError<FactoryDeliveryErro
       case "not-reconcilable":
         if (this.replacementDeliveryId !== undefined)
           return "A replacement delivery already holds this slot.";
-        return "Only a delivery whose outcome is unknown or failed can be reconciled.";
+        return "This delivery cannot be checked in its current state.";
       case "worktree-unavailable":
         return "The task's worktree is no longer available, so its commit cannot be read.";
       case "persistence-failure":

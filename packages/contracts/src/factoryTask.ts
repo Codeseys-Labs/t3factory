@@ -408,7 +408,7 @@ export const FactoryTaskDeliverInput = Schema.Struct({
   revision: PositiveInt,
 });
 export type FactoryTaskDeliverInput = typeof FactoryTaskDeliverInput.Type;
-/** Reads the host to settle an unconfirmed Publish or Merge. It never sends again. */
+/** Reads the host to refresh a pull request or settle an unconfirmed Publish or Merge. */
 export const FactoryTaskCheckInput = Schema.Struct({ commandId: CommandId, ref: FactoryTaskRef });
 export type FactoryTaskCheckInput = typeof FactoryTaskCheckInput.Type;
 
@@ -500,6 +500,7 @@ export const FactoryTaskActivityEntry = Schema.Struct({
     kind: Schema.Literals(["person", "agent", "rule", "system"]),
     // `You`, an agent label such as `Codex · Sol`, or a rule's name.
     label: ShortText,
+    modelSelection: Schema.optional(ModelSelection),
   }),
   event: FactoryTaskActivityEvent,
 });
@@ -537,6 +538,7 @@ export const FactoryTaskAssigneePreviewInput = Schema.Struct({
   projectId: ProjectId,
   type: FactoryTaskType,
   assignment: FactoryTaskAssignment,
+  parent: Schema.optional(FactoryTaskRef),
 });
 export type FactoryTaskAssigneePreviewInput = typeof FactoryTaskAssigneePreviewInput.Type;
 

@@ -1,5 +1,8 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { presentFactoryTaskActivity } from "@t3tools/client-runtime/state/factory-task-view";
+import {
+  presentFactoryTaskActivity,
+  presentFactoryTaskActor,
+} from "@t3tools/client-runtime/state/factory-task-view";
 import type { FactoryTaskActivityEntry, FactoryTaskDetail, ThreadId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -110,18 +113,19 @@ function useActivityPresenter(detail: FactoryTaskDetail) {
   return (entry: FactoryTaskActivityEntry): ActivityItemProps => {
     const time = formatRelativeTimeLabel(entry.at, now);
     const { event, actor } = entry;
+    const actorLabel = presentFactoryTaskActor(actor, catalog);
     if (event.type === "comment")
       return {
         kind: "comment",
         text: event.body,
-        author: actor.label,
-        initials: initialsOf(actor.label),
+        author: actorLabel,
+        initials: initialsOf(actorLabel),
         time,
       };
     if (event.type === "run-started")
       return {
         kind: "run",
-        author: actor.label,
+        author: actorLabel,
         text: `${presentFactoryTaskActivity(entry, catalog)}${machine ? ` on ${machine}` : ""}`,
         time,
         onOpen: () => openThread(event.threadId),
@@ -131,7 +135,7 @@ function useActivityPresenter(detail: FactoryTaskDetail) {
       const reason = detail.runs.find((run) => run.ordinal === event.ordinal)?.note ?? null;
       return {
         kind: "run",
-        author: actor.label,
+        author: actorLabel,
         text: presentFactoryTaskActivity({ ...entry, event: { ...event, note: reason } }, catalog),
         time,
         outcome: "failed",
@@ -144,8 +148,8 @@ function useActivityPresenter(detail: FactoryTaskDetail) {
     const named =
       (actor.kind === "person" || actor.kind === "agent") &&
       event.type !== "pull-request" &&
-      !text.startsWith(actor.label);
-    return { kind: "event", text, author: named ? actor.label : "", time };
+      !text.startsWith(actorLabel);
+    return { kind: "event", text, author: named ? actorLabel : "", time };
   };
 }
 

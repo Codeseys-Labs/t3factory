@@ -1046,7 +1046,12 @@ const makeService = Effect.gen(function* () {
           : "confirmed";
     const settled = yield* store.settle(intent.id, {
       status,
-      remote,
+      remote: {
+        ...remote,
+        ...(status === "confirmed" && detail._tag === "Success" && detail.success.state === "merged"
+          ? { merged: true as const }
+          : {}),
+      },
       failure:
         status === "unknown"
           ? "could not verify pull request destination"
@@ -1537,6 +1542,25 @@ const makeService = Effect.gen(function* () {
     if (Option.isNone(found))
       return yield* new FactoryDeliveryError({ reason: "intent-not-found" });
     const intent = found.value;
+    if (intent.kind === "publish-pr" && intent.status === "confirmed" && intent.remote !== null) {
+      if (intent.remote.merged) return intent;
+      const observed = yield* readPullRequest(
+        pullRequestRef(intent.projectId, intent.repository, intent.remote.number),
+        { fresh: true },
+      ).pipe(Effect.result);
+      if (
+        observed._tag === "Success" &&
+        observed.success.state === "merged" &&
+        intent.baseBranch &&
+        observed.success.baseBranch === intent.baseBranch &&
+        observed.success.headSha === intent.headSha
+      )
+        return Option.getOrElse(
+          yield* store.recordObservedMerge(intent.id, yield* nowIso),
+          () => intent,
+        );
+      return intent;
+    }
     if (intent.status !== "unknown" && intent.status !== "failed")
       return yield* new FactoryDeliveryError({ reason: "not-reconcilable" });
     if (intent.kind === "publish-artifact") return yield* reconcileArtifact(intent);

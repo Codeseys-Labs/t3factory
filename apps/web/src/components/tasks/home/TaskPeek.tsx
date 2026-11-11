@@ -1,4 +1,7 @@
-import { presentFactoryTaskActivity } from "@t3tools/client-runtime/state/factory-task-view";
+import {
+  presentFactoryTaskActivity,
+  presentFactoryTaskActor,
+} from "@t3tools/client-runtime/state/factory-task-view";
 import type {
   FactoryTaskActivityEntry,
   FactoryTaskRef,
@@ -186,7 +189,7 @@ function activityItem(
   nowMs: number,
 ): ActivityItemProps {
   const text = presentFactoryTaskActivity(entry, catalog);
-  const author = entry.actor.label;
+  const author = presentFactoryTaskActor(entry.actor, catalog);
   const time = formatRelativeTime(entry.at, nowMs)?.value ?? "";
   if (entry.event.type === "comment")
     return entry.actor.kind === "agent"

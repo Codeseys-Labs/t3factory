@@ -6,6 +6,7 @@ import type {
 } from "@t3tools/contracts";
 import {
   presentFactoryTaskActivity,
+  presentFactoryTaskActor,
   type FactoryTaskCatalog,
   type FactoryTaskNeed,
 } from "@t3tools/client-runtime/state/factory-task-view";
@@ -109,10 +110,13 @@ export function activityLines(
   catalog: FactoryTaskCatalog,
   now: number,
 ): readonly { readonly key: string; readonly text: string }[] {
-  return entries.slice(-ACTIVITY_LINES).map((entry) => ({
-    key: entry.id,
-    text: `${presentFactoryTaskActivity(entry, catalog)} · ${agoLabel(entry.at, now)}`,
-  }));
+  return entries.slice(-ACTIVITY_LINES).map((entry) => {
+    const text = presentFactoryTaskActivity(entry, catalog);
+    const author = presentFactoryTaskActor(entry.actor, catalog);
+    const line =
+      entry.actor.kind === "agent" && !text.startsWith(author) ? `${author} · ${text}` : text;
+    return { key: entry.id, text: `${line} · ${agoLabel(entry.at, now)}` };
+  });
 }
 
 /** The lines the live ask adds after the recorded activity. */

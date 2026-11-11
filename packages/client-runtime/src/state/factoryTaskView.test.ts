@@ -173,6 +173,40 @@ describe("task drop rules", () => {
 });
 
 describe("task presentation", () => {
+  it("uses catalog labels for unprofiled activity actors and keeps unknown labels", () => {
+    const entry = {
+      id: "actor",
+      at: fixtures.at,
+      actor: {
+        kind: "agent" as const,
+        label: "codex · gpt-6.1-sol",
+        modelSelection: {
+          instanceId: task("T-41").run!.setup.modelSelection.instanceId,
+          model: "gpt-6.1-sol",
+        },
+      },
+      event: { type: "plan-proposed" as const, count: 2 },
+    };
+    expect(presentFactoryTaskActivity(entry, fixtures.catalog)).toBe("Codex · Sol proposed a plan");
+    expect(presentFactoryTaskActivity(entry, [])).toBe("codex · gpt-6.1-sol proposed a plan");
+  });
+  it("links a parent to its running descendant and reserves Stop for its own run", () => {
+    const parent = task("T-38");
+    const banner = presentFactoryTaskBanner({
+      task: parent,
+      attention: [],
+      assigneeLabel: "Agent",
+    });
+    expect(banner.primary).toEqual({
+      kind: "open-task",
+      label: "Open T-38.2",
+      taskId: "task-38.2",
+    });
+    const own = task("T-41");
+    expect(
+      presentFactoryTaskBanner({ task: own, attention: [], assigneeLabel: "Agent" }).primary,
+    ).toEqual({ kind: "stop", label: "Stop" });
+  });
   it.each([
     ["C1", "T-43", "backlog", "start", null],
     ["C2", "T-38.3", "blocked", "open-task", null],
@@ -180,7 +214,7 @@ describe("task presentation", () => {
     ["C4", "T-38", "subtask-attention", "open-task", null],
     ["C5", "T-38.2", "question", "answer", null],
     ["C6", "T-36", "review", "accept", "request-changes"],
-    ["C7", "T-38.1", "done", "merge", null],
+    ["C7", "T-38.1", "done", "merge", "check"],
     ["C8", "T-29", "failed", "retry", "reassign"],
     ["C9", "T-41", "working", "stop", null],
     ["C10", "T-39", "approval", "approve", "always-allow"],

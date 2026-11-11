@@ -8,6 +8,7 @@ import type {
   FactoryTaskStatus,
   FactoryTaskSummary,
   RuntimeRequestId,
+  ModelSelection,
   ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
@@ -50,7 +51,16 @@ export function presentFactoryTaskAssignee(
       monogram: "",
       key: assignee.key,
     };
-  const { instanceId, model } = setup.modelSelection;
+  const presented = presentModelSelection(setup.modelSelection, catalog);
+  return {
+    ...presented,
+    label: `${mode === "auto" ? "Auto → " : ""}${presented.label}`,
+    key: assignee.key,
+  };
+}
+
+function presentModelSelection(selection: ModelSelection, catalog: FactoryTaskCatalog) {
+  const { instanceId, model } = selection;
   const provider = catalog.find((entry) => entry.instanceId === instanceId);
   const providerLabel = provider
     ? resolveProviderInstanceDisplayName(provider)
@@ -70,13 +80,25 @@ export function presentFactoryTaskAssignee(
     kimi: "Km",
   };
   return {
-    label: `${mode === "auto" ? "Auto → " : ""}${providerLabel} · ${modelLabel}`,
+    label: `${providerLabel} · ${modelLabel}`,
     monogram:
       monograms[provider?.driver ?? ""] ??
       monograms[providerLabel.toLowerCase()] ??
       providerInstanceInitials(providerLabel),
-    key: assignee.key,
   };
+}
+
+export function presentFactoryTaskActor(
+  actor: FactoryTaskActivityEntry["actor"],
+  catalog: FactoryTaskCatalog,
+): string {
+  const selection = actor.kind === "agent" ? actor.modelSelection : undefined;
+  const provider = selection
+    ? catalog.find((entry) => entry.instanceId === selection.instanceId)
+    : undefined;
+  return selection && provider?.models.some((entry) => entry.slug === selection.model)
+    ? presentModelSelection(selection, catalog).label
+    : actor.label;
 }
 
 export interface FactoryTaskLivePill {
@@ -441,6 +463,7 @@ export function presentFactoryTaskBanner(input: {
       delivery.title ?? accepted,
       delivery.detail ?? line,
       delivery.action ? action(delivery.action.kind, delivery.action.label) : null,
+      result.pullRequest?.state === "open" ? action("check", "Check") : null,
     );
   }
   if (need && need.ref.taskId !== task.ref.taskId)
@@ -506,7 +529,9 @@ export function presentFactoryTaskBanner(input: {
       action("request-changes", "Request changes"),
     );
   }
-  if (task.status === "in-progress")
+  if (task.status === "in-progress") {
+    const ownLive = task.liveRuns.some((run) => run.taskId === task.ref.taskId);
+    const descendant = task.liveRuns.find((run) => run.taskId !== task.ref.taskId);
     return banner(
       "working",
       "working",
@@ -517,12 +542,17 @@ export function presentFactoryTaskBanner(input: {
             ? "Stopped"
             : "In progress"),
       input.runDetail ?? assigneeLabel,
-      task.liveRuns.length
-        ? action("stop", "Stop")
-        : task.run?.state === "stopped"
-          ? action("retry", "Retry")
-          : null,
+      ownLive
+        ? task.run?.purpose === "work"
+          ? action("stop", "Stop")
+          : null
+        : descendant
+          ? action("open-task", `Open ${descendant.displayId}`, descendant.taskId)
+          : task.run?.state === "stopped"
+            ? action("retry", "Retry")
+            : null,
     );
+  }
   const blocker = task.blockedBy[0];
   if (blocker)
     return banner(
@@ -548,6 +578,7 @@ export function presentFactoryTaskActivity(
   catalog: FactoryTaskCatalog = [],
 ): string {
   const event = entry.event;
+  const author = presentFactoryTaskActor(entry.actor, catalog);
   switch (event.type) {
     case "created":
       return event.source.kind === "local"
@@ -564,7 +595,7 @@ export function presentFactoryTaskActivity(
     case "subtasks-added":
       return `${event.count} sub-tasks added`;
     case "plan-proposed":
-      return `${entry.actor.label} proposed a plan`;
+      return `${author} proposed a plan`;
     case "plan-approved":
       return `Plan approved: ${event.count} sub-tasks created`;
     case "run-started":
@@ -574,7 +605,7 @@ export function presentFactoryTaskActivity(
     case "result-ready":
       return `Result ready: ${event.summary}`;
     case "accepted":
-      return `${entry.actor.label} accepted rev ${event.revision}`;
+      return `${author} accepted rev ${event.revision}`;
     case "changes-requested":
       return `Changes requested: ${oneLine(event.note)}`;
     case "reopened":

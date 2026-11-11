@@ -11,7 +11,7 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { agoLabel, approvalAvailability, resolveTaskAsk } from "./taskAsk";
+import { activityLines, agoLabel, approvalAvailability, resolveTaskAsk } from "./taskAsk";
 import {
   buildInboxListItems,
   buildTasksListItems,
@@ -24,6 +24,34 @@ import {
 const { tasks, threadFacts, at } = FACTORY_TASK_FIXTURES;
 const task = (displayId: string): FactoryTaskSummary =>
   tasks.find((entry) => entry.displayId === displayId)!;
+
+it("names an unprofiled activity actor through the phone's catalog", () => {
+  const actor = {
+    kind: "agent" as const,
+    label: "codex · gpt-6.1-sol",
+    modelSelection: task("T-41").run!.setup.modelSelection,
+  };
+  expect(
+    activityLines(
+      [
+        {
+          id: "finished",
+          at,
+          actor,
+          event: {
+            type: "run-ended",
+            ordinal: 1,
+            threadId: task("T-41").run!.threadId,
+            outcome: "completed",
+            note: null,
+          },
+        },
+      ],
+      FACTORY_TASK_FIXTURES.catalog,
+      Date.parse(at),
+    )[0]?.text,
+  ).toBe("Codex · Sol · Run 1 completed · just now");
+});
 
 const PILLS = {
   "Pending Approval": taskThreadPill("approval"),

@@ -123,10 +123,16 @@ it("pins the model chosen in the model picker, supervised in a new worktree", as
   });
 });
 
-it("follows a pinned parent without asking the server", async () => {
-  const { onChange } = setup();
+it("resolves a pinned parent through the server with its full context", async () => {
   const setupOfArchitect = profile("architect").setup;
+  const { onChange } = setup({
+    assignment: { mode: "auto" },
+    key: "architect",
+    resolved: { profile: null, setup: setupOfArchitect, via: "parent" },
+  });
+  const parent = FACTORY_TASK_FIXTURES.tasks.find((task) => task.displayId === "T-38")!;
   await using _screen = await openPicker(onChange, {
+    ref: parent.ref,
     displayId: "T-38",
     assignee: {
       assignment: { mode: "pinned", setup: setupOfArchitect },
@@ -135,7 +141,15 @@ it("follows a pinned parent without asking the server", async () => {
     },
   });
   await expect.element(page.getByText("Follows T-38 · Claude · Opus")).toBeVisible();
-  expect(state.previewReads).toEqual([]);
+  expect(state.previewReads).toContainEqual({
+    environmentId: parent.ref.environmentId,
+    input: {
+      projectId: "t3code-factory",
+      type: "task",
+      assignment: { mode: "auto" },
+      parent: parent.ref,
+    },
+  });
 });
 
 it("asks the server when the parent does not decide", async () => {

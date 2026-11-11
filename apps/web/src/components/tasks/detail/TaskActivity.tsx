@@ -17,44 +17,48 @@ import { ActivityItem, type ActivityItemProps } from "../kit";
 import { useTaskCatalog } from "../shared";
 import { TaskCommentBox } from "./TaskCommentBox";
 
-const PAGE = 50;
-// The server pages forward from the oldest entry; past this many pages the newest are not read.
-const MAX_PAGES = 20;
-
-/** The task's history, oldest first, with the newest page in view, then the comment box. */
+/** The task's history, oldest first, read newest first so the latest entries are always shown. */
 export function TaskActivity({ detail }: { detail: FactoryTaskDetail }) {
   return (
     <div className="flex flex-col gap-3">
-      <ActivityPages detail={detail} cursor={undefined} earlier={[]} page={1} />
+      <ActivityPages detail={detail} cursor={undefined} later={[]} />
       <TaskCommentBox task={detail.task} />
     </div>
   );
 }
 
 /**
- * Reads one page and hands what it has read so far to the next, so the last page renders the
- * whole history at once and nothing waits on an effect.
+ * Reads one page older than `later`. Show earlier hands everything read so far to the next older
+ * page, so the list renders at once and nothing waits on an effect.
  */
 function ActivityPages({
   detail,
   cursor,
-  earlier,
-  page,
+  later,
 }: {
   detail: FactoryTaskDetail;
   cursor: string | undefined;
-  earlier: readonly FactoryTaskActivityEntry[];
-  page: number;
+  later: readonly FactoryTaskActivityEntry[];
 }) {
-  const result = useFactoryTaskActivity(detail.task.ref, cursor);
+  const result = useFactoryTaskActivity(detail.task.ref, {
+    order: "newest",
+    ...(cursor === undefined ? {} : { cursor }),
+  });
+  const [earlier, setEarlier] = useState(false);
   if (result._tag === "Success") {
-    const entries = [...earlier, ...result.value.entries];
+    const entries = [...result.value.entries].reverse().concat(later);
     const next = result.value.nextCursor;
-    if (next !== null && page < MAX_PAGES)
-      return <ActivityPages detail={detail} cursor={next} earlier={entries} page={page + 1} />;
-    return <ActivityList detail={detail} entries={entries} />;
+    if (earlier && next !== null)
+      return <ActivityPages detail={detail} cursor={next} later={entries} />;
+    return (
+      <ActivityList
+        detail={detail}
+        entries={entries}
+        onShowEarlier={next === null ? undefined : () => setEarlier(true)}
+      />
+    );
   }
-  if (earlier.length > 0) return <ActivityList detail={detail} entries={earlier} />;
+  if (later.length > 0) return <ActivityList detail={detail} entries={later} />;
   if (result._tag === "Failure")
     return (
       <p role="alert" className="text-destructive-foreground text-sm">
@@ -71,24 +75,24 @@ function ActivityPages({
 function ActivityList({
   detail,
   entries,
+  onShowEarlier,
 }: {
   detail: FactoryTaskDetail;
   entries: readonly FactoryTaskActivityEntry[];
+  onShowEarlier?: (() => void) | undefined;
 }) {
-  const [shown, setShown] = useState(PAGE);
   const present = useActivityPresenter(detail);
-  const hidden = Math.max(0, entries.length - shown);
   if (entries.length === 0) return null;
   return (
     <ol aria-label="Activity" className="flex flex-col gap-1.5">
-      {hidden > 0 ? (
+      {onShowEarlier ? (
         <li>
-          <Button variant="ghost-muted" size="xs" onClick={() => setShown(shown + PAGE)}>
+          <Button variant="ghost-muted" size="xs" onClick={onShowEarlier}>
             Show earlier
           </Button>
         </li>
       ) : null}
-      {entries.slice(hidden).map((entry) => (
+      {entries.map((entry) => (
         <li key={entry.id}>
           <ActivityItem {...present(entry)} />
         </li>

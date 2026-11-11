@@ -5,6 +5,7 @@ import {
   type EnvironmentId,
   type FactoryTaskAssigneePreviewInput,
   type FactoryTaskDisplayId,
+  type FactoryTaskActivityInput,
   type FactoryTaskRef,
   type FactoryTaskSummary,
   type FactoryIntakeArrivalListInput,
@@ -83,12 +84,12 @@ export function useFactoryTaskDetail(ref: FactoryTaskRef) {
     factoryTasks.readTask({ environmentId: ref.environmentId, input: { task: { ref } } }),
   );
 }
-export function useFactoryTaskActivity(ref: FactoryTaskRef, cursor?: string) {
+export function useFactoryTaskActivity(
+  ref: FactoryTaskRef,
+  page: Omit<FactoryTaskActivityInput, "ref"> = {},
+) {
   return useAtomValue(
-    factoryTasks.readTaskActivity({
-      environmentId: ref.environmentId,
-      input: { ref, ...(cursor === undefined ? {} : { cursor }) },
-    }),
+    factoryTasks.readTaskActivity({ environmentId: ref.environmentId, input: { ref, ...page } }),
   );
 }
 export function useFactoryTaskResult(ref: FactoryTaskRef, revision?: number) {

@@ -75,9 +75,13 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
     useFactoryTaskDetailByDisplayId: (_environmentId: string, displayId: string) =>
       state.details.get(displayId) ??
       AsyncResult.failure(Cause.fail(new FactoryTaskError({ reason: "missing-task" }))),
-    useFactoryTaskActivity: (ref: { taskId: string }) =>
-      state.activity.get(ref.taskId) ??
-      AsyncResult.success({ entries: [], nextCursor: null, fetchedAt: fixtures.at }),
+    useFactoryTaskActivity: (ref: { taskId: string }, page?: unknown) => {
+      const value = state.activity.get(ref.taskId);
+      if (typeof value === "function") return value(page);
+      return (
+        value ?? AsyncResult.success({ entries: [], nextCursor: null, fetchedAt: fixtures.at })
+      );
+    },
     useFactoryTaskResult: (ref: { taskId: string }) =>
       state.results.get(ref.taskId) ?? AsyncResult.initial(true),
     useFactoryAgentProfiles: () =>
@@ -475,6 +479,34 @@ it("C8 shows the failed run's excerpt in Activity", async () => {
   await expect
     .element(activity.getByText(/AssertionError: expected 3 index paths, got 2/))
     .toBeVisible();
+});
+
+it("reads Activity newest first and loads earlier entries on request", async () => {
+  const comment = (body: string) => entry(body, { type: "comment", body });
+  const read = (entries: FactoryTaskActivityEntry[], nextCursor: string | null) =>
+    AsyncResult.success({ entries, nextCursor, fetchedAt: at });
+  const { screen } = await renderDetail(taskPath("T-29"), () =>
+    state.activity.set("task-29", (input?: { order?: string; cursor?: string }) =>
+      input?.order !== "newest"
+        ? read([comment("Oldest of a capped read")], null)
+        : input.cursor === undefined
+          ? read([comment("Newest note"), comment("Middle note")], "older")
+          : read([comment("First note")], null),
+    ),
+  );
+  await using _screen = screen;
+  const activity = page.getByRole("list", { name: "Activity" });
+  const notes = () =>
+    activity
+      .getByText(/ note$/)
+      .elements()
+      .map((element) => element.textContent);
+  await expect.element(activity.getByText("Newest note")).toBeVisible();
+  expect(notes()).toEqual(["Middle note", "Newest note"]);
+  await userEvent.click(activity.getByRole("button", { name: "Show earlier" }));
+  await expect.element(activity.getByText("First note")).toBeVisible();
+  expect(notes()).toEqual(["First note", "Middle note", "Newest note"]);
+  expect(activity.getByRole("button", { name: "Show earlier" }).elements()).toHaveLength(0);
 });
 
 it("saves only the edited title", async () => {

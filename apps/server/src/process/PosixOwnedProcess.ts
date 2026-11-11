@@ -159,7 +159,17 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
                   .pipe(Effect.provideService(Scope.Scope, nativeScope)),
               );
               if (Exit.isFailure(acquired)) {
-                unknown = true;
+                // Node fails spawn only before a child exists, and the wrapper never execs
+                // without resume; still, only an empty kernel counter releases the lease.
+                const released = yield* Effect.try(() => {
+                  if (lease.populated()) return false;
+                  lease.remove();
+                  return true;
+                }).pipe(Effect.orElseSucceed(() => false));
+                if (released) {
+                  job.empty = true;
+                  jobs.splice(jobs.indexOf(job), 1);
+                } else unknown = true;
                 return yield* Effect.failCause(acquired.cause);
               }
               const exit = awaitConfirmedExit(acquired.value).pipe(Effect.asVoid);

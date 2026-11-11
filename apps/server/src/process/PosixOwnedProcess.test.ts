@@ -287,24 +287,41 @@ it.live("joins a Linux root and its detached writer through the cgroup", () =>
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-it.effect("never resumes a root whose container handshake is missing", () =>
-  Effect.gen(function* () {
-    const fake = fixture();
-    const native = ChildProcessSpawner.make((command) =>
-      fake.native
-        .spawn(command)
-        .pipe(Effect.map((handle) => ({ ...handle, getOutputFd: () => Stream.empty }))),
-    );
-    const owner = yield* makePosixOwnedProcess().pipe(
-      Effect.provideService(HostProcess.Platform, "linux"),
-      Effect.provideService(PosixCgroupController, { create: () => fake.lease }),
-    );
-    assert.equal(
-      (yield* owner.spawner.spawn(ChildProcess.make(process.execPath), native).pipe(Effect.flip))
-        ._tag,
-      "PlatformError",
-    );
-    assert.deepEqual(fake.gates, []);
-    assert.isFalse(yield* owner.quiesce());
-  }).pipe(Effect.scoped),
+// A failed spawn leaves no child, so an empty lease is released; anything unproven stays held.
+it.effect.each([
+  { failure: "handshake", mode: "empty", quiet: false },
+  { failure: "spawn", mode: "empty", quiet: true },
+  { failure: "spawn", mode: "unreadable", quiet: false },
+] as const)(
+  "never resumes a root whose acquisition failed ($failure, lease $mode)",
+  ({ failure, mode, quiet }) =>
+    Effect.gen(function* () {
+      const fake = fixture(mode);
+      const native = ChildProcessSpawner.make((command) =>
+        failure === "spawn"
+          ? Effect.fail(
+              PlatformError.systemError({
+                module: "ChildProcess",
+                method: "spawn",
+                _tag: "NotFound",
+              }),
+            )
+          : fake.native
+              .spawn(command)
+              .pipe(Effect.map((handle) => ({ ...handle, getOutputFd: () => Stream.empty }))),
+      );
+      const owner = yield* makePosixOwnedProcess().pipe(
+        Effect.provideService(HostProcess.Platform, "linux"),
+        Effect.provideService(PosixCgroupController, { create: () => fake.lease }),
+      );
+      assert.equal(
+        (yield* owner.spawner.spawn(ChildProcess.make(process.execPath), native).pipe(Effect.flip))
+          ._tag,
+        "PlatformError",
+      );
+      assert.deepEqual(fake.gates, []);
+      assert.equal(fake.operations.includes("remove"), quiet);
+      if (quiet) yield* owner.awaitRootExits;
+      assert.equal(yield* owner.quiesce(), quiet);
+    }).pipe(Effect.scoped),
 );

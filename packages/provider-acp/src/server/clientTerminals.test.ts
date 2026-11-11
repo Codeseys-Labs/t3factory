@@ -26,29 +26,9 @@ const withTerminals = <A, E>(use: (terminals: AcpClientTerminals) => Effect.Effe
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped);
 
 describe("AcpClientTerminals", () => {
-  it.live("routes server-created terminal writers through the attempt owner", () => {
+  it.live("runs an owned command, buffers output, and reports the exit status", () => {
     let owned = 0;
     return withTerminals((terminals) =>
-      Effect.gen(function* () {
-        const terminal = yield* terminals.create({
-          sessionId: "owned",
-          command: process.execPath,
-          args: ["-e", "console.log('owned')"],
-        });
-        yield* terminals.waitForExit({ sessionId: "owned", ...terminal });
-        expect(owned).toBe(1);
-      }),
-    ).pipe(
-      Effect.provideService(OwnedProcess, {
-        spawn: (command, native) => {
-          owned++;
-          return native.spawn(command);
-        },
-      }),
-    );
-  });
-  it.live("runs a command, buffers output, and reports the exit status", () =>
-    withTerminals((terminals) =>
       Effect.gen(function* () {
         const created = yield* terminals.create({
           sessionId: "session",
@@ -69,9 +49,17 @@ describe("AcpClientTerminals", () => {
         expect(output.output).toContain("hello from acp");
         expect(output.truncated).toBe(false);
         expect(output.exitStatus?.exitCode).toBe(3);
+        expect(owned).toBe(1);
       }),
-    ),
-  );
+    ).pipe(
+      Effect.provideService(OwnedProcess, {
+        spawn: (command, native) => {
+          owned++;
+          return native.spawn(command);
+        },
+      }),
+    );
+  });
 
   it.live("resolves terminal environment from the requesting ACP session", () =>
     Effect.gen(function* () {

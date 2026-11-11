@@ -99,7 +99,7 @@ function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSu
         className="space-y-4 rounded-lg border border-destructive/32 bg-error-surface p-4"
       >
         <p className="whitespace-pre-wrap break-words text-sm">{task.run?.note || need.detail}</p>
-        {task.run?.purpose === "planning" ? (
+        {task.run?.purpose === "planning" && task.run.state === "failed" ? (
           <div className="flex gap-2">
             <Button
               size="sm"

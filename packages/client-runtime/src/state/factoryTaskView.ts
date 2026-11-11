@@ -479,7 +479,7 @@ export function presentFactoryTaskBanner(input: {
         need.ref.taskId,
       ),
     );
-  if (need?.reason === "failed" && task.run?.purpose === "planning")
+  if (need?.reason === "failed" && task.run?.purpose === "planning" && task.run.state === "failed")
     return banner(
       "failed",
       "danger",

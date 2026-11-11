@@ -222,6 +222,17 @@ describe("task presentation", () => {
       { kind: "break-down", label: "Break down" },
       null,
     ]);
+    const planned = presentFactoryTaskBanner({
+      task: {
+        ...failed,
+        run: failed.run
+          ? { ...failed.run, purpose: "planning", state: "completed", note: null }
+          : null,
+      },
+      attention: state("T-29").attention,
+      assigneeLabel: "Agent",
+    });
+    expect([planned.primary?.kind, planned.secondary?.kind]).toEqual(["retry", "reassign"]);
   });
   it.each([
     ["C1", "T-43", "backlog", "start", null],

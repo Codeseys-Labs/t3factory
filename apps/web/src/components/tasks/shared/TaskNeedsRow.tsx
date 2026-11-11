@@ -66,7 +66,7 @@ function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
   const permissions = useTaskPermissions(need.ref.environmentId);
   const [retrying, setRetrying] = useState(false);
   const action: KitAction =
-    need.reason === "failed" && task?.run?.purpose === "planning"
+    need.reason === "failed" && task?.run?.purpose === "planning" && task.run.state === "failed"
       ? {
           label: "Break down",
           disabled: !permissions.breakDown,

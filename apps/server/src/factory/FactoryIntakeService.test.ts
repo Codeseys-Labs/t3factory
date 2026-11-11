@@ -2,6 +2,7 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import {
   AuthSessionId,
+  AuthOrchestrationOperateScope,
   CommandId,
   EnvironmentId,
   FactoryFeedSourceId,
@@ -9,6 +10,7 @@ import {
   FactoryTaskError,
   ProjectId,
   SourceControlProviderKind,
+  ThreadId,
   type FactoryFeedCandidate,
   type FactoryFeedSource,
   type FactoryIntakeChange,
@@ -31,6 +33,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import * as Store from "../persistence/FactoryIntakeStore.ts";
+import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as FeedStore from "../persistence/FactoryFeedStore.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Projects from "../project/ProjectService.ts";
@@ -145,8 +148,30 @@ const harness = Effect.gen(function* () {
   const feed = yield* Ref.make<FeedState>({ sources: [], candidates: [], binds: 0, refreshes: 0 });
   const created = yield* Queue.unbounded<CreateCall>();
   const createCalls = yield* Ref.make<ReadonlyArray<CreateCall>>([]);
+  const profileExists = yield* Ref.make(true);
   const tasksByCommand = new Map<string, FactoryTaskSummary>();
+  const inputsByCommand = new Map<string, FactoryTaskCreateInput>();
   const now = DateTime.formatIso(yield* DateTime.now);
+  const sessions = yield* AuthSessions.AuthSessionRepository.pipe(
+    Effect.provide(AuthSessions.layer),
+    Effect.provideContext(database),
+  );
+  yield* sessions.create({
+    sessionId: human.sessionId,
+    subject: "person",
+    scopes: [AuthOrchestrationOperateScope],
+    method: "browser-session-cookie",
+    client: {
+      label: null,
+      ipAddress: null,
+      userAgent: null,
+      deviceType: "unknown",
+      os: null,
+      browser: null,
+    },
+    issuedAt: DateTime.makeUnsafe(now),
+    expiresAt: DateTime.makeUnsafe("2099-01-01T00:00:00.000Z"),
+  });
   const fakes = Layer.mergeAll(
     NodeCrypto.layer,
     Layer.succeed(ServerEnvironmentIdentity, { getEnvironmentId: Effect.succeed(environmentId) }),
@@ -166,6 +191,10 @@ const harness = Effect.gen(function* () {
           );
           const failure = yield* Ref.get(issueFailure);
           if (failure !== null) return yield* new FactoryIssueError({ reason: failure });
+          const listed = [
+            ...((yield* Ref.get(issueLists)).get(input.projectId) ?? []),
+          ].toReversed();
+          const offset = ((input.page ?? 1) - 1) * 30;
           return {
             repository,
             capabilities: {
@@ -179,8 +208,8 @@ const harness = Effect.gen(function* () {
               issueComment: false,
             },
             // The tracker lists newest first.
-            issues: [...((yield* Ref.get(issueLists)).get(input.projectId) ?? [])].toReversed(),
-            nextPage: null,
+            issues: listed.slice(offset, offset + 30),
+            nextPage: offset + 30 < listed.length ? (input.page ?? 1) + 1 : null,
             fetchedAt: now,
           };
         }),
@@ -233,10 +262,22 @@ const harness = Effect.gen(function* () {
         Effect.gen(function* () {
           const call = { input, actor, origin };
           const calls = yield* Ref.updateAndGet(createCalls, (current) => [...current, call]);
-          yield* Queue.offer(created, call);
           const existing = tasksByCommand.get(input.commandId);
+          if (
+            existing !== undefined &&
+            JSON.stringify(inputsByCommand.get(input.commandId)) !== JSON.stringify(input)
+          )
+            return yield* new FactoryTaskError({ reason: "command-conflict" });
+          if (
+            existing === undefined &&
+            input.assignment?.mode === "profile" &&
+            !(yield* Ref.get(profileExists))
+          )
+            return yield* new FactoryTaskError({ reason: "missing-profile" });
+          if (existing === undefined) yield* Queue.offer(created, call);
           const task = existing ?? summaryOf(calls.length, input, origin);
           tasksByCommand.set(input.commandId, task);
+          inputsByCommand.set(input.commandId, input);
           return { task, replayed: existing !== undefined };
         }),
       resolveAssignee: ({ assignment }) =>
@@ -293,6 +334,7 @@ const harness = Effect.gen(function* () {
     feed,
     created,
     createCalls,
+    profileExists,
     sql: Context.get(database, SqlClient.SqlClient),
   };
 });
@@ -411,6 +453,35 @@ it.effect("a new issue arrives once, however often the tracker shows it", () =>
       (yield* triage(intake)).items.map((arrival) => arrival.title),
       ["Add CSV export", "Board cards overflow at 1280"],
     );
+  }),
+);
+
+it.effect("issue intake follows every page and deduplicates later checks", () =>
+  Effect.gen(function* () {
+    const h = yield* harness;
+    const { intake, changes } = yield* h.start;
+    yield* h.setIssues(
+      projectId,
+      Array.from({ length: 65 }, (_, index) => issue(index + 1, `Issue ${index + 1}`)),
+    );
+    yield* connectIssues(intake, "connect");
+    const first = yield* intake.listArrivals({ limit: 50 });
+    const second =
+      first.nextCursor === null
+        ? []
+        : (yield* intake.listArrivals({ limit: 50, cursor: first.nextCursor })).items;
+    const arrivals = [...first.items, ...second];
+    assert.strictEqual(arrivals.length, 65);
+    assert.deepStrictEqual(
+      arrivals.map((arrival) => arrival.title),
+      Array.from({ length: 65 }, (_, index) => `Issue ${65 - index}`),
+    );
+    assert.strictEqual(yield* h.callsFor(projectId), 3);
+    yield* Queue.clear(changes);
+    yield* TestClock.adjust("5 minutes");
+    yield* awaitChange(changes, (change) => change.sources);
+    assert.strictEqual((yield* intake.listArrivals({})).waiting, 65);
+    assert.strictEqual(yield* h.callsFor(projectId), 6);
   }),
 );
 
@@ -867,7 +938,7 @@ it.effect(
               title: "Weekly dependency review",
               description: "Check outdated packages.",
               type: "research",
-              assignment: { mode: "auto" },
+              assignment: { mode: "profile", profileId: "implementer" },
               lane: "ready",
             },
           },
@@ -889,7 +960,7 @@ it.effect(
         description: "Check outdated packages.",
         type: "research",
         lane: "ready",
-        assignment: { mode: "auto" },
+        assignment: { mode: "profile", profileId: "implementer" },
       });
       assert.deepStrictEqual(monday.actor, human);
       assert.deepStrictEqual(monday.origin, {
@@ -899,16 +970,72 @@ it.effect(
       yield* awaitChange(first.changes, (change) => change.sources);
 
       yield* first.stop;
+      yield* Ref.set(h.profileExists, false);
+      // Recover a task committed before the source's slot checkpoint was saved.
+      yield* h.sql`UPDATE factory_intake_sources SET last_slot_at = ${DateTime.formatIso(DateTime.makeUnsafe(local(9, 8)))}, next_check_at = ${DateTime.formatIso(DateTime.makeUnsafe(local(9, 9, 1)))} WHERE source_id = ${saved.source!.id}`;
       const second = yield* h.start;
       yield* TestClock.adjust("1 minute");
+      yield* awaitChange(second.changes, (change) => change.sources);
+      assert.strictEqual((yield* second.intake.listSources({})).sources[0]?.status, "ok");
+      assert.deepStrictEqual((yield* Ref.get(h.createCalls)).at(-1)?.input, monday.input);
+      assert.strictEqual(yield* Queue.size(h.created), 0);
       // Wednesday is the next scheduled day; Tuesday is skipped.
       yield* TestClock.setTime(local(11, 9));
-      const wednesday = yield* Queue.take(h.created);
-      assert.notStrictEqual(wednesday.input.commandId, monday.input.commandId);
       yield* awaitChange(second.changes, (change) => change.sources);
-      assert.strictEqual((yield* Ref.get(h.createCalls)).length, 2);
+      assert.deepStrictEqual((yield* Ref.get(h.createCalls)).at(-1)?.input.assignment, {
+        mode: "unassigned",
+      });
+      const wednesday = yield* Queue.take(h.created);
+      assert.deepStrictEqual(wednesday.input.assignment, { mode: "unassigned" });
+      assert.notStrictEqual(wednesday.input.commandId, monday.input.commandId);
+      const normalized = (yield* second.intake.listSources({})).sources[0]!;
+      assert.strictEqual(normalized.config.kind, "schedule");
+      if (normalized.config.kind === "schedule")
+        assert.deepStrictEqual(normalized.config.task.assignment, { mode: "unassigned" });
+      assert.strictEqual(normalized.version, saved.source!.version + 1);
+      assert.strictEqual((yield* Ref.get(h.createCalls)).length, 4);
       assert.strictEqual(yield* Queue.size(h.created), 0);
     }),
+);
+
+it.effect("saving a schedule requires a person's current permission", () =>
+  Effect.gen(function* () {
+    const h = yield* harness;
+    const { intake } = yield* h.start;
+    const input = {
+      commandId: CommandId.make("schedule-permission"),
+      projectId,
+      config: {
+        kind: "schedule",
+        schedule: { timeOfDay: "09:00", weekdays: [] },
+        task: {
+          title: "Review",
+          description: "",
+          type: "task",
+          assignment: { mode: "unassigned" },
+          lane: "backlog",
+        },
+      },
+      enabled: true,
+    } as const;
+    assert.strictEqual(
+      (yield* intake
+        .saveSource(input, { kind: "agent", threadId: ThreadId.make("agent") })
+        .pipe(Effect.flip)).reason,
+      "forbidden",
+    );
+    yield* h.sql`UPDATE auth_sessions SET scopes = ${JSON.stringify(["orchestration:read"])} WHERE session_id = ${human.sessionId}`;
+    assert.strictEqual(
+      (yield* intake.saveSource(input, human).pipe(Effect.flip)).reason,
+      "forbidden",
+    );
+    yield* h.sql`UPDATE auth_sessions SET scopes = ${JSON.stringify([AuthOrchestrationOperateScope])}, expires_at = ${DateTime.formatIso(yield* DateTime.now)} WHERE session_id = ${human.sessionId}`;
+    assert.strictEqual(
+      (yield* intake.saveSource(input, human).pipe(Effect.flip)).reason,
+      "forbidden",
+    );
+    assert.strictEqual((yield* intake.listSources({})).sources.length, 0);
+  }),
 );
 
 it.effect("previewRule counts recorded arrivals of the last 30 days and fetches nothing", () =>
@@ -1055,6 +1182,10 @@ it.effect("editing a feed URL binds the new URL and can return to the original b
   Effect.gen(function* () {
     const h = yield* harness;
     const { intake } = yield* h.start;
+    yield* Ref.update(h.feed, (state) => ({
+      ...state,
+      candidates: [feedCandidate("guid:1", "Feed A item")],
+    }));
     const saved = yield* intake.saveSource(
       {
         commandId: CommandId.make("feed-a"),
@@ -1065,10 +1196,15 @@ it.effect("editing a feed URL binds the new URL and can return to the original b
       human,
     );
     let source = saved.source!;
+    yield* h.sql`UPDATE factory_intake_arrivals SET item_key = ${"guid:1"} WHERE source_id = ${source.id}`;
     for (const [index, url] of [
       "https://news.example.org/b.xml",
       "https://news.example.org/a.xml",
     ].entries()) {
+      yield* Ref.update(h.feed, (state) => ({
+        ...state,
+        candidates: [feedCandidate("guid:1", index === 0 ? "Feed B item" : "Feed A item")],
+      }));
       const input = {
         commandId: CommandId.make(`edit-feed-${index}`),
         id: source.id,
@@ -1082,6 +1218,10 @@ it.effect("editing a feed URL binds the new URL and can return to the original b
       assert.strictEqual((yield* intake.saveSource(input, human)).replayed, true);
     }
     assert.strictEqual((yield* Ref.get(h.feed)).binds, 2);
+    assert.deepStrictEqual(
+      (yield* triage(intake)).items.map((arrival) => arrival.title),
+      ["Feed B item", "Feed A item"],
+    );
     assert.strictEqual((yield* recheck(intake, source)).source?.status, "ok");
   }),
 );

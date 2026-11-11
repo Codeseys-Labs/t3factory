@@ -49,6 +49,7 @@ import { ProviderAdapterRegistryV2 } from "../orchestration-v2/ProviderAdapterRe
 import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as DeliveryStore from "../persistence/FactoryDeliveryStore.ts";
 import * as ExecutionStore from "../persistence/FactoryExecutionStore.ts";
+import * as IntakeStore from "../persistence/FactoryIntakeStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Processes from "../processRunner.ts";
@@ -424,6 +425,140 @@ const scenario = <A, E>(
   body: Effect.Effect<A, E, Provided | Scope.Scope>,
   environmentDefault: ModelSelection | null = null,
 ) => body.pipe(Effect.scoped, Effect.provide(layerWith(environmentDefault)));
+
+it.effect(
+  "a saved schedule creates tasks after the author's login expires, with creation-only authority",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(DateTime.makeUnsafe("2026-11-10T00:00:00.000Z").epochMilliseconds);
+        const { tasks, sql } = yield* harness;
+        const intake = yield* IntakeStore.FactoryIntakeStore.pipe(
+          Effect.provide(IntakeStore.layer),
+        );
+        const source: IntakeStore.StoredSource = {
+          id: "durable-schedule",
+          projectId,
+          config: {
+            kind: "schedule",
+            schedule: { timeOfDay: "09:00", weekdays: [] },
+            task: {
+              title: "Weekly review",
+              description: "Review dependencies",
+              type: "research",
+              lane: "ready",
+              assignment: { mode: "unassigned" },
+            },
+          },
+          label: "Schedule",
+          detail: "",
+          enabled: true,
+          status: "ok",
+          feedSourceId: null,
+          actor: human,
+          lastCheckedAt: null,
+          nextCheckAt: null,
+          lastSlotAt: at,
+          version: 1,
+          createdAt: at,
+          updatedAt: at,
+        };
+        yield* intake.putSource(source);
+        yield* sql`UPDATE auth_sessions SET expires_at = ${"2026-12-10T00:00:00.000Z"} WHERE session_id = ${human.sessionId}`;
+        const slot = DateTime.formatIso(
+          DateTime.makeZonedUnsafe(
+            { year: 2026, month: 12, day: 11, hour: 9 },
+            { timeZone: DateTime.zoneMakeLocal(), adjustForTimeZone: true },
+          ),
+        );
+        yield* TestClock.setTime(DateTime.makeUnsafe(slot).epochMilliseconds);
+        const input = {
+          commandId: command(`factory-intake:${source.id}:${slot}`),
+          projectId,
+          title: "Weekly review",
+          description: "Review dependencies",
+          type: "research",
+          lane: "ready",
+          assignment: { mode: "unassigned" },
+        } as const;
+        const origin = {
+          source: { kind: "schedule", label: "Schedule", url: null, key: null, workRef: null },
+          ruleName: null,
+        } as const;
+        const authority = { sourceId: source.id, sourceVersion: source.version, slot };
+        const alternateSlot = slot.replace(".000Z", "+00:00");
+        for (const [candidate, permission] of [
+          [{ ...input, title: "Different work" }, authority],
+          [{ ...input, projectId: otherProjectId }, authority],
+          [input, { ...authority, sourceVersion: 2 }],
+          [input, { ...authority, sourceId: "missing-source" }],
+          [input, { ...authority, slot: at }],
+          [
+            { ...input, commandId: command(`factory-intake:${source.id}:${alternateSlot}`) },
+            { ...authority, slot: alternateSlot },
+          ],
+        ] as const) {
+          assert.equal(
+            (yield* tasks.create(candidate, human, origin, permission).pipe(Effect.flip)).reason,
+            "forbidden",
+          );
+        }
+        const result = yield* tasks.create(input, human, origin, authority);
+        assert.equal(result.task.title, "Weekly review");
+        assert.equal(result.task.status, "ready");
+        assert.equal(result.task.run, null);
+        assert.equal((yield* tasks.create(input, human, origin, authority)).replayed, true);
+        assert.equal(
+          (yield* tasks
+            .create({ ...input, commandId: command("ordinary") }, human)
+            .pipe(Effect.flip)).reason,
+          "forbidden",
+        );
+        assert.equal(
+          (yield* tasks
+            .start(
+              {
+                commandId: command("schedule-start"),
+                ref: result.task.ref,
+                expectedVersion: result.task.version,
+                setup: setupOf(),
+              },
+              human,
+            )
+            .pipe(Effect.flip)).reason,
+          "forbidden",
+        );
+        assert.equal(
+          (yield* tasks
+            .create(
+              {
+                ...input,
+                parent: { rootId: result.task.ref.rootId, taskId: result.task.ref.taskId },
+              },
+              human,
+              origin,
+              authority,
+            )
+            .pipe(Effect.flip)).reason,
+          "forbidden",
+        );
+        yield* intake.putSource({ ...source, enabled: false });
+        const nextSlot = DateTime.formatIso(DateTime.add(DateTime.makeUnsafe(slot), { days: 1 }));
+        yield* TestClock.setTime(DateTime.makeUnsafe(nextSlot).epochMilliseconds);
+        assert.equal(
+          (yield* tasks
+            .create(
+              { ...input, commandId: command(`factory-intake:${source.id}:${nextSlot}`) },
+              human,
+              origin,
+              { ...authority, slot: nextSlot },
+            )
+            .pipe(Effect.flip)).reason,
+          "forbidden",
+        );
+      }),
+    ),
+);
 
 it.effect("numbers top-level tasks, sub-tasks and nested sub-tasks once and never again", () =>
   scenario(

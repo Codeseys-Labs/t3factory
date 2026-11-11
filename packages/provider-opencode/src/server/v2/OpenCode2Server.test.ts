@@ -374,7 +374,7 @@ describe("OpenCode2Server spawned server", () => {
         .withConnection((connection) => Effect.succeed(connection))
         .pipe(Effect.provideService(OwnedProcess, attempt));
       assert.equal(owned, 2);
-      assert.notEqual(later.url, dedicated.url);
+      assert.notStrictEqual(later.client, dedicated.client);
       const normal = yield* server.withConnection((connection) => Effect.succeed(connection));
       assert.strictEqual(normal.client, first.client);
     }).pipe(

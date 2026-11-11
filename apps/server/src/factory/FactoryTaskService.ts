@@ -1291,6 +1291,7 @@ const make = Effect.gen(function* () {
       }
       const setup = input.setup ?? previous?.setup ?? work.at(-1)?.setup;
       if (setup === undefined) return yield* refuse("no-run");
+      const base = previous?.baseRef ?? null;
       return yield* run({
         commandId: input.commandId,
         task,
@@ -1300,7 +1301,9 @@ const make = Effect.gen(function* () {
             ? (previous?.profileId ?? null)
             : yield* assignFor(task, input.setup),
         actor,
-        baseCommit: null,
+        // A failed Request changes run starts again from the result it was changing.
+        baseCommit:
+          base !== null && task.results.some((result) => result.commit === base) ? base : null,
         record: command.record,
       });
     },

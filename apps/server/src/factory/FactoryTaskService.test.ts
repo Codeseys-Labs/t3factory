@@ -1572,11 +1572,25 @@ it.effect(
           "run-active",
         );
 
-        yield* finish(second, "sealed");
+        // A retry repeats the failed attempt: the same note, from the same result.
+        yield* finish(second, "failed");
+        const failed = yield* until(task, (current) => current.run?.state === "failed");
+        const third = (yield* tasks.retry(
+          { commandId: command("retry-changes"), ref: task.ref, expectedVersion: failed.version },
+          human,
+        )).task.run!;
+        const retriedBinding = yield* sql<{
+          text: string;
+          baseRef: string;
+        }>`SELECT json_extract(binding_json, '$.inputText') AS text, json_extract(binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef FROM factory_execution_bindings WHERE thread_id = ${third.threadId}`;
+        assert.include(retriedBinding[0]!.text, "Keep cursor paging");
+        assert.equal(retriedBinding[0]!.baseRef, resultCommit);
+
+        yield* finish(third, "sealed");
         const replaced = yield* until(task, (current) => current.result?.revision === 2);
         assert.deepEqual(
           [replaced.status, replaced.result?.state, replaced.result?.runOrdinal],
-          ["in-review", "ready", 2],
+          ["in-review", "ready", 3],
         );
         assert.deepEqual(
           yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${task.ref.taskId}`,

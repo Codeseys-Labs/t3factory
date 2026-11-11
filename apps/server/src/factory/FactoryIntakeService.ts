@@ -319,36 +319,44 @@ const make = Effect.gen(function* () {
     source: Store.StoredSource,
     nowMs: number,
   ) {
-    return yield* issues.list({ projectId: source.projectId, state: "open" }).pipe(
-      Effect.map(({ repository, capabilities, issues: listed }): CheckOutcome => {
-        const name = capabilities.displayName;
-        return {
-          kind: "observed",
-          label: `${name} issues`,
-          detail: repository.repository,
-          feedSourceId: null,
-          items: listed
-            .filter((issue) => issue.state === "open")
-            .toReversed()
-            .map((issue) => {
-              const key = issueOriginKey(
-                repository.provider,
-                repository.canonicalKey,
-                issue.number,
-              );
-              return {
-                itemKey: key,
-                originKey: key,
-                label: `${name} #${issue.number}`,
-                title: issue.title,
-                body: issue.body ?? "",
-                url: issue.url,
-                labels: issue.labels,
-              };
-            }),
-          nextCheckAt: nowMs + ISSUE_CHECK_INTERVAL_MS,
-        };
-      }),
+    return yield* Effect.gen(function* () {
+      const first = yield* issues.list({ projectId: source.projectId, state: "open" });
+      const { repository, capabilities } = first;
+      const listed = [...first.issues];
+      let nextPage = first.nextPage;
+      while (nextPage !== null) {
+        const page = yield* issues.list({
+          projectId: source.projectId,
+          state: "open",
+          page: nextPage,
+        });
+        listed.push(...page.issues);
+        nextPage = page.nextPage;
+      }
+      const name = capabilities.displayName;
+      return {
+        kind: "observed",
+        label: `${name} issues`,
+        detail: repository.repository,
+        feedSourceId: null,
+        items: listed
+          .filter((issue) => issue.state === "open")
+          .toReversed()
+          .map((issue) => {
+            const key = issueOriginKey(repository.provider, repository.canonicalKey, issue.number);
+            return {
+              itemKey: key,
+              originKey: key,
+              label: `${name} #${issue.number}`,
+              title: issue.title,
+              body: issue.body ?? "",
+              url: issue.url,
+              labels: issue.labels,
+            };
+          }),
+        nextCheckAt: nowMs + ISSUE_CHECK_INTERVAL_MS,
+      } satisfies CheckOutcome;
+    }).pipe(
       Effect.catchTags({
         FactoryIssueError: (error) => {
           const failed: CheckOutcome = {

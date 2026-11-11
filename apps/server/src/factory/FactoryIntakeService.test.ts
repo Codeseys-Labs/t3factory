@@ -166,6 +166,10 @@ const harness = Effect.gen(function* () {
           );
           const failure = yield* Ref.get(issueFailure);
           if (failure !== null) return yield* new FactoryIssueError({ reason: failure });
+          const listed = [
+            ...((yield* Ref.get(issueLists)).get(input.projectId) ?? []),
+          ].toReversed();
+          const offset = ((input.page ?? 1) - 1) * 30;
           return {
             repository,
             capabilities: {
@@ -179,8 +183,8 @@ const harness = Effect.gen(function* () {
               issueComment: false,
             },
             // The tracker lists newest first.
-            issues: [...((yield* Ref.get(issueLists)).get(input.projectId) ?? [])].toReversed(),
-            nextPage: null,
+            issues: listed.slice(offset, offset + 30),
+            nextPage: offset + 30 < listed.length ? (input.page ?? 1) + 1 : null,
             fetchedAt: now,
           };
         }),
@@ -411,6 +415,35 @@ it.effect("a new issue arrives once, however often the tracker shows it", () =>
       (yield* triage(intake)).items.map((arrival) => arrival.title),
       ["Add CSV export", "Board cards overflow at 1280"],
     );
+  }),
+);
+
+it.effect("issue intake follows every page and deduplicates later checks", () =>
+  Effect.gen(function* () {
+    const h = yield* harness;
+    const { intake, changes } = yield* h.start;
+    yield* h.setIssues(
+      projectId,
+      Array.from({ length: 65 }, (_, index) => issue(index + 1, `Issue ${index + 1}`)),
+    );
+    yield* connectIssues(intake, "connect");
+    const first = yield* intake.listArrivals({ limit: 50 });
+    const second =
+      first.nextCursor === null
+        ? []
+        : (yield* intake.listArrivals({ limit: 50, cursor: first.nextCursor })).items;
+    const arrivals = [...first.items, ...second];
+    assert.strictEqual(arrivals.length, 65);
+    assert.deepStrictEqual(
+      arrivals.map((arrival) => arrival.title),
+      Array.from({ length: 65 }, (_, index) => `Issue ${65 - index}`),
+    );
+    assert.strictEqual(yield* h.callsFor(projectId), 3);
+    yield* Queue.clear(changes);
+    yield* TestClock.adjust("5 minutes");
+    yield* awaitChange(changes, (change) => change.sources);
+    assert.strictEqual((yield* intake.listArrivals({})).waiting, 65);
+    assert.strictEqual(yield* h.callsFor(projectId), 6);
   }),
 );
 

@@ -71,6 +71,7 @@ import { executionDigest } from "./FactoryExecutionDigest.ts";
 import * as Executions from "./FactoryExecutionService.ts";
 import type { FactoryPlanActor } from "./FactoryPlanReducer.ts";
 import * as Plans from "./FactoryPlanService.ts";
+import type { FactoryIntakeScheduleAuthority } from "./FactoryIntakeSchedule.ts";
 import { resolveAssignee, setupKey } from "./FactoryTaskAssignee.ts";
 import * as Changes from "./FactoryTaskChanges.ts";
 import { parseTaskResultOriginKey, taskResultOriginKey } from "./FactoryOriginKey.ts";
@@ -99,6 +100,7 @@ export class FactoryTaskService extends Context.Service<
       input: FactoryTaskCreateInput,
       actor: FactoryPlanActor,
       origin?: FactoryTaskOrigin,
+      schedule?: FactoryIntakeScheduleAuthority,
     ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
     readonly update: (
       input: FactoryTaskUpdateInput,
@@ -898,9 +900,16 @@ const make = Effect.gen(function* () {
   );
 
   const create: FactoryTaskService["Service"]["create"] = Effect.fn("FactoryTaskService.create")(
-    function* (raw, actor, origin) {
+    function* (raw, actor, origin, schedule) {
       yield* requireHuman(actor);
       const input = yield* decodeCreate(raw).pipe(Effect.mapError(invalid));
+      if (
+        schedule !== undefined &&
+        (input.parent !== undefined ||
+          input.workRef !== undefined ||
+          origin?.source.kind !== "schedule")
+      )
+        return yield* refuse("forbidden");
       const command = yield* begin("create", input.commandId, actor, [input, origin ?? null]);
       if (command.replayed)
         return yield* replay(
@@ -946,6 +955,7 @@ const make = Effect.gen(function* () {
               ...(input.description === undefined ? {} : { context: input.description }),
             },
             actor,
+            schedule,
           )
           .pipe(Effect.mapError(planError));
         const rootId = created.plan.ref.rootId;

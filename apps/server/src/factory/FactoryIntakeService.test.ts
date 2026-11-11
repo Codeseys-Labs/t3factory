@@ -2,6 +2,7 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import {
   AuthSessionId,
+  AuthOrchestrationOperateScope,
   CommandId,
   EnvironmentId,
   FactoryFeedSourceId,
@@ -9,6 +10,7 @@ import {
   FactoryTaskError,
   ProjectId,
   SourceControlProviderKind,
+  ThreadId,
   type FactoryFeedCandidate,
   type FactoryFeedSource,
   type FactoryIntakeChange,
@@ -31,6 +33,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import * as Store from "../persistence/FactoryIntakeStore.ts";
+import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as FeedStore from "../persistence/FactoryFeedStore.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Projects from "../project/ProjectService.ts";
@@ -149,6 +152,26 @@ const harness = Effect.gen(function* () {
   const tasksByCommand = new Map<string, FactoryTaskSummary>();
   const inputsByCommand = new Map<string, FactoryTaskCreateInput>();
   const now = DateTime.formatIso(yield* DateTime.now);
+  const sessions = yield* AuthSessions.AuthSessionRepository.pipe(
+    Effect.provide(AuthSessions.layer),
+    Effect.provideContext(database),
+  );
+  yield* sessions.create({
+    sessionId: human.sessionId,
+    subject: "person",
+    scopes: [AuthOrchestrationOperateScope],
+    method: "browser-session-cookie",
+    client: {
+      label: null,
+      ipAddress: null,
+      userAgent: null,
+      deviceType: "unknown",
+      os: null,
+      browser: null,
+    },
+    issuedAt: DateTime.makeUnsafe(now),
+    expiresAt: DateTime.makeUnsafe("2099-01-01T00:00:00.000Z"),
+  });
   const fakes = Layer.mergeAll(
     NodeCrypto.layer,
     Layer.succeed(ServerEnvironmentIdentity, { getEnvironmentId: Effect.succeed(environmentId) }),
@@ -973,6 +996,46 @@ it.effect(
       assert.strictEqual((yield* Ref.get(h.createCalls)).length, 4);
       assert.strictEqual(yield* Queue.size(h.created), 0);
     }),
+);
+
+it.effect("saving a schedule requires a person's current permission", () =>
+  Effect.gen(function* () {
+    const h = yield* harness;
+    const { intake } = yield* h.start;
+    const input = {
+      commandId: CommandId.make("schedule-permission"),
+      projectId,
+      config: {
+        kind: "schedule",
+        schedule: { timeOfDay: "09:00", weekdays: [] },
+        task: {
+          title: "Review",
+          description: "",
+          type: "task",
+          assignment: { mode: "unassigned" },
+          lane: "backlog",
+        },
+      },
+      enabled: true,
+    } as const;
+    assert.strictEqual(
+      (yield* intake
+        .saveSource(input, { kind: "agent", threadId: ThreadId.make("agent") })
+        .pipe(Effect.flip)).reason,
+      "forbidden",
+    );
+    yield* h.sql`UPDATE auth_sessions SET scopes = ${JSON.stringify(["orchestration:read"])} WHERE session_id = ${human.sessionId}`;
+    assert.strictEqual(
+      (yield* intake.saveSource(input, human).pipe(Effect.flip)).reason,
+      "forbidden",
+    );
+    yield* h.sql`UPDATE auth_sessions SET scopes = ${JSON.stringify([AuthOrchestrationOperateScope])}, expires_at = ${DateTime.formatIso(yield* DateTime.now)} WHERE session_id = ${human.sessionId}`;
+    assert.strictEqual(
+      (yield* intake.saveSource(input, human).pipe(Effect.flip)).reason,
+      "forbidden",
+    );
+    assert.strictEqual((yield* intake.listSources({})).sources.length, 0);
+  }),
 );
 
 it.effect("previewRule counts recorded arrivals of the last 30 days and fetches nothing", () =>

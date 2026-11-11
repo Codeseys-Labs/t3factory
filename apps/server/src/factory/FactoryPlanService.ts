@@ -26,6 +26,7 @@ import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as Store from "../persistence/FactoryPlanStore.ts";
 import * as Work from "./FactoryWorkService.ts";
 import { canEditFactoryPlan, type FactoryPlanActor } from "./FactoryPlanReducer.ts";
+import type { FactoryIntakeScheduleAuthority } from "./FactoryIntakeSchedule.ts";
 
 export class FactoryPlanService extends Context.Service<
   FactoryPlanService,
@@ -33,6 +34,7 @@ export class FactoryPlanService extends Context.Service<
     readonly create: (
       input: FactoryPlanCreateInput,
       actor: FactoryPlanActor,
+      schedule?: FactoryIntakeScheduleAuthority,
     ) => Effect.Effect<FactoryPlanMutationResult, FactoryPlanError>;
     readonly apply: (
       input: FactoryPlanApplyInput,
@@ -89,6 +91,7 @@ const make = Effect.gen(function* () {
   const create = Effect.fn("FactoryPlanService.create")(function* (
     raw: FactoryPlanCreateInput,
     actor: FactoryPlanActor,
+    schedule?: FactoryIntakeScheduleAuthority,
   ) {
     if (actor.kind !== "human") return yield* new FactoryPlanError({ reason: "forbidden" });
     const input = yield* decodeCreate(raw).pipe(Effect.mapError(invalid));
@@ -116,6 +119,7 @@ const make = Effect.gen(function* () {
         input,
       ]),
       actor,
+      ...(schedule === undefined ? {} : { schedule }),
       create: { title: input.title, context: input.context ?? "" },
       operations: [],
       contexts: [],

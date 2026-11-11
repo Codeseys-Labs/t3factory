@@ -1,6 +1,12 @@
 import type { FactoryIntakeSchedule } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
+export interface FactoryIntakeScheduleAuthority {
+  readonly sourceId: string;
+  readonly sourceVersion: number;
+  readonly slot: string;
+}
+
 // Slots are wall-clock times in the environment's own zone.
 const slotOnDay = (schedule: FactoryIntakeSchedule, fromMs: number, dayOffset: number) => {
   const hour = Number(schedule.timeOfDay.slice(0, 2));

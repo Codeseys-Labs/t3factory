@@ -1,5 +1,7 @@
 import {
   CommandId,
+  AuthOrchestrationOperateScope,
+  sessionGrantsScope,
   FactoryIntakeArrivalResolveInput,
   FactoryIntakeError,
   FactoryIntakeRuleDeleteInput,
@@ -46,6 +48,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import * as Store from "../persistence/FactoryIntakeStore.ts";
+import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as Projects from "../project/ProjectService.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as Feeds from "./FactoryFeedService.ts";
@@ -261,6 +264,7 @@ const presentSource = (source: Store.StoredSource): FactoryIntakeSource => ({
 
 const make = Effect.gen(function* () {
   const store = yield* Store.FactoryIntakeStore;
+  const sessions = yield* AuthSessions.AuthSessionRepository;
   const tasks = yield* Tasks.FactoryTaskService;
   const issues = yield* Issues.FactoryIssueService;
   const feeds = yield* Feeds.FactoryFeedService;
@@ -618,6 +622,7 @@ const make = Effect.gen(function* () {
           source: { kind: "schedule", label: "Schedule", url: null, key: null, workRef: null },
           ruleName: null,
         },
+        { sourceId: source.id, sourceVersion: source.version, slot: isoOf(slot) },
       );
     // The command id names the slot, so a retry after a crash replays the same task.
     const created = due
@@ -765,6 +770,26 @@ const make = Effect.gen(function* () {
             return yield* intakeError("invalid-input");
           const nowMs = yield* Clock.currentTimeMillis;
           const now = isoOf(nowMs);
+          if (config.kind === "schedule") {
+            if (actor.kind !== "human") return yield* intakeError("forbidden");
+            const session = yield* sessions
+              .getById({ sessionId: actor.sessionId })
+              .pipe(
+                Effect.mapError(
+                  (cause) => new FactoryIntakeError({ reason: "persistence-failure", cause }),
+                ),
+              );
+            if (
+              Option.isNone(session) ||
+              session.value.revokedAt !== null ||
+              session.value.expiresAt.epochMilliseconds <= nowMs ||
+              !sessionGrantsScope(
+                { authenticated: true, scopes: session.value.scopes },
+                AuthOrchestrationOperateScope,
+              )
+            )
+              return yield* intakeError("forbidden");
+          }
           const configChanged =
             existing === undefined || encodeConfig(existing.config) !== encodeConfig(config);
           const restarted = input.enabled && (configChanged || existing?.enabled !== true);
@@ -1203,4 +1228,6 @@ const make = Effect.gen(function* () {
   });
 });
 
-export const layer = Layer.effect(FactoryIntakeService, make);
+export const layer = Layer.effect(FactoryIntakeService, make).pipe(
+  Layer.provide(AuthSessions.layer),
+);

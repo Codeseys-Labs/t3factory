@@ -13,6 +13,9 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as Sink from "effect/Sink";
+import * as Stream from "effect/Stream";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { planNativeExecution } from "./NativeExecutionPlan.ts";
 import { ProviderAdapterRegistryV2 } from "./ProviderAdapterRegistry.ts";
 import { applyToProjection, emptyProjection } from "./ProjectionStore.ts";
@@ -105,6 +108,26 @@ it.effect("refuses missing adapter ownership and admits Linux only with proven d
         { modelSelection: { instanceId, model: "fixture" } },
         [],
       ).pipe(
+        Effect.provideService(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make(() =>
+            Effect.succeed(
+              ChildProcessSpawner.makeHandle({
+                pid: ChildProcessSpawner.ProcessId(100),
+                exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+                isRunning: Effect.succeed(false),
+                kill: () => Effect.void,
+                unref: Effect.succeed(Effect.void),
+                stdin: Sink.drain,
+                stdout: Stream.make(new TextEncoder().encode("contained\n")),
+                stderr: Stream.empty,
+                all: Stream.empty,
+                getInputFd: () => Sink.drain,
+                getOutputFd: () => Stream.empty,
+              }),
+            ),
+          ),
+        ),
         Effect.provideService(HostProcess.Platform, "linux"),
         Effect.provideService(PosixCgroupController, {
           create: () => ({

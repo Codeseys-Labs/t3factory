@@ -197,10 +197,47 @@ it.effect(
           yield* ownedWriterPlatformRefusal().pipe(
             Effect.provideService(HostProcess.Platform, platform),
             Effect.provideService(PosixCgroupController, { create: () => undefined }),
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, fake.native),
           ),
         );
       }
     }).pipe(Effect.provideService(HostProcess.Platform, "darwin"), Effect.scoped),
+);
+
+it.effect.each(["migrated", "denied", "unconfirmed"] as const)(
+  "admits Linux only after a contained migration probe: %s",
+  (migration) =>
+    Effect.gen(function* () {
+      const fake = fixture();
+      let probes = 0;
+      const native = ChildProcessSpawner.make((command) => {
+        probes++;
+        return fake.native.spawn(command).pipe(
+          Effect.map((handle) => ({
+            ...handle,
+            exitCode: Effect.succeed(
+              ChildProcessSpawner.ExitCode(migration === "denied" ? 125 : 0),
+            ),
+            stdout:
+              migration === "migrated"
+                ? Stream.make(new TextEncoder().encode("contained\n"))
+                : Stream.empty,
+          })),
+        );
+      });
+      const refusal = yield* ownedWriterPlatformRefusal().pipe(
+        Effect.provideService(HostProcess.Platform, "linux"),
+        Effect.provideService(PosixCgroupController, { create: () => fake.lease }),
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, native),
+      );
+      assert.equal(probes, 1);
+      assert.equal(refusal === undefined, migration === "migrated");
+      assert.include(fake.operations, "remove");
+      assert.include(
+        fake.commands[0]?._tag === "StandardCommand" ? fake.commands[0].args.join(" ") : "",
+        "cgroup.procs",
+      );
+    }).pipe(Effect.scoped),
 );
 
 it.live("joins a Linux root and its detached writer through the cgroup", () =>

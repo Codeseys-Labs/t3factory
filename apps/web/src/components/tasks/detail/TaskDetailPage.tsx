@@ -61,9 +61,10 @@ type LoadState =
   | { kind: "unsupported" }
   | { kind: "failed" };
 
+/** `link` is where the machine's connection stands: up, still being made the first time, or down. */
 function loadState(
   result: AsyncResult.AsyncResult<FactoryTaskDetail, unknown>,
-  connected: boolean,
+  link: "connected" | "starting" | "down",
   machine: string,
 ): LoadState {
   if (result._tag === "Failure") {
@@ -71,9 +72,9 @@ function loadState(
     if (isTaskError(error) && error.reason === "missing-task") return { kind: "missing" };
     const status = factoryTaskQueryStatus(result);
     if (status === "forbidden" || status === "unsupported") return { kind: status };
-    return connected ? { kind: "failed" } : { kind: "offline", machine };
+    return link === "down" ? { kind: "offline", machine } : { kind: "failed" };
   }
-  return connected ? { kind: "loading" } : { kind: "offline", machine };
+  return link === "down" ? { kind: "offline", machine } : { kind: "loading" };
 }
 
 function TaskDetailLoader({
@@ -88,12 +89,18 @@ function TaskDetailLoader({
   onTabChange: (tab: TaskDetailTab) => void;
 }) {
   const result = useFactoryTaskDetailByDisplayId(environmentId, displayId);
-  const { presentation } = useEnvironmentPresentation(environmentId);
+  const { isReady, presentation } = useEnvironmentPresentation(environmentId);
   if (result._tag === "Success")
     return <TaskDetail detail={result.value} tab={tab} onTabChange={onTabChange} />;
-  const connected = presentation?.connection.phase === "connected";
+  const phase = presentation?.connection.phase;
+  const link =
+    phase === "connected"
+      ? "connected"
+      : !isReady || phase === "connecting" || phase === "available"
+        ? "starting"
+        : "down";
   const machine = presentation?.entry.target.label ?? "This machine";
-  return <TaskDetailState displayId={displayId} state={loadState(result, connected, machine)} />;
+  return <TaskDetailState displayId={displayId} state={loadState(result, link, machine)} />;
 }
 
 function TaskDetailState({ displayId, state }: { displayId: string; state: LoadState }) {

@@ -254,8 +254,9 @@ it.live("joins a Linux root and its detached writer through the cgroup", () =>
     );
     const output = yield* child.stdout.pipe(
       Stream.decodeText,
-      Stream.runForEach((text) =>
-        text.includes("writer-ready") ? Deferred.succeed(ready, undefined) : Effect.void,
+      Stream.splitLines,
+      Stream.runForEach((line) =>
+        line === "writer-ready" ? Deferred.succeed(ready, undefined) : Effect.void,
       ),
       Effect.forkChild,
     );

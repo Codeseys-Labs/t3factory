@@ -1,12 +1,15 @@
-import { OwnedProcess } from "@t3tools/shared/ownedProcess";
+import { OwnedProcess, type OwnedProcessSpawner } from "@t3tools/shared/ownedProcess";
 // One OpenCode 2 process serves all directories; share it across instance threads.
 import type { OpenCodeClient } from "@opencode/client/effect";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Base64Url from "effect/encoding/Base64Url";
+import * as Exit from "effect/Exit";
 import * as P from "effect/Predicate";
 import * as Redacted from "effect/Redacted";
+import * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
 import * as HttpClientError from "effect/http/HttpClientError";
 
 import * as OpenCodeRuntime from "../OpenCodeRuntime.ts";
@@ -158,32 +161,80 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
     environment: serverEnvironment(input.environment, password),
     verify: (url) => connectTo(url, password, false).pipe(Effect.flatMap(remember)),
   });
+  // One dedicated server per attempt owner, kept while borrowed so stream reconnects reuse it.
+  interface Dedicated {
+    readonly scope: Scope.Closeable;
+    readonly server: OpenCodeRuntime.OpenCodeServerProcess;
+    readonly connection: OpenCode2Connection;
+    borrowers: number;
+  }
+  const dedicatedServers = new Map<OwnedProcessSpawner, Dedicated>();
+  const dedicatedLock = yield* Semaphore.make(1);
+  const acquireDedicated = Effect.fn("OpenCode2Server.acquireDedicated")(function* (
+    attempt: OwnedProcessSpawner,
+  ) {
+    const existing = dedicatedServers.get(attempt);
+    if (existing !== undefined) {
+      if (yield* existing.server.isRunning) {
+        existing.borrowers++;
+        return existing;
+      }
+      dedicatedServers.delete(attempt);
+      yield* Scope.close(existing.scope, Exit.void);
+    }
+    const scope = yield* Scope.make();
+    const dedicatedPassword = yield* generatePassword.pipe(
+      Effect.provideService(Crypto.Crypto, crypto),
+    );
+    let connection: OpenCode2Connection | undefined;
+    const server = yield* runtime
+      .startOpenCodeServerProcess({
+        binaryPath: input.binaryPath,
+        directory: input.directory,
+        environment: serverEnvironment(input.environment, dedicatedPassword),
+        verify: (url) =>
+          connectTo(url, dedicatedPassword, false).pipe(
+            Effect.map((verified) => {
+              connection = verified;
+              return verified.version;
+            }),
+          ),
+      })
+      .pipe(
+        Effect.provideService(Scope.Scope, scope),
+        Effect.onError(() => Scope.close(scope, Exit.void)),
+      );
+    if (connection === undefined) {
+      yield* Scope.close(scope, Exit.void);
+      return yield* Effect.die("Owned OpenCode server was not verified.");
+    }
+    const entry: Dedicated = { scope, server, connection, borrowers: 1 };
+    dedicatedServers.set(attempt, entry);
+    return entry;
+  });
+  const releaseDedicated = Effect.fn("OpenCode2Server.releaseDedicated")(function* (
+    attempt: OwnedProcessSpawner,
+    entry: Dedicated,
+  ) {
+    entry.borrowers--;
+    if (entry.borrowers > 0) return;
+    if (dedicatedServers.get(attempt) === entry) dedicatedServers.delete(attempt);
+    yield* Scope.close(entry.scope, Exit.void);
+  });
+
   return OpenCode2Server.of({
     ownedWriters: true,
     withConnection: Effect.fn("OpenCode2Server.withConnection")(function* (use) {
-      if ((yield* OwnedProcess) !== undefined) {
-        return yield* Effect.scoped(
-          Effect.gen(function* () {
-            const dedicatedPassword = yield* generatePassword.pipe(
-              Effect.provideService(Crypto.Crypto, crypto),
-            );
-            let dedicated: OpenCode2Connection | undefined;
-            yield* runtime.startOpenCodeServerProcess({
-              binaryPath: input.binaryPath,
-              directory: input.directory,
-              environment: serverEnvironment(input.environment, dedicatedPassword),
-              verify: (url) =>
-                connectTo(url, dedicatedPassword, false).pipe(
-                  Effect.map((connection) => {
-                    dedicated = connection;
-                    return connection.version;
-                  }),
-                ),
-            });
-            if (dedicated === undefined)
-              return yield* Effect.die("Owned OpenCode server was not verified.");
-            return yield* use(dedicated);
-          }),
+      const attempt = yield* OwnedProcess;
+      if (attempt !== undefined) {
+        return yield* Effect.uninterruptibleMask((restore) =>
+          restore(dedicatedLock.withPermit(acquireDedicated(attempt))).pipe(
+            Effect.flatMap((entry) =>
+              restore(use(entry.connection)).pipe(
+                Effect.ensuring(dedicatedLock.withPermit(releaseDedicated(attempt, entry))),
+              ),
+            ),
+          ),
         );
       }
       return yield* owner.withServer((server) =>

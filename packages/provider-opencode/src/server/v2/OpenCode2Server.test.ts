@@ -1,7 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import { OwnedProcess } from "@t3tools/shared/ownedProcess";
+import { OwnedProcess, type OwnedProcessSpawner } from "@t3tools/shared/ownedProcess";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -209,18 +209,26 @@ describe("OpenCode2Server spawned server", () => {
       assert.strictEqual(first.external, false);
       assert.strictEqual(second.client, first.client);
       let owned = 0;
-      const dedicated = yield* server
-        .withConnection((connection) => Effect.succeed(connection))
-        .pipe(
-          Effect.provideService(OwnedProcess, {
-            spawn: (command, native) => {
-              owned++;
-              return native.spawn(command);
-            },
-          }),
-        );
+      const attempt = {
+        spawn: (...[command, native]: Parameters<OwnedProcessSpawner["spawn"]>) => {
+          owned++;
+          return native.spawn(command);
+        },
+      };
+      // An event-stream reconnect borrows again before it releases the previous borrow.
+      const [dedicated, reconnected] = yield* server
+        .withConnection((held) =>
+          server.withConnection((next) => Effect.succeed([held, next] as const)),
+        )
+        .pipe(Effect.provideService(OwnedProcess, attempt));
       assert.equal(owned, 1);
+      assert.strictEqual(reconnected.url, dedicated.url);
       assert.notEqual(dedicated.url, first.url);
+      const later = yield* server
+        .withConnection((connection) => Effect.succeed(connection))
+        .pipe(Effect.provideService(OwnedProcess, attempt));
+      assert.equal(owned, 2);
+      assert.notEqual(later.url, dedicated.url);
       const normal = yield* server.withConnection((connection) => Effect.succeed(connection));
       assert.strictEqual(normal.client, first.client);
     }).pipe(

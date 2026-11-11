@@ -191,7 +191,8 @@ export function createFactoryTaskEnvironmentAtoms<R, E>(
         tag: WS_METHODS.factoryPreviewTaskAssignee,
         staleTimeMs: Number.POSITIVE_INFINITY,
         idleTtlMs: 0,
-        refreshTrigger: ({ environmentId }) => signals(environmentId)("profiles"),
+        refreshTrigger: ({ environmentId, input }) =>
+          signals(environmentId)(input.parent ? `root:${input.parent.rootId}` : "profiles"),
       }),
     ),
     createTask: createEnvironmentRpcCommand(runtime, {

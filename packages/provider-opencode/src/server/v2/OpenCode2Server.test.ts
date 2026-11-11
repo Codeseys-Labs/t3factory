@@ -180,6 +180,85 @@ server.listen(0, "127.0.0.1", () => {
 });
 `;
 
+it.effect.each([false, true])(
+  "coordinates dedicated startup by attempt identity (same %s)",
+  (same) =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const start = yield* Deferred.make<void>();
+      const firstBorrowed = yield* Deferred.make<void>();
+      const secondBorrowed = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      let starts = 0;
+      const server = yield* OpenCode2Server.make({
+        binaryPath: "opencode",
+        serverUrl: "",
+        serverPassword: "",
+        directory: "/project",
+        environment: {},
+      }).pipe(
+        Effect.provide(
+          Layer.mock(OpenCodeRuntime.OpenCodeRuntime)({
+            createOpenCodeSdkClient: () => {
+              throw new Error("The v2 server uses its own client.");
+            },
+            startOpenCodeServerProcess: (input) =>
+              Effect.gen(function* () {
+                const ordinal = ++starts;
+                if (ordinal === 1) {
+                  yield* Deferred.succeed(entered, undefined);
+                  yield* Deferred.await(start);
+                }
+                const url = `http://127.0.0.1:${4096 + ordinal}`;
+                const version = yield* input.verify!(url);
+                return { url, version, isRunning: Effect.succeed(true), exitCode: Effect.never };
+              }),
+          }),
+        ),
+      );
+      const firstOwner: OwnedProcessSpawner = { spawn: (command, native) => native.spawn(command) };
+      const secondOwner: OwnedProcessSpawner = {
+        spawn: (command, native) => native.spawn(command),
+      };
+      const borrow = (owner: OwnedProcessSpawner, ready: Deferred.Deferred<void>) =>
+        server
+          .withConnection((connection) =>
+            Deferred.succeed(ready, undefined).pipe(
+              Effect.andThen(Deferred.await(release)),
+              Effect.as(connection),
+            ),
+          )
+          .pipe(Effect.provideService(OwnedProcess, owner), Effect.forkChild);
+      const first = yield* borrow(firstOwner, firstBorrowed);
+      yield* Deferred.await(entered);
+      const second = yield* borrow(same ? firstOwner : secondOwner, secondBorrowed);
+      yield* TestClock.adjust("1 millis");
+      assert.equal(yield* Deferred.isDone(secondBorrowed), !same);
+      yield* Deferred.succeed(start, undefined);
+      yield* Deferred.await(firstBorrowed);
+      yield* Deferred.await(secondBorrowed);
+      assert.equal(starts, same ? 1 : 2);
+      yield* Deferred.succeed(release, undefined);
+      const a = yield* Fiber.join(first);
+      const b = yield* Fiber.join(second);
+      assert.equal(a.client === b.client, same);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        OpenCode2Client.layer.pipe(
+          Layer.provide(
+            layerServerReplying({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({ version: "2.0.18", pid: 1, urls: [], paths: { tmp: "/tmp" } }),
+            }),
+          ),
+          Layer.provideMerge(NodeServices.layer),
+        ),
+      ),
+    ),
+);
+
 it.effect("closes borrowed dedicated servers when the provider scope closes", () =>
   Effect.gen(function* () {
     const providerScope = yield* Scope.make();

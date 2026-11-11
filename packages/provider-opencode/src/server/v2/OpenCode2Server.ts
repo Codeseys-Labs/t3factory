@@ -170,7 +170,7 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
     borrowers: number;
   }
   const dedicatedServers = new Map<OwnedProcessSpawner, Dedicated>();
-  const dedicatedLock = yield* Semaphore.make(1);
+  const dedicatedLocks = new WeakMap<OwnedProcessSpawner, Semaphore.Semaphore>();
   const acquireDedicated = Effect.fn("OpenCode2Server.acquireDedicated")(function* (
     attempt: OwnedProcessSpawner,
   ) {
@@ -228,11 +228,17 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
     withConnection: Effect.fn("OpenCode2Server.withConnection")(function* (use) {
       const attempt = yield* OwnedProcess;
       if (attempt !== undefined) {
+        let dedicatedLock = dedicatedLocks.get(attempt);
+        if (dedicatedLock === undefined) {
+          dedicatedLock = Semaphore.makeUnsafe(1);
+          dedicatedLocks.set(attempt, dedicatedLock);
+        }
+        const lock = dedicatedLock;
         return yield* Effect.uninterruptibleMask((restore) =>
-          restore(dedicatedLock.withPermit(acquireDedicated(attempt))).pipe(
+          restore(lock.withPermit(acquireDedicated(attempt))).pipe(
             Effect.flatMap((entry) =>
               restore(use(entry.connection)).pipe(
-                Effect.ensuring(dedicatedLock.withPermit(releaseDedicated(attempt, entry))),
+                Effect.ensuring(lock.withPermit(releaseDedicated(attempt, entry))),
               ),
             ),
           ),

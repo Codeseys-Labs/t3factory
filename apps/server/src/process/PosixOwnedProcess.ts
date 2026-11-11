@@ -4,6 +4,7 @@ import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as PlatformError from "effect/PlatformError";
+import * as Scope from "effect/Scope";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { awaitConfirmedExit } from "@t3tools/shared/ownedProcess";
@@ -118,6 +119,8 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
                 return yield* ownershipError("Linux cgroup v2 delegation is required.");
               const job: (typeof jobs)[number] = { lease, empty: false, contained: false };
               jobs.push(job);
+              // Native release waits for the root without a bound; kill the cgroup before it runs.
+              const nativeScope = yield* Scope.fork(yield* Scope.Scope);
               yield* Effect.addFinalizer(() => stopJob(job).pipe(Effect.asVoid));
               let gateFd = 3;
               while (command.options.additionalFds?.[`fd${gateFd}`] !== undefined) gateFd++;
@@ -138,20 +141,22 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
                 ],
               });
               const acquired = yield* Effect.exit(
-                native.spawn(
-                  ChildProcess.make(wrapped.command, wrapped.args, {
-                    ...command.options,
-                    env: {},
-                    extendEnv: false,
-                    shell: false,
-                    detached: true,
-                    additionalFds: {
-                      ...command.options.additionalFds,
-                      [`fd${gateFd}`]: { type: "input" },
-                      [`fd${readyFd}`]: { type: "output" },
-                    },
-                  }),
-                ),
+                native
+                  .spawn(
+                    ChildProcess.make(wrapped.command, wrapped.args, {
+                      ...command.options,
+                      env: {},
+                      extendEnv: false,
+                      shell: false,
+                      detached: true,
+                      additionalFds: {
+                        ...command.options.additionalFds,
+                        [`fd${gateFd}`]: { type: "input" },
+                        [`fd${readyFd}`]: { type: "output" },
+                      },
+                    }),
+                  )
+                  .pipe(Effect.provideService(Scope.Scope, nativeScope)),
               );
               if (Exit.isFailure(acquired)) {
                 unknown = true;

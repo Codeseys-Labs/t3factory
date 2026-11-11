@@ -39,8 +39,10 @@ const fixture = (
   const commands: ChildProcess.Command[] = [];
   const gates: string[] = [];
   const native = ChildProcessSpawner.make((command) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
       commands.push(command);
+      // Node's release signals the root and then waits for it without a bound.
+      yield* Effect.addFinalizer(() => Effect.sync(() => operations.push("release")));
       return ChildProcessSpawner.makeHandle({
         pid: ChildProcessSpawner.ProcessId(100),
         // Node fails exitCode for a signal exit; the finished handle still reports it.
@@ -164,6 +166,7 @@ it.effect("closing one root scope leaves the attempt open for its next command",
       .spawn(ChildProcess.make(process.execPath), fake.native)
       .pipe(Effect.provideService(Scope.Scope, scope));
     yield* Scope.close(scope, yield* Effect.exit(Effect.void));
+    assert.deepEqual(fake.operations, ["kill", "observe", "remove", "release"]);
     yield* owner.spawner.spawn(ChildProcess.make(process.execPath), fake.native);
     assert.equal(fake.commands.length, 2);
     assert.isTrue(yield* owner.quiesce());

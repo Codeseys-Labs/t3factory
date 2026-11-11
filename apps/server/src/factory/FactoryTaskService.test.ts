@@ -372,7 +372,7 @@ const harness = Effect.gen(function* () {
     }>`SELECT attempt_id AS attemptId FROM factory_execution_bindings WHERE thread_id = ${run.threadId}`.pipe(
       Effect.map((rows) => rows[0]!.attemptId),
     );
-  /** Ends a run the way the effect worker does: writers gone, then the captured outcome. */
+  /** Ends a run the way the effect worker does: writers gone and the outcome captured, together. */
   const finish = Effect.fn("test.finish")(function* (
     run: FactoryTaskRun,
     outcome: "sealed" | "failed",
@@ -380,27 +380,33 @@ const harness = Effect.gen(function* () {
   ) {
     const attemptId = yield* attemptOf(run);
     const native = outcome === "sealed" ? "completed" : "failed";
-    yield* sql`UPDATE orchestration_v2_projection_runs SET status = ${native}, payload_json = json_set(payload_json, '$.status', ${native}) WHERE run_id = ${run.runId}`;
-    yield* sql`UPDATE factory_execution_bindings SET quiescent = 1, stop_requested = 1 WHERE attempt_id = ${attemptId}`;
-    let checkpoint = null;
-    if (outcome === "sealed" && run.setup.workspace === "worktree") {
-      checkpoint = {
-        commit: resultCommit,
-        tree: "c".repeat(40),
-        retainedRef: `refs/t3/factory/outputs/${executionDigest(attemptId)}`,
-        verificationDigest: executionDigest(["verification", attemptId]),
-      };
-      yield* sql`INSERT INTO factory_execution_verifications(digest, attempt_id, repository_path, evidence_json) VALUES (${checkpoint.verificationDigest}, ${attemptId}, '/task-project', ${canonicalExecutionJson({ ...checkpoint, evidence: { code: 0 }, passed: true })})`;
-    }
-    yield* executions.observeResult({
-      runId: run.runId,
-      runAttemptId: attemptId,
-      captureKey: "native-final/1",
-      slot: "result",
-      text,
-      status: outcome,
-      checkpoint,
-    });
+    // The engine marks an attempt quiescent only once its output is captured; no reader sees one
+    // without the other.
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`UPDATE orchestration_v2_projection_runs SET status = ${native}, payload_json = json_set(payload_json, '$.status', ${native}) WHERE run_id = ${run.runId}`;
+        yield* sql`UPDATE factory_execution_bindings SET quiescent = 1, stop_requested = 1 WHERE attempt_id = ${attemptId}`;
+        let checkpoint = null;
+        if (outcome === "sealed" && run.setup.workspace === "worktree") {
+          checkpoint = {
+            commit: resultCommit,
+            tree: "c".repeat(40),
+            retainedRef: `refs/t3/factory/outputs/${executionDigest(attemptId)}`,
+            verificationDigest: executionDigest(["verification", attemptId]),
+          };
+          yield* sql`INSERT INTO factory_execution_verifications(digest, attempt_id, repository_path, evidence_json) VALUES (${checkpoint.verificationDigest}, ${attemptId}, '/task-project', ${canonicalExecutionJson({ ...checkpoint, evidence: { code: 0 }, passed: true })})`;
+        }
+        yield* executions.observeResult({
+          runId: run.runId,
+          runAttemptId: attemptId,
+          captureKey: "native-final/1",
+          slot: "result",
+          text,
+          status: outcome,
+          checkpoint,
+        });
+      }),
+    );
   });
   /** Waits on the change feed, never on time, until the task reads as expected. */
   const until = Effect.fn("test.until")(function* (

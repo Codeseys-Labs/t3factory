@@ -4,7 +4,6 @@ import {
   type FactoryTaskDisplayId,
   type FactoryTaskSummary,
 } from "@t3tools/contracts";
-import { factoryTaskQueryStatus } from "@t3tools/client-runtime/state/factory-task-list";
 import {
   presentFactoryTaskAssignee,
   presentFactoryTaskBanner,
@@ -62,10 +61,10 @@ export function TaskRouteScreen({ route }: StaticScreenProps<TaskRouteParams>) {
   const navigation = useNavigation();
   const environmentId = EnvironmentId.make(route.params.environmentId);
   const displayId: FactoryTaskDisplayId = route.params.displayId;
-  const { result, refresh } = useFactoryTaskDetailByDisplayId(environmentId, displayId);
+  const { result, refresh, status } = useFactoryTaskDetailByDisplayId(environmentId, displayId);
   const detail = Option.getOrNull(AsyncResult.value(result));
-  if (detail !== null) return <TaskLoaded key={detail.task.ref.taskId} task={detail.task} />;
-  const status = factoryTaskQueryStatus(result);
+  if (detail !== null && (status === "current" || status === "loading"))
+    return <TaskLoaded key={detail.task.ref.taskId} task={detail.task} />;
   return (
     <View className="flex-1 bg-screen">
       <AppBar title={displayId} onBack={() => navigation.goBack()} sidebar={false} />
@@ -152,6 +151,7 @@ function TaskLoaded(props: { readonly task: FactoryTaskSummary }) {
   const target =
     banner.primary?.kind === "open-task"
       ? (live.attention.find((need) => need.ref.taskId === banner.primary?.taskId) ??
+        task.liveRuns.find((run) => run.taskId === banner.primary?.taskId) ??
         task.blockedBy.find((blocker) => blocker.taskId === banner.primary?.taskId))
       : undefined;
   const hint =

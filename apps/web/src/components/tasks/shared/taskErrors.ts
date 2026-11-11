@@ -76,8 +76,9 @@ export function taskErrorMessage(
     const task = context.task;
     if (error.reason === "blocked" && task && task.blockedBy.length > 0)
       return `This task waits on ${task.blockedBy.map((blocker) => blocker.displayId).join(", ")}.`;
-    // The server words a host's refusal itself, since only it knows which check failed.
-    if (error.reason === "delivery-refused" && error.detail) return error.detail;
+    // The server words these itself, since only it knows which check failed.
+    if ((error.reason === "delivery-refused" || error.reason === "run-active") && error.detail)
+      return error.detail;
     if (error.reason === "invalid-transition" && task) {
       if (task.status === "in-review") return "Accept the result first.";
       if (task.status === "done" && task.result?.state === "accepted")

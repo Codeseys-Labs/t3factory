@@ -1976,19 +1976,20 @@ it.effect(
           [["T-1.2"], { done: 0, total: 2 }],
         );
         // Another round of T-1.1 would move the plan revision under T-1.2's run, so it waits.
-        assert.equal(
-          (yield* tasks
-            .requestChanges(
-              {
-                commandId: command("changes-beside-sibling"),
-                ref: contract.ref,
-                revision: 1,
-                note: "Split the migration",
-              },
-              human,
-            )
-            .pipe(Effect.flip)).reason,
-          "run-active",
+        const beside = yield* tasks
+          .requestChanges(
+            {
+              commandId: command("changes-beside-sibling"),
+              ref: contract.ref,
+              revision: 1,
+              note: "Split the migration",
+            },
+            human,
+          )
+          .pipe(Effect.flip);
+        assert.deepEqual(
+          [beside.reason, beside.detail],
+          ["run-active", "Another sub-task of this task is running. Try again when it finishes."],
         );
         assert.deepEqual(
           yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${contract.ref.taskId}`,

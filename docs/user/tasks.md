@@ -34,7 +34,8 @@ new run with it.
 ## Review a result
 
 **Accept** records your review of that revision and marks the task Done. **Request changes** runs the
-task again with your note. **Reopen**, in the task page's menu, takes a Done task back to In review.
+task again with your note; it waits while another sub-task of the same task is running. **Reopen**,
+in the task page's menu, takes a Done task back to In review.
 
 Accepting does not publish anything. For an accepted code result, **Publish** pushes that exact
 commit to a new branch named after the task and revision

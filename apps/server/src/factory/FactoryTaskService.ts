@@ -679,7 +679,10 @@ const make = Effect.gen(function* () {
         exceptTaskId: row.taskId,
       })).length > 0
     )
-      return yield* refuse("run-active");
+      return yield* new FactoryTaskError({
+        reason: "run-active",
+        detail: "Another sub-task of this task is running. Try again when it finishes.",
+      });
     return { head, prior, round };
   });
 

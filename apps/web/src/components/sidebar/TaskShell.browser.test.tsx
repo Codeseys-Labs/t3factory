@@ -145,7 +145,10 @@ describe("Tasks shell", () => {
       .toHaveAttribute("aria-current", "page");
     expect(state.lookups).toEqual([]);
 
-    await page.getByRole("button", { name: /New task/ }).click();
+    await page
+      .getByRole("navigation", { name: "Threads", exact: true })
+      .getByRole("button", { name: /New task/ })
+      .click();
     expect(useTaskDialogStore.getState().dialog?.kind).toBe("new-task");
     useTaskDialogStore.getState().close();
     openCommandPalette({ query: "" });

@@ -24,7 +24,6 @@ export {
 export {
   ApprovalCard,
   type KitAction,
-  KitActionButton,
   type QuestionAnswer,
   QuestionCard,
   StatusBanner,
@@ -40,7 +39,6 @@ export {
 export { ActivityItem, type ActivityItemProps, NeedsYouRow, ResultCard, RunRow } from "./rows";
 export { TaskEmptyState } from "./TaskEmptyState";
 export {
-  ATTENTION_VISUALS,
   type LiveTone,
   liveToneForThreadStatus,
   TASK_STATUS_VISUALS,

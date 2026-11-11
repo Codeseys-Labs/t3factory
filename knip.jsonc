@@ -87,14 +87,7 @@
     "apps/web": {
       // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
       // fixtures run under node.
-      // The Tasks surface lands in waves, so parts of it have no importer yet. Drop the two
-      // Tasks entries once the last screen merges.
-      "entry": [
-        "scripts/warm-dep-cache.ts",
-        "test/fixtures/**/*.mjs",
-        "src/components/tasks/**/*.{ts,tsx}",
-        "src/state/factoryTasks.ts",
-      ],
+      "entry": ["scripts/warm-dep-cache.ts", "test/fixtures/**/*.mjs"],
       // UI component modules are copied and adapted as cohesive sets. Keep their
       // named subcomponents even before they have callers; the file audit still
       // reports an entire component module when nothing imports it.
@@ -149,9 +142,6 @@
     },
     "packages/client-runtime": {
       "includeEntryExports": true,
-      // The Tasks view model merges before the screens that use it. Drop this with the two
-      // Tasks entries in apps/web once the last screen merges.
-      "ignoreIssues": { "src/state/factoryTask*.ts": ["exports"] },
     },
     "packages/effect-acp": {
       "includeEntryExports": true,

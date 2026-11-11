@@ -1,6 +1,6 @@
 import type { EnvironmentId, FactoryTaskAssignment, ProjectId } from "@t3tools/contracts";
 
-export const TASK_TITLE_MAX = 512;
+const TASK_TITLE_MAX = 512;
 export const TASK_DESCRIPTION_MAX = 8000;
 
 /** The first line is the title and the rest is the description. A first line past the limit spills over. */

@@ -18,12 +18,12 @@ In progress, In review and Done follow runs and accepted results
 
 ## Needs you is split by who knows
 
-The server reports what it owns: failed, changed, plan, review (and unconfirmed for publishing). It
-never copies thread state. Clients add question and approve from each live run's pending requests,
-with the same logic the thread view uses. Both halves are merged in
-`packages/client-runtime/src/state/factoryTaskView.ts`, so web and mobile rank them the same way. The
-`attention` list filter returns exactly the tasks that can need a person, in any status; counting
-In progress and In review tasks misses a plan waiting on a Backlog task.
+The server reports what it owns: failed, changed, plan, review and unconfirmed. It never copies thread
+state. Clients add question and approve from each live run's pending requests, with the same logic the
+thread view uses. Both halves are merged in `packages/client-runtime/src/state/factoryTaskView.ts`, so
+web and mobile rank them the same way. The `attention` list filter returns exactly the tasks that can
+need a person, in any status; counting In progress and In review tasks misses a plan waiting on a
+Backlog task.
 
 ## A person starts every run
 
@@ -31,8 +31,18 @@ No rule, approved plan or finished blocker starts an agent (issue #84). Intake r
 an `auto-start` rule can be saved but not enabled (`autonomy-not-allowed`). An unblocked sub-task
 stays Ready. Accepting a result is not publishing.
 
+## Publish goes through the delivery service
+
+Publish and Merge reuse `FactoryDeliveryService` through `grantCommit`: the task supplies the exact
+accepted commit, and acceptance is rechecked inside the grant transaction, so a Reopen between the
+click and the grant wins. Delivery is per accepted revision. Check only reads the host, so an
+Unconfirmed send can never be repeated by accident. The task service follows the delivery store's
+change stream, which needs the RPC side and the effect worker to share one `FactoryDeliveryStore`.
+
 ## Traps
 
+- Task runs need Windows and Codex (or the dev Replay provider):
+  `NativeExecutionPlan.validateNativeExecutionCapabilities` refuses everything else.
 - A work run's thread refuses messages (`FactoryExecutionLifecycle.guardCommand`), so "Message agent"
   works only for planning runs; changes go through Request changes, which starts a new attempt.
 - Editing a plan bumps its revision. The engine then refuses approval answers for runs admitted under

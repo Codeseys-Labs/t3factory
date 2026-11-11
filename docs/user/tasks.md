@@ -36,6 +36,13 @@ new run with it.
 **Accept** records your review of that revision and marks the task Done. **Request changes** runs the
 task again with your note. **Reopen**, in the task page's menu, takes a Done task back to In review.
 
+Accepting does not publish anything. For an accepted code result, **Publish** pushes that exact
+commit to a new branch named after the task (`t3/T-36-audio-ring-demo`) and opens a pull request
+against the repository's default branch; **Merge** merges it, and only while it still points at the
+commit you accepted. Both need source-control write access and are always your click. If T3 Code lost
+the host's answer, the task shows **Unconfirmed**; **Check** reads the host and settles it without
+sending again. Publishing and merging happen on the desktop and web; the phone shows the state.
+
 ## Automations
 
 **Automations** connects sources (GitHub issues, a feed, or a schedule), rules that decide which new

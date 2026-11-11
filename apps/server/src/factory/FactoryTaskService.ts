@@ -349,15 +349,25 @@ const deliveryRefusal = (error: FactoryDeliveryError): FactoryTaskError => {
   }
 };
 
-/** `t3/T-36-audio-ring-demo`, and `-rev2` for a later revision, so each revision has its own. */
-const deliveryBranch = (displayId: string, title: string, revision: number) => {
+const deliveryBranch = (
+  ref: FactoryTaskRef,
+  displayId: string,
+  title: string,
+  revision: number,
+) => {
   const slug = title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40)
     .replace(/-+$/g, "");
-  return `t3/${displayId}${slug ? `-${slug}` : ""}${revision > 1 ? `-rev${revision}` : ""}`;
+  const identity = executionDigest([
+    ref.environmentId,
+    ref.projectId,
+    ref.rootId,
+    ref.taskId,
+  ]).slice(0, 32);
+  return `t3/${displayId}-rev${revision}-${identity}/${slug || "task"}`;
 };
 
 const sameSetup = (left: FactoryAgentSetup | undefined, right: FactoryAgentSetup) =>
@@ -1531,12 +1541,14 @@ const make = Effect.gen(function* () {
         projectId: row.projectId,
         threadId: result.threadId,
         headSha: result.commit,
+        baseRef:
+          task.runs.find((run) => run.purpose === "work" && run.baseRef !== null)?.baseRef ?? null,
         publish: {
           title: row.title,
           body: [description.trim(), `Task ${row.displayId} · result rev ${result.revision}`]
             .filter((part) => part !== "")
             .join("\n\n"),
-          headBranch: deliveryBranch(row.displayId, row.title, result.revision),
+          headBranch: deliveryBranch(input.ref, row.displayId, row.title, result.revision),
         },
         // Inside the grant transaction: a reopen between the click and the grant wins.
         recheck: store.acceptedRevision(row).pipe(

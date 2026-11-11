@@ -1476,7 +1476,12 @@ it.effect(
         const publishId = yield* intentOf("publish");
         assert.deepEqual(
           yield* sql`SELECT json_extract(payload_json, '$.headBranch') AS branch, head_sha AS head FROM factory_delivery_intents WHERE id = ${publishId}`,
-          [{ branch: "t3/T-1-audio-ring-demo", head: resultCommit }],
+          [
+            {
+              branch: `t3/T-1-rev1-${executionDigest([environmentId, projectId, task.ref.rootId, task.ref.taskId]).slice(0, 32)}/audio-ring-demo`,
+              head: resultCommit,
+            },
+          ],
         );
 
         // The effect worker's outcome reaches the task without anyone asking.
@@ -1575,6 +1580,65 @@ it.effect(
           ),
           ["opened #12 rev 1", "merged #12 rev 1"],
         );
+      }),
+    ),
+);
+
+it.effect(
+  "publication branches distinguish result revisions even when their title slugs collide",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const { tasks, create, start, finish, until } = yield* harness;
+        const store = yield* DeliveryStore.FactoryDeliveryStore;
+        const task = yield* create("foo rev2", { lane: "ready" });
+        const firstRun = (yield* start(task)).run!;
+        yield* finish(firstRun, "sealed");
+        yield* until(task, (current) => current.result?.revision === 1);
+        yield* tasks.accept(
+          { commandId: command("accept-first"), ref: task.ref, revision: 1 },
+          human,
+        );
+        yield* tasks.publish(
+          { commandId: command("publish-first"), ref: task.ref, revision: 1 },
+          human,
+        );
+        const firstIntent = (yield* store.listByThread(firstRun.threadId))[0]!;
+        if (firstIntent.kind !== "publish-pr" || !("headBranch" in firstIntent.payload))
+          return yield* Effect.die("expected publication");
+        const reopened = (yield* tasks.reopen(
+          { commandId: command("reopen"), ref: task.ref },
+          human,
+        )).task;
+        yield* tasks.update(
+          {
+            commandId: command("rename"),
+            ref: task.ref,
+            expectedVersion: reopened.version,
+            title: "foo",
+          },
+          human,
+        );
+        const secondRun = (yield* tasks.requestChanges(
+          { commandId: command("revise"), ref: task.ref, revision: 1, note: "Refine it" },
+          human,
+        )).task.run!;
+        yield* finish(secondRun, "sealed");
+        yield* until(task, (current) => current.result?.revision === 2);
+        yield* tasks.accept(
+          { commandId: command("accept-second"), ref: task.ref, revision: 2 },
+          human,
+        );
+        yield* tasks.publish(
+          { commandId: command("publish-second"), ref: task.ref, revision: 2 },
+          human,
+        );
+        const secondIntent = (yield* store.listByThread(secondRun.threadId))[0]!;
+        if (secondIntent.kind !== "publish-pr" || !("headBranch" in secondIntent.payload))
+          return yield* Effect.die("expected publication");
+        assert.notEqual(firstIntent.payload.headBranch, secondIntent.payload.headBranch);
+        assert.include(firstIntent.payload.headBranch, "foo-rev2");
+        assert.include(secondIntent.payload.headBranch, "foo");
       }),
     ),
 );

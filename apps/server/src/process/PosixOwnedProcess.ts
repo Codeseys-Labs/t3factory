@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- the environment hand-off needs an unguessable per-spawn end line, drawn synchronously while building the wrapper.
 import * as NodeCrypto from "node:crypto";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

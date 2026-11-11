@@ -31,6 +31,7 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { AcpProviderCapabilitiesV2 } from "@t3tools/provider-acp/server/adapter";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { PosixCgroupController } from "../process/PosixOwnedProcess.ts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -38,6 +39,8 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Sink from "effect/Sink";
+import * as Stream from "effect/Stream";
 import * as PubSub from "effect/PubSub";
 import type * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -1189,6 +1192,62 @@ it.effect.each(
       );
       assert.deepEqual(yield* tasks.read({ task: { ref: task.ref } }), before);
       assert.deepEqual(yield* tasks.activity({ ref: task.ref }), activity);
+    }),
+  ),
+);
+
+it.effect("preserves a host refusal after grant validation during native planning", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { create, start } = yield* harness;
+      const task = yield* create("Host loses delegation");
+      let probes = 0;
+      const lostContainment = yield* start(task).pipe(
+        Effect.provideService(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make(() =>
+            Effect.succeed(
+              ChildProcessSpawner.makeHandle({
+                pid: ChildProcessSpawner.ProcessId(100),
+                exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+                isRunning: Effect.succeed(false),
+                kill: () => Effect.void,
+                unref: Effect.succeed(Effect.void),
+                stdin: Sink.drain,
+                stdout: Stream.make(new TextEncoder().encode("contained\n")),
+                stderr: Stream.empty,
+                all: Stream.empty,
+                getInputFd: () => Sink.drain,
+                getOutputFd: () => Stream.empty,
+              }),
+            ),
+          ),
+        ),
+        Effect.provideService(HostProcess.Platform, "linux"),
+        Effect.provideService(PosixCgroupController, {
+          create: () =>
+            ++probes === 1
+              ? {
+                  path: "/delegated/probe",
+                  relativePath: "/probe",
+                  contains: () => true,
+                  exists: () => true,
+                  populated: () => false,
+                  kill: () => {},
+                  remove: () => {},
+                }
+              : undefined,
+        }),
+        Effect.flip,
+      );
+      assert.equal(probes, 2);
+      assert.deepEqual(
+        [lostContainment.reason, lostContainment.detail],
+        [
+          "unsupported-capability",
+          "Task runs require a writable delegated cgroup v2 with cgroup.kill on this Linux machine.",
+        ],
+      );
     }),
   ),
 );

@@ -99,6 +99,7 @@ export class FactoryExecutionService extends Context.Service<
   }
 >()("t3/factory/FactoryExecutionService") {}
 const invalid = (cause: unknown) => new FactoryExecutionError({ reason: "invalid-input", cause });
+const isFactoryExecutionError = Schema.is(FactoryExecutionError);
 const decodeIssueGrant = Schema.decodeEffect(FactoryExecutionIssueGrantInput);
 const decodeRevokeGrant = Schema.decodeEffect(FactoryExecutionRevokeGrantInput);
 const decodeAdmit = Schema.decodeEffect(FactoryExecutionAdmitInput);
@@ -215,8 +216,10 @@ const make = Effect.gen(function* () {
     }).pipe(
       Effect.provideService(ProviderAdapterRegistryV2, adapters),
       Effect.provideService(IdAllocator.IdAllocatorV2, ids),
-      Effect.mapError(
-        (cause) => new FactoryExecutionError({ reason: "unsupported-capability", cause }),
+      Effect.mapError((cause) =>
+        isFactoryExecutionError(cause)
+          ? cause
+          : new FactoryExecutionError({ reason: "unsupported-capability", cause }),
       ),
     );
     const binding = {

@@ -1,4 +1,4 @@
-import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -135,6 +135,15 @@ export function useFactoryTaskActivity(
   page: Omit<FactoryTaskActivityInput, "ref"> = {},
 ) {
   return useAtomValue(
+    factoryTasks.readTaskActivity({ environmentId: ref.environmentId, input: { ref, ...page } }),
+  );
+}
+/** Reads the same page of activity again, for a retry after a failed read. */
+export function useRefreshFactoryTaskActivity(
+  ref: FactoryTaskRef,
+  page: Omit<FactoryTaskActivityInput, "ref"> = {},
+) {
+  return useAtomRefresh(
     factoryTasks.readTaskActivity({ environmentId: ref.environmentId, input: { ref, ...page } }),
   );
 }

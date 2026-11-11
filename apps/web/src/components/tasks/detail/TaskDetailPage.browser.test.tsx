@@ -83,6 +83,7 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
         value ?? AsyncResult.success({ entries: [], nextCursor: null, fetchedAt: fixtures.at })
       );
     },
+    useRefreshFactoryTaskActivity: () => () => {},
     useFactoryTaskResult: (ref: { taskId: string }) =>
       state.results.get(ref.taskId) ?? AsyncResult.initial(true),
     useFactoryAgentProfiles: () =>
@@ -509,6 +510,28 @@ it("reads Activity newest first and loads earlier entries on request", async () 
   await expect.element(activity.getByText("First note")).toBeVisible();
   expect(notes()).toEqual(["First note", "Middle note", "Newest note"]);
   expect(activity.getByRole("button", { name: "Show earlier" }).elements()).toHaveLength(0);
+});
+
+it("keeps loaded activity and offers a retry when an earlier page fails", async () => {
+  const comment = (body: string) => entry(body, { type: "comment", body });
+  const { screen } = await renderDetail(taskPath("T-29"), () =>
+    state.activity.set("task-29", (input?: { cursor?: string }) =>
+      input?.cursor === undefined
+        ? AsyncResult.success({
+            entries: [comment("Newest note")],
+            nextCursor: "older",
+            fetchedAt: at,
+          })
+        : AsyncResult.failure(Cause.fail(new FactoryTaskError({ reason: "persistence-failure" }))),
+    ),
+  );
+  await using _screen = screen;
+  await userEvent.click(page.getByRole("button", { name: "Show earlier" }));
+  await expect
+    .element(page.getByRole("alert").filter({ hasText: "Couldn't load earlier activity." }))
+    .toBeVisible();
+  await expect.element(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect.element(page.getByText("Newest note")).toBeVisible();
 });
 
 it("saves only the edited title", async () => {

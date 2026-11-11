@@ -1,4 +1,4 @@
-import { assert, it } from "@effect/vitest";
+import { assert, it, vi } from "@effect/vitest";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -51,6 +51,7 @@ import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as DeliveryStore from "../persistence/FactoryDeliveryStore.ts";
 import * as ExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as IntakeStore from "../persistence/FactoryIntakeStore.ts";
+import * as TaskStore from "../persistence/FactoryTaskStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Processes from "../processRunner.ts";
@@ -149,6 +150,7 @@ class DeliveryProbe extends Context.Service<
   DeliveryProbe,
   {
     readonly grants: Array<string>;
+    readonly baseRefs: Array<string | null>;
     readonly checks: Array<string>;
     found: Omit<DeliveryStore.FactoryDeliverySettlement, "updatedAt">;
   }
@@ -169,6 +171,7 @@ const deliveries = Layer.effect(
       grantCommit: (input) =>
         Effect.gen(function* () {
           probe.grants.push(input.kind);
+          probe.baseRefs.push(input.baseRef);
           if (
             input.kind === "merge-pr" &&
             Option.getOrUndefined(yield* store.getLive(input.originKey, "publish-pr"))?.status !==
@@ -231,6 +234,7 @@ const deliveries = Layer.effect(
         DeliveryProbe,
         Effect.sync(() => ({
           grants: [],
+          baseRefs: [],
           checks: [],
           found: { status: "unknown" as const, failure: null },
         })),
@@ -313,7 +317,7 @@ const layerWith = (environmentDefault: ModelSelection | null = null) => {
   const engine = Layer.mergeAll(gatedPlans, gatedExecutions, ExecutionStore.layer, deliveries).pipe(
     Layer.provideMerge(base),
   );
-  return Layer.mergeAll(Tasks.layer, Profiles.layer, Changes.layer).pipe(
+  return Layer.mergeAll(Tasks.layer, Profiles.layer, Changes.layer, TaskStore.layer).pipe(
     Layer.provideMerge(engine),
   );
 };
@@ -1305,6 +1309,8 @@ it.effect("follows a run from start through failure, retry, review, acceptance a
 
       yield* finish(firstRun, "failed");
       const failed = yield* until(task, (current) => current.run?.state === "failed");
+      const failedBase = "d".repeat(40);
+      yield* sql`UPDATE factory_execution_bindings SET binding_json = json_set(binding_json, '$.spec.workspaceStrategy.baseRef', ${failedBase}) WHERE thread_id = ${firstRun.threadId}`;
       // A failed run never moves the task; it asks for a person instead.
       assert.equal(failed.status, "in-progress");
       assert.deepEqual(
@@ -1330,6 +1336,10 @@ it.effect("follows a run from start through failure, retry, review, acceptance a
         ["in-progress", "running", 2, 0],
       );
       assert.deepEqual(secondRun.setup, firstRun.setup);
+      assert.deepEqual(
+        yield* sql`SELECT json_extract(binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef FROM factory_execution_bindings WHERE thread_id = ${secondRun.threadId}`,
+        [{ baseRef: projectHead }],
+      );
 
       yield* finish(secondRun, "sealed", "Reconnect now replays the last run state.");
       const review = yield* until(task, (current) => current.status === "in-review");
@@ -1386,6 +1396,12 @@ it.effect("follows a run from start through failure, retry, review, acceptance a
           .pipe(Effect.flip)).reason,
         "invalid-transition",
       );
+
+      yield* tasks.publish(
+        { commandId: command("publish-retry"), ref: task.ref, revision: 1 },
+        human,
+      );
+      assert.deepEqual((yield* DeliveryProbe).baseRefs, [projectHead]);
 
       const reopened = (yield* tasks.reopen({ commandId: command("reopen"), ref: task.ref }, human))
         .task;
@@ -1919,6 +1935,11 @@ it.effect(
             .pipe(Effect.flip)).reason,
           "result-conflict",
         );
+        yield* tasks.publish(
+          { commandId: command("publish-changes"), ref: task.ref, revision: 2 },
+          human,
+        );
+        assert.deepEqual((yield* DeliveryProbe).baseRefs, [projectHead]);
         assert.equal((yield* tasks.readResult({ ref: task.ref, revision: 1 })).result.revision, 1);
       }),
     ),
@@ -2098,6 +2119,75 @@ it.effect(
         assert.deepEqual((yield* summary(parent)).progress, { done: 1, total: 2 });
       }),
     ),
+);
+
+it.effect("a sibling admitted after the round's live check prevents the revision bump", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { sql, tasks, create, subtask, start, finish, until } = yield* harness;
+      const parent = yield* create("Unified task model");
+      const contract = yield* subtask("Contract and migration", parent);
+      const notes = yield* subtask("Release notes", parent);
+      yield* finish((yield* start(contract, setupOf("opus", "root"))).run!, "sealed", "Drafted.");
+      yield* until(contract, (current) => current.status === "in-review");
+      const plans = yield* Plans.FactoryPlanService;
+      const ref = { environmentId, projectId, rootId: parent.ref.rootId };
+      const before = yield* plans.read({ ref });
+      const reached = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const store = yield* TaskStore.FactoryTaskStore;
+      const liveAttempts = store.liveAttempts;
+      let checks = 0;
+      using _liveAttempts = vi.spyOn(store, "liveAttempts").mockImplementation((input) =>
+        liveAttempts(input).pipe(
+          Effect.tap(() => {
+            if (input.exceptTaskId !== contract.ref.taskId || ++checks !== 2) return Effect.void;
+            return Deferred.succeed(reached, undefined).pipe(
+              Effect.andThen(Deferred.await(release)),
+            );
+          }),
+        ),
+      );
+      const overtaken = yield* Effect.forkChild(
+        tasks
+          .requestChanges(
+            {
+              commandId: command("overtaken-round"),
+              ref: contract.ref,
+              revision: 1,
+              note: "Later",
+            },
+            human,
+          )
+          .pipe(Effect.result),
+      );
+      yield* Deferred.await(reached);
+      const sibling = (yield* start(notes, setupOf("flash", "root"))).run!;
+      yield* Deferred.succeed(release, undefined);
+      const outcome = yield* Fiber.join(overtaken);
+      assert.equal(outcome._tag, "Failure");
+      if (outcome._tag !== "Failure") return;
+      assert.deepEqual(
+        [outcome.failure.reason, outcome.failure.detail],
+        ["run-active", "Another sub-task of this task is running. Try again when it finishes."],
+      );
+      assert.equal((yield* plans.read({ ref })).revision, before.revision);
+      assert.equal(
+        (yield* tasks.read({ task: { ref: notes.ref } })).task.run?.threadId,
+        sibling.threadId,
+      );
+      assert.deepEqual(
+        yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${contract.ref.taskId}`,
+        [{ note: null }],
+      );
+      assert.deepEqual(
+        (yield* tasks.activity({ ref: contract.ref })).entries.filter(
+          (entry) => entry.event.type === "changes-requested",
+        ),
+        [],
+      );
+    }),
+  ),
 );
 
 it.effect(

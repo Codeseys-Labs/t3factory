@@ -343,6 +343,7 @@ export interface FactoryTaskBannerAction {
     | "reassign"
     | "stop"
     | "reopen"
+    | "break-down"
     | "check"
     | "publish"
     | "merge";
@@ -477,6 +478,15 @@ export function presentFactoryTaskBanner(input: {
         need.reason === "question" ? "Answer" : `Open ${need.displayId}`,
         need.ref.taskId,
       ),
+    );
+  if (need?.reason === "failed" && task.run?.purpose === "planning")
+    return banner(
+      "failed",
+      "danger",
+      "Break down failed",
+      input.runDetail ?? need.detail,
+      action("break-down", "Break down"),
+      null,
     );
   if (need?.reason === "failed")
     return banner(

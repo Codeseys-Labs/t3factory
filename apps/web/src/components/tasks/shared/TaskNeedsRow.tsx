@@ -14,6 +14,7 @@ import { useState } from "react";
 
 import { factoryTasks, useFactoryTaskRequests } from "../../../state/factoryTasks";
 import { toastManager } from "../../ui/toast";
+import { openTaskSetup } from "../taskDialogs";
 import { type KitAction, NeedsYouRow } from "../kit";
 import { useTaskActions, useTaskPermissions } from "./taskActions";
 import { useTaskAssigneeChip } from "./taskAssigneeChip";
@@ -65,17 +66,23 @@ function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
   const permissions = useTaskPermissions(need.ref.environmentId);
   const [retrying, setRetrying] = useState(false);
   const action: KitAction =
-    need.reason === "failed"
+    need.reason === "failed" && task?.run?.purpose === "planning"
       ? {
-          label: "Retry",
-          disabled: task === null || !permissions.retry || retrying,
-          onClick: () => {
-            if (task === null) return;
-            setRetrying(true);
-            void actions.retry(task).then(() => setRetrying(false));
-          },
+          label: "Break down",
+          disabled: !permissions.start,
+          onClick: () => openTaskSetup(task.ref, "break-down"),
         }
-      : { label: need.reason === "question" ? "Answer" : "Review", onClick: onOpen };
+      : need.reason === "failed"
+        ? {
+            label: "Retry",
+            disabled: task === null || !permissions.retry || retrying,
+            onClick: () => {
+              if (task === null) return;
+              setRetrying(true);
+              void actions.retry(task).then(() => setRetrying(false));
+            },
+          }
+        : { label: need.reason === "question" ? "Answer" : "Review", onClick: onOpen };
   return (
     <Row
       need={need}

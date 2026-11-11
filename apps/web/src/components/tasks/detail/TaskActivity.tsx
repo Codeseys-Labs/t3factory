@@ -8,7 +8,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { useNowMinute } from "../../../hooks/useNowMinute";
-import { useFactoryTaskActivity } from "../../../state/factoryTasks";
+import { useFactoryTaskActivity, useRefreshFactoryTaskActivity } from "../../../state/factoryTasks";
 import { useEnvironmentPresentation } from "../../../state/presentation";
 import { buildThreadRouteParams } from "../../../threadRoutes";
 import { formatRelativeTimeLabel } from "../../../timestampFormat";
@@ -40,10 +40,9 @@ function ActivityPages({
   cursor: string | undefined;
   later: readonly FactoryTaskActivityEntry[];
 }) {
-  const result = useFactoryTaskActivity(detail.task.ref, {
-    order: "newest",
-    ...(cursor === undefined ? {} : { cursor }),
-  });
+  const page = { order: "newest" as const, ...(cursor === undefined ? {} : { cursor }) };
+  const result = useFactoryTaskActivity(detail.task.ref, page);
+  const retry = useRefreshFactoryTaskActivity(detail.task.ref, page);
   const [earlier, setEarlier] = useState(false);
   if (result._tag === "Success") {
     const entries = [...result.value.entries].reverse().concat(later);
@@ -58,7 +57,20 @@ function ActivityPages({
       />
     );
   }
-  if (later.length > 0) return <ActivityList detail={detail} entries={later} />;
+  if (later.length > 0)
+    return (
+      <div className="flex flex-col gap-1.5">
+        {result._tag === "Failure" ? (
+          <p role="alert" className="text-destructive-foreground flex items-center gap-2 text-sm">
+            Couldn't load earlier activity.
+            <Button variant="ghost-muted" size="xs" onClick={retry}>
+              Try again
+            </Button>
+          </p>
+        ) : null}
+        <ActivityList detail={detail} entries={later} />
+      </div>
+    );
   if (result._tag === "Failure")
     return (
       <p role="alert" className="text-destructive-foreground text-sm">

@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
+import * as PlatformError from "effect/PlatformError";
 import * as Scope from "effect/Scope";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
@@ -12,7 +13,10 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import { makePosixOwnedProcess, PosixCgroupController } from "./PosixOwnedProcess.ts";
 import { ownedWriterPlatformRefusal, makeOwnedProcess } from "./OwnedProcess.ts";
 
-const fixture = (mode: "empty" | "populated" | "unreadable" | "missing" = "empty") => {
+const fixture = (
+  mode: "empty" | "populated" | "unreadable" | "missing" = "empty",
+  exit: "code" | "signal" = "code",
+) => {
   const operations: string[] = [];
   const lease = {
     path: "/delegated/task",
@@ -39,7 +43,18 @@ const fixture = (mode: "empty" | "populated" | "unreadable" | "missing" = "empty
       commands.push(command);
       return ChildProcessSpawner.makeHandle({
         pid: ChildProcessSpawner.ProcessId(100),
-        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+        // Node fails exitCode for a signal exit; the finished handle still reports it.
+        exitCode:
+          exit === "code"
+            ? Effect.succeed(ChildProcessSpawner.ExitCode(0))
+            : Effect.fail(
+                PlatformError.systemError({
+                  module: "ChildProcess",
+                  method: "exitCode",
+                  _tag: "Unknown",
+                  cause: new Error("Process interrupted due to receipt of signal: 'SIGKILL'"),
+                }),
+              ),
         isRunning: Effect.succeed(false),
         kill: () => Effect.void,
         unref: Effect.succeed(Effect.void),
@@ -60,11 +75,15 @@ const fixture = (mode: "empty" | "populated" | "unreadable" | "missing" = "empty
   return { operations, lease, commands, gates, native };
 };
 
-it.effect.each([false, true])(
-  "contains before exec, observes empty independently of root exit, and seals new spawns (shell %s)",
-  (shell) =>
+it.effect.each([
+  { shell: false, exit: "code" },
+  { shell: true, exit: "code" },
+  { shell: false, exit: "signal" },
+] as const)(
+  "contains before exec, observes empty independently of root exit, and seals new spawns (shell $shell, exit $exit)",
+  ({ shell, exit }) =>
     Effect.gen(function* () {
-      const fake = fixture();
+      const fake = fixture("empty", exit);
       const owner = yield* makePosixOwnedProcess().pipe(
         Effect.provideService(HostProcess.Platform, "linux"),
         Effect.provideService(PosixCgroupController, { create: () => fake.lease }),

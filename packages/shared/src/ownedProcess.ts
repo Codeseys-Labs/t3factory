@@ -29,3 +29,18 @@ export const spawnOwnedProcess = Effect.fn("OwnedProcess.spawn")(function* (
   const owner = yield* OwnedProcess;
   return yield* owner === undefined ? spawner.spawn(command) : owner.spawn(command, spawner);
 });
+
+// Effect fails exitCode for a signal exit; a handle that stopped running still confirms it.
+// None means the process ended by signal.
+export const awaitConfirmedExit = Effect.fn("OwnedProcess.awaitConfirmedExit")(function* (
+  handle: ChildProcessSpawner.ChildProcessHandle,
+) {
+  return yield* handle.exitCode.pipe(
+    Effect.asSome,
+    Effect.catch((error) =>
+      Effect.flatMap(handle.isRunning, (running) =>
+        running ? Effect.fail(error) : Effect.succeedNone,
+      ),
+    ),
+  );
+});

@@ -5,8 +5,8 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as PlatformError from "effect/PlatformError";
 import * as ChildProcess from "effect/process/ChildProcess";
-import type * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { awaitConfirmedExit } from "@t3tools/shared/ownedProcess";
 import {
   makeLinuxCgroupController,
   resolveLinuxCgroupTargetCommand,
@@ -37,7 +37,7 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
     const cwd = yield* HostProcess.WorkingDirectory;
     const jobs: Array<{
       lease: AcpLinuxCgroupLease;
-      exit?: Effect.Effect<ChildProcessSpawner.ExitCode, PlatformError.PlatformError>;
+      exit?: Effect.Effect<void, PlatformError.PlatformError>;
       empty: boolean;
       contained: boolean;
     }> = [];
@@ -141,7 +141,8 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
                 unknown = true;
                 return yield* Effect.failCause(acquired.cause);
               }
-              job.exit = acquired.value.exitCode;
+              const exit = awaitConfirmedExit(acquired.value).pipe(Effect.asVoid);
+              job.exit = exit;
               const contained = acquired.value.getOutputFd(readyFd).pipe(
                 Stream.decodeText,
                 Stream.splitLines,
@@ -154,7 +155,7 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
               );
               yield* Effect.raceFirst(
                 contained,
-                job.exit.pipe(
+                exit.pipe(
                   Effect.andThen(
                     Effect.fail(
                       ownershipError("Root exited before container membership was observed."),
@@ -170,8 +171,7 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
                 ...acquired.value,
                 kill: () =>
                   Effect.try({ try: () => lease.kill(), catch: ownershipError }).pipe(
-                    Effect.andThen(acquired.value.exitCode),
-                    Effect.asVoid,
+                    Effect.andThen(exit),
                   ),
               };
             }),

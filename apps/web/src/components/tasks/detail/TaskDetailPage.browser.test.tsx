@@ -38,6 +38,7 @@ const state = vi.hoisted(() => ({
   actions: {} as Record<string, Spy>,
   commands: {} as Record<string, Spy>,
   readAccess: true as boolean | null,
+  connection: { phase: "connected" } as { phase: string; error?: string },
 }));
 
 vi.mock(import("../../../state/factoryTasks"), async () => {
@@ -138,7 +139,7 @@ vi.mock(import("../../../state/presentation"), async (original) => ({
   useEnvironmentPresentation: (() => ({
     isReady: true,
     presentation: {
-      connection: { phase: "connected" },
+      connection: state.connection,
       entry: { target: { label: "DESKTOP-CP4EDJH" } },
     },
   })) as never,
@@ -252,6 +253,7 @@ function entry(
 
 function setup(path: string) {
   state.readAccess = true;
+  state.connection = { phase: "connected" };
   state.details = new Map();
   state.activity = new Map();
   state.results = new Map();
@@ -811,6 +813,19 @@ it("shows forbidden when a settled session cannot read tasks", async () => {
     .element(page.getByRole("alert"))
     .toHaveTextContent("You don't have access to tasks on this machine.");
   expect(page.getByRole("status").elements()).toHaveLength(0);
+});
+
+it("names the update an unsupported connection needs instead of calling it offline", async () => {
+  const needed =
+    "This client requires a newer server. Update T3 Code on DESKTOP-CP4EDJH to connect.";
+  const { screen } = await renderDetail(taskPath("T-43"), () => {
+    state.readAccess = null;
+    state.connection = { phase: "unsupported", error: needed };
+    state.details.set("T-43", AsyncResult.initial(false));
+  });
+  await using _screen = screen;
+  await expect.element(page.getByRole("alert")).toHaveTextContent(needed);
+  expect(page.getByText(/is offline/).elements()).toHaveLength(0);
 });
 
 it("shows forbidden after read access is revoked", async () => {

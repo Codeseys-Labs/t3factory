@@ -143,7 +143,7 @@ export function useFactoryTaskActivity(ref: FactoryTaskRef) {
             nextCursor: null,
             fetchedAt: page.value.fetchedAt,
           };
-          waiting ||= page.waiting;
+          waiting = waiting || page.waiting;
           const next = page.value.nextCursor;
           if (next === null) return AsyncResult.success(latest, { waiting });
           if (seen.has(next))

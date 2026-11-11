@@ -105,6 +105,69 @@ it("asks several questions in order and sends one answer set", async () => {
   });
 });
 
+it("sends every chosen option of a multi-select question", async () => {
+  const request = facts("task-38.2-run").userInputs[0]!;
+  const mocks = setup({
+    approvals: [],
+    userInputs: [{ ...request, questions: [{ ...request.questions[0]!, multiSelect: true }] }],
+  });
+  await using screen = await render(ask);
+  await userEvent.click(screen.getByRole("button", { name: "Keep cursor paging" }));
+  await userEvent.click(screen.getByRole("button", { name: "Switch to offsets" }));
+  await userEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(mocks.answer).toHaveBeenCalledExactlyOnceWith(RuntimeRequestId.make("question-paging"), {
+    paging: ["Keep cursor paging", "Switch to offsets"],
+  });
+});
+
+it("keeps a question that forbids a typed answer on its options", async () => {
+  const request = facts("task-38.2-run").userInputs[0]!;
+  const mocks = setup({
+    approvals: [],
+    userInputs: [
+      {
+        ...request,
+        questions: [
+          { ...request.questions[0]!, allowCustomAnswer: false },
+          {
+            id: "size",
+            header: "Size",
+            question: "How many rows per page?",
+            multiSelect: false,
+            options: [{ label: "50", description: "Fifty." }],
+          },
+        ],
+      },
+    ],
+  });
+  await using screen = await render(ask);
+  await expect.element(screen.getByRole("textbox", { name: "Reply" })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Switch to offsets" }));
+  await userEvent.click(screen.getByRole("button", { name: "Send" }));
+  await userEvent.click(screen.getByRole("button", { name: "50" }));
+  await userEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(mocks.answer).toHaveBeenCalledExactlyOnceWith(RuntimeRequestId.make("question-paging"), {
+    paging: "Switch to offsets",
+    size: "50",
+  });
+});
+
+it("shows the request the Inbox row names, not the thread's first", async () => {
+  const [question] = facts("task-38.2-run").userInputs;
+  const [approval] = facts("task-39-run").approvals;
+  setup({ approvals: [approval!], userInputs: [question!] });
+  await using screen = await render(
+    <TaskAsk
+      environmentId={FACTORY_TASK_FIXTURES.environmentId}
+      threadId={ThreadId.make("task-38.2-run")}
+      requestId={question!.requestId}
+      from="Codex · Sol"
+    />,
+  );
+  await expect.element(screen.getByText("Keep cursor paging or switch to offsets?")).toBeVisible();
+  expect(screen.container.textContent).not.toContain("python backtest.py");
+});
+
 it.each([
   { button: "Approve once", call: "approveOnce" },
   { button: "Always allow for this task", call: "alwaysAllow" },

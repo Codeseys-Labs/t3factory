@@ -86,6 +86,7 @@ function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSu
       <TaskAsk
         environmentId={task.ref.environmentId}
         threadId={need.threadId}
+        requestId={need.requestId}
         from={assigneeText(chip)}
       />
     );

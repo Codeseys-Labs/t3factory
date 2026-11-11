@@ -155,19 +155,22 @@ function AskHeader({ Icon, from, verb }: { Icon: LucideIcon; from: string; verb:
 }
 
 export interface QuestionAnswer {
-  optionId: string | null;
+  optionIds: readonly string[];
   text: string;
 }
 
 /**
  * An agent's question: its options with a visible selection, a free-text reply, and Send. Send
- * passes the chosen option, the typed text, or both.
+ * passes the chosen options, the typed text, or both. A question that is not `multiSelect` keeps
+ * one option; one that forbids a typed answer shows no reply field.
  */
 export function QuestionCard({
   from,
   question,
   options,
   placeholder = "Or write a reply…",
+  multiSelect = false,
+  allowCustomAnswer = true,
   pending = false,
   onSend,
 }: {
@@ -175,15 +178,25 @@ export function QuestionCard({
   question: string;
   options: readonly { id: string; label: string }[];
   placeholder?: string;
+  multiSelect?: boolean;
+  allowCustomAnswer?: boolean;
   pending?: boolean;
   onSend: (answer: QuestionAnswer) => void;
 }) {
-  const [optionId, setOptionId] = useState<string | null>(null);
+  const [optionIds, setOptionIds] = useState<readonly string[]>([]);
   const [text, setText] = useState("");
-  const canSend = !pending && (optionId !== null || text.trim().length > 0);
+  const canSend = !pending && (optionIds.length > 0 || text.trim().length > 0);
   const send = () => {
-    if (canSend) onSend({ optionId, text: text.trim() });
+    if (canSend) onSend({ optionIds, text: text.trim() });
   };
+  const toggle = (id: string) =>
+    setOptionIds((chosen) =>
+      chosen.includes(id)
+        ? chosen.filter((value) => value !== id)
+        : multiSelect
+          ? [...chosen, id]
+          : [id],
+    );
   return (
     <section
       aria-label={`${from} asks`}
@@ -193,7 +206,7 @@ export function QuestionCard({
       <p className="text-sm">{question}</p>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         {options.map((option) => {
-          const selected = option.id === optionId;
+          const selected = optionIds.includes(option.id);
           return (
             <Button
               key={option.id}
@@ -202,40 +215,46 @@ export function QuestionCard({
               aria-pressed={selected}
               data-pressed={selected ? "" : undefined}
               disabled={pending}
-              onClick={() => setOptionId(selected ? null : option.id)}
+              onClick={() => toggle(option.id)}
             >
               {selected ? <CheckIcon aria-hidden /> : null}
               {option.label}
             </Button>
           );
         })}
-        <InputGroup className="min-w-48 flex-1">
-          <InputGroupInput
-            aria-label="Reply"
-            size="sm"
-            placeholder={placeholder}
-            value={text}
-            disabled={pending}
-            onChange={(event) => setText(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                send();
-              }
-            }}
-          />
-          <InputGroupAddon align="inline-end">
-            <Button
-              variant="ghost-muted"
-              size="icon-xs"
-              aria-label="Send"
-              disabled={!canSend}
-              onClick={send}
-            >
-              <SendIcon aria-hidden />
-            </Button>
-          </InputGroupAddon>
-        </InputGroup>
+        {allowCustomAnswer ? (
+          <InputGroup className="min-w-48 flex-1">
+            <InputGroupInput
+              aria-label="Reply"
+              size="sm"
+              placeholder={placeholder}
+              value={text}
+              disabled={pending}
+              onChange={(event) => setText(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  send();
+                }
+              }}
+            />
+            <InputGroupAddon align="inline-end">
+              <Button
+                variant="ghost-muted"
+                size="icon-xs"
+                aria-label="Send"
+                disabled={!canSend}
+                onClick={send}
+              >
+                <SendIcon aria-hidden />
+              </Button>
+            </InputGroupAddon>
+          </InputGroup>
+        ) : (
+          <Button size="sm" aria-label="Send" disabled={!canSend} onClick={send}>
+            Send
+          </Button>
+        )}
       </div>
     </section>
   );

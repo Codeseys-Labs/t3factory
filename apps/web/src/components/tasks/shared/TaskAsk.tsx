@@ -1,6 +1,7 @@
 import {
   buildPendingUserInputAnswers,
   type PendingUserInputDraftAnswer,
+  resolvePendingUserInputAnswer,
 } from "@t3tools/client-runtime/state/pending-user-input";
 import type {
   ThreadPendingApproval,
@@ -25,36 +26,37 @@ async function settle(sending: Settled, failure: string) {
 }
 
 /**
- * The thread's waiting request where a person answers it: an approval first, then a question.
- * Renders nothing while nothing waits.
+ * The thread's waiting request where a person answers it: the one named by `requestId`, else an
+ * approval first, then a question. Renders nothing while nothing waits, or once the named request
+ * is no longer waiting.
  */
 export function TaskAsk({
   environmentId,
   threadId,
+  requestId = null,
   from,
 }: {
   environmentId: EnvironmentId;
   threadId: ThreadId;
+  requestId?: RuntimeRequestId | null;
   from: string;
 }) {
   const requests = useFactoryTaskRequests(environmentId, threadId);
-  if (requests.approval)
+  const approval =
+    requestId === null
+      ? requests.approval
+      : (requests.approvals.find((item) => item.requestId === requestId) ?? null);
+  const question =
+    requestId === null
+      ? requests.question
+      : (requests.userInputs.find((item) => item.requestId === requestId) ?? null);
+  if (approval)
     return (
-      <TaskApproval
-        key={requests.approval.requestId}
-        approval={requests.approval}
-        requests={requests}
-        from={from}
-      />
+      <TaskApproval key={approval.requestId} approval={approval} requests={requests} from={from} />
     );
-  if (requests.question)
+  if (question)
     return (
-      <TaskQuestion
-        key={requests.question.requestId}
-        question={requests.question}
-        requests={requests}
-        from={from}
-      />
+      <TaskQuestion key={question.requestId} question={question} requests={requests} from={from} />
     );
   return null;
 }
@@ -110,9 +112,13 @@ function TaskQuestion({
 
   const send = async (answer: QuestionAnswer) => {
     const draft: PendingUserInputDraftAnswer = {
-      ...(answer.optionId === null ? {} : { selectedOptionValues: [answer.optionId] }),
+      ...(answer.optionIds.length === 0 ? {} : { selectedOptionValues: answer.optionIds }),
       ...(answer.text ? { customAnswer: answer.text } : {}),
     };
+    if (resolvePendingUserInputAnswer(current, draft) === null) {
+      toastManager.add({ type: "error", title: "Choose one of the answers." });
+      return;
+    }
     const next = { ...drafts, [current.id]: draft };
     if (index < request.questions.length - 1) {
       setDrafts(next);
@@ -138,6 +144,8 @@ function TaskQuestion({
           : current.question
       }
       options={current.options.map((option) => ({ id: optionId(option), label: option.label }))}
+      multiSelect={current.multiSelect === true}
+      allowCustomAnswer={current.allowCustomAnswer !== false}
       pending={sending || unavailable}
       onSend={(answer) => void send(answer)}
     />

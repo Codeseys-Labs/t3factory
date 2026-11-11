@@ -6,11 +6,12 @@ import * as NodeEffectStream from "@effect/platform-node/NodeStream";
 import * as NodeEffectSink from "@effect/platform-node/NodeSink";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
-import { spawnOwnedProcess } from "@t3tools/shared/ownedProcess";
+import { awaitConfirmedExit, spawnOwnedProcess } from "@t3tools/shared/ownedProcess";
 
 // Bridge the SDK's synchronous spawn callback into the caller's owned Effect scope.
 export const makeClaudeOwnedSpawner = Effect.fn("ClaudeOwnedProcess.makeSpawner")(function* () {
@@ -82,10 +83,12 @@ export const makeClaudeOwnedSpawner = Effect.fn("ClaudeOwnedProcess.makeSpawner"
           Stream.runForEach((text) => Effect.sync(() => onStderr?.(text))),
           Effect.forkIn(scope),
         );
-        const code = yield* handle.exitCode;
+        const code = yield* awaitConfirmedExit(handle);
         yield* Fiber.join(output);
         yield* Fiber.join(stderr);
-        exitCode = Number(code);
+        if (Option.isSome(code)) exitCode = Number(code.value);
+        // Effect does not expose which signal ended it; the owner stops roots with SIGKILL.
+        else signalCode ??= "SIGKILL";
         events.emit("exit", exitCode, signalCode);
       }).pipe(
         Effect.catchCause((cause) =>

@@ -112,7 +112,9 @@ const git = Layer.mock(Processes.ProcessRunner)({
       stdout:
         input.args[0] === "rev-parse"
           ? `${projectHead}\n`
-          : "180\t20\tsrc/board.ts\u00004\t0\tsrc/card.ts\u0000",
+          : input.args[4] === input.args[5]
+            ? ""
+            : "180\t20\tsrc/board.ts\u00004\t0\tsrc/card.ts\u0000",
       stderr: "",
       code: ChildProcessSpawner.ExitCode(0),
       timedOut: false,
@@ -1586,11 +1588,18 @@ it.effect(
         assert.include(retriedBinding[0]!.text, "Keep cursor paging");
         assert.equal(retriedBinding[0]!.baseRef, resultCommit);
 
+        // The revision changed no file of its own, yet still carries the code under review.
         yield* finish(third, "sealed");
         const replaced = yield* until(task, (current) => current.result?.revision === 2);
         assert.deepEqual(
-          [replaced.status, replaced.result?.state, replaced.result?.runOrdinal],
-          ["in-review", "ready", 3],
+          [
+            replaced.status,
+            replaced.result?.state,
+            replaced.result?.runOrdinal,
+            replaced.result?.kind,
+            replaced.result?.summary,
+          ],
+          ["in-review", "ready", 3, "code", "+184 −20 · 2 files"],
         );
         assert.deepEqual(
           yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${task.ref.taskId}`,

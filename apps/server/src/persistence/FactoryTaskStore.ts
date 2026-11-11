@@ -150,7 +150,7 @@ export interface PendingResult {
   readonly taskId: string;
   readonly output: FactoryExecutionOutput;
   readonly threadId: ThreadId;
-  /** Base commit of the run's worktree. Null when the run worked in the project root. */
+  /** Commit the result is compared with. Null when the run worked in the project root. */
   readonly baseRef: string | null;
   readonly repositoryPath: string | null;
 }
@@ -993,15 +993,27 @@ const make = Effect.gen(function* () {
       for (const row of sealed) {
         const binding = yield* decodeBinding(row.binding);
         if (pending.some((entry) => entry.output.runAttemptId === binding.runAttemptId)) continue;
+        // A run that continued an earlier result is compared with that result's base, so each
+        // revision lists the whole change a Publish would send.
+        let baseRef =
+          binding.spec.workspaceStrategy.type === "worktree"
+            ? binding.spec.workspaceStrategy.baseRef
+            : null;
+        const seen = new Set<string>();
+        while (baseRef !== null && !seen.has(baseRef)) {
+          seen.add(baseRef);
+          const earlier = yield* sql<{
+            base: string | null;
+          }>`SELECT json_extract(b.binding_json, '$.spec.workspaceStrategy.baseRef') AS base FROM factory_task_results r JOIN factory_execution_bindings b ON b.attempt_id = r.attempt_id WHERE r.root_id = ${rootId} AND r.task_id = ${row.taskId} AND r.commit_sha = ${baseRef} ORDER BY r.revision LIMIT 1`;
+          if (earlier[0]?.base == null) break;
+          baseRef = earlier[0].base;
+        }
         pending.push({
           rootId,
           taskId: row.taskId,
           output: yield* decodeOutput(row.output),
           threadId: binding.threadId,
-          baseRef:
-            binding.spec.workspaceStrategy.type === "worktree"
-              ? binding.spec.workspaceStrategy.baseRef
-              : null,
+          baseRef,
           repositoryPath: row.repositoryPath,
         });
       }

@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   detail: vi.fn(),
   presentation: vi.fn(),
   session: vi.fn(),
+  catalog: vi.fn(),
 }));
 vi.mock("@effect/atom-react", () => ({ useAtomValue: mocks.read, useAtomRefresh: () => vi.fn() }));
 vi.mock("./factory", () => ({
@@ -33,6 +34,13 @@ vi.mock("./session", () => ({
     scope: Parameters<typeof sessionGrantsScope>[1],
   ) => result._tag === "Success" && sessionGrantsScope(result.value, scope),
 }));
+vi.mock("../connection/catalog", () => ({
+  environmentCatalog: {
+    get catalogValueAtom() {
+      return mocks.catalog();
+    },
+  },
+}));
 vi.mock("./server", () => ({ serverEnvironment: {} }));
 vi.mock("./threads", () => ({
   environmentThreadDetails: {},
@@ -46,6 +54,7 @@ const { useFactoryTaskActivity, useFactoryTaskDetailByDisplayId } = await import
 function setup() {
   const registry = AtomRegistry.make();
   onTestFinished(() => registry.dispose());
+  mocks.catalog.mockReturnValue(Atom.make({ isReady: false }));
   mocks.read.mockImplementation((atom: Atom.Atom<unknown>) => {
     registry.mount(atom);
     return registry.get(atom);
@@ -57,55 +66,50 @@ function setup() {
   return registry;
 }
 
-it("reads every activity cursor before showing the latest six and follows later-page updates", () => {
+it("reads only the newest six activity entries and displays them chronologically", () => {
   const registry = setup();
   const ref = fixtures.tasks[0]!.ref;
-  const entries = Array.from({ length: 107 }, (_, index) => ({
-    id: String(index),
+  const entries = Array.from({ length: 6 }, (_, index) => ({
+    id: String(106 - index),
     at: fixtures.at,
     actor: { kind: "person" as const, label: "You" },
-    event: { type: "comment" as const, body: `Comment ${index}` },
+    event: { type: "comment" as const, body: `Comment ${106 - index}` },
   }));
-  const pages = [0, 50, 100].map((start, index) =>
-    Atom.make<AsyncResult.AsyncResult<FactoryTaskActivityResult, Error>>(
-      AsyncResult.success({
-        entries: entries.slice(start, start + 50),
-        nextCursor: index === 2 ? null : String(start + 50),
-        fetchedAt: fixtures.at,
-      }),
-    ),
+  const latest = Atom.make<AsyncResult.AsyncResult<FactoryTaskActivityResult, Error>>(
+    AsyncResult.success({ entries, nextCursor: "older", fetchedAt: fixtures.at }),
   );
-  mocks.activity.mockImplementation(
-    ({ input }: { input: { cursor?: string } }) =>
-      pages[input.cursor ? Number(input.cursor) / 50 : 0],
-  );
+  mocks.activity.mockReturnValue(latest);
   function Probe() {
     const result = useFactoryTaskActivity(ref);
-    const entries = AsyncResult.getOrElse(result, () => ({ entries: [] })).entries;
     return createElement(
       "output",
       { "data-status": result._tag },
-      entries
-        .slice(-6)
-        .map((entry) => entry.id)
+      AsyncResult.getOrElse(result, () => ({ entries: [] }))
+        .entries.map((entry) => entry.id)
         .join(","),
     );
   }
   const read = () => renderToString(createElement(Probe));
   expect(read()).toBe('<output data-status="Success">101,102,103,104,105,106</output>');
-  registry.set(pages[1]!, AsyncResult.waiting(registry.get(pages[1]!)));
+  expect(mocks.activity).toHaveBeenCalledWith({
+    environmentId: ref.environmentId,
+    input: { ref, order: "newest", limit: 6 },
+  });
+  expect(mocks.activity.mock.calls.every(([target]) => target.input.cursor === undefined)).toBe(
+    true,
+  );
   registry.set(
-    pages[2]!,
+    latest,
     AsyncResult.success({
-      entries: [...entries.slice(100), { ...entries[106]!, id: "107" }],
-      nextCursor: null,
+      entries: [{ ...entries[0]!, id: "107" }, ...entries.slice(0, 5)],
+      nextCursor: "older",
       fetchedAt: fixtures.at,
     }),
   );
   expect(read()).toBe('<output data-status="Success">102,103,104,105,106,107</output>');
-  registry.set(pages[1]!, AsyncResult.initial(false));
+  registry.set(latest, AsyncResult.initial(false));
   expect(read()).toBe('<output data-status="Initial"></output>');
-  registry.set(pages[1]!, AsyncResult.failure(Cause.fail(new Error("No access"))));
+  registry.set(latest, AsyncResult.failure(Cause.fail(new Error("No access"))));
   expect(read()).toBe('<output data-status="Failure"></output>');
 });
 
@@ -119,7 +123,7 @@ it.each(["forbidden", "offline", "unsupported", "loading", "current"] as const)(
         connection: {
           phase:
             status === "offline"
-              ? "disconnected"
+              ? "offline"
               : status === "unsupported"
                 ? "unsupported"
                 : "connected",
@@ -148,3 +152,20 @@ it.each(["forbidden", "offline", "unsupported", "loading", "current"] as const)(
     expect(mocks.presentation).toHaveBeenCalledWith(environmentId);
   },
 );
+
+it.each([false, true])("resolves an unknown machine after catalog ready %s", (isReady) => {
+  setup();
+  mocks.catalog.mockReturnValue(Atom.make({ isReady }));
+  mocks.presentation.mockReturnValue(Atom.make(null));
+  mocks.detail.mockReturnValue(Atom.make(AsyncResult.initial<FactoryTaskDetail>(false)));
+  function Probe() {
+    return createElement(
+      "output",
+      null,
+      useFactoryTaskDetailByDisplayId(EnvironmentId.make("unknown"), "T-99").status,
+    );
+  }
+  expect(renderToString(createElement(Probe))).toBe(
+    `<output>${isReady ? "offline" : "loading"}</output>`,
+  );
+});

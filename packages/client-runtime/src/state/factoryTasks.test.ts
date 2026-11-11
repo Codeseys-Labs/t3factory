@@ -326,17 +326,21 @@ it.effect(
 );
 
 it.each([
-  [undefined, "loading"],
-  ["connecting", "loading"],
-  ["available", "offline"],
-  ["offline", "offline"],
-  ["reconnecting", "offline"],
-  ["error", "offline"],
-  ["unsupported", "unsupported"],
-  ["connected", null],
-] as const)("reads a %s connection as %s for task lists", (phase, expected) => {
-  expect(factoryTaskConnectionStatus(phase)).toBe(expected);
-});
+  [undefined, false, "loading"],
+  [undefined, true, "offline"],
+  ["connecting", true, "loading"],
+  ["available", true, "offline"],
+  ["offline", true, "offline"],
+  ["reconnecting", true, "offline"],
+  ["error", true, "offline"],
+  ["unsupported", true, "unsupported"],
+  ["connected", true, null],
+] as const)(
+  "reads a %s connection with catalog ready %s as %s for task lists",
+  (phase, ready, expected) => {
+    expect(factoryTaskConnectionStatus(phase, ready)).toBe(expected);
+  },
+);
 
 it("keeps separate cursor chains, caps pages and removes protected cached rows on revocation", () => {
   const registry = AtomRegistry.make();

@@ -33,9 +33,11 @@ export type FactoryTaskOwnerStatus =
  * What a machine's connection says about reading its tasks, before the session is consulted.
  * `null` means connected: read access then depends on the session. A connection that is
  * starting is loading; `available` is one the person switched off, so it reads offline.
+ * A missing machine is offline once the catalog is ready.
  */
 export function factoryTaskConnectionStatus(
   phase: EnvironmentConnectionPhase | undefined,
+  catalogReady = false,
 ): Extract<FactoryTaskOwnerStatus, "loading" | "offline" | "unsupported"> | null {
   switch (phase) {
     case "connected":
@@ -43,6 +45,7 @@ export function factoryTaskConnectionStatus(
     case "unsupported":
       return "unsupported";
     case undefined:
+      return catalogReady ? "offline" : "loading";
     case "connecting":
       return "loading";
     case "available":

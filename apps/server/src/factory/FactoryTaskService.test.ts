@@ -829,6 +829,29 @@ it.effect("keeps title and description in the plan and everything on the board b
         ],
       );
       assert.equal(secondPage.nextCursor, null);
+      const newest = yield* tasks.activity({ ref: task.ref, limit: 2, order: "newest" });
+      assert.deepEqual(
+        newest.entries.map((entry) => entry.id),
+        [...secondPage.entries]
+          .reverse()
+          .slice(0, 2)
+          .map((entry) => entry.id),
+      );
+      const older = yield* tasks.activity({
+        ref: task.ref,
+        limit: 2,
+        order: "newest",
+        cursor: newest.nextCursor!,
+      });
+      assert.deepEqual(
+        older.entries.map((entry) => entry.id),
+        [secondPage.entries[0]!, firstPage.entries[2]!].map((entry) => entry.id),
+      );
+      assert.equal(
+        (yield* tasks.activity({ ref: task.ref, cursor: newest.nextCursor! }).pipe(Effect.flip))
+          .reason,
+        "invalid-cursor",
+      );
       assert.isTrue(firstPage.entries.every((entry) => entry.actor.label === "You"));
       assert.equal(
         (yield* tasks.activity({ ref: other.ref, cursor: firstPage.nextCursor! }).pipe(Effect.flip))
@@ -1098,7 +1121,9 @@ it.effect.each(
       const running = yield* start(task);
       yield* finish(running.run!, operation === "retry" ? "failed" : "sealed", "Answer");
       yield* until(task, (current) =>
-        operation === "retry" ? current.liveRuns.length === 0 : current.status === "in-review",
+        operation === "retry"
+          ? current.liveRuns.length === 0 && current.run?.endedAt != null
+          : current.status === "in-review",
       );
       if (condition === "blocked") {
         const ref = { environmentId, projectId, rootId: task.ref.rootId };

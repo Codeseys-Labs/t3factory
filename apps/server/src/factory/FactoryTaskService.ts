@@ -165,6 +165,7 @@ export class FactoryTaskService extends Context.Service<
       readonly projectId: ProjectId;
       readonly type: FactoryTaskType;
       readonly assignment: FactoryTaskAssignment;
+      readonly parent?: FactoryTaskRef | undefined;
     }) => Effect.Effect<FactoryTaskAssignee, FactoryTaskError>;
     /** Adds sub-tasks and their blockers to one parent in a single plan revision. */
     readonly createSubtasks: (
@@ -1731,9 +1732,20 @@ const make = Effect.gen(function* () {
   )(function* (input) {
     if ((yield* store.projectWorkspace(input.projectId)) === null)
       return yield* refuse("missing-project");
+    const ancestors: FactoryTaskAssignment[] = [];
+    if (input.parent !== undefined) {
+      if (input.parent.projectId !== input.projectId) return yield* refuse("invalid-input");
+      const { root, task } = yield* requireTask(input.parent);
+      let ancestor: Tasks.TaskView | undefined = task;
+      while (ancestor !== undefined) {
+        ancestors.push(ancestor.row.assignment);
+        ancestor =
+          ancestor.row.parentId === null ? undefined : root.tasks.get(ancestor.row.parentId);
+      }
+    }
     return resolveAssignee(input.assignment, {
       type: input.type,
-      ancestors: [],
+      ancestors,
       ...(yield* store.assigneeDefaults(input.projectId)),
     });
   });

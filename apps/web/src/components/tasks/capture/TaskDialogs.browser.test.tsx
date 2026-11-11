@@ -4,6 +4,7 @@ import { FACTORY_TASK_FIXTURES } from "@t3tools/client-runtime/state/factory-tas
 import {
   FactoryTaskError,
   type FactoryTaskAssignment,
+  type FactoryTaskAssigneePreviewInput,
   type FactoryTaskSummary,
   ProviderInstanceId,
 } from "@t3tools/contracts";
@@ -32,6 +33,8 @@ const state = vi.hoisted(() => ({
   replies: {} as Record<string, unknown[]>,
   projects: [] as unknown[],
   scopeSingle: null as unknown,
+  tasks: [] as FactoryTaskSummary[],
+  previews: [] as FactoryTaskAssigneePreviewInput[],
 }));
 
 vi.mock(import("../../../state/factoryTasks"), async () => {
@@ -47,7 +50,7 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
     permissionAtom: () => Atom.make(true),
   });
   const detailOf = (taskId: string) => {
-    const task = FACTORY_TASK_FIXTURES.tasks.find((entry) => entry.ref.taskId === taskId)!;
+    const task = state.tasks.find((entry) => entry.ref.taskId === taskId)!;
     return {
       task,
       description: "",
@@ -70,10 +73,21 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
       requestTaskBreakdown: command("requestTaskBreakdown"),
       readTask: (target: { input: { task: { ref: { taskId: string } } } }) =>
         Atom.make(AsyncResult.success(detailOf(target.input.task.ref.taskId))),
-      previewTaskAssignee: (target: {
-        input: { assignment: { mode: string; profileId?: string } };
-      }) => {
+      previewTaskAssignee: (target: { input: FactoryTaskAssigneePreviewInput }) => {
+        state.previews.push(target.input);
         const { assignment } = target.input;
+        let parent = state.tasks.find((task) => task.ref.taskId === target.input.parent?.taskId);
+        let inherited = null;
+        while (parent) {
+          const assigned = parent.assignee.assignment;
+          if (assigned.mode === "pinned" || assigned.mode === "profile") {
+            inherited =
+              assigned.mode === "pinned" ? assigned.setup : profileSetup(assigned.profileId);
+            break;
+          }
+          const parentId = parent.parent?.taskId;
+          parent = state.tasks.find((task) => task.ref.taskId === parentId);
+        }
         return Atom.make(
           AsyncResult.success({
             assignment,
@@ -85,7 +99,11 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
                     setup: profileSetup(assignment.profileId ?? ""),
                     via: "assignment",
                   }
-                : { profile: null, setup: profileSetup("implementer"), via: "project-default" },
+                : {
+                    profile: null,
+                    setup: inherited ?? profileSetup("implementer"),
+                    via: inherited ? "parent" : "project-default",
+                  },
           }),
         );
       },
@@ -140,6 +158,8 @@ const created = (overrides: Partial<FactoryTaskSummary> = {}): FactoryTaskSummar
 });
 
 function setup(replies: Partial<Record<CommandName, unknown[]>> = {}) {
+  state.previews = [];
+  state.tasks = [...FACTORY_TASK_FIXTURES.tasks];
   void page.viewport(1440, 900);
   state.calls.length = 0;
   for (const name of COMMANDS) state.replies[name] = [...(replies[name] ?? [])];
@@ -356,6 +376,86 @@ it("runs a task again with the setup of its last run", async () => {
   });
   expect(callsOf("updateTask")).toEqual([]);
 });
+
+it("starts unchanged Auto with the task's server resolution through a person parent", async () => {
+  const original = taskOf("T-38.2");
+  const task: FactoryTaskSummary = {
+    ...original,
+    status: "ready",
+    run: null,
+    liveRuns: [],
+    attention: [],
+    assignee: {
+      assignment: { mode: "auto" },
+      key: "architect",
+      resolved: { profile: null, setup: profile("architect").setup, via: "parent" },
+    },
+  };
+  setup({ startTask: [ok(task)] });
+  state.tasks = state.tasks.map((entry) =>
+    entry.ref.taskId === task.ref.taskId
+      ? task
+      : entry.ref.taskId === task.parent!.taskId
+        ? { ...entry, assignee: { assignment: { mode: "person" }, key: "person", resolved: null } }
+        : entry,
+  );
+  openTaskSetup(task.ref, "start");
+  await using _screen = await render(<TaskDialogsHost />);
+  await userEvent.click(page.getByRole("button", { name: "Start", exact: true }));
+  await vi.waitFor(() => expect(callsOf("startTask")).toHaveLength(1));
+  expect(callsOf("startTask")[0]).toMatchObject({ setup: profile("architect").setup });
+  expect(callsOf("updateTask")).toEqual([]);
+});
+
+it.each(["changed assignment", "new sub-task"] as const)(
+  "previews the full ancestor context for a %s",
+  async (kind) => {
+    const root = taskOf("T-38");
+    const intermediate: FactoryTaskSummary = {
+      ...root,
+      ref: { ...root.ref, taskId: "intermediate" },
+      displayId: "T-38.9",
+      parent: { taskId: root.ref.taskId, displayId: root.displayId },
+      assignee: { assignment: { mode: "person" }, key: "person", resolved: null },
+    };
+    const task: FactoryTaskSummary = {
+      ...taskOf("T-38.2"),
+      run: null,
+      liveRuns: [],
+      parent: { taskId: intermediate.ref.taskId, displayId: intermediate.displayId },
+      assignee: {
+        assignment: { mode: "pinned", setup: profile("implementer").setup },
+        key: "implementer",
+        resolved: { profile: null, setup: profile("implementer").setup, via: "assignment" },
+      },
+    };
+    setup({ createTask: [ok(task)], updateTask: [ok(task)], startTask: [ok(task)] });
+    state.tasks = [
+      ...state.tasks.filter((entry) => entry.ref.taskId !== task.ref.taskId),
+      task,
+      intermediate,
+    ];
+    if (kind === "new sub-task") openNewTask({ parent: intermediate.ref });
+    else openTaskSetup(task.ref, "start");
+    await using _screen = await render(<TaskDialogsHost />);
+    if (kind === "new sub-task") await composer().fill("Nested task");
+    else await pickAssignee(/^Codex · Sol/, /^Auto/);
+    await userEvent.click(
+      page.getByRole("button", {
+        name: kind === "new sub-task" ? /^Start now/ : "Start",
+        exact: kind !== "new sub-task",
+      }),
+    );
+    await vi.waitFor(() => expect(callsOf("startTask")).toHaveLength(1));
+    expect(
+      state.previews.some(
+        (input) =>
+          input.assignment.mode === "auto" && input.parent?.taskId === intermediate.ref.taskId,
+      ),
+    ).toBe(true);
+    expect(callsOf("startTask")[0]).toMatchObject({ setup: root.assignee.resolved!.setup });
+  },
+);
 
 it("asks for a plan without creating anything", async () => {
   const task = taskOf("T-43");

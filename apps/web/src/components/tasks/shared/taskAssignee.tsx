@@ -26,7 +26,6 @@ import { useTaskActions } from "./taskActions";
 import { useTaskAssigneeChip } from "./taskAssigneeChip";
 import {
   autoDetailLine,
-  parentDecidedSetup,
   pickerValue,
   pinnedAssignment,
   presentTaskSetup,
@@ -40,43 +39,56 @@ type Result<A> = AsyncResult.AsyncResult<A, unknown>;
 const NO_PREVIEW: Atom.Atom<Result<FactoryTaskAssignee>> = Atom.make(AsyncResult.initial(false));
 const NO_DETAIL: Atom.Atom<Result<FactoryTaskDetail>> = Atom.make(AsyncResult.initial(false));
 
-/** The server's preview, read only when `input` is given so a parent-decided Auto never asks. */
+/** Reads a preview only when the current task's own resolution cannot answer. */
 function usePreview(environmentId: EnvironmentId, input: FactoryTaskAssigneePreviewInput | null) {
   const atom: Atom.Atom<Result<FactoryTaskAssignee>> =
     input === null ? NO_PREVIEW : factoryTasks.previewTaskAssignee({ environmentId, input });
   return useAtomValue(atom);
 }
 
-/** What a start would run for an assignment, resolved through the parent first like the server. */
+/** Uses the task's resolution or a preview with its full ancestor context. */
 export function useTaskSetup(input: {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
   readonly type: FactoryTaskType;
   readonly assignment: FactoryTaskAssignment;
   readonly parent?: TaskAssigneeParent | undefined;
+  readonly assignee?: FactoryTaskAssignee | undefined;
 }): { setup: FactoryAgentSetup | null; assignee: AssigneeChipProps; pending: boolean } {
   const catalog = useTaskCatalog(input.environmentId);
   const { assignment } = input;
-  const inherited = assignment.mode === "auto" ? parentDecidedSetup(input.parent) : null;
   const local =
     assignment.mode === "pinned"
       ? assignment.setup
       : assignment.mode === "person" || assignment.mode === "unassigned"
         ? null
-        : inherited;
+        : null;
   const asksServer =
-    local === null && (assignment.mode === "auto" || assignment.mode === "profile");
+    input.assignee === undefined &&
+    local === null &&
+    (assignment.mode === "auto" || assignment.mode === "profile");
   const preview = usePreview(
     input.environmentId,
-    asksServer ? { projectId: input.projectId, type: input.type, assignment } : null,
+    asksServer
+      ? {
+          projectId: input.projectId,
+          type: input.type,
+          assignment,
+          ...(input.parent?.ref ? { parent: input.parent.ref } : {}),
+        }
+      : null,
   );
+  if (input.assignee !== undefined)
+    return {
+      setup: input.assignee.resolved?.setup ?? null,
+      assignee: taskAssigneeChipProps(input.assignee, catalog),
+      pending: false,
+    };
   if (!asksServer) {
     const assignee: FactoryTaskAssignee = {
       assignment,
       key: "",
-      resolved: local
-        ? { profile: null, setup: local, via: inherited ? "parent" : "assignment" }
-        : null,
+      resolved: local ? { profile: null, setup: local, via: "assignment" } : null,
     };
     return { setup: local, assignee: taskAssigneeChipProps(assignee, catalog), pending: false };
   }
@@ -101,11 +113,17 @@ function useAutoDetail(input: {
   readonly autoResolution: TaskAssigneePickerProps["autoResolution"];
 }): string {
   const catalog = useTaskCatalog(input.environmentId);
-  const inherited = parentDecidedSetup(input.parent);
-  const local = input.autoResolution !== undefined || inherited !== null;
+  const local = input.autoResolution !== undefined;
   const preview = usePreview(
     input.environmentId,
-    local ? null : { projectId: input.projectId, type: input.type, assignment: { mode: "auto" } },
+    local
+      ? null
+      : {
+          projectId: input.projectId,
+          type: input.type,
+          assignment: { mode: "auto" },
+          ...(input.parent?.ref ? { parent: input.parent.ref } : {}),
+        },
   );
   const context = {
     type: input.type,
@@ -114,8 +132,6 @@ function useAutoDetail(input: {
   };
   if (input.autoResolution !== undefined)
     return autoDetailLine(input.autoResolution.resolved, context);
-  if (inherited !== null)
-    return `Follows ${input.parent?.displayId} · ${presentTaskSetup(inherited, catalog).label}`;
   if (preview._tag === "Success") return autoDetailLine(preview.value.resolved, context);
   return preview._tag === "Initial" ? "Looking up the agent…" : "Picks an agent when it starts";
 }
@@ -233,7 +249,11 @@ function useParentAssignee(task: FactoryTaskSummary): TaskAssigneeParent | undef
         });
   const detail = useAtomValue(atom);
   return parent !== null && detail._tag === "Success"
-    ? { displayId: parent.displayId, assignee: detail.value.task.assignee }
+    ? {
+        ref: detail.value.task.ref,
+        displayId: parent.displayId,
+        assignee: detail.value.task.assignee,
+      }
     : undefined;
 }
 

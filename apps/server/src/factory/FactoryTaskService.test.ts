@@ -1669,6 +1669,32 @@ it.effect(
         assert.deepEqual(child.assignee.resolved?.setup, setupOf("opus", "root"));
         assert.deepEqual(resolved(parent), ["assignment", "devReplay/opus"]);
 
+        const intermediate = yield* create("Person-owned intermediate", {
+          parent: { rootId: parent.ref.rootId, taskId: parent.ref.taskId },
+          assignment: { mode: "person" },
+        });
+        const preview = yield* tasks.resolveAssignee({
+          projectId,
+          type: "bug",
+          assignment: auto,
+          parent: intermediate.ref,
+        });
+        assert.deepEqual(
+          [preview.resolved?.via, preview.resolved?.setup],
+          ["parent", setupOf("opus", "root")],
+        );
+        assert.equal(
+          (yield* tasks
+            .resolveAssignee({
+              projectId: otherProjectId,
+              type: "task",
+              assignment: auto,
+              parent: intermediate.ref,
+            })
+            .pipe(Effect.flip)).reason,
+          "invalid-input",
+        );
+
         const asked = yield* tasks.resolveAssignee({ projectId, type: "bug", assignment: auto });
         assert.deepEqual([asked.resolved?.via, asked.key], ["profile-type", implementer.id]);
         assert.deepEqual(

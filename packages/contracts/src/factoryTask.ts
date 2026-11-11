@@ -537,6 +537,7 @@ export const FactoryTaskAssigneePreviewInput = Schema.Struct({
   projectId: ProjectId,
   type: FactoryTaskType,
   assignment: FactoryTaskAssignment,
+  parent: Schema.optional(FactoryTaskRef),
 });
 export type FactoryTaskAssigneePreviewInput = typeof FactoryTaskAssigneePreviewInput.Type;
 

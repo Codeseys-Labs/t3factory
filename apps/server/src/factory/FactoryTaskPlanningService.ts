@@ -11,6 +11,7 @@ import {
   MessageId,
   ThreadId,
   sessionGrantsScope,
+  type FactoryAgentSetup,
   type FactoryTaskMutationResult,
   type FactoryTaskPlanProposalMutationResult,
   type FactoryTaskPlanProposalReadInput,
@@ -81,6 +82,11 @@ export class FactoryTaskPlanningService extends Context.Service<
   }
 >()("t3/factory/FactoryTaskPlanningService") {}
 
+const planningSetup = (setup: FactoryAgentSetup): FactoryAgentSetup => ({
+  ...setup,
+  workspace: "root",
+});
+
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (value !== null && typeof value === "object")
@@ -102,6 +108,8 @@ const make = Effect.gen(function* () {
   const sessions = yield* AuthSessions.AuthSessionRepository;
   const identity = yield* ServerEnvironmentIdentity;
   const crypto = yield* Crypto.Crypto;
+  // Launches still running in this process; any other unrecorded reservation was abandoned.
+  const launching = new Set<ThreadId>();
   const persistence = (cause: unknown) =>
     isTaskError(cause) ? cause : new FactoryTaskError({ reason: "persistence-failure", cause });
   const invalid = (cause: unknown) => new FactoryTaskError({ reason: "invalid-input", cause });
@@ -191,7 +199,11 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const detail = yield* readTask(input.ref);
           const prior = yield* receipt(input.commandId, digest);
-          if (prior !== null) return prior;
+          if (prior !== null) {
+            if (prior.result === null && prior.request !== null)
+              launching.add(prior.request.threadId);
+            return prior;
+          }
           if (detail.task.status === "done" || detail.task.status === "canceled")
             return yield* new FactoryTaskError({ reason: "invalid-transition" });
           if (detail.task.version !== input.expectedVersion)
@@ -205,9 +217,10 @@ const make = Effect.gen(function* () {
               .getThreadShell(current.threadId)
               .pipe(Effect.mapError(persistence));
             if (
-              !current.recorded ||
-              shell === null ||
-              ["preparing", "running", "starting", "waiting", "queued"].includes(shell.status) ||
+              launching.has(current.threadId) ||
+              (shell === null && current.recorded) ||
+              (shell !== null &&
+                ["preparing", "running", "starting", "waiting", "queued"].includes(shell.status)) ||
               detail.runs.some(
                 (run) =>
                   run.threadId === current.threadId &&
@@ -228,19 +241,32 @@ const make = Effect.gen(function* () {
           yield* store.saveRequest(request);
           const reserved = { digest, request, result: null };
           yield* store.saveReceipt(input.commandId, reserved);
+          launching.add(request.threadId);
           return reserved;
         }),
       )
       .pipe(Effect.mapError(persistence));
     if (reserved.result !== null) return { task: reserved.result.task, replayed: true };
     const request = reserved.request!;
+    return yield* finishLaunch(input, digest, reserved, request).pipe(
+      Effect.ensuring(Effect.sync(() => launching.delete(request.threadId))),
+    );
+  });
+  const finishLaunch = Effect.fn("FactoryTaskPlanningService.finishLaunch")(function* (
+    input: FactoryTaskBreakdownInput,
+    digest: string,
+    reserved: { readonly digest: string; readonly request: Store.BreakdownRequest | null },
+    request: Store.BreakdownRequest,
+  ) {
     const launched = yield* launcher
       .launch({
         commandId: input.commandId,
         threadId: request.threadId,
         projectId: input.ref.projectId,
         title: request.title,
-        ...input.setup,
+        modelSelection: input.setup.modelSelection,
+        runtimeMode: input.setup.runtimeMode,
+        interactionMode: input.setup.interactionMode,
         workspaceStrategy: { type: "root" },
         initialMessage: { messageId: request.messageId, text: request.prompt, attachments: [] },
         createdBy: "user",
@@ -272,7 +298,7 @@ const make = Effect.gen(function* () {
             ref: input.ref,
             threadId: request.threadId,
             runId,
-            setup: input.setup,
+            setup: planningSetup(input.setup),
           });
           const current = yield* store.request(input.ref);
           yield* store.saveRequest({
@@ -317,7 +343,7 @@ const make = Effect.gen(function* () {
             id: prior?.id ?? (yield* randomUuidV4),
             ref: input.ref,
             status: "proposed",
-            proposedBy: { threadId, setup: request.input.setup },
+            proposedBy: { threadId, setup: planningSetup(request.input.setup) },
             items,
             version: prior === null ? 0 : prior.version + 1,
             createdAt: prior?.createdAt ?? now,

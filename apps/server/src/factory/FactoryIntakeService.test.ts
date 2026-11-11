@@ -1148,3 +1148,68 @@ it.effect("snooze expiry notifies open Inboxes after restart with no source chec
     assert.strictEqual(yield* h.callsFor(projectId), 1);
   }),
 );
+
+it.effect("unsnooze restores a persisted arrival with version checks and command replay", () =>
+  Effect.gen(function* () {
+    const h = yield* harness;
+    const first = yield* h.start;
+    yield* h.setIssues(projectId, [issue(1, "Bring me back")]);
+    const source = yield* connectIssues(first.intake, "connect");
+    yield* setEnabled(first.intake, source, false);
+    const arrival = (yield* triage(first.intake)).items[0]!;
+    const now = DateTime.toEpochMillis(yield* DateTime.now);
+    const snoozed = yield* first.intake.resolveArrival(
+      {
+        commandId: CommandId.make("snooze"),
+        id: arrival.id,
+        expectedVersion: arrival.version,
+        action: { type: "snooze", until: DateTime.formatIso(DateTime.makeUnsafe(now + DAY_MS)) },
+      },
+      human,
+    );
+    yield* first.stop;
+    const { intake, changes } = yield* h.start;
+    const [persisted] = (yield* intake.listArrivals({ states: ["snoozed"] })).items;
+    assert.strictEqual(persisted?.id, arrival.id);
+    const input = {
+      commandId: CommandId.make("unsnooze"),
+      id: arrival.id,
+      expectedVersion: snoozed.arrival.version,
+      action: { type: "unsnooze" as const },
+    };
+    const stale = yield* Effect.flip(
+      intake.resolveArrival({ ...input, expectedVersion: arrival.version }, human),
+    );
+    assert.strictEqual(stale.reason, "version-conflict");
+    const restored = yield* intake.resolveArrival(input, human);
+    assert.strictEqual(restored.arrival.state, "new");
+    assert.strictEqual(restored.arrival.snoozedUntil, null);
+    assert.strictEqual(restored.arrival.version, snoozed.arrival.version + 1);
+    assert.strictEqual(restored.task, null);
+    assert.deepStrictEqual(yield* Queue.take(changes), {
+      environmentId,
+      arrivals: true,
+      rules: false,
+      sources: false,
+    });
+    assert.strictEqual((yield* triage(intake)).waiting, 1);
+    assert.strictEqual((yield* intake.listArrivals({ states: ["snoozed"] })).items.length, 0);
+    assert.strictEqual((yield* intake.resolveArrival(input, human)).replayed, true);
+    const conflict = yield* Effect.flip(
+      intake.resolveArrival({ ...input, action: { type: "decline" } }, human),
+    );
+    assert.strictEqual(conflict.reason, "command-conflict");
+    const invalid = yield* Effect.flip(
+      intake.resolveArrival(
+        {
+          ...input,
+          commandId: CommandId.make("unsnooze-new"),
+          expectedVersion: restored.arrival.version,
+        },
+        human,
+      ),
+    );
+    assert.strictEqual(invalid.reason, "invalid-input");
+    assert.strictEqual((yield* Ref.get(h.createCalls)).length, 0);
+  }),
+);

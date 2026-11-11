@@ -647,8 +647,9 @@ const make = Effect.gen(function* () {
   const runDueSources = Effect.fn("FactoryIntakeService.runDueSources")(function* () {
     const now = isoOf(yield* Clock.currentTimeMillis);
     const expired = yield* store.expireSnoozedArrivals(now).pipe(serialized);
+    if (expired) yield* publish({ ...noChange, arrivals: true });
     const due = yield* store.listDueSources(now);
-    let flags = { ...noChange, arrivals: expired };
+    let flags = noChange;
     for (const source of due) {
       flags = mergeFlags(
         flags,
@@ -1112,6 +1113,11 @@ const make = Effect.gen(function* () {
           if (Option.isNone(until) || DateTime.toEpochMillis(until.value) <= nowMs)
             return yield* intakeError("invalid-input");
           next = { state: "snoozed", snoozedUntil: DateTime.formatIso(until.value), task: null };
+          break;
+        }
+        case "unsnooze": {
+          if (arrival.state !== "snoozed") return yield* intakeError("invalid-input");
+          next = { state: "new", snoozedUntil: null, task: null };
           break;
         }
         case "decline": {

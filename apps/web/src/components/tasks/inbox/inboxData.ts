@@ -4,13 +4,14 @@ import {
   AuthOrchestrationReadScope,
   type EnvironmentId,
   type FactoryIntakeArrival,
+  type FactoryIntakeArrivalListInput,
   type FactoryIntakeRule,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { Atom } from "effect/reactivity";
 import { useContext, useState } from "react";
 
-import { factoryIntake, factoryTasks } from "../../../state/factoryTasks";
+import { factoryIntake } from "../../../state/factoryTasks";
 import { environmentPresentations } from "../../../state/presentation";
 import { environmentSession, sessionHasScope } from "../../../state/session";
 import { taskErrorMessage } from "../shared";
@@ -26,9 +27,9 @@ type InboxMachineState = {
 export const arrivalKey = (entry: ArrivalEntry) =>
   JSON.stringify([entry.environmentId, entry.arrival.id]);
 
-export function useInboxData() {
+export function useInboxData(snoozed = false) {
   const scope = useTaskScope();
-  const attention = useNeedsYou();
+  const { list: attentionList, ...attention } = useNeedsYou();
   const registry = useContext(RegistryContext);
   const [pages, setPages] = useState<Record<string, readonly string[]>>({});
   const data = useAtomValue(
@@ -66,21 +67,17 @@ export function useInboxData() {
           machines.push(machine);
           continue;
         }
-        const asks = get(
-          factoryTasks.listTasks({
-            environmentId,
-            input: { ...target.input, scope: "all", attention: true },
-          }),
-        );
-        if (asks._tag === "Initial") machine.state = "loading";
-        if (asks._tag === "Failure") recordFailure(machine, Cause.squash(asks.cause));
-        const key = JSON.stringify(target);
+        machine.state =
+          attentionList.owners.find((owner) => owner.environmentId === environmentId)?.status ??
+          "loading";
+        const input = arrivalInput(target, snoozed);
+        const key = JSON.stringify({ environmentId, input });
         const cursors = [undefined, ...(pages[key] ?? [])];
         for (const [index, cursor] of cursors.entries()) {
           const result = get(
             factoryIntake.listIntakeArrivals({
               environmentId,
-              input: { ...arrivalInput(target), ...(cursor ? { cursor } : {}) },
+              input: { ...input, ...(cursor ? { cursor } : {}) },
             }),
           );
           if (result._tag === "Initial" && machine.state === "current") machine.state = "loading";
@@ -151,17 +148,12 @@ export function useInboxData() {
     },
     reload: () => {
       setPages({});
+      attentionList.refresh();
       for (const target of scope.targets) {
-        registry.refresh(
-          factoryTasks.listTasks({
-            environmentId: target.environmentId,
-            input: { ...target.input, scope: "all", attention: true },
-          }),
-        );
         registry.refresh(
           factoryIntake.listIntakeArrivals({
             environmentId: target.environmentId,
-            input: arrivalInput(target),
+            input: arrivalInput(target, snoozed),
           }),
         );
         registry.refresh(
@@ -195,6 +187,12 @@ function recordFailure(machine: InboxMachineState, error: unknown) {
   machine.message = taskErrorMessage(error);
 }
 
-function arrivalInput(target: FactoryTaskListTarget) {
-  return target.input.projectIds ? { projectIds: target.input.projectIds } : {};
+function arrivalInput(
+  target: FactoryTaskListTarget,
+  snoozed: boolean,
+): FactoryIntakeArrivalListInput {
+  return {
+    ...(target.input.projectIds ? { projectIds: target.input.projectIds } : {}),
+    ...(snoozed ? { states: ["snoozed"] as const } : {}),
+  };
 }

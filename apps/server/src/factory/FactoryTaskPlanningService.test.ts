@@ -308,6 +308,12 @@ const makeHarness = Effect.fn("FactoryTaskPlanningTest.makeHarness")(function* (
     setDetail: (change: Partial<FactoryTaskDetail>) => {
       detail = { ...detail, ...change };
     },
+    finishRuns: () => {
+      detail = {
+        ...detail,
+        runs: detail.runs.map((run) => ({ ...run, state: "completed" as const, endedAt: at })),
+      };
+    },
     setStatus: (status: FactoryTaskSummary["status"]) => {
       detail = { ...detail, task: { ...detail.task, status } };
     },
@@ -434,6 +440,30 @@ it.effect(
       assert.equal(h.launches[0]!.modelSelection.model, "gpt-6-sol");
       assert.equal(yield* reservedThread, h.launches[0]!.threadId);
       assert.lengthOf(h.runs, 1);
+    }),
+);
+
+it.effect(
+  "deleting a finished planning thread releases the request, but a missing live run still blocks it",
+  () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      yield* h.service.requestBreakdown(h.request, human);
+      const first = h.launches[0]!.threadId!;
+      h.shells.delete(first);
+      assert.equal(
+        (yield* h.service
+          .requestBreakdown({ ...h.request, commandId: CommandId.make("live-run") }, human)
+          .pipe(Effect.flip)).reason,
+        "run-active",
+      );
+      h.finishRuns();
+      yield* h.service.requestBreakdown(
+        { ...h.request, commandId: CommandId.make("again") },
+        human,
+      );
+      assert.lengthOf(h.launches, 2);
+      assert.notEqual(h.launches[1]!.threadId, first);
     }),
 );
 

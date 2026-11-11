@@ -218,7 +218,6 @@ const make = Effect.gen(function* () {
               .pipe(Effect.mapError(persistence));
             if (
               launching.has(current.threadId) ||
-              (shell === null && current.recorded) ||
               (shell !== null &&
                 ["preparing", "running", "starting", "waiting", "queued"].includes(shell.status)) ||
               detail.runs.some(

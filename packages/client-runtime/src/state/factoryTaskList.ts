@@ -197,7 +197,8 @@ export function createFactoryTaskListAtoms<LE, CE>(input: {
             },
           }),
         );
-        status = factoryTaskQueryStatus(result);
+        const pageStatus = factoryTaskQueryStatus(result);
+        if (pageStatus !== "current") status = pageStatus;
         const page = Option.getOrNull(AsyncResult.value(result));
         if (status === "forbidden" || status === "unsupported") {
           pages.length = 0;
@@ -207,7 +208,7 @@ export function createFactoryTaskListAtoms<LE, CE>(input: {
           pages.push(page);
           nextCursor = page.nextCursor;
         }
-        if (status !== "current") {
+        if (pageStatus !== "current" && !(pageStatus === "loading" && page)) {
           if (previous && pages.length === 0) {
             pages.push(...previous.pages);
             nextCursor = previous.nextCursor;

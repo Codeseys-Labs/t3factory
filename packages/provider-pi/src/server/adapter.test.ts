@@ -1,4 +1,4 @@
-import { OwnedProcess } from "@t3tools/shared/ownedProcess";
+import { OwnedProcess, type OwnedProcessSpawner } from "@t3tools/shared/ownedProcess";
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -521,32 +521,6 @@ const startTurn = Effect.fnUntraced(function* (
 });
 
 describe("PiAdapterV2", () => {
-  it.effect("routes the Pi CLI through the attempt owner", () => {
-    let owned = 0;
-    return Effect.gen(function* () {
-      const fake = yield* makeFakePi;
-      const { runtime } = yield* openRuntime(fake);
-      yield* runtime.ensureThread({
-        threadId: THREAD_ID,
-        modelSelection: modelSelection("default"),
-        runtimePolicy,
-      });
-      assert.equal(owned, 1);
-    }).pipe(
-      Effect.provideService(AgentScope, {
-        ...AgentScope.defaultValue(),
-        wrap: () => Effect.die("An owned CLI cannot be moved to a separate systemd scope."),
-      }),
-      Effect.provideService(OwnedProcess, {
-        spawn: (command, native) => {
-          owned++;
-          return native.spawn(command);
-        },
-      }),
-      Effect.scoped,
-      Effect.provide(layerTest),
-    );
-  });
   it.effect("keeps native image bytes and the saved path in the prompt", () =>
     Effect.gen(function* () {
       const host = yield* ProviderHost.ProviderHost;
@@ -1480,13 +1454,35 @@ describe("PiAdapterV2", () => {
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
-  it.effect.each(["session", "process"] as const)("cleans up detached work on Pi %s exit", (exit) =>
+  // A task attempt owns Pi instead of a systemd scope; its owner stops the detached work.
+  it.effect.each([
+    { exit: "session", cleanup: "scope" },
+    { exit: "process", cleanup: "scope" },
+    { exit: "session", cleanup: "owner" },
+    { exit: "process", cleanup: "owner" },
+  ] as const)("cleans up detached work on Pi $exit exit ($cleanup cleanup)", ({ exit, cleanup }) =>
     Effect.gen(function* () {
       const fake = yield* makeFakePi;
       const exited = yield* Deferred.make<ChildProcessSpawner.ExitCode>();
       const scopeStopped = yield* Deferred.make<void>();
       let processReleased = false;
+      let owned = 0;
       const stopped: Array<{ unit: string; processReleased: boolean }> = [];
+      const owner: OwnedProcessSpawner = {
+        spawn: (command, native) => {
+          owned++;
+          return native.spawn(command).pipe(
+            Effect.map((child) => ({
+              ...child,
+              kill: () =>
+                Effect.sync(() => void stopped.push({ unit: "owned", processReleased })).pipe(
+                  Effect.andThen(Deferred.succeed(scopeStopped, undefined)),
+                  Effect.asVoid,
+                ),
+            })),
+          );
+        },
+      };
       yield* Effect.gen(function* () {
         yield* openRuntime({
           ...fake,
@@ -1518,17 +1514,25 @@ describe("PiAdapterV2", () => {
         Effect.provideService(AgentScope, {
           ...AgentScope.defaultValue(),
           wrap: ({ command, args }) =>
-            Effect.succeed({ command, args, unit: "t3code-pi-test.scope" }),
+            cleanup === "owner"
+              ? Effect.die("An owned CLI cannot be moved to a separate systemd scope.")
+              : Effect.succeed({ command, args, unit: "t3code-pi-test.scope" }),
           stop: (unit) =>
             Effect.sync(() => void stopped.push({ unit, processReleased })).pipe(
               Effect.andThen(Deferred.succeed(scopeStopped, undefined)),
               Effect.asVoid,
             ),
         }),
+        Effect.provideService(OwnedProcess, cleanup === "owner" ? owner : undefined),
       );
-      assert.deepStrictEqual(stopped, [
-        { unit: "t3code-pi-test.scope", processReleased: exit === "session" },
-      ]);
+      // The owner stops before the native release in both cases, and again on close.
+      assert.deepStrictEqual(
+        stopped[0],
+        cleanup === "owner"
+          ? { unit: "owned", processReleased: false }
+          : { unit: "t3code-pi-test.scope", processReleased: exit === "session" },
+      );
+      assert.equal(owned, cleanup === "owner" ? 1 : 0);
     }).pipe(Effect.provide(layerTest)),
   );
 

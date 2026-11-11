@@ -289,6 +289,8 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
           return Deferred.succeed(exitDeferred, Number(code));
         }),
     }),
+    // An owned handle's exit follows Pi itself; stop the detached work holding stdout open.
+    Effect.andThen(factoryOwned ? child.kill().pipe(Effect.ignore) : Effect.void),
     Effect.forkIn(scope),
   );
 

@@ -19,6 +19,7 @@ import { describe, expect } from "vite-plus/test";
 
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import { AgentScope } from "@t3tools/shared/AgentScope";
+import { OwnedProcess, type OwnedProcessSpawner } from "@t3tools/shared/ownedProcess";
 import * as EffectAcpErrors from "effect-acp/errors";
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -193,62 +194,79 @@ describe("AcpSessionRuntime", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
-  it.effect("reports an idle child exit and rejects later prompts", () =>
-    Effect.gen(function* () {
-      const stopped = yield* Deferred.make<string>();
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const runtime = yield* AcpSessionRuntime.make(mockRuntimeOptions).pipe(
-        Effect.provideService(
-          ChildProcessSpawner.ChildProcessSpawner,
-          ChildProcessSpawner.make((command) =>
-            spawner.spawn(command).pipe(
-              Effect.map((child) =>
-                ChildProcessSpawner.makeHandle({
-                  ...child,
-                  // Model an inherited pipe held open until detached work is stopped.
-                  stdout: Stream.concat(
-                    child.stdout,
-                    Stream.fromEffect(Deferred.await(stopped)).pipe(Stream.drain),
-                  ),
-                }),
+  // A task attempt owns the agent instead of a systemd scope; its owner stops the detached work.
+  it.effect.each(["scope", "owner"] as const)(
+    "reports an idle child exit and rejects later prompts (%s cleanup)",
+    (cleanup) =>
+      Effect.gen(function* () {
+        const stopped = yield* Deferred.make<string>();
+        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const owner: OwnedProcessSpawner = {
+          spawn: (command, native) =>
+            native.spawn(command).pipe(
+              Effect.map((child) => ({
+                ...child,
+                kill: () => Deferred.succeed(stopped, "owned").pipe(Effect.asVoid),
+              })),
+            ),
+        };
+        const runtime = yield* AcpSessionRuntime.make(mockRuntimeOptions).pipe(
+          Effect.provideService(
+            ChildProcessSpawner.ChildProcessSpawner,
+            ChildProcessSpawner.make((command) =>
+              spawner.spawn(command).pipe(
+                Effect.map((child) =>
+                  ChildProcessSpawner.makeHandle({
+                    ...child,
+                    // Model an inherited pipe held open until detached work is stopped.
+                    stdout: Stream.concat(
+                      child.stdout,
+                      Stream.fromEffect(Deferred.await(stopped)).pipe(Stream.drain),
+                    ),
+                  }),
+                ),
               ),
             ),
           ),
-        ),
-        Effect.provideService(AgentScope, {
-          ...AgentScope.defaultValue(),
-          wrap: ({ command, args }) =>
-            Effect.succeed({ command, args, unit: "t3code-acp-test.scope" }),
-          stop: (unit) => Deferred.succeed(stopped, unit).pipe(Effect.asVoid),
-        }),
-      );
-      yield* runtime.start();
-      expect(yield* Deferred.isDone(stopped)).toBe(false);
-      yield* runtime.notify("_test/exit", {});
-      const events = yield* runtime.getEvents().pipe(Stream.take(1), Stream.runCollect);
-      expect(yield* Deferred.await(stopped)).toBe("t3code-acp-test.scope");
-      const event = events[0];
-      expect(event).toMatchObject({ _tag: "ConnectionTerminated", error: { code: 19 } });
-      if (event?._tag !== "ConnectionTerminated") return;
-      expect(
-        yield* runtime
-          .prompt({
-            prompt: [{ type: "text", text: "must not run" }],
-          })
-          .pipe(Effect.flip),
-      ).toBe(event.error);
-      expect(yield* runtime.start().pipe(Effect.flip)).toBe(event.error);
-      expect(yield* runtime.initialize().pipe(Effect.flip)).toBe(event.error);
-      expect(
-        yield* runtime.request("_test/environment", {}).pipe(
-          Effect.match({
-            onFailure: (error) => error,
-            onSuccess: () => undefined,
+          Effect.provideService(AgentScope, {
+            ...AgentScope.defaultValue(),
+            wrap: ({ command, args }) =>
+              cleanup === "owner"
+                ? Effect.die("An owned CLI cannot be moved to a separate systemd scope.")
+                : Effect.succeed({ command, args, unit: "t3code-acp-test.scope" }),
+            stop: (unit) => Deferred.succeed(stopped, unit).pipe(Effect.asVoid),
           }),
-        ),
-      ).toBe(event.error);
-      expect(yield* runtime.notify("_test/exit", {}).pipe(Effect.flip)).toBe(event.error);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+          Effect.provideService(OwnedProcess, cleanup === "owner" ? owner : undefined),
+        );
+        yield* runtime.start();
+        expect(yield* Deferred.isDone(stopped)).toBe(false);
+        yield* runtime.notify("_test/exit", {});
+        const events = yield* runtime.getEvents().pipe(Stream.take(1), Stream.runCollect);
+        expect(yield* Deferred.await(stopped)).toBe(
+          cleanup === "owner" ? "owned" : "t3code-acp-test.scope",
+        );
+        const event = events[0];
+        expect(event).toMatchObject({ _tag: "ConnectionTerminated", error: { code: 19 } });
+        if (event?._tag !== "ConnectionTerminated") return;
+        expect(
+          yield* runtime
+            .prompt({
+              prompt: [{ type: "text", text: "must not run" }],
+            })
+            .pipe(Effect.flip),
+        ).toBe(event.error);
+        expect(yield* runtime.start().pipe(Effect.flip)).toBe(event.error);
+        expect(yield* runtime.initialize().pipe(Effect.flip)).toBe(event.error);
+        expect(
+          yield* runtime.request("_test/environment", {}).pipe(
+            Effect.match({
+              onFailure: (error) => error,
+              onSuccess: () => undefined,
+            }),
+          ),
+        ).toBe(event.error);
+        expect(yield* runtime.notify("_test/exit", {}).pipe(Effect.flip)).toBe(event.error);
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
   it.effect("retires a native runtime when its prompt caller is interrupted", () =>

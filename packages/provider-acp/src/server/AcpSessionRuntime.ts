@@ -1466,10 +1466,12 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
     ),
   );
 
-  // Detached children can keep stdout open, delaying protocol termination.
-  if (scopeUnit !== undefined) {
+  // Detached children can keep stdout open, delaying protocol termination. An owned handle's
+  // exit follows the root, and its kill stops everything the attempt started.
+  if (scopeUnit !== undefined || factoryOwned) {
+    const stopDetached = factoryOwned ? child.kill().pipe(Effect.ignore) : stopScope;
     yield* child.exitCode.pipe(
-      Effect.matchEffect({ onFailure: () => stopScope, onSuccess: () => stopScope }),
+      Effect.matchEffect({ onFailure: () => stopDetached, onSuccess: () => stopDetached }),
       Effect.forkIn(runtimeScope),
     );
   }

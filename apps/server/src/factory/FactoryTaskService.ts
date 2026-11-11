@@ -655,6 +655,23 @@ const make = Effect.gen(function* () {
     return sha;
   });
 
+  const requireIdleSiblings = Effect.fn("FactoryTaskService.requireIdleSiblings")(function* (
+    row: Tasks.TaskRow,
+    revision: number,
+  ) {
+    if (
+      (yield* store.liveAttempts({
+        rootId: row.rootId,
+        revision,
+        exceptTaskId: row.taskId,
+      })).length > 0
+    )
+      return yield* new FactoryTaskError({
+        reason: "run-active",
+        detail: "Another sub-task of this task is running. Try again when it finishes.",
+      });
+  });
+
   /**
    * Where the task's next run starts in the engine. The engine runs a task once per plan
    * revision, so another round takes a new revision, which stops authorizing every sibling run
@@ -673,18 +690,7 @@ const make = Effect.gen(function* () {
       prior.latestStatus !== "sealed" &&
       (FAILED_NATIVE.has(prior.nativeStatus ?? "") || prior.latestStatus === "failed");
     const round = prior !== null && !retryable;
-    if (
-      round &&
-      (yield* store.liveAttempts({
-        rootId: row.rootId,
-        revision: head.revision,
-        exceptTaskId: row.taskId,
-      })).length > 0
-    )
-      return yield* new FactoryTaskError({
-        reason: "run-active",
-        detail: "Another sub-task of this task is running. Try again when it finishes.",
-      });
+    if (round) yield* requireIdleSiblings(row, head.revision);
     return { head, prior, round };
   });
 
@@ -707,17 +713,22 @@ const make = Effect.gen(function* () {
     let { head, prior } = next;
     if (next.round) {
       const title = head.tasks.find((task) => task.id === row.taskId)?.title ?? row.title;
-      head = (yield* plans
-        .apply(
-          {
-            commandId: derived(input.commandId, "round"),
-            ref,
-            expectedRevision: head.revision,
-            operations: [{ type: "task.update", id: row.taskId, title }],
-          },
-          input.actor,
-        )
-        .pipe(Effect.mapError(planError))).plan;
+      head = (yield* transact(
+        Effect.gen(function* () {
+          yield* requireIdleSiblings(row, head.revision);
+          return yield* plans
+            .apply(
+              {
+                commandId: derived(input.commandId, "round"),
+                ref,
+                expectedRevision: head.revision,
+                operations: [{ type: "task.update", id: row.taskId, title }],
+              },
+              input.actor,
+            )
+            .pipe(Effect.mapError(planError));
+        }),
+      )).plan;
       prior = null;
     }
     const worktree = input.setup.workspace === "worktree";

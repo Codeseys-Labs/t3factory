@@ -1,4 +1,4 @@
-import { assert, it } from "@effect/vitest";
+import { assert, it, vi } from "@effect/vitest";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -51,6 +51,7 @@ import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as DeliveryStore from "../persistence/FactoryDeliveryStore.ts";
 import * as ExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as IntakeStore from "../persistence/FactoryIntakeStore.ts";
+import * as TaskStore from "../persistence/FactoryTaskStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Processes from "../processRunner.ts";
@@ -313,7 +314,7 @@ const layerWith = (environmentDefault: ModelSelection | null = null) => {
   const engine = Layer.mergeAll(gatedPlans, gatedExecutions, ExecutionStore.layer, deliveries).pipe(
     Layer.provideMerge(base),
   );
-  return Layer.mergeAll(Tasks.layer, Profiles.layer, Changes.layer).pipe(
+  return Layer.mergeAll(Tasks.layer, Profiles.layer, Changes.layer, TaskStore.layer).pipe(
     Layer.provideMerge(engine),
   );
 };
@@ -2098,6 +2099,75 @@ it.effect(
         assert.deepEqual((yield* summary(parent)).progress, { done: 1, total: 2 });
       }),
     ),
+);
+
+it.effect("a sibling admitted after the round's live check prevents the revision bump", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { sql, tasks, create, subtask, start, finish, until } = yield* harness;
+      const parent = yield* create("Unified task model");
+      const contract = yield* subtask("Contract and migration", parent);
+      const notes = yield* subtask("Release notes", parent);
+      yield* finish((yield* start(contract, setupOf("opus", "root"))).run!, "sealed", "Drafted.");
+      yield* until(contract, (current) => current.status === "in-review");
+      const plans = yield* Plans.FactoryPlanService;
+      const ref = { environmentId, projectId, rootId: parent.ref.rootId };
+      const before = yield* plans.read({ ref });
+      const reached = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const store = yield* TaskStore.FactoryTaskStore;
+      const liveAttempts = store.liveAttempts;
+      let checks = 0;
+      using _liveAttempts = vi.spyOn(store, "liveAttempts").mockImplementation((input) =>
+        liveAttempts(input).pipe(
+          Effect.tap(() => {
+            if (input.exceptTaskId !== contract.ref.taskId || ++checks !== 2) return Effect.void;
+            return Deferred.succeed(reached, undefined).pipe(
+              Effect.andThen(Deferred.await(release)),
+            );
+          }),
+        ),
+      );
+      const overtaken = yield* Effect.forkChild(
+        tasks
+          .requestChanges(
+            {
+              commandId: command("overtaken-round"),
+              ref: contract.ref,
+              revision: 1,
+              note: "Later",
+            },
+            human,
+          )
+          .pipe(Effect.result),
+      );
+      yield* Deferred.await(reached);
+      const sibling = (yield* start(notes, setupOf("flash", "root"))).run!;
+      yield* Deferred.succeed(release, undefined);
+      const outcome = yield* Fiber.join(overtaken);
+      assert.equal(outcome._tag, "Failure");
+      if (outcome._tag !== "Failure") return;
+      assert.deepEqual(
+        [outcome.failure.reason, outcome.failure.detail],
+        ["run-active", "Another sub-task of this task is running. Try again when it finishes."],
+      );
+      assert.equal((yield* plans.read({ ref })).revision, before.revision);
+      assert.equal(
+        (yield* tasks.read({ task: { ref: notes.ref } })).task.run?.threadId,
+        sibling.threadId,
+      );
+      assert.deepEqual(
+        yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${contract.ref.taskId}`,
+        [{ note: null }],
+      );
+      assert.deepEqual(
+        (yield* tasks.activity({ ref: contract.ref })).entries.filter(
+          (entry) => entry.event.type === "changes-requested",
+        ),
+        [],
+      );
+    }),
+  ),
 );
 
 it.effect(

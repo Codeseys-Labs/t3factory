@@ -550,9 +550,14 @@ const make = Effect.gen(function* () {
     const board = yield* sql<{
       displayId: string;
       note: string | null;
-    }>`SELECT display_id AS displayId, input_note AS note FROM factory_tasks WHERE root_id = ${ref.rootId} AND task_id = ${taskId}`.pipe(
+      accepted: number | null;
+    }>`SELECT display_id AS displayId, input_note AS note, accepted_revision AS accepted FROM factory_tasks WHERE root_id = ${ref.rootId} AND task_id = ${taskId}`.pipe(
       Effect.mapError(failure),
     );
+    // Read where the binding is written: a task accepted on the board is done, and Accept sees
+    // every run admitted before it, so the two never both land.
+    if ((board[0]?.accepted ?? null) !== null)
+      return yield* new FactoryExecutionError({ reason: "task-conflict" });
     const inputs: string[] = [
       task.title,
       task.context,

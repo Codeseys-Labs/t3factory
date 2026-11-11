@@ -1501,7 +1501,18 @@ const make = Effect.gen(function* () {
       // Code continues from the result under review; a document starts from the task again.
       baseCommit: latest.kind === "code" ? latest.commit : null,
       record: command.record,
-    });
+    }).pipe(
+      // A run that was never admitted leaves no note for a later one; an Accept that won says so.
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          if (yield* store.launched(derived(input.commandId, "admit"))) return yield* error;
+          yield* store.updateBoard(row, { inputNote: null, bumpVersion: false, at });
+          if ((yield* store.acceptedRevision(row)) !== null)
+            return yield* refuse("invalid-transition");
+          return yield* error;
+        }),
+      ),
+    );
   });
 
   const reopen: FactoryTaskService["Service"]["reopen"] = Effect.fn("FactoryTaskService.reopen")(

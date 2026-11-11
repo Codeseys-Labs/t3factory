@@ -206,11 +206,14 @@ export function resolveTasksListState(input: {
   }[];
   readonly rowCount: number;
 }): TasksListState {
-  const notices = input.owners.flatMap((owner) =>
+  const unreadOwners = input.owners.flatMap((owner) =>
     owner.status === "current" || owner.status === "loading"
       ? []
       : [{ environmentId: owner.environmentId, status: owner.status }],
   );
+  const notices = [
+    ...new Map(unreadOwners.map((notice) => [notice.environmentId, notice])).values(),
+  ];
   if (input.owners.length === 0) return { kind: "none", notices: [] };
   if (input.rowCount > 0) return { kind: "ready", notices };
   if (input.owners.some((owner) => owner.status === "loading"))
@@ -301,11 +304,18 @@ export function tasksListNotices(
 }
 
 /** G1: Needs you, then In progress, then In review. */
-export function buildTasksListItems(sections: TasksSections): TasksListItem[] {
+export function buildTasksListItems(
+  sections: TasksSections,
+  needsIncomplete = false,
+): TasksListItem[] {
   return [
     ...(sections.needs.length > 0
       ? [
-          { type: "header" as const, key: "needs", title: `Needs you · ${sections.count}` },
+          {
+            type: "header" as const,
+            key: "needs",
+            title: `Needs you · ${sections.count}${needsIncomplete ? "+" : ""}`,
+          },
           ...sections.needs.map((row) => ({ type: "need" as const, key: row.key, row })),
         ]
       : []),

@@ -27,6 +27,7 @@ export interface TasksListBodyProps {
   readonly notices: readonly { readonly key: string; readonly text: string }[];
   readonly state: TasksListState;
   readonly refreshing: boolean;
+  readonly incomplete?: boolean;
   readonly onRefresh: () => void;
   readonly labelsFor: (task: FactoryTaskSummary) => TaskLabels;
   readonly onOpen: (target: { readonly environmentId: string; readonly displayId: string }) => void;
@@ -113,13 +114,18 @@ export function TasksListBody(props: TasksListBodyProps) {
       keyExtractor={(item) => item.key}
       refreshControl={<RefreshControl refreshing={props.refreshing} onRefresh={props.onRefresh} />}
       ListHeaderComponent={
-        props.notices.length > 0 ? (
+        props.notices.length > 0 || props.incomplete ? (
           <View className="gap-1 pb-1 pt-2">
             {props.notices.map((notice) => (
               <Text key={notice.key} textRole="footnote" className="px-1 text-foreground-muted">
                 {notice.text}
               </Text>
             ))}
+            {props.incomplete ? (
+              <Text textRole="footnote" className="px-1 text-foreground-muted">
+                More tasks may be waiting on you.
+              </Text>
+            ) : null}
           </View>
         ) : null
       }
@@ -129,7 +135,7 @@ export function TasksListBody(props: TasksListBodyProps) {
           <View className="items-center py-10">
             <AppActivityIndicator colorClassName="accent-icon" accessibilityLabel="Loading tasks" />
           </View>
-        ) : state.kind === "ready" ? null : (
+        ) : state.kind === "ready" || (state.kind === "caught-up" && props.incomplete) ? null : (
           <EmptyState
             variant="plain"
             title={TASKS_LIST_COPY[state.kind].title}
@@ -148,6 +154,7 @@ export function TasksListScreen(
     readonly title: string;
     readonly tab: TasksTab;
     readonly needsCount: number;
+    readonly needsIncomplete: boolean;
   },
 ) {
   const navigation = useNavigation();
@@ -160,7 +167,12 @@ export function TasksListScreen(
     <View className="flex-1 bg-screen">
       <AppBar title={props.title} onBack={() => navigation.goBack()} sidebar={false} />
       <TasksListBody {...props} />
-      <TasksTabBar selected={props.tab} needsCount={props.needsCount} onSelect={select} />
+      <TasksTabBar
+        selected={props.tab}
+        needsCount={props.needsCount}
+        needsIncomplete={props.needsIncomplete}
+        onSelect={select}
+      />
     </View>
   );
 }

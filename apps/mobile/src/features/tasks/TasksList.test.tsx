@@ -1,12 +1,18 @@
 import { FACTORY_TASK_FIXTURES } from "@t3tools/client-runtime/state/factory-task-fixtures";
 import { resolveFactoryTaskLiveState } from "@t3tools/client-runtime/state/factory-task-view";
 import { EnvironmentId } from "@t3tools/contracts";
+import type {
+  FactoryTaskListTarget,
+  FactoryTaskOwnerStatus,
+} from "@t3tools/client-runtime/state/factory-task-list";
 import { AsyncResult } from "effect/reactivity";
-import { act, type ReactNode } from "react";
+import { act, useLayoutEffect, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+
+const dataMocks = vi.hoisted(() => ({ list: vi.fn() }));
 
 vi.mock("react-native", () => ({
   Platform: { OS: "android" },
@@ -74,9 +80,26 @@ vi.mock("../../components/ui/EmptyState", () => ({
 }));
 vi.mock("../../state/factoryTasks", () => ({
   useFactoryTaskDetail: () => AsyncResult.initial(),
+  useFactoryTasks: dataMocks.list,
+  useFactoryTaskEntries: (summaries: typeof FACTORY_TASK_FIXTURES.tasks) =>
+    summaries.map((task) => ({
+      task,
+      live: resolveFactoryTaskLiveState(task, FACTORY_TASK_FIXTURES.threadFacts),
+    })),
+  useFactoryTaskCatalogs: () => new Map(),
+}));
+vi.mock("../../state/entities", () => ({ useProjects: () => [] }));
+vi.mock("../../state/environments", () => ({
+  useEnvironments: () => ({
+    environments: [{ environmentId: FACTORY_TASK_FIXTURES.environmentId, label: "Test" }],
+  }),
+}));
+vi.mock("../../lib/clock", () => ({
+  useNowMinuteMs: () => Date.parse(FACTORY_TASK_FIXTURES.at),
 }));
 
 const { TasksListBody } = await import("./TasksList");
+const { useTasksData } = await import("./useTasksData");
 const { buildTasksListItems, buildTasksSections, resolveTasksListState, tasksListNotices } =
   await import("./taskPresentation");
 
@@ -92,6 +115,7 @@ async function render(
   statuses: readonly Parameters<typeof resolveTasksListState>[0]["owners"][number]["status"][],
   content: typeof sections = empty,
   onRefresh = vi.fn(),
+  incomplete = false,
 ) {
   const owners = statuses.map((status, index) => ({
     environmentId: EnvironmentId.make(`environment-${index}`),
@@ -111,6 +135,7 @@ async function render(
         notices={tasksListNotices(state, String)}
         state={state}
         refreshing={false}
+        incomplete={incomplete}
         onRefresh={onRefresh}
         labelsFor={(task) => ({
           projectLabel: task.ref.projectId,
@@ -146,6 +171,9 @@ describe("TasksListBody", () => {
       const { host } = await render(statuses);
       expect(host.textContent).not.toContain("All caught up");
     }
+    const partial = await render(["current"], empty, vi.fn(), true);
+    expect(partial.host.textContent).not.toContain("All caught up");
+    expect(partial.host.textContent).toContain("More tasks may be waiting on you.");
   });
 
   it("shows a spinner while loading and no empty message", async () => {
@@ -171,5 +199,139 @@ describe("TasksListBody", () => {
     expect(host.textContent).toContain("Needs you · 5");
     expect(host.textContent).toContain("Move the list API to tasks");
     expect(host.textContent).toContain("Awaiting Input");
+  });
+});
+
+function setupData(
+  options: {
+    attentionIncomplete?: boolean;
+    workIncomplete?: boolean;
+    status?: FactoryTaskOwnerStatus;
+  } = {},
+) {
+  dataMocks.list.mockReset();
+  const backlog = tasks.find((task) => task.displayId === "T-43")!;
+  const plan = {
+    ...backlog,
+    attention: [
+      {
+        taskId: backlog.ref.taskId,
+        displayId: backlog.displayId,
+        reason: "plan" as const,
+        detail: "Plan ready",
+      },
+    ],
+  };
+  const review = tasks.find((task) => task.displayId === "T-36")!;
+  const source = [
+    tasks.find((task) => task.displayId === "T-41")!,
+    ...Array.from({ length: 501 }, (_, index) => ({
+      ...backlog,
+      ref: { ...backlog.ref, taskId: `ready-${index}` },
+      status: "ready" as const,
+    })),
+    ...Array.from({ length: 60 }, (_, index) => ({
+      ...review,
+      ref: { ...review.ref, taskId: `review-${index}` },
+      attention: [
+        { ...review.attention[0]!, taskId: `review-${index}`, displayId: `T-${100 + index}` },
+      ],
+    })),
+    tasks.find((task) => task.displayId === "T-39")!,
+    plan,
+  ];
+  dataMocks.list.mockImplementation(
+    (targets: readonly FactoryTaskListTarget[], paging?: { loadAll?: boolean }) => {
+      const filter = targets[0]?.input;
+      const matching = filter
+        ? source.filter(
+            (task) =>
+              (!filter.statuses || filter.statuses.includes(task.status)) &&
+              (!filter.attention || task.attention.length > 0 || task.liveRuns.length > 0),
+          )
+        : [];
+      const items = matching.slice(0, paging?.loadAll ? 500 : 50);
+      const status = options.status ?? "current";
+      return {
+        items: items.map((task) => ({ task, stale: status !== "current" })),
+        owners: targets.map(({ environmentId }) => ({ environmentId, status, pages: [{ items }] })),
+        incomplete:
+          matching.length > items.length ||
+          (filter?.attention ? options.attentionIncomplete : options.workIncomplete) === true,
+        refresh: () => {
+          options.status = "loading";
+        },
+      };
+    },
+  );
+}
+
+async function renderData() {
+  let data: ReturnType<typeof useTasksData> | undefined;
+  function Probe() {
+    const current = useTasksData();
+    useLayoutEffect(() => {
+      data = current;
+    });
+    return null;
+  }
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => root.render(<Probe />));
+  onTestFinished(async () => {
+    await act(async () => root.unmount());
+    host.remove();
+  });
+  return {
+    read: () => data!,
+    rerender: () => act(async () => root.render(<Probe />)),
+  };
+}
+
+describe("useTasksData", () => {
+  it("finds old approvals and backlog plans beyond 500 newer ready tasks", async () => {
+    setupData();
+    const { read } = await renderData();
+    const needs = read().sections.needs.map((row) => [row.need.displayId, row.need.reason]);
+    expect(needs).toContainEqual(["T-39", "approve"]);
+    expect(needs).toContainEqual(["T-43", "plan"]);
+    expect(needs).toHaveLength(62);
+    expect(
+      read().sections.groups.flatMap((group) => group.rows.map((row) => row.task.displayId)),
+    ).toEqual(["T-41"]);
+  });
+
+  it.each([
+    [true, false, true, true],
+    [false, true, true, false],
+    [false, false, false, false],
+  ])(
+    "keeps attention and work completeness separate (%s, %s)",
+    async (attentionIncomplete, workIncomplete, incomplete, needsIncomplete) => {
+      setupData({ attentionIncomplete, workIncomplete });
+      const { read } = await renderData();
+      expect(read()).toMatchObject({ incomplete, needsIncomplete });
+    },
+  );
+
+  it("keeps the pull-to-refresh spinner off during background updates", async () => {
+    setupData({ status: "loading" });
+    const { read } = await renderData();
+    expect(read().refreshing).toBe(false);
+  });
+
+  it("shows refresh only for a pull and resets it before the next background update", async () => {
+    const options = { status: "current" as FactoryTaskOwnerStatus };
+    setupData(options);
+    const { read, rerender } = await renderData();
+    await act(async () => read().refresh());
+    expect(read().refreshing).toBe(true);
+    options.status = "current";
+    await rerender();
+    expect(read().refreshing).toBe(false);
+    options.status = "loading";
+    await rerender();
+    expect(read().refreshing).toBe(false);
   });
 });

@@ -19,7 +19,9 @@ export function TasksRouteScreen() {
       title="Tasks"
       tab="tasks"
       needsCount={data.sections.count}
-      items={buildTasksListItems(data.sections)}
+      needsIncomplete={data.needsIncomplete}
+      incomplete={data.incomplete}
+      items={buildTasksListItems(data.sections, data.needsIncomplete)}
       notices={tasksListNotices(data.state, data.environmentLabel)}
       state={data.state}
       refreshing={data.refreshing}
@@ -39,6 +41,8 @@ export function TasksInboxRouteScreen() {
       title="Inbox"
       tab="inbox"
       needsCount={data.sections.count}
+      needsIncomplete={data.needsIncomplete}
+      incomplete={data.needsIncomplete}
       items={buildInboxListItems(data.sections)}
       notices={tasksListNotices(data.inboxState, data.environmentLabel)}
       state={data.inboxState}

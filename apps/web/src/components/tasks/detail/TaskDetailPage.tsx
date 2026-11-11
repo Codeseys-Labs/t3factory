@@ -1,4 +1,7 @@
-import { factoryTaskQueryStatus } from "@t3tools/client-runtime/state/factory-task-list";
+import {
+  factoryTaskConnectionStatus,
+  factoryTaskQueryStatus,
+} from "@t3tools/client-runtime/state/factory-task-list";
 import { factoryTaskKey } from "@t3tools/client-runtime/state/factory-task-view";
 import {
   AuthOrchestrationReadScope,
@@ -112,12 +115,8 @@ function TaskDetailLoader({
       />
     );
   const phase = presentation?.connection.phase;
-  const link =
-    phase === "connected"
-      ? "connected"
-      : !isReady || phase === "connecting" || phase === "available"
-        ? "starting"
-        : "down";
+  const connection = factoryTaskConnectionStatus(phase, isReady);
+  const link = connection === null ? "connected" : connection === "loading" ? "starting" : "down";
   const machine = presentation?.entry.target.label ?? "This machine";
   return <TaskDetailState displayId={displayId} state={loadState(result, link, machine)} />;
 }

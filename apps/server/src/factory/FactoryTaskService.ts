@@ -1809,12 +1809,18 @@ const make = Effect.gen(function* () {
     const input = yield* decodeActivity(raw).pipe(Effect.mapError(invalid));
     const { task } = yield* requireTask(input.ref);
     const limit = input.limit ?? 50;
-    const scope = executionDigest(["factory-task-activity/1", task.row.rootId, task.row.taskId]);
+    const newest = input.order === "newest";
+    const scope = executionDigest([
+      newest ? "factory-task-activity/newest/1" : "factory-task-activity/1",
+      task.row.rootId,
+      task.row.taskId,
+    ]);
     const position = input.cursor === undefined ? null : yield* decodeCursor(input.cursor, scope);
     const rows = yield* store.pageActivity({
       key: task.row,
-      afterSeq: position?.seq ?? 0,
+      afterSeq: position?.seq ?? (newest ? Number.MAX_SAFE_INTEGER : 0),
       limit: limit + 1,
+      ...(newest ? { order: "newest" } : {}),
     });
     const selected = rows.slice(0, limit);
     const last = selected.at(-1);

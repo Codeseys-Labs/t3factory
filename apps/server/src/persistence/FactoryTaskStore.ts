@@ -215,6 +215,7 @@ export class FactoryTaskStore extends Context.Service<
       readonly key: TaskKey;
       readonly afterSeq: number;
       readonly limit: number;
+      readonly order?: "oldest" | "newest";
     }) => Effect.Effect<
       ReadonlyArray<{ readonly seq: number; readonly entry: FactoryTaskActivityEntry }>,
       FactoryTaskError
@@ -1107,7 +1108,7 @@ const make = Effect.gen(function* () {
         at: string;
         actor: string;
         event: string;
-      }>`SELECT seq, at, actor_json AS actor, event_json AS event FROM factory_task_activity WHERE root_id = ${input.key.rootId} AND task_id = ${input.key.taskId} AND seq > ${input.afterSeq} ORDER BY seq LIMIT ${input.limit}`;
+      }>`SELECT seq, at, actor_json AS actor, event_json AS event FROM factory_task_activity WHERE root_id = ${input.key.rootId} AND task_id = ${input.key.taskId} AND ${input.order === "newest" ? sql`seq < ${input.afterSeq}` : sql`seq > ${input.afterSeq}`} ORDER BY seq ${sql.literal(input.order === "newest" ? "DESC" : "ASC")} LIMIT ${input.limit}`;
       return yield* Effect.forEach(rows, activityEntry);
     }, Effect.mapError(failure)),
     readActivity: Effect.fn("FactoryTaskStore.readActivity")(function* (seq) {

@@ -4,7 +4,6 @@ import {
   AuthOrchestrationReadScope,
   EnvironmentId,
   FactoryTaskListInput,
-  type FactoryTaskActivityResult,
   type FactoryTaskDisplayId,
   type FactoryTaskRef,
   type FactoryTaskSummary,
@@ -24,11 +23,11 @@ import {
   type FactoryTaskCatalog,
 } from "@t3tools/client-runtime/state/factory-task-view";
 import type { PendingThreadRequests } from "@t3tools/client-runtime/state/thread-requests";
-import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useContext, useEffect, useMemo } from "react";
 
+import { environmentCatalog } from "../connection/catalog";
 import { taskThreadPill, type TaskEntry } from "../features/tasks/taskPresentation";
 import { resolveThreadListV2Status } from "../features/threads/threadListV2";
 import { environmentPresentations } from "./presentation";
@@ -41,7 +40,10 @@ import { useAtomCommand } from "./use-atom-command";
 const accessAtom = Atom.family((environmentId: EnvironmentId) =>
   Atom.make((get): FactoryTaskOwnerStatus => {
     const presentation = get(environmentPresentations.presentationAtom(environmentId));
-    const connection = factoryTaskConnectionStatus(presentation?.connection.phase);
+    const connection = factoryTaskConnectionStatus(
+      presentation?.connection.phase,
+      get(environmentCatalog.catalogValueAtom).isReady,
+    );
     if (connection !== null || !presentation) return connection ?? "loading";
     if (!presentation.serverConfig) return "loading";
     const session = get(environmentSession.sessionStateAtom(environmentId));
@@ -121,38 +123,13 @@ export function useFactoryTaskDetailByDisplayId(
 }
 
 export function useFactoryTaskActivity(ref: FactoryTaskRef) {
-  const atom = useMemo(
-    () =>
-      Atom.make((get): AsyncResult.AsyncResult<FactoryTaskActivityResult, unknown> => {
-        let cursor: string | undefined;
-        let latest: FactoryTaskActivityResult | undefined;
-        let waiting = false;
-        const seen = new Set<string>();
-        while (true) {
-          const page = get(
-            factoryTaskEnvironment.readTaskActivity({
-              environmentId: ref.environmentId,
-              input: { ref, ...(cursor === undefined ? {} : { cursor }) },
-            }),
-          );
-          if (page._tag !== "Success") return page;
-          latest = {
-            entries: [...(latest?.entries ?? []), ...page.value.entries].slice(-6),
-            nextCursor: null,
-            fetchedAt: page.value.fetchedAt,
-          };
-          waiting = waiting || page.waiting;
-          const next = page.value.nextCursor;
-          if (next === null) return AsyncResult.success(latest, { waiting });
-          if (seen.has(next))
-            return AsyncResult.failure(Cause.fail(new Error("Repeated activity cursor")));
-          seen.add(next);
-          cursor = next;
-        }
-      }).pipe(Atom.setIdleTTL(0)),
-    [ref],
+  const result = useAtomValue(
+    factoryTaskEnvironment.readTaskActivity({
+      environmentId: ref.environmentId,
+      input: { ref, order: "newest", limit: 6 },
+    }),
   );
-  return useAtomValue(atom);
+  return AsyncResult.map(result, (page) => ({ ...page, entries: [...page.entries].reverse() }));
 }
 
 const catalogs = Atom.family((key: string) =>

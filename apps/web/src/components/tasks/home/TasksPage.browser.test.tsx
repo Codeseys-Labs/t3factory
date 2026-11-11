@@ -450,6 +450,15 @@ it.each(["board", "list"] as const)(
     };
     setup({ tasks: [parent, child], search: { layout, filters: { types: ["bug"] } } });
     await using _screen = await render(<TasksPage />);
+    expect(
+      state.targets
+        .flat()
+        .some(
+          (target) =>
+            (target as FactoryTaskListTarget).input.scope === "all" &&
+            (target as FactoryTaskListTarget).input.statuses?.length === 6,
+        ),
+    ).toBe(false);
     await userEvent.click(page.getByRole("button", { name: /^Filter/ }));
     const assignee = page.getByRole("menuitemcheckbox", { name: "Claude · Sonnet" });
     await expect.element(assignee).toBeVisible();

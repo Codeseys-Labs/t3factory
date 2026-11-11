@@ -6,6 +6,8 @@ import {
   AuthSessionId,
   CommandId,
   EnvironmentId,
+  EventId,
+  MessageId,
   FactoryDeliveryError,
   FactoryWorkError,
   ProjectId,
@@ -1503,34 +1505,69 @@ it.effect(
     ),
 );
 
-it.effect("a run in the project root gives a document result", () =>
-  scenario(
-    Effect.gen(function* () {
-      const { tasks, create, start, finish, until } = yield* harness;
-      const task = yield* create("Prerequisite view docs", { lane: "ready", type: "docs" });
-      const run = (yield* start(task, setupOf("flash", "root"))).run!;
-      yield* finish(run, "sealed", "# Prerequisite view\n\nA sub-task waits on its blockers.");
-      const review = yield* until(task, (current) => current.status === "in-review");
-      assert.deepEqual(
-        [review.result?.kind, review.result?.summary],
-        ["document", "Prerequisite view"],
-      );
-      const document = yield* tasks.readResult({ ref: task.ref });
-      assert.equal(document.text, "# Prerequisite view\n\nA sub-task waits on its blockers.");
-      assert.deepEqual(document.files, []);
-      assert.equal(
-        (yield* tasks.readResult({ ref: task.ref, revision: 7 }).pipe(Effect.flip)).reason,
-        "no-result",
-      );
-      yield* tasks.accept({ commandId: command("accept-doc"), ref: task.ref, revision: 1 }, human);
-      assert.equal(
-        (yield* tasks
-          .publish({ commandId: command("publish-doc"), ref: task.ref, revision: 1 }, human)
-          .pipe(Effect.flip)).reason,
-        "not-code",
-      );
-    }),
-  ),
+it.effect.each([false, true])(
+  "a document result uses the final answer (messages: %s)",
+  (messages) =>
+    scenario(
+      Effect.gen(function* () {
+        const { tasks, create, start, finish, until } = yield* harness;
+        const task = yield* create("Prerequisite view docs", { lane: "ready", type: "docs" });
+        const run = (yield* start(task, setupOf("flash", "root"))).run!;
+        const text =
+          "I will inspect the prerequisites.\n\n# Prerequisite view\nA sub-task waits on its blockers.";
+        if (messages) {
+          const projection = yield* ProjectionStore.ProjectionStoreV2;
+          for (const [index, body] of [
+            "I will inspect the prerequisites.",
+            "# Prerequisite view\n\nA sub-task waits on its blockers.",
+          ].entries()) {
+            yield* projection.apply({
+              id: EventId.make(`answer-${index}`),
+              type: "message.updated",
+              threadId: run.threadId,
+              occurredAt: DateTime.makeUnsafe(at),
+              payload: {
+                id: MessageId.make(`answer-${index}`),
+                threadId: run.threadId,
+                runId: run.runId,
+                nodeId: null,
+                role: "assistant",
+                text: body,
+                attachments: [],
+                streaming: false,
+                createdBy: "agent",
+                creationSource: "provider",
+                createdAt: DateTime.makeUnsafe(at),
+                updatedAt: DateTime.makeUnsafe(at),
+              },
+            });
+          }
+        }
+        yield* finish(run, "sealed", text);
+        const review = yield* until(task, (current) => current.status === "in-review");
+        assert.deepEqual(
+          [review.result?.kind, review.result?.summary],
+          ["document", "Prerequisite view"],
+        );
+        const document = yield* tasks.readResult({ ref: task.ref });
+        assert.equal(document.text, text);
+        assert.deepEqual(document.files, []);
+        assert.equal(
+          (yield* tasks.readResult({ ref: task.ref, revision: 7 }).pipe(Effect.flip)).reason,
+          "no-result",
+        );
+        yield* tasks.accept(
+          { commandId: command("accept-doc"), ref: task.ref, revision: 1 },
+          human,
+        );
+        assert.equal(
+          (yield* tasks
+            .publish({ commandId: command("publish-doc"), ref: task.ref, revision: 1 }, human)
+            .pipe(Effect.flip)).reason,
+          "not-code",
+        );
+      }),
+    ),
 );
 
 it.effect(

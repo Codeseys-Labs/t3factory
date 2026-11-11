@@ -62,6 +62,7 @@ import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import * as DeliveryStore from "../persistence/FactoryDeliveryStore.ts";
 import * as ExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as Tasks from "../persistence/FactoryTaskStore.ts";
+import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as Processes from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -385,6 +386,7 @@ const make = Effect.gen(function* () {
   const work = yield* Work.FactoryWorkService;
   const executions = yield* Executions.FactoryExecutionService;
   const executionStore = yield* ExecutionStore.FactoryExecutionStore;
+  const projections = yield* Projections.ProjectionStoreV2;
   const events = yield* OrchestrationEventStore.OrchestrationEventStore;
   const settings = yield* ServerSettings.ServerSettingsService;
   const processes = yield* Processes.ProcessRunner;
@@ -579,7 +581,20 @@ const make = Effect.gen(function* () {
         Effect.map((output) => output.text),
         Effect.orElseSucceed(() => ""),
       );
-    return { kind: "document" as const, summary: firstLine(text), files: [], filesOmitted: 0 };
+    const messages = yield* projections
+      .getThreadRecords(pending.threadId, ["messages"], {
+        messageRoles: ["assistant"],
+        messageRunIds: [pending.output.runId],
+      })
+      .pipe(Effect.mapError(asTaskError));
+    const answer =
+      messages.messages.findLast((message) => message.text.trim() !== "")?.text ??
+      text
+        .trim()
+        .split(/\r?\n\s*\r?\n/)
+        .at(-1) ??
+      "";
+    return { kind: "document" as const, summary: firstLine(answer), files: [], filesOmitted: 0 };
   });
 
   /** Brings runs, results and the index up to date with the execution engine. */

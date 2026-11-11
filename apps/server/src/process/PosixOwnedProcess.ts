@@ -21,6 +21,16 @@ export const PosixCgroupController = Context.Reference<AcpLinuxCgroupController>
   { defaultValue: makeLinuxCgroupController },
 );
 
+// The wrapper starts with an empty environment; it exports these only after joining the cgroup.
+const shellEnvironmentAssignments = (environment: Record<string, string | undefined>) =>
+  Object.entries(environment)
+    .flatMap(([name, value]) =>
+      value === undefined || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)
+        ? []
+        : [`${name}='${value.replaceAll("'", "'\\''").replaceAll("\n", `'"$nl"'`)}'\n`],
+    )
+    .join("");
+
 const ownershipError = (cause: unknown) =>
   PlatformError.systemError({
     module: "ChildProcess",
@@ -114,12 +124,16 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
               let readyFd = gateFd + 1;
               while (command.options.additionalFds?.[`fd${readyFd}`] !== undefined) readyFd++;
               const wrapped = wrapCommandForLinuxCgroup(lease, target, invocation.args, {
-                preserveEnvironment: true,
                 beforeExec: [
                   `printf 'contained\\n' >&${readyFd} || exit 125`,
                   `exec ${readyFd}>&-`,
                   `IFS= read -r action <&${gateFd} || exit 125`,
                   '[ "$action" = resume ] || exit 125',
+                  "nl='\n'",
+                  // `command` keeps a readonly name (bash's UID) from exiting the shell; it is skipped.
+                  `while IFS= read -r assignment <&${gateFd} || exit 125; [ -n "$assignment" ]; do`,
+                  '  eval "command export $assignment" 2>/dev/null || :',
+                  "done",
                   `exec ${gateFd}<&-`,
                 ],
               });
@@ -127,6 +141,8 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
                 native.spawn(
                   ChildProcess.make(wrapped.command, wrapped.args, {
                     ...command.options,
+                    env: {},
+                    extendEnv: false,
                     shell: false,
                     detached: true,
                     additionalFds: {
@@ -164,7 +180,10 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
                 ),
               );
               job.contained = true;
-              yield* Stream.make(new TextEncoder().encode(sealed ? "stop\n" : "resume\n")).pipe(
+              const gate = sealed
+                ? "stop\n"
+                : `resume\n${shellEnvironmentAssignments(commandEnvironment)}\n`;
+              yield* Stream.make(new TextEncoder().encode(gate)).pipe(
                 Stream.run(acquired.value.getInputFd(gateFd)),
               );
               return {

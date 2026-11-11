@@ -89,19 +89,29 @@ it.effect.each([
         Effect.provideService(PosixCgroupController, { create: () => fake.lease }),
       );
       const source = 'printf "%s" "$TOKEN" | cat';
+      // The wrapper must not load the command's environment before it joins the cgroup.
+      const options = {
+        extendEnv: false,
+        env: { LD_PRELOAD: "/workspace/escape.so", TOKEN: "a'b\nc", "NOT-A-NAME": "x" },
+      };
       yield* owner.spawner.spawn(
         shell
-          ? ChildProcess.make(source, [], { shell: process.execPath })
-          : ChildProcess.make(process.execPath, ["argument"]),
+          ? ChildProcess.make(source, [], { ...options, shell: process.execPath })
+          : ChildProcess.make(process.execPath, ["argument"], options),
         fake.native,
       );
       const command = fake.commands[0];
       assert.equal(command?._tag, "StandardCommand");
       if (command?._tag !== "StandardCommand") return;
       assert.isTrue(command.options.detached);
+      assert.isFalse(command.options.extendEnv);
+      assert.deepEqual(command.options.env, {});
       assert.include(command.args.join(" "), "cgroup.procs");
+      assert.notInclude(command.args.join(" "), "escape.so");
       if (shell) assert.deepEqual(command.args.slice(-2), ["-c", source]);
-      assert.deepEqual(fake.gates, ["resume\n"]);
+      assert.deepEqual(fake.gates, [
+        `resume\nLD_PRELOAD='/workspace/escape.so'\nTOKEN='a'\\''b'"$nl"'c'\n\n`,
+      ]);
       yield* owner.awaitRootExits;
       assert.deepEqual(fake.operations, []);
       assert.isTrue(yield* owner.quiesce());
@@ -247,16 +257,22 @@ it.live("joins a Linux root and its detached writer through the cgroup", () =>
     const owner = yield* makePosixOwnedProcess();
     const native = yield* ChildProcessSpawner.ChildProcessSpawner;
     const ready = yield* Deferred.make<void>();
-    const script = `require('node:child_process').spawn(process.execPath,['-e',"console.log('writer-ready');setInterval(()=>{},1000)"],{detached:true,stdio:['ignore','inherit','inherit']}).unref()`;
+    const probe = "a'b\nc $HOME";
+    const lines: string[] = [];
+    const script = `console.log(JSON.stringify(process.env.T3_PROBE));require('node:child_process').spawn(process.execPath,['-e',"console.log('writer-ready');setInterval(()=>{},1000)"],{detached:true,stdio:['ignore','inherit','inherit']}).unref()`;
     const child = yield* owner.spawner.spawn(
-      ChildProcess.make(process.execPath, ["-e", script]),
+      ChildProcess.make(process.execPath, ["-e", script], { env: { T3_PROBE: probe } }),
       native,
     );
     const output = yield* child.stdout.pipe(
       Stream.decodeText,
       Stream.splitLines,
       Stream.runForEach((line) =>
-        line === "writer-ready" ? Deferred.succeed(ready, undefined) : Effect.void,
+        line === "writer-ready"
+          ? Deferred.succeed(ready, undefined)
+          : Effect.sync(() => {
+              lines.push(line);
+            }),
       ),
       Effect.forkChild,
     );
@@ -264,6 +280,7 @@ it.live("joins a Linux root and its detached writer through the cgroup", () =>
     yield* owner.awaitRootExits;
     assert.isTrue(yield* owner.quiesce());
     yield* Fiber.join(output);
+    assert.deepEqual(lines, [JSON.stringify(probe)]);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 

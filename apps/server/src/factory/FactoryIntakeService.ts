@@ -1,5 +1,7 @@
 import {
   CommandId,
+  AuthOrchestrationOperateScope,
+  sessionGrantsScope,
   FactoryIntakeArrivalResolveInput,
   FactoryIntakeError,
   FactoryIntakeRuleDeleteInput,
@@ -46,6 +48,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import * as Store from "../persistence/FactoryIntakeStore.ts";
+import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as Projects from "../project/ProjectService.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as Feeds from "./FactoryFeedService.ts";
@@ -261,6 +264,7 @@ const presentSource = (source: Store.StoredSource): FactoryIntakeSource => ({
 
 const make = Effect.gen(function* () {
   const store = yield* Store.FactoryIntakeStore;
+  const sessions = yield* AuthSessions.AuthSessionRepository;
   const tasks = yield* Tasks.FactoryTaskService;
   const issues = yield* Issues.FactoryIssueService;
   const feeds = yield* Feeds.FactoryFeedService;
@@ -319,36 +323,44 @@ const make = Effect.gen(function* () {
     source: Store.StoredSource,
     nowMs: number,
   ) {
-    return yield* issues.list({ projectId: source.projectId, state: "open" }).pipe(
-      Effect.map(({ repository, capabilities, issues: listed }): CheckOutcome => {
-        const name = capabilities.displayName;
-        return {
-          kind: "observed",
-          label: `${name} issues`,
-          detail: repository.repository,
-          feedSourceId: null,
-          items: listed
-            .filter((issue) => issue.state === "open")
-            .toReversed()
-            .map((issue) => {
-              const key = issueOriginKey(
-                repository.provider,
-                repository.canonicalKey,
-                issue.number,
-              );
-              return {
-                itemKey: key,
-                originKey: key,
-                label: `${name} #${issue.number}`,
-                title: issue.title,
-                body: issue.body ?? "",
-                url: issue.url,
-                labels: issue.labels,
-              };
-            }),
-          nextCheckAt: nowMs + ISSUE_CHECK_INTERVAL_MS,
-        };
-      }),
+    return yield* Effect.gen(function* () {
+      const first = yield* issues.list({ projectId: source.projectId, state: "open" });
+      const { repository, capabilities } = first;
+      const listed = [...first.issues];
+      let nextPage = first.nextPage;
+      while (nextPage !== null) {
+        const page = yield* issues.list({
+          projectId: source.projectId,
+          state: "open",
+          page: nextPage,
+        });
+        listed.push(...page.issues);
+        nextPage = page.nextPage;
+      }
+      const name = capabilities.displayName;
+      return {
+        kind: "observed",
+        label: `${name} issues`,
+        detail: repository.repository,
+        feedSourceId: null,
+        items: listed
+          .filter((issue) => issue.state === "open")
+          .toReversed()
+          .map((issue) => {
+            const key = issueOriginKey(repository.provider, repository.canonicalKey, issue.number);
+            return {
+              itemKey: key,
+              originKey: key,
+              label: `${name} #${issue.number}`,
+              title: issue.title,
+              body: issue.body ?? "",
+              url: issue.url,
+              labels: issue.labels,
+            };
+          }),
+        nextCheckAt: nowMs + ISSUE_CHECK_INTERVAL_MS,
+      } satisfies CheckOutcome;
+    }).pipe(
       Effect.catchTags({
         FactoryIssueError: (error) => {
           const failed: CheckOutcome = {
@@ -423,19 +435,22 @@ const make = Effect.gen(function* () {
         items: candidates
           .filter((candidate) => candidate.disposition === "open")
           .toReversed()
-          .map((candidate) => ({
-            itemKey: candidate.itemKey,
-            originKey: feedItemOriginKey(
+          .map((candidate) => {
+            const key = feedItemOriginKey(
               repository?.canonicalKey ?? "",
               locator,
               candidate.itemKey,
-            ),
-            label: "Feed",
-            title: candidate.title ?? candidate.link ?? candidate.itemKey,
-            body: candidate.content ?? "",
-            url: candidate.link,
-            labels: [],
-          })),
+            );
+            return {
+              itemKey: key,
+              originKey: key,
+              label: "Feed",
+              title: candidate.title ?? candidate.link ?? candidate.itemKey,
+              body: candidate.content ?? "",
+              url: candidate.link,
+              labels: [],
+            };
+          }),
         nextCheckAt: Math.max(
           nowMs + FEED_CHECK_INTERVAL_MS,
           feed.nextAllowedAt === null ? 0 : millisOf(feed.nextAllowedAt),
@@ -590,36 +605,52 @@ const make = Effect.gen(function* () {
     const slot = latestSlotAtOrBefore(config.schedule, nowMs);
     const next = nextSlotAfter(config.schedule, nowMs);
     const due = source.lastSlotAt === null || slot > millisOf(source.lastSlotAt);
+    let assignment = config.task.assignment;
+    const create = (chosen: FactoryTaskAssignment) =>
+      tasks.create(
+        {
+          commandId: CommandId.make(`factory-intake:${source.id}:${isoOf(slot)}`),
+          projectId: source.projectId,
+          title: config.task.title,
+          description: config.task.description,
+          type: config.task.type,
+          lane: config.task.lane,
+          assignment: chosen,
+        },
+        source.actor,
+        {
+          source: { kind: "schedule", label: "Schedule", url: null, key: null, workRef: null },
+          ruleName: null,
+        },
+        { sourceId: source.id, sourceVersion: source.version, slot: isoOf(slot) },
+      );
     // The command id names the slot, so a retry after a crash replays the same task.
     const created = due
-      ? yield* tasks
-          .create(
-            {
-              commandId: CommandId.make(`factory-intake:${source.id}:${isoOf(slot)}`),
-              projectId: source.projectId,
-              title: config.task.title,
-              description: config.task.description,
-              type: config.task.type,
-              lane: config.task.lane,
-              assignment: config.task.assignment,
+      ? yield* create(assignment).pipe(
+          Effect.catchTags({
+            // After a crash between saving the fallback task and normalizing the source, the
+            // slot's command already holds the Unassigned task, so the profile retry conflicts.
+            FactoryTaskError: (error) => {
+              if (
+                (error.reason !== "missing-profile" && error.reason !== "command-conflict") ||
+                assignment.mode !== "profile"
+              )
+                return Effect.fail(error);
+              assignment = { mode: "unassigned" };
+              return create(assignment);
             },
-            source.actor,
-            {
-              source: { kind: "schedule", label: "Schedule", url: null, key: null, workRef: null },
-              ruleName: null,
-            },
-          )
-          .pipe(
-            Effect.as(true),
-            Effect.catchTags({
-              FactoryTaskError: (error) =>
-                Effect.logWarning("Scheduled task could not be made").pipe(
-                  Effect.annotateLogs({ sourceId: source.id, reason: error.reason }),
-                  Effect.as(false),
-                ),
-            }),
-          )
+          }),
+          Effect.as(true),
+          Effect.catchTags({
+            FactoryTaskError: (error) =>
+              Effect.logWarning("Scheduled task could not be made").pipe(
+                Effect.annotateLogs({ sourceId: source.id, reason: error.reason }),
+                Effect.as(false),
+              ),
+          }),
+        )
       : true;
+    const normalized = assignment !== config.task.assignment;
     return yield* store
       .transact(
         Effect.gen(function* () {
@@ -633,6 +664,13 @@ const make = Effect.gen(function* () {
           const now = isoOf(nowMs);
           yield* store.putSource({
             ...current.value,
+            ...(normalized
+              ? {
+                  config: { ...config, task: { ...config.task, assignment } },
+                  version: current.value.version + 1,
+                  updatedAt: now,
+                }
+              : {}),
             status: created ? "ok" : "failed",
             lastCheckedAt: now,
             lastSlotAt: due && created ? isoOf(slot) : current.value.lastSlotAt,
@@ -737,6 +775,26 @@ const make = Effect.gen(function* () {
             return yield* intakeError("invalid-input");
           const nowMs = yield* Clock.currentTimeMillis;
           const now = isoOf(nowMs);
+          if (config.kind === "schedule") {
+            if (actor.kind !== "human") return yield* intakeError("forbidden");
+            const session = yield* sessions
+              .getById({ sessionId: actor.sessionId })
+              .pipe(
+                Effect.mapError(
+                  (cause) => new FactoryIntakeError({ reason: "persistence-failure", cause }),
+                ),
+              );
+            if (
+              Option.isNone(session) ||
+              session.value.revokedAt !== null ||
+              session.value.expiresAt.epochMilliseconds <= nowMs ||
+              !sessionGrantsScope(
+                { authenticated: true, scopes: session.value.scopes },
+                AuthOrchestrationOperateScope,
+              )
+            )
+              return yield* intakeError("forbidden");
+          }
           const configChanged =
             existing === undefined || encodeConfig(existing.config) !== encodeConfig(config);
           const restarted = input.enabled && (configChanged || existing?.enabled !== true);
@@ -1175,4 +1233,6 @@ const make = Effect.gen(function* () {
   });
 });
 
-export const layer = Layer.effect(FactoryIntakeService, make);
+export const layer = Layer.effect(FactoryIntakeService, make).pipe(
+  Layer.provide(AuthSessions.layer),
+);

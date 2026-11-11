@@ -221,6 +221,28 @@ describe("deriveTask", () => {
       live: 1,
     },
     {
+      name: "a failed breakdown raises failed and moves nothing",
+      facts: { lane: "backlog", runs: [run(1, "failed", "planning")] },
+      status: "backlog",
+      attention: ["failed:Break down failed"],
+    },
+    {
+      name: "a new breakdown after a failed one asks for nothing",
+      facts: {
+        lane: "backlog",
+        runs: [run(1, "failed", "planning"), run(2, "running", "planning")],
+      },
+      status: "backlog",
+      attention: [],
+      live: 1,
+    },
+    {
+      name: "a failed breakdown that proposed raises plan only",
+      facts: { lane: "backlog", runs: [run(1, "failed", "planning")], proposalItems: 2 },
+      status: "backlog",
+      attention: ["plan:2 sub-tasks"],
+    },
+    {
       name: "a parent with a sub-task in progress is in progress",
       facts: { lane: "backlog" },
       subtasks: [subtask("in-progress"), subtask("ready")],

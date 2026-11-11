@@ -295,6 +295,19 @@ it("saves a schedule's time, weekdays and task, and a source switch saves enable
   });
 });
 
+it("keeps an existing source in its project while allowing a new source to choose one", async () => {
+  setup({ sheet: "source", id: "github" });
+  await using screen = await render(<AutomationsPage />, { router: "/automations" });
+  await expect.element(page.getByRole("combobox", { name: "Project" })).toBeDisabled();
+  await userEvent.click(page.getByRole("button", { name: "Save", exact: true }));
+  expect(state.calls[0]?.input).toMatchObject({ id: "github", projectId: "t3code-factory" });
+  await userEvent.click(screen.getByRole("button", { name: "Add source", exact: true }));
+  await expect.element(page.getByRole("combobox", { name: "Project" })).toBeEnabled();
+  await choose("Project", "website");
+  await userEvent.click(page.getByRole("dialog").getByRole("button", { name: "Add source" }));
+  expect(state.calls[1]?.input).toMatchObject({ projectId: "website" });
+});
+
 it("saves a profile's setup and Used for, and reloads it after a version conflict", async () => {
   setup({ sheet: "profile", id: "implementer" });
   state.refusals = [

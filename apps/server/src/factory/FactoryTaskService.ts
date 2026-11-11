@@ -71,6 +71,7 @@ import { executionDigest } from "./FactoryExecutionDigest.ts";
 import * as Executions from "./FactoryExecutionService.ts";
 import type { FactoryPlanActor } from "./FactoryPlanReducer.ts";
 import * as Plans from "./FactoryPlanService.ts";
+import type { FactoryIntakeScheduleAuthority } from "./FactoryIntakeSchedule.ts";
 import { resolveAssignee, setupKey } from "./FactoryTaskAssignee.ts";
 import * as Changes from "./FactoryTaskChanges.ts";
 import { parseTaskResultOriginKey, taskResultOriginKey } from "./FactoryOriginKey.ts";
@@ -99,6 +100,7 @@ export class FactoryTaskService extends Context.Service<
       input: FactoryTaskCreateInput,
       actor: FactoryPlanActor,
       origin?: FactoryTaskOrigin,
+      schedule?: FactoryIntakeScheduleAuthority,
     ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
     readonly update: (
       input: FactoryTaskUpdateInput,
@@ -351,15 +353,25 @@ const deliveryRefusal = (error: FactoryDeliveryError): FactoryTaskError => {
   }
 };
 
-/** `t3/T-36-audio-ring-demo`, and `-rev2` for a later revision, so each revision has its own. */
-const deliveryBranch = (displayId: string, title: string, revision: number) => {
+const deliveryBranch = (
+  ref: FactoryTaskRef,
+  displayId: string,
+  title: string,
+  revision: number,
+) => {
   const slug = title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40)
     .replace(/-+$/g, "");
-  return `t3/${displayId}${slug ? `-${slug}` : ""}${revision > 1 ? `-rev${revision}` : ""}`;
+  const identity = executionDigest([
+    ref.environmentId,
+    ref.projectId,
+    ref.rootId,
+    ref.taskId,
+  ]).slice(0, 32);
+  return `t3/${displayId}-rev${revision}-${identity}/${slug || "task"}`;
 };
 
 const sameSetup = (left: FactoryAgentSetup | undefined, right: FactoryAgentSetup) =>
@@ -645,6 +657,39 @@ const make = Effect.gen(function* () {
     return sha;
   });
 
+  /**
+   * Where the task's next run starts in the engine. The engine runs a task once per plan
+   * revision, so another round takes a new revision, which stops authorizing every sibling run
+   * admitted under the current one: a round waits until no sibling is running.
+   */
+  const nextRound = Effect.fn("FactoryTaskService.nextRound")(function* (row: Tasks.TaskRow) {
+    const head = yield* plans.read({ ref: planRef(row) }).pipe(Effect.mapError(planError));
+    const prior = yield* store.engineAttempt({
+      rootId: row.rootId,
+      revision: head.revision,
+      taskId: row.taskId,
+    });
+    if (prior !== null && !prior.quiescent) return yield* refuse("run-active");
+    const retryable =
+      prior !== null &&
+      prior.latestStatus !== "sealed" &&
+      (FAILED_NATIVE.has(prior.nativeStatus ?? "") || prior.latestStatus === "failed");
+    const round = prior !== null && !retryable;
+    if (
+      round &&
+      (yield* store.liveAttempts({
+        rootId: row.rootId,
+        revision: head.revision,
+        exceptTaskId: row.taskId,
+      })).length > 0
+    )
+      return yield* new FactoryTaskError({
+        reason: "run-active",
+        detail: "Another sub-task of this task is running. Try again when it finishes.",
+      });
+    return { head, prior, round };
+  });
+
   /** Issues the person's grant for this one task at the current plan revision and admits it. */
   const launch = Effect.fn("FactoryTaskService.launch")(function* (input: {
     readonly commandId: CommandId;
@@ -660,19 +705,9 @@ const make = Effect.gen(function* () {
     const admitId = derived(input.commandId, "admit");
     yield* store.registerLaunch({ commandId: admitId, profileId: input.profileId, actor: PERSON });
     if (yield* store.launched(admitId)) return;
-    let head = yield* plans.read({ ref }).pipe(Effect.mapError(planError));
-    let prior = yield* store.engineAttempt({
-      rootId: row.rootId,
-      revision: head.revision,
-      taskId: row.taskId,
-    });
-    if (prior !== null && !prior.quiescent) return yield* refuse("run-active");
-    const retryable =
-      prior !== null &&
-      prior.latestStatus !== "sealed" &&
-      (FAILED_NATIVE.has(prior.nativeStatus ?? "") || prior.latestStatus === "failed");
-    if (prior !== null && !retryable) {
-      // The engine runs a task once per plan revision. Another round takes a new revision.
+    const next = yield* nextRound(row);
+    let { head, prior } = next;
+    if (next.round) {
       const title = head.tasks.find((task) => task.id === row.taskId)?.title ?? row.title;
       head = (yield* plans
         .apply(
@@ -902,9 +937,16 @@ const make = Effect.gen(function* () {
   );
 
   const create: FactoryTaskService["Service"]["create"] = Effect.fn("FactoryTaskService.create")(
-    function* (raw, actor, origin) {
+    function* (raw, actor, origin, schedule) {
       yield* requireHuman(actor);
       const input = yield* decodeCreate(raw).pipe(Effect.mapError(invalid));
+      if (
+        schedule !== undefined &&
+        (input.parent !== undefined ||
+          input.workRef !== undefined ||
+          origin?.source.kind !== "schedule")
+      )
+        return yield* refuse("forbidden");
       const command = yield* begin("create", input.commandId, actor, [input, origin ?? null]);
       if (command.replayed)
         return yield* replay(
@@ -950,6 +992,7 @@ const make = Effect.gen(function* () {
               ...(input.description === undefined ? {} : { context: input.description }),
             },
             actor,
+            schedule,
           )
           .pipe(Effect.mapError(planError));
         const rootId = created.plan.ref.rootId;
@@ -1143,53 +1186,56 @@ const make = Effect.gen(function* () {
       const input = yield* decodeUpdate(raw).pipe(Effect.mapError(invalid));
       const command = yield* begin("update", input.commandId, actor, input);
       if (command.replayed) return yield* replay(input.ref);
-      const { task } = yield* requireTask(input.ref);
-      const { row } = task;
-      if (row.version !== input.expectedVersion)
-        return yield* new FactoryTaskError({
-          reason: "version-conflict",
-          currentVersion: row.version,
-        });
       yield* requireProfile(input.assignment);
-      const latestResult = task.derived.result;
-      if (input.lane !== undefined) {
-        const move = checkLaneMove({
-          from: row.lane,
-          to: input.lane,
-          status: task.derived.status,
-          accepted: row.acceptedRevision !== null,
-          runLive: task.derived.liveRuns.length > 0,
-          resultWaiting: latestResult !== null && latestResult.state !== "accepted",
-        });
-        if (!move.allowed) return yield* refuse(move.reason);
-      }
-      const ref = planRef(row);
-      const plan = yield* plans.read({ ref }).pipe(Effect.mapError(planError));
-      const current = plan.tasks.find((entry) => entry.id === row.taskId);
-      const title = input.title !== undefined && input.title !== current?.title;
-      const description = input.description !== undefined && input.description !== current?.context;
-      if (title || description)
-        yield* applyPlan({
-          commandId: input.commandId,
-          ref,
-          actor,
-          operations: () => [
-            {
-              type: "task.update",
-              id: row.taskId,
-              ...(title ? { title: input.title! } : {}),
-              ...(description ? { context: input.description! } : {}),
-            },
-          ],
-        });
-      const type = input.type !== undefined && input.type !== row.type;
-      const lane = input.lane !== undefined && input.lane !== row.lane;
-      const assignment =
-        input.assignment !== undefined &&
-        executionDigest(input.assignment) !== executionDigest(row.assignment);
       const at = yield* now;
-      yield* transact(
+      // Checked and written in one transaction, so two devices editing from the same version
+      // cannot both land.
+      const row = yield* transact(
         Effect.gen(function* () {
+          const { task } = yield* requireTask(input.ref);
+          const { row } = task;
+          if (row.version !== input.expectedVersion)
+            return yield* new FactoryTaskError({
+              reason: "version-conflict",
+              currentVersion: row.version,
+            });
+          const latestResult = task.derived.result;
+          if (input.lane !== undefined) {
+            const move = checkLaneMove({
+              from: row.lane,
+              to: input.lane,
+              status: task.derived.status,
+              accepted: row.acceptedRevision !== null,
+              runLive: task.derived.liveRuns.length > 0,
+              resultWaiting: latestResult !== null && latestResult.state !== "accepted",
+            });
+            if (!move.allowed) return yield* refuse(move.reason);
+          }
+          const ref = planRef(row);
+          const plan = yield* plans.read({ ref }).pipe(Effect.mapError(planError));
+          const current = plan.tasks.find((entry) => entry.id === row.taskId);
+          const title = input.title !== undefined && input.title !== current?.title;
+          const description =
+            input.description !== undefined && input.description !== current?.context;
+          if (title || description)
+            yield* applyPlan({
+              commandId: input.commandId,
+              ref,
+              actor,
+              operations: () => [
+                {
+                  type: "task.update",
+                  id: row.taskId,
+                  ...(title ? { title: input.title! } : {}),
+                  ...(description ? { context: input.description! } : {}),
+                },
+              ],
+            });
+          const type = input.type !== undefined && input.type !== row.type;
+          const lane = input.lane !== undefined && input.lane !== row.lane;
+          const assignment =
+            input.assignment !== undefined &&
+            executionDigest(input.assignment) !== executionDigest(row.assignment);
           yield* store.updateBoard(row, {
             ...(type ? { type: input.type! } : {}),
             ...(lane ? { lane: input.lane! } : {}),
@@ -1217,6 +1263,7 @@ const make = Effect.gen(function* () {
             });
           yield* command.record(row);
           yield* changes.announce({ rootIds: [row.rootId] });
+          return row;
         }),
       );
       return { task: yield* summaryOf(row), replayed: false };
@@ -1291,6 +1338,7 @@ const make = Effect.gen(function* () {
       }
       const setup = input.setup ?? previous?.setup ?? work.at(-1)?.setup;
       if (setup === undefined) return yield* refuse("no-run");
+      const base = previous?.baseRef ?? null;
       return yield* run({
         commandId: input.commandId,
         task,
@@ -1300,7 +1348,9 @@ const make = Effect.gen(function* () {
             ? (previous?.profileId ?? null)
             : yield* assignFor(task, input.setup),
         actor,
-        baseCommit: null,
+        // A failed Request changes run starts again from the result it was changing.
+        baseCommit:
+          base !== null && task.results.some((result) => result.commit === base) ? base : null,
         record: command.record,
       });
     },
@@ -1381,6 +1431,12 @@ const make = Effect.gen(function* () {
       const at = yield* now;
       yield* transact(
         Effect.gen(function* () {
+          // A Request changes may have started a run since the first check; mirror what the
+          // engine admitted and check again where the acceptance is written.
+          const sealed = yield* store.syncRuns(row.rootId, at);
+          yield* reviewed((yield* loadTask(row)).task, input.revision);
+          if (sealed.some((result) => result.taskId === row.taskId))
+            return yield* refuse("result-conflict");
           yield* store.updateBoard(row, {
             acceptedRevision: latest.revision,
             bumpVersion: true,
@@ -1420,6 +1476,8 @@ const make = Effect.gen(function* () {
       task.runs.find((entry) => entry.threadId === latest.threadId) ??
       task.runs.findLast((entry) => entry.purpose === "work");
     if (author === undefined) return yield* refuse("no-run");
+    // Refused before the note is kept, so a request that cannot run leaves nothing behind.
+    if (!resumed) yield* nextRound(row);
     const at = yield* now;
     // A sealed attempt cannot continue, so the note travels in the next attempt's input.
     yield* transact(
@@ -1518,12 +1576,14 @@ const make = Effect.gen(function* () {
         projectId: row.projectId,
         threadId: result.threadId,
         headSha: result.commit,
+        baseRef:
+          task.runs.find((run) => run.purpose === "work" && run.baseRef !== null)?.baseRef ?? null,
         publish: {
           title: row.title,
           body: [description.trim(), `Task ${row.displayId} · result rev ${result.revision}`]
             .filter((part) => part !== "")
             .join("\n\n"),
-          headBranch: deliveryBranch(row.displayId, row.title, result.revision),
+          headBranch: deliveryBranch(input.ref, row.displayId, row.title, result.revision),
         },
         // Inside the grant transaction: a reopen between the click and the grant wins.
         recheck: store.acceptedRevision(row).pipe(

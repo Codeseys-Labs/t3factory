@@ -34,15 +34,20 @@ new run with it.
 ## Review a result
 
 **Accept** records your review of that revision and marks the task Done. **Request changes** runs the
-task again with your note. **Reopen**, in the task page's menu, takes a Done task back to In review.
+task again with your note; it waits while another sub-task of the same task is running. **Reopen**,
+in the task page's menu, takes a Done task back to In review.
 
 Accepting does not publish anything. For an accepted code result, **Publish** pushes that exact
-commit to a new branch named after the task (`t3/T-36-audio-ring-demo`) and opens a pull request
+commit to a new branch named after the task and revision
+(`t3/T-36-rev1-3e6f91a2c8b745d0a1f4269e837bc502/audio-ring-demo`) and opens a pull request
 against the repository's default branch; **Merge** merges it, and only while it still points at the
 commit you accepted. Both need source-control write access and are always your click. If T3 Code lost
 the host's answer, the task shows **Unconfirmed**; **Check** reads the host and settles it without
 sending again. Publishing and merging happen on the desktop and web; the phone shows the state. If you merged the
 pull request on the host, **Check** brings that in too.
+
+If the task started from commits outside origin's default branch, Publish tells you how many extra
+commits it would include. Publish or rebase those commits first.
 
 ## Automations
 

@@ -109,6 +109,7 @@ vi.mock(import("../shared/taskActions"), () => ({
     start: true,
     stop: true,
     retry: true,
+    breakDown: true,
     accept: true,
     requestChanges: true,
     reopen: true,
@@ -500,6 +501,46 @@ it("offers no title editing without permission", async () => {
     page.getByRole("button", { name: "Server Git tests fail on Windows" }).elements(),
   ).toHaveLength(0);
 });
+
+it.each(["ready", "done"] as const)("moves a person-assigned sub-task from %s", async (lane) => {
+  const task: FactoryTaskSummary = {
+    ...fixture("T-38.3"),
+    assignee: { assignment: { mode: "person" }, key: "person", resolved: null },
+    lane,
+    status: lane,
+    blockedBy: [],
+  };
+  const { screen } = await renderDetail(taskPath(task.displayId), ({ put }) => put(detailOf(task)));
+  await using _screen = screen;
+  await userEvent.click(page.getByRole("button", { name: "Task actions" }));
+  await userEvent.click(
+    page.getByRole("menuitem", { name: lane === "ready" ? "Mark done" : "Move to Ready" }),
+  );
+  expect(state.actions.setLane).toHaveBeenCalledExactlyOnceWith(
+    task,
+    lane === "ready" ? "done" : "ready",
+  );
+});
+
+it.each(["permission", "run", "result"] as const)(
+  "refuses manual completion with %s",
+  async (blocked) => {
+    const task: FactoryTaskSummary = {
+      ...fixture(blocked === "result" ? "T-36" : blocked === "run" ? "T-41" : "T-38.3"),
+      assignee: { assignment: { mode: "person" }, key: "person", resolved: null },
+    };
+    const { screen } = await renderDetail(taskPath(task.displayId), ({ put }) => {
+      put(detailOf(task));
+      state.permissions.updateTask = blocked !== "permission";
+    });
+    await using _screen = screen;
+    await userEvent.click(page.getByRole("button", { name: "Task actions" }));
+    await expect
+      .element(page.getByRole("menuitem", { name: "Mark done" }))
+      .toHaveAttribute("aria-disabled", "true");
+    expect(state.actions.setLane).not.toHaveBeenCalled();
+  },
+);
 
 it("refuses a plan with a loop and sends the edited items", async () => {
   const { screen } = await renderDetail(taskPath("T-38"), ({ put }) => {

@@ -4,6 +4,7 @@ import {
   AuthOrchestrationReadScope,
   EnvironmentId,
   FactoryTaskListInput,
+  type FactoryTaskActivityResult,
   type FactoryTaskDisplayId,
   type FactoryTaskRef,
   type FactoryTaskSummary,
@@ -13,6 +14,8 @@ import {
 } from "@t3tools/contracts";
 import {
   createFactoryTaskListAtoms,
+  factoryTaskConnectionStatus,
+  factoryTaskQueryStatus,
   type FactoryTaskListTarget,
   type FactoryTaskOwnerStatus,
 } from "@t3tools/client-runtime/state/factory-task-list";
@@ -21,8 +24,9 @@ import {
   type FactoryTaskCatalog,
 } from "@t3tools/client-runtime/state/factory-task-view";
 import type { PendingThreadRequests } from "@t3tools/client-runtime/state/thread-requests";
+import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
-import { Atom } from "effect/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { useContext, useEffect, useMemo } from "react";
 
 import { taskThreadPill, type TaskEntry } from "../features/tasks/taskPresentation";
@@ -37,8 +41,8 @@ import { useAtomCommand } from "./use-atom-command";
 const accessAtom = Atom.family((environmentId: EnvironmentId) =>
   Atom.make((get): FactoryTaskOwnerStatus => {
     const presentation = get(environmentPresentations.presentationAtom(environmentId));
-    if (presentation?.connection.phase === "unsupported") return "unsupported";
-    if (presentation?.connection.phase !== "connected") return "offline";
+    const connection = factoryTaskConnectionStatus(presentation?.connection.phase);
+    if (connection !== null || !presentation) return connection ?? "loading";
     if (!presentation.serverConfig) return "loading";
     const session = get(environmentSession.sessionStateAtom(environmentId));
     if (session._tag === "Initial") return "loading";
@@ -107,13 +111,48 @@ export function useFactoryTaskDetailByDisplayId(
   displayId: FactoryTaskDisplayId,
 ) {
   const atom = factoryTaskEnvironment.readTask({ environmentId, input: { task: { displayId } } });
-  return { result: useAtomValue(atom), refresh: useAtomRefresh(atom) };
+  const access = useAtomValue(accessAtom(environmentId));
+  const result = useAtomValue(atom);
+  return {
+    result,
+    refresh: useAtomRefresh(atom),
+    status: access === "current" ? factoryTaskQueryStatus(result) : access,
+  };
 }
 
 export function useFactoryTaskActivity(ref: FactoryTaskRef) {
-  return useAtomValue(
-    factoryTaskEnvironment.readTaskActivity({ environmentId: ref.environmentId, input: { ref } }),
+  const atom = useMemo(
+    () =>
+      Atom.make((get): AsyncResult.AsyncResult<FactoryTaskActivityResult, unknown> => {
+        let cursor: string | undefined;
+        let latest: FactoryTaskActivityResult | undefined;
+        let waiting = false;
+        const seen = new Set<string>();
+        while (true) {
+          const page = get(
+            factoryTaskEnvironment.readTaskActivity({
+              environmentId: ref.environmentId,
+              input: { ref, ...(cursor === undefined ? {} : { cursor }) },
+            }),
+          );
+          if (page._tag !== "Success") return page;
+          latest = {
+            entries: [...(latest?.entries ?? []), ...page.value.entries].slice(-6),
+            nextCursor: null,
+            fetchedAt: page.value.fetchedAt,
+          };
+          waiting = waiting || page.waiting;
+          const next = page.value.nextCursor;
+          if (next === null) return AsyncResult.success(latest, { waiting });
+          if (seen.has(next))
+            return AsyncResult.failure(Cause.fail(new Error("Repeated activity cursor")));
+          seen.add(next);
+          cursor = next;
+        }
+      }).pipe(Atom.setIdleTTL(0)),
+    [ref],
   );
+  return useAtomValue(atom);
 }
 
 const catalogs = Atom.family((key: string) =>

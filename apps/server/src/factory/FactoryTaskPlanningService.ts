@@ -200,8 +200,15 @@ const make = Effect.gen(function* () {
           const detail = yield* readTask(input.ref);
           const prior = yield* receipt(input.commandId, digest);
           if (prior !== null) {
-            if (prior.result === null && prior.request !== null)
+            if (prior.result === null && prior.request !== null) {
+              // A later request replaced this one; resuming it would start a second planning run.
+              if ((yield* store.request(input.ref))?.threadId !== prior.request.threadId)
+                return yield* new FactoryTaskError({
+                  reason: "version-conflict",
+                  currentVersion: detail.task.version,
+                });
               launching.add(prior.request.threadId);
+            }
             return prior;
           }
           if (detail.task.status === "done" || detail.task.status === "canceled")
@@ -218,7 +225,6 @@ const make = Effect.gen(function* () {
               .pipe(Effect.mapError(persistence));
             if (
               launching.has(current.threadId) ||
-              (shell === null && current.recorded) ||
               (shell !== null &&
                 ["preparing", "running", "starting", "waiting", "queued"].includes(shell.status)) ||
               detail.runs.some(
@@ -294,13 +300,15 @@ const make = Effect.gen(function* () {
             launched.projection.runs.find((run) => run.userMessageId === request.messageId)?.id ??
             null;
           if (runId === null) return yield* new FactoryTaskError({ reason: "no-run" });
+          const current = yield* store.request(input.ref);
+          if (current !== null && current.threadId !== request.threadId)
+            return yield* new FactoryTaskError({ reason: "version-conflict" });
           yield* tasks.recordPlanningRun({
             ref: input.ref,
             threadId: request.threadId,
             runId,
             setup: planningSetup(input.setup),
           });
-          const current = yield* store.request(input.ref);
           yield* store.saveRequest({
             ...request,
             open: current?.open ?? request.open,

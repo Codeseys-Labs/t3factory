@@ -80,6 +80,14 @@ describe("taskErrorMessage", () => {
       text: "Stop the run first.",
     },
     {
+      error: new FactoryTaskError({
+        reason: "run-active",
+        detail: "Another sub-task of this task is running. Try again when it finishes.",
+      }),
+      task: null,
+      text: "Another sub-task of this task is running. Try again when it finishes.",
+    },
+    {
       error: new FactoryTaskError({ reason: "blocked" }),
       task: fixture("T-38.3"),
       text: "This task waits on T-38.2.",

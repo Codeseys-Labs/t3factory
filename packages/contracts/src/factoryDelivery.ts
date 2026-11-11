@@ -309,13 +309,17 @@ export class FactoryDeliveryError extends Schema.TaggedError<FactoryDeliveryErro
       "destination-not-found",
       "missing-base-branch",
       "repository-changed",
+      "unreviewed-base-commits",
     ]),
+    extraCommitCount: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
     replacementDeliveryId: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {
     switch (this.reason) {
+      case "unreviewed-base-commits":
+        return `The task's base includes ${this.extraCommitCount} extra ${this.extraCommitCount === 1 ? "commit" : "commits"} outside origin's default branch. Publish or rebase them first.`;
       case "missing-base-branch":
         return "This task has no reviewed host base branch. Start a new task from a named origin branch before publishing.";
       case "repository-changed":

@@ -207,6 +207,33 @@ describe("task presentation", () => {
       presentFactoryTaskBanner({ task: own, attention: [], assigneeLabel: "Agent" }).primary,
     ).toEqual({ kind: "stop", label: "Stop" });
   });
+  it("offers Break down, not Retry, when only the planning run failed", () => {
+    const failed = task("T-29");
+    const banner = presentFactoryTaskBanner({
+      task: {
+        ...failed,
+        run: failed.run ? { ...failed.run, purpose: "planning", note: null } : null,
+      },
+      attention: state("T-29").attention,
+      assigneeLabel: "Agent",
+    });
+    expect([banner.title, banner.primary, banner.secondary]).toEqual([
+      "Break down failed",
+      { kind: "break-down", label: "Break down" },
+      null,
+    ]);
+    const planned = presentFactoryTaskBanner({
+      task: {
+        ...failed,
+        run: failed.run
+          ? { ...failed.run, purpose: "planning", state: "completed", note: null }
+          : null,
+      },
+      attention: state("T-29").attention,
+      assigneeLabel: "Agent",
+    });
+    expect([planned.primary?.kind, planned.secondary?.kind]).toEqual(["retry", "reassign"]);
+  });
   it.each([
     ["C1", "T-43", "backlog", "start", null],
     ["C2", "T-38.3", "blocked", "open-task", null],

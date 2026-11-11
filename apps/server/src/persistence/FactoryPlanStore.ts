@@ -32,6 +32,11 @@ import {
 } from "../factory/FactoryPlanReducer.ts";
 import * as AuthSessions from "./AuthSessions.ts";
 import * as Tasks from "./FactoryTaskStore.ts";
+import * as Intake from "./FactoryIntakeStore.ts";
+import {
+  latestSlotAtOrBefore,
+  type FactoryIntakeScheduleAuthority,
+} from "../factory/FactoryIntakeSchedule.ts";
 
 export interface FactoryPlanCommit {
   readonly commandId: CommandId;
@@ -40,6 +45,7 @@ export interface FactoryPlanCommit {
   readonly expectedRevision: number;
   readonly requestDigest: string;
   readonly actor: FactoryPlanActor;
+  readonly schedule?: FactoryIntakeScheduleAuthority;
   readonly create: { readonly title: string; readonly context: string } | null;
   readonly operations: ReadonlyArray<FactoryPlanOperation>;
   readonly contexts: ReadonlyArray<FactoryPlanWorkContext>;
@@ -116,6 +122,7 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const sessions = yield* AuthSessions.AuthSessionRepository;
   const tasks = yield* Tasks.FactoryTaskStore;
+  const intake = yield* Intake.FactoryIntakeStore;
   const failure = (cause: unknown) =>
     new FactoryPlanError({ reason: "persistence-failure", cause });
   const decode = Schema.decodeUnknownEffect(Schema.fromJsonString(FactoryPlanSnapshot));
@@ -207,7 +214,38 @@ const make = Effect.gen(function* () {
   const decide = Effect.fn("FactoryPlanStore.decide")(function* (
     input: FactoryPlanCommit,
   ): Effect.fn.Return<FactoryPlanDecision, FactoryPlanError> {
-    if (input.actor.kind === "human") {
+    if (input.schedule !== undefined) {
+      // An enabled source authorizes only its due slot's root creation, independently of a login.
+      const authority = input.schedule;
+      const found = yield* intake.getSource(authority.sourceId).pipe(Effect.mapError(failure));
+      if (Option.isNone(found)) return yield* new FactoryPlanError({ reason: "forbidden" });
+      const source = found.value;
+      const slot = DateTime.make(authority.slot);
+      const now = yield* DateTime.now;
+      if (
+        source.config.kind !== "schedule" ||
+        !source.enabled ||
+        source.version !== authority.sourceVersion ||
+        source.projectId !== input.ref.projectId ||
+        input.actor.kind !== "human" ||
+        source.actor.kind !== "human" ||
+        input.actor.sessionId !== source.actor.sessionId ||
+        input.create === null ||
+        input.expectedRevision !== 0 ||
+        input.operations.length !== 0 ||
+        input.contexts.length !== 0 ||
+        input.create.title !== source.config.task.title ||
+        input.create.context !== source.config.task.description ||
+        input.commandId !== `factory-task:plan:factory-intake:${source.id}:${authority.slot}` ||
+        Option.isNone(slot) ||
+        DateTime.formatIso(slot.value) !== authority.slot ||
+        DateTime.toEpochMillis(slot.value) !==
+          latestSlotAtOrBefore(source.config.schedule, DateTime.toEpochMillis(now)) ||
+        DateTime.toEpochMillis(slot.value) <=
+          DateTime.toEpochMillis(DateTime.makeUnsafe(source.lastSlotAt ?? source.createdAt))
+      )
+        return yield* new FactoryPlanError({ reason: "forbidden" });
+    } else if (input.actor.kind === "human") {
       const session = yield* sessions
         .getById({ sessionId: input.actor.sessionId })
         .pipe(Effect.mapError(failure));
@@ -373,5 +411,5 @@ const make = Effect.gen(function* () {
   });
 });
 export const layer = Layer.effect(FactoryPlanStore, make).pipe(
-  Layer.provide(Layer.merge(AuthSessions.layer, Tasks.layer)),
+  Layer.provide(Layer.mergeAll(AuthSessions.layer, Tasks.layer, Intake.layer)),
 );

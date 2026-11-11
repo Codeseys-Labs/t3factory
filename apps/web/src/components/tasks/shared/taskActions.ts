@@ -182,6 +182,7 @@ export function useTaskPermissions(environmentId: EnvironmentId) {
     start: useAtomValue(factoryTasks.startTask.permissionAtom(environmentId)),
     stop: useAtomValue(factoryTasks.stopTask.permissionAtom(environmentId)),
     retry: useAtomValue(factoryTasks.retryTask.permissionAtom(environmentId)),
+    breakDown: useAtomValue(factoryTasks.requestTaskBreakdown.permissionAtom(environmentId)),
     accept: useAtomValue(factoryTasks.acceptTaskResult.permissionAtom(environmentId)),
     requestChanges: useAtomValue(factoryTasks.requestTaskChanges.permissionAtom(environmentId)),
     reopen: useAtomValue(factoryTasks.reopenTask.permissionAtom(environmentId)),

@@ -99,23 +99,35 @@ function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSu
         className="space-y-4 rounded-lg border border-destructive/32 bg-error-surface p-4"
       >
         <p className="whitespace-pre-wrap break-words text-sm">{task.run?.note || need.detail}</p>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            disabled={!permissions.retry}
-            onClick={() => openTaskSetup(task.ref, "retry")}
-          >
-            Retry
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!permissions.retry}
-            onClick={() => openTaskSetup(task.ref, "retry")}
-          >
-            Reassign
-          </Button>
-        </div>
+        {task.run?.purpose === "planning" && task.run.state === "failed" ? (
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              disabled={!permissions.breakDown}
+              onClick={() => openTaskSetup(task.ref, "break-down")}
+            >
+              Break down
+            </Button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              disabled={!permissions.retry}
+              onClick={() => openTaskSetup(task.ref, "retry")}
+            >
+              Retry
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!permissions.retry}
+              onClick={() => openTaskSetup(task.ref, "retry")}
+            >
+              Reassign
+            </Button>
+          </div>
+        )}
       </section>
     );
   if (need.reason === "review" || need.reason === "changed")

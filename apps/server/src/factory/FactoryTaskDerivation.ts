@@ -200,8 +200,15 @@ export function deriveTask(facts: TaskFacts, subtasks: ReadonlyArray<SubtaskFact
   const raise = (reason: FactoryTaskAttentionReason, detail: string) =>
     own.push({ reason, taskId: facts.taskId, displayId: facts.displayId, detail });
   if (ownStatus !== "done" && ownStatus !== "canceled") {
+    const latestRun = facts.runs.at(-1);
     if (latestWork !== null && (latestWork.state === "failed" || latestWork.state === "held"))
       raise("failed", latestWork.note ?? "Run failed");
+    else if (
+      latestRun?.purpose === "planning" &&
+      latestRun.state === "failed" &&
+      facts.proposalItems === null
+    )
+      raise("failed", "Break down failed");
     if (ownStatus === "in-review" && latest !== null)
       raise(changed ? "changed" : "review", latest.summary);
     if (facts.proposalItems !== null)

@@ -21,6 +21,7 @@ import {
   type FactoryTaskError,
   type FactoryTaskChange,
   type FactoryTaskCreateInput,
+  type FactoryTaskMutationResult,
   type FactoryTaskRun,
   type FactoryTaskSummary,
   type FactoryWorkReadResult,
@@ -32,7 +33,9 @@ import { AcpProviderCapabilitiesV2 } from "@t3tools/provider-acp/server/adapter"
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
@@ -48,6 +51,7 @@ import { ProviderAdapterRegistryV2 } from "../orchestration-v2/ProviderAdapterRe
 import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as DeliveryStore from "../persistence/FactoryDeliveryStore.ts";
 import * as ExecutionStore from "../persistence/FactoryExecutionStore.ts";
+import * as IntakeStore from "../persistence/FactoryIntakeStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Processes from "../processRunner.ts";
@@ -111,7 +115,9 @@ const git = Layer.mock(Processes.ProcessRunner)({
       stdout:
         input.args[0] === "rev-parse"
           ? `${projectHead}\n`
-          : "180\t20\tsrc/board.ts\u00004\t0\tsrc/card.ts\u0000",
+          : input.args[4] === input.args[5]
+            ? ""
+            : "180\t20\tsrc/board.ts\u00004\t0\tsrc/card.ts\u0000",
       stderr: "",
       code: ChildProcessSpawner.ExitCode(0),
       timedOut: false,
@@ -234,6 +240,52 @@ const deliveries = Layer.effect(
     ),
   ),
 );
+/** Runs once before the next plan read, so a test can hold one command at that point. */
+class PlanGate extends Context.Service<PlanGate, { next: Effect.Effect<void> | null }>()(
+  "t3/factory/FactoryTaskService.test/PlanGate",
+) {}
+const gatedPlans = Layer.effect(
+  Plans.FactoryPlanService,
+  Effect.gen(function* () {
+    const plans = yield* Plans.FactoryPlanService;
+    const gate = yield* PlanGate;
+    return Plans.FactoryPlanService.of({
+      ...plans,
+      read: (input) =>
+        Effect.suspend(() => {
+          const next = gate.next ?? Effect.void;
+          gate.next = null;
+          return next;
+        }).pipe(Effect.andThen(plans.read(input))),
+    });
+  }),
+).pipe(
+  Layer.provide(Plans.layer),
+  Layer.provideMerge(Layer.sync(PlanGate, () => ({ next: null }))),
+);
+/** Runs once before the next result read, so a test can hold an Accept after its first check. */
+class OutputGate extends Context.Service<OutputGate, { next: Effect.Effect<void> | null }>()(
+  "t3/factory/FactoryTaskService.test/OutputGate",
+) {}
+const gatedExecutions = Layer.effect(
+  Executions.FactoryExecutionService,
+  Effect.gen(function* () {
+    const executions = yield* Executions.FactoryExecutionService;
+    const gate = yield* OutputGate;
+    return Executions.FactoryExecutionService.of({
+      ...executions,
+      readOutput: (input) =>
+        Effect.suspend(() => {
+          const next = gate.next ?? Effect.void;
+          gate.next = null;
+          return next;
+        }).pipe(Effect.andThen(executions.readOutput(input))),
+    });
+  }),
+).pipe(
+  Layer.provide(Executions.layer),
+  Layer.provideMerge(Layer.sync(OutputGate, () => ({ next: null }))),
+);
 const eventStores = EventStore.layerFromOrchestrationEventStore.pipe(
   Layer.provideMerge(OrchestrationEventStore.layer),
 );
@@ -260,12 +312,9 @@ const layerWith = (environmentDefault: ModelSelection | null = null) => {
           : Effect.fail(new FactoryWorkError({ reason: "missing-work" })),
     }),
   );
-  const engine = Layer.mergeAll(
-    Plans.layer,
-    Executions.layer,
-    ExecutionStore.layer,
-    deliveries,
-  ).pipe(Layer.provideMerge(base));
+  const engine = Layer.mergeAll(gatedPlans, gatedExecutions, ExecutionStore.layer, deliveries).pipe(
+    Layer.provideMerge(base),
+  );
   return Layer.mergeAll(Tasks.layer, Profiles.layer, Changes.layer).pipe(
     Layer.provideMerge(engine),
   );
@@ -399,6 +448,140 @@ const scenario = <A, E>(
   body: Effect.Effect<A, E, Provided | Scope.Scope>,
   environmentDefault: ModelSelection | null = null,
 ) => body.pipe(Effect.scoped, Effect.provide(layerWith(environmentDefault)));
+
+it.effect(
+  "a saved schedule creates tasks after the author's login expires, with creation-only authority",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(DateTime.makeUnsafe("2026-11-10T00:00:00.000Z").epochMilliseconds);
+        const { tasks, sql } = yield* harness;
+        const intake = yield* IntakeStore.FactoryIntakeStore.pipe(
+          Effect.provide(IntakeStore.layer),
+        );
+        const source: IntakeStore.StoredSource = {
+          id: "durable-schedule",
+          projectId,
+          config: {
+            kind: "schedule",
+            schedule: { timeOfDay: "09:00", weekdays: [] },
+            task: {
+              title: "Weekly review",
+              description: "Review dependencies",
+              type: "research",
+              lane: "ready",
+              assignment: { mode: "unassigned" },
+            },
+          },
+          label: "Schedule",
+          detail: "",
+          enabled: true,
+          status: "ok",
+          feedSourceId: null,
+          actor: human,
+          lastCheckedAt: null,
+          nextCheckAt: null,
+          lastSlotAt: at,
+          version: 1,
+          createdAt: at,
+          updatedAt: at,
+        };
+        yield* intake.putSource(source);
+        yield* sql`UPDATE auth_sessions SET expires_at = ${"2026-12-10T00:00:00.000Z"} WHERE session_id = ${human.sessionId}`;
+        const slot = DateTime.formatIso(
+          DateTime.makeZonedUnsafe(
+            { year: 2026, month: 12, day: 11, hour: 9 },
+            { timeZone: DateTime.zoneMakeLocal(), adjustForTimeZone: true },
+          ),
+        );
+        yield* TestClock.setTime(DateTime.makeUnsafe(slot).epochMilliseconds);
+        const input = {
+          commandId: command(`factory-intake:${source.id}:${slot}`),
+          projectId,
+          title: "Weekly review",
+          description: "Review dependencies",
+          type: "research",
+          lane: "ready",
+          assignment: { mode: "unassigned" },
+        } as const;
+        const origin = {
+          source: { kind: "schedule", label: "Schedule", url: null, key: null, workRef: null },
+          ruleName: null,
+        } as const;
+        const authority = { sourceId: source.id, sourceVersion: source.version, slot };
+        const alternateSlot = slot.replace(".000Z", "+00:00");
+        for (const [candidate, permission] of [
+          [{ ...input, title: "Different work" }, authority],
+          [{ ...input, projectId: otherProjectId }, authority],
+          [input, { ...authority, sourceVersion: 2 }],
+          [input, { ...authority, sourceId: "missing-source" }],
+          [input, { ...authority, slot: at }],
+          [
+            { ...input, commandId: command(`factory-intake:${source.id}:${alternateSlot}`) },
+            { ...authority, slot: alternateSlot },
+          ],
+        ] as const) {
+          assert.equal(
+            (yield* tasks.create(candidate, human, origin, permission).pipe(Effect.flip)).reason,
+            "forbidden",
+          );
+        }
+        const result = yield* tasks.create(input, human, origin, authority);
+        assert.equal(result.task.title, "Weekly review");
+        assert.equal(result.task.status, "ready");
+        assert.equal(result.task.run, null);
+        assert.equal((yield* tasks.create(input, human, origin, authority)).replayed, true);
+        assert.equal(
+          (yield* tasks
+            .create({ ...input, commandId: command("ordinary") }, human)
+            .pipe(Effect.flip)).reason,
+          "forbidden",
+        );
+        assert.equal(
+          (yield* tasks
+            .start(
+              {
+                commandId: command("schedule-start"),
+                ref: result.task.ref,
+                expectedVersion: result.task.version,
+                setup: setupOf(),
+              },
+              human,
+            )
+            .pipe(Effect.flip)).reason,
+          "forbidden",
+        );
+        assert.equal(
+          (yield* tasks
+            .create(
+              {
+                ...input,
+                parent: { rootId: result.task.ref.rootId, taskId: result.task.ref.taskId },
+              },
+              human,
+              origin,
+              authority,
+            )
+            .pipe(Effect.flip)).reason,
+          "forbidden",
+        );
+        yield* intake.putSource({ ...source, enabled: false });
+        const nextSlot = DateTime.formatIso(DateTime.add(DateTime.makeUnsafe(slot), { days: 1 }));
+        yield* TestClock.setTime(DateTime.makeUnsafe(nextSlot).epochMilliseconds);
+        assert.equal(
+          (yield* tasks
+            .create(
+              { ...input, commandId: command(`factory-intake:${source.id}:${nextSlot}`) },
+              human,
+              origin,
+              { ...authority, slot: nextSlot },
+            )
+            .pipe(Effect.flip)).reason,
+          "forbidden",
+        );
+      }),
+    ),
+);
 
 it.effect("numbers top-level tasks, sub-tasks and nested sub-tasks once and never again", () =>
   scenario(
@@ -541,6 +724,34 @@ it.effect("replays a command id, refuses it with other input, and reports a stal
         (yield* tasks.update({ ...move, lane: "backlog" }, human).pipe(Effect.flip)).reason,
         "command-conflict",
       );
+      // Two devices that read the same version: one write lands, the other is refused, not lost.
+      const retype = (type: "feature" | "bug") =>
+        tasks
+          .update(
+            {
+              commandId: command(`retype:${type}`),
+              ref,
+              expectedVersion: moved.task.version,
+              type,
+            },
+            human,
+          )
+          .pipe(Effect.flip, Effect.result);
+      const gate = yield* PlanGate;
+      const reached = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      gate.next = Deferred.succeed(reached, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+      );
+      const first = yield* Effect.forkChild(retype("feature"));
+      yield* Deferred.await(reached);
+      const second = yield* Effect.forkChild(retype("bug"), { startImmediately: true });
+      yield* Deferred.succeed(release, undefined);
+      const refused = [yield* Fiber.join(first), yield* Fiber.join(second)].flatMap((write) =>
+        write._tag === "Success" ? [write.success.reason] : [],
+      );
+      assert.deepEqual(refused, ["version-conflict"]);
+      assert.equal((yield* tasks.read({ task: { ref } })).task.version, moved.task.version + 1);
       assert.equal(
         (yield* tasks
           .read({ task: { ref: { ...ref, environmentId: EnvironmentId.make("elsewhere") } } })
@@ -910,7 +1121,7 @@ it.effect.each(
       const running = yield* start(task);
       yield* finish(running.run!, operation === "retry" ? "failed" : "sealed", "Answer");
       yield* until(task, (current) =>
-        operation === "retry" ? current.liveRuns.length === 0 : current.status === "in-review",
+        operation === "retry" ? current.run?.endedAt != null : current.status === "in-review",
       );
       if (condition === "blocked") {
         const ref = { environmentId, projectId, rootId: task.ref.rootId };
@@ -1300,7 +1511,12 @@ it.effect(
         const publishId = yield* intentOf("publish");
         assert.deepEqual(
           yield* sql`SELECT json_extract(payload_json, '$.headBranch') AS branch, head_sha AS head FROM factory_delivery_intents WHERE id = ${publishId}`,
-          [{ branch: "t3/T-1-audio-ring-demo", head: resultCommit }],
+          [
+            {
+              branch: `t3/T-1-rev1-${executionDigest([environmentId, projectId, task.ref.rootId, task.ref.taskId]).slice(0, 32)}/audio-ring-demo`,
+              head: resultCommit,
+            },
+          ],
         );
 
         // The effect worker's outcome reaches the task without anyone asking.
@@ -1399,6 +1615,65 @@ it.effect(
           ),
           ["opened #12 rev 1", "merged #12 rev 1"],
         );
+      }),
+    ),
+);
+
+it.effect(
+  "publication branches distinguish result revisions even when their title slugs collide",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const { tasks, create, start, finish, until } = yield* harness;
+        const store = yield* DeliveryStore.FactoryDeliveryStore;
+        const task = yield* create("foo rev2", { lane: "ready" });
+        const firstRun = (yield* start(task)).run!;
+        yield* finish(firstRun, "sealed");
+        yield* until(task, (current) => current.result?.revision === 1);
+        yield* tasks.accept(
+          { commandId: command("accept-first"), ref: task.ref, revision: 1 },
+          human,
+        );
+        yield* tasks.publish(
+          { commandId: command("publish-first"), ref: task.ref, revision: 1 },
+          human,
+        );
+        const firstIntent = (yield* store.listByThread(firstRun.threadId))[0]!;
+        if (firstIntent.kind !== "publish-pr" || !("headBranch" in firstIntent.payload))
+          return yield* Effect.die("expected publication");
+        const reopened = (yield* tasks.reopen(
+          { commandId: command("reopen"), ref: task.ref },
+          human,
+        )).task;
+        yield* tasks.update(
+          {
+            commandId: command("rename"),
+            ref: task.ref,
+            expectedVersion: reopened.version,
+            title: "foo",
+          },
+          human,
+        );
+        const secondRun = (yield* tasks.requestChanges(
+          { commandId: command("revise"), ref: task.ref, revision: 1, note: "Refine it" },
+          human,
+        )).task.run!;
+        yield* finish(secondRun, "sealed");
+        yield* until(task, (current) => current.result?.revision === 2);
+        yield* tasks.accept(
+          { commandId: command("accept-second"), ref: task.ref, revision: 2 },
+          human,
+        );
+        yield* tasks.publish(
+          { commandId: command("publish-second"), ref: task.ref, revision: 2 },
+          human,
+        );
+        const secondIntent = (yield* store.listByThread(secondRun.threadId))[0]!;
+        if (secondIntent.kind !== "publish-pr" || !("headBranch" in secondIntent.payload))
+          return yield* Effect.die("expected publication");
+        assert.notEqual(firstIntent.payload.headBranch, secondIntent.payload.headBranch);
+        assert.include(firstIntent.payload.headBranch, "foo-rev2");
+        assert.include(secondIntent.payload.headBranch, "foo");
       }),
     ),
 );
@@ -1504,10 +1779,27 @@ it.effect(
         yield* finish(first, "sealed");
         const review = yield* until(task, (current) => current.status === "in-review");
 
-        const changing = (yield* tasks.requestChanges(
-          { commandId: command("changes"), ref: task.ref, revision: 1, note: "Keep cursor paging" },
-          human,
-        )).task;
+        // A Request changes that lands while an Accept reads the result wins: the run it started
+        // is not covered by an acceptance of the result before it.
+        const requested = yield* Deferred.make<FactoryTaskMutationResult, FactoryTaskError>();
+        (yield* OutputGate).next = tasks
+          .requestChanges(
+            {
+              commandId: command("changes"),
+              ref: task.ref,
+              revision: 1,
+              note: "Keep cursor paging",
+            },
+            human,
+          )
+          .pipe(Deferred.into(requested), Effect.asVoid);
+        assert.equal(
+          (yield* tasks
+            .accept({ commandId: command("racing"), ref: task.ref, revision: 1 }, human)
+            .pipe(Effect.flip)).reason,
+          "run-active",
+        );
+        const changing = (yield* Deferred.await(requested)).task;
         const second = changing.run!;
         assert.deepEqual(
           [changing.status, second.ordinal, second.state, changing.assignee.key],
@@ -1533,11 +1825,32 @@ it.effect(
           "run-active",
         );
 
-        yield* finish(second, "sealed");
+        // A retry repeats the failed attempt: the same note, from the same result.
+        yield* finish(second, "failed");
+        const failed = yield* until(task, (current) => current.run?.state === "failed");
+        const third = (yield* tasks.retry(
+          { commandId: command("retry-changes"), ref: task.ref, expectedVersion: failed.version },
+          human,
+        )).task.run!;
+        const retriedBinding = yield* sql<{
+          text: string;
+          baseRef: string;
+        }>`SELECT json_extract(binding_json, '$.inputText') AS text, json_extract(binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef FROM factory_execution_bindings WHERE thread_id = ${third.threadId}`;
+        assert.include(retriedBinding[0]!.text, "Keep cursor paging");
+        assert.equal(retriedBinding[0]!.baseRef, resultCommit);
+
+        // The revision changed no file of its own, yet still carries the code under review.
+        yield* finish(third, "sealed");
         const replaced = yield* until(task, (current) => current.result?.revision === 2);
         assert.deepEqual(
-          [replaced.status, replaced.result?.state, replaced.result?.runOrdinal],
-          ["in-review", "ready", 2],
+          [
+            replaced.status,
+            replaced.result?.state,
+            replaced.result?.runOrdinal,
+            replaced.result?.kind,
+            replaced.result?.summary,
+          ],
+          ["in-review", "ready", 3, "code", "+184 −20 · 2 files"],
         );
         assert.deepEqual(
           yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${task.ref.taskId}`,
@@ -1675,6 +1988,34 @@ it.effect(
         assert.deepEqual(
           [waiting.liveRuns.map((live) => live.displayId), waiting.progress],
           [["T-1.2"], { done: 0, total: 2 }],
+        );
+        // Another round of T-1.1 would move the plan revision under T-1.2's run, so it waits.
+        const beside = yield* tasks
+          .requestChanges(
+            {
+              commandId: command("changes-beside-sibling"),
+              ref: contract.ref,
+              revision: 1,
+              note: "Split the migration",
+            },
+            human,
+          )
+          .pipe(Effect.flip);
+        assert.deepEqual(
+          [beside.reason, beside.detail],
+          ["run-active", "Another sub-task of this task is running. Try again when it finishes."],
+        );
+        assert.deepEqual(
+          yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${contract.ref.taskId}`,
+          [{ note: null }],
+        );
+        assert.deepEqual(
+          yield* engine.claimPhase({
+            runAttemptId: yield* attemptOf(guideRun),
+            phase: "workspace",
+            claimantId: "worker",
+          }),
+          { status: "claimed" },
         );
 
         // A title edit moves the plan revision under the running sibling. The engine stops

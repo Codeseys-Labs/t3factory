@@ -102,6 +102,8 @@ export interface TaskRunRow extends FactoryTaskRun {
   readonly profileId: string | null;
   /** Plan revision the run was admitted under. Null for a planning run. */
   readonly planRevision: number | null;
+  /** Commit the run's worktree started from. Null for a planning run or one in the project root. */
+  readonly baseRef: string | null;
 }
 
 export interface TaskView {
@@ -148,7 +150,7 @@ export interface PendingResult {
   readonly taskId: string;
   readonly output: FactoryExecutionOutput;
   readonly threadId: ThreadId;
-  /** Base commit of the run's worktree. Null when the run worked in the project root. */
+  /** Commit the result is compared with. Null when the run worked in the project root. */
   readonly baseRef: string | null;
   readonly repositoryPath: string | null;
 }
@@ -414,6 +416,7 @@ interface RunRecord {
   stopRequested: number;
   endedAt: string | null;
   planRevision: number | null;
+  baseRef: string | null;
   quiescent: number | null;
   engineStop: number | null;
   nativeStatus: string | null;
@@ -538,7 +541,7 @@ const make = Effect.gen(function* () {
       yield* sql<TaskRecord>`SELECT root_id AS rootId, task_id AS taskId, project_id AS projectId, parent_id AS parentId, display_id AS displayId, title, plan_order AS planOrder, retired, type, lane, assignment_json AS assignment, source_json AS source, accepted_revision AS acceptedRevision, status, needs_attention AS needsAttention, assignee_key AS assigneeKey, version, created_at AS createdAt, updated_at AS updatedAt FROM factory_tasks WHERE root_id IN ${sql.in(rootIds)} ORDER BY root_id, plan_order`;
     if (records.length === 0) return views;
     const runRecords =
-      yield* sql<RunRecord>`SELECT r.thread_id AS threadId, r.root_id AS rootId, r.task_id AS taskId, r.ordinal, r.purpose, r.run_id AS runId, r.attempt_id AS attemptId, r.setup_json AS setup, r.profile_id AS profileId, r.started_at AS startedAt, r.stop_requested AS stopRequested, r.ended_at AS endedAt, b.revision AS planRevision, b.quiescent, b.stop_requested AS engineStop, json_extract(n.payload_json, '$.status') AS nativeStatus, n.completed_at AS nativeCompletedAt, (SELECT json_extract(o.output_json, '$.status') FROM factory_execution_results o WHERE o.attempt_id = r.attempt_id ORDER BY o.rowid DESC LIMIT 1) AS outputStatus, EXISTS (SELECT 1 FROM orchestration_v2_effect_outbox e WHERE e.thread_id = r.thread_id AND e.status IN ('pending', 'running')) AS effectsPending FROM factory_task_runs r LEFT JOIN factory_execution_bindings b ON b.attempt_id = r.attempt_id LEFT JOIN orchestration_v2_projection_runs n ON n.run_id = r.run_id WHERE r.root_id IN ${sql.in(rootIds)} ORDER BY r.root_id, r.task_id, r.ordinal`;
+      yield* sql<RunRecord>`SELECT r.thread_id AS threadId, r.root_id AS rootId, r.task_id AS taskId, r.ordinal, r.purpose, r.run_id AS runId, r.attempt_id AS attemptId, r.setup_json AS setup, r.profile_id AS profileId, r.started_at AS startedAt, r.stop_requested AS stopRequested, r.ended_at AS endedAt, b.revision AS planRevision, json_extract(b.binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef, b.quiescent, b.stop_requested AS engineStop, json_extract(n.payload_json, '$.status') AS nativeStatus, n.completed_at AS nativeCompletedAt, (SELECT json_extract(o.output_json, '$.status') FROM factory_execution_results o WHERE o.attempt_id = r.attempt_id ORDER BY o.rowid DESC LIMIT 1) AS outputStatus, EXISTS (SELECT 1 FROM orchestration_v2_effect_outbox e WHERE e.thread_id = r.thread_id AND e.status IN ('pending', 'running')) AS effectsPending FROM factory_task_runs r LEFT JOIN factory_execution_bindings b ON b.attempt_id = r.attempt_id LEFT JOIN orchestration_v2_projection_runs n ON n.run_id = r.run_id WHERE r.root_id IN ${sql.in(rootIds)} ORDER BY r.root_id, r.task_id, r.ordinal`;
     const resultRecords = yield* sql<{
       rootId: string;
       taskId: string;
@@ -639,6 +642,7 @@ const make = Effect.gen(function* () {
           attemptId: record.attemptId,
           profileId: record.profileId,
           planRevision: record.planRevision,
+          baseRef: record.baseRef,
         });
         runsByTask.set(record.taskId, runs);
       }
@@ -989,15 +993,27 @@ const make = Effect.gen(function* () {
       for (const row of sealed) {
         const binding = yield* decodeBinding(row.binding);
         if (pending.some((entry) => entry.output.runAttemptId === binding.runAttemptId)) continue;
+        // A run that continued an earlier result is compared with that result's base, so each
+        // revision lists the whole change a Publish would send.
+        let baseRef =
+          binding.spec.workspaceStrategy.type === "worktree"
+            ? binding.spec.workspaceStrategy.baseRef
+            : null;
+        const seen = new Set<string>();
+        while (baseRef !== null && !seen.has(baseRef)) {
+          seen.add(baseRef);
+          const earlier = yield* sql<{
+            base: string | null;
+          }>`SELECT json_extract(b.binding_json, '$.spec.workspaceStrategy.baseRef') AS base FROM factory_task_results r JOIN factory_execution_bindings b ON b.attempt_id = r.attempt_id WHERE r.root_id = ${rootId} AND r.task_id = ${row.taskId} AND r.commit_sha = ${baseRef} ORDER BY r.revision LIMIT 1`;
+          if (earlier[0]?.base == null) break;
+          baseRef = earlier[0].base;
+        }
         pending.push({
           rootId,
           taskId: row.taskId,
           output: yield* decodeOutput(row.output),
           threadId: binding.threadId,
-          baseRef:
-            binding.spec.workspaceStrategy.type === "worktree"
-              ? binding.spec.workspaceStrategy.baseRef
-              : null,
+          baseRef,
           repositoryPath: row.repositoryPath,
         });
       }

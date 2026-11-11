@@ -995,6 +995,16 @@ it.effect(
       assert.strictEqual(normalized.version, saved.source!.version + 1);
       assert.strictEqual((yield* Ref.get(h.createCalls)).length, 4);
       assert.strictEqual(yield* Queue.size(h.created), 0);
+      // A crash after the Unassigned task was saved but before the source was normalized: the
+      // retry carries the old profile assignment and must replay the saved task, not fail.
+      yield* second.stop;
+      yield* h.sql`UPDATE factory_intake_sources SET config_json = replace(config_json, '"assignment":{"mode":"unassigned"}', '"assignment":{"mode":"profile","profileId":"implementer"}'), last_slot_at = ${DateTime.formatIso(DateTime.makeUnsafe(local(9, 9)))}, next_check_at = ${DateTime.formatIso(DateTime.makeUnsafe(local(11, 9, 1)))}, status = 'ok' WHERE source_id = ${saved.source!.id}`;
+      const third = yield* h.start;
+      yield* TestClock.adjust("1 minute");
+      yield* awaitChange(third.changes, (change) => change.sources);
+      assert.strictEqual((yield* third.intake.listSources({})).sources[0]?.status, "ok");
+      assert.deepStrictEqual((yield* Ref.get(h.createCalls)).at(-1)?.input, wednesday.input);
+      assert.strictEqual(yield* Queue.size(h.created), 0);
     }),
 );
 

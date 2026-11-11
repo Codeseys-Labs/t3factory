@@ -628,8 +628,13 @@ const make = Effect.gen(function* () {
     const created = due
       ? yield* create(assignment).pipe(
           Effect.catchTags({
+            // After a crash between saving the fallback task and normalizing the source, the
+            // slot's command already holds the Unassigned task, so the profile retry conflicts.
             FactoryTaskError: (error) => {
-              if (error.reason !== "missing-profile" || assignment.mode !== "profile")
+              if (
+                (error.reason !== "missing-profile" && error.reason !== "command-conflict") ||
+                assignment.mode !== "profile"
+              )
                 return Effect.fail(error);
               assignment = { mode: "unassigned" };
               return create(assignment);

@@ -383,9 +383,13 @@ const make = Effect.gen(function* () {
     itemKeys: ReadonlyArray<string>,
   ) {
     if (itemKeys.length === 0) return new Set<string>();
+    // Legacy feed rows used raw item keys but already stored the locator in their origin key.
     const rows = yield* sql<{ readonly itemKey: string }>`SELECT item_key AS itemKey
       FROM factory_intake_arrivals WHERE source_id = ${sourceId}
-      AND item_key IN (SELECT value FROM json_each(${encodeStrings(itemKeys)}))`;
+      AND item_key IN (SELECT value FROM json_each(${encodeStrings(itemKeys)}))
+      UNION
+      SELECT origin_key AS itemKey FROM factory_intake_arrivals WHERE source_id = ${sourceId}
+      AND origin_key IN (SELECT value FROM json_each(${encodeStrings(itemKeys)}))`;
     return new Set(rows.map((row) => row.itemKey));
   }, Effect.mapError(persistenceError));
   const insertArrival = Effect.fn("FactoryIntakeStore.insertArrival")(function* (

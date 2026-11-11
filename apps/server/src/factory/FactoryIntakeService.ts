@@ -431,19 +431,22 @@ const make = Effect.gen(function* () {
         items: candidates
           .filter((candidate) => candidate.disposition === "open")
           .toReversed()
-          .map((candidate) => ({
-            itemKey: candidate.itemKey,
-            originKey: feedItemOriginKey(
+          .map((candidate) => {
+            const key = feedItemOriginKey(
               repository?.canonicalKey ?? "",
               locator,
               candidate.itemKey,
-            ),
-            label: "Feed",
-            title: candidate.title ?? candidate.link ?? candidate.itemKey,
-            body: candidate.content ?? "",
-            url: candidate.link,
-            labels: [],
-          })),
+            );
+            return {
+              itemKey: key,
+              originKey: key,
+              label: "Feed",
+              title: candidate.title ?? candidate.link ?? candidate.itemKey,
+              body: candidate.content ?? "",
+              url: candidate.link,
+              labels: [],
+            };
+          }),
         nextCheckAt: Math.max(
           nowMs + FEED_CHECK_INTERVAL_MS,
           feed.nextAllowedAt === null ? 0 : millisOf(feed.nextAllowedAt),

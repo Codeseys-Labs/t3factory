@@ -1088,6 +1088,10 @@ it.effect("editing a feed URL binds the new URL and can return to the original b
   Effect.gen(function* () {
     const h = yield* harness;
     const { intake } = yield* h.start;
+    yield* Ref.update(h.feed, (state) => ({
+      ...state,
+      candidates: [feedCandidate("guid:1", "Feed A item")],
+    }));
     const saved = yield* intake.saveSource(
       {
         commandId: CommandId.make("feed-a"),
@@ -1098,10 +1102,15 @@ it.effect("editing a feed URL binds the new URL and can return to the original b
       human,
     );
     let source = saved.source!;
+    yield* h.sql`UPDATE factory_intake_arrivals SET item_key = ${"guid:1"} WHERE source_id = ${source.id}`;
     for (const [index, url] of [
       "https://news.example.org/b.xml",
       "https://news.example.org/a.xml",
     ].entries()) {
+      yield* Ref.update(h.feed, (state) => ({
+        ...state,
+        candidates: [feedCandidate("guid:1", index === 0 ? "Feed B item" : "Feed A item")],
+      }));
       const input = {
         commandId: CommandId.make(`edit-feed-${index}`),
         id: source.id,
@@ -1115,6 +1124,10 @@ it.effect("editing a feed URL binds the new URL and can return to the original b
       assert.strictEqual((yield* intake.saveSource(input, human)).replayed, true);
     }
     assert.strictEqual((yield* Ref.get(h.feed)).binds, 2);
+    assert.deepStrictEqual(
+      (yield* triage(intake)).items.map((arrival) => arrival.title),
+      ["Feed B item", "Feed A item"],
+    );
     assert.strictEqual((yield* recheck(intake, source)).source?.status, "ok");
   }),
 );

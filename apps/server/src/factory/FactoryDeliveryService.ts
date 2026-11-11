@@ -892,11 +892,25 @@ const makeService = Effect.gen(function* () {
             reason: "unreviewed-base-commits",
             extraCommitCount: count,
           });
+        const previous = (yield* store.listByThread(input.threadId)).find(
+          (intent) =>
+            intent.kind === "publish-pr" &&
+            intent.originKey === input.originKey &&
+            intent.headSha === input.headSha &&
+            intent.repository.canonicalKey === destination.repository.canonicalKey &&
+            intent.repository.host === destination.repository.host &&
+            intent.repository.provider === destination.repository.provider &&
+            "headBranch" in intent.payload &&
+            intent.payload.headBranch !== undefined,
+        );
         const payload: FactoryDeliveryPublishPayload = {
           title: input.publish.title,
           body: input.publish.body,
           draft: false,
-          headBranch: input.publish.headBranch,
+          headBranch:
+            (previous && "headBranch" in previous.payload
+              ? previous.payload.headBranch
+              : undefined) ?? input.publish.headBranch,
         };
         const common = {
           repository: destination.repository,
@@ -1179,28 +1193,55 @@ const makeService = Effect.gen(function* () {
         state: "open",
         limit: PUBLICATION_LOOKUP_LIMIT,
       }),
-    ).pipe(
-      Effect.map((candidates) =>
-        candidates.find((candidate) => matchesPublication(intent, candidate)),
-      ),
     );
     // An earlier attempt for the same branch and commit may already have opened it.
     const before = yield* Effect.result(findOpen);
     if (before._tag === "Failure")
       return yield* fail(describe("could not read pull requests", before.failure));
-    if (before.success !== undefined) {
-      yield* confirm(intent, before.success);
+    if (before.success.length >= PUBLICATION_LOOKUP_LIMIT)
+      return yield* fail("The branch's pull requests could not be fully checked.");
+    if (before.success.some((candidate) => !matchesPublication(intent, candidate)))
+      return yield* fail("The branch is already used by another pull request.");
+    if (before.success[0] !== undefined) {
+      yield* confirm(intent, before.success[0]);
       return;
     }
-    const pushed = yield* Effect.result(
+    const branchRef = `refs/heads/${headBranch}`;
+    const remote = yield* Effect.result(
       git.execute({
-        operation: "FactoryDeliveryService.pushCommit",
+        operation: "FactoryDeliveryService.readPublicationBranch",
         cwd,
-        args: ["push", "--", "origin", `${intent.headSha}:refs/heads/${headBranch}`],
+        args: ["ls-remote", "--heads", "--", "origin", branchRef],
         timeoutMs: null,
+        maxOutputBytes: 4096,
       }),
     );
-    if (pushed._tag === "Failure") return yield* fail(describe("push failed", pushed.failure));
+    if (remote._tag === "Failure")
+      return yield* fail(describe("could not read the publication branch", remote.failure));
+    if (remote.success.exitCode !== 0 || remote.success.stdoutTruncated)
+      return yield* fail("The publication branch could not be checked.");
+    const remoteHead = remote.success.stdout.trim();
+    if (remoteHead !== "" && remoteHead !== `${intent.headSha}\t${branchRef}`)
+      return yield* fail("The publication branch already points at a different commit.");
+    if (remoteHead === "") {
+      const pushed = yield* Effect.result(
+        git.execute({
+          operation: "FactoryDeliveryService.pushCommit",
+          cwd,
+          // An empty lease creates the branch only if it is still absent at the remote.
+          args: [
+            "push",
+            `--force-with-lease=${branchRef}:`,
+            "--",
+            "origin",
+            `${intent.headSha}:${branchRef}`,
+          ],
+          timeoutMs: null,
+        }),
+      );
+      if (pushed._tag === "Failure") return yield* fail(describe("push failed", pushed.failure));
+      if (pushed.success.exitCode !== 0) return yield* fail("The publication branch push failed.");
+    }
     const bodyFile = path.join(
       tempDir,
       `t3code-delivery-body-${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}.md`,
@@ -1228,8 +1269,12 @@ const makeService = Effect.gen(function* () {
         ? yield* fail(describe("pull request rejected", created.failure))
         : yield* settle(intent, "unknown", describe("response lost", created.failure));
     const after = yield* Effect.result(findOpen);
-    if (after._tag === "Success" && after.success !== undefined) {
-      yield* confirm(intent, after.success);
+    const opened =
+      after._tag === "Success"
+        ? after.success.find((candidate) => matchesPublication(intent, candidate))
+        : undefined;
+    if (opened !== undefined) {
+      yield* confirm(intent, opened);
       return;
     }
     yield* settle(intent, "unknown", "created, but the pull request could not be read back");

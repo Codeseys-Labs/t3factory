@@ -184,6 +184,7 @@ const harness = (
     providerDestinationMatches: true,
     extraBaseCommits: "0",
     comparedBases: [] as ReadonlyArray<string>[],
+    remoteBranchSha: null as string | null,
   };
   const providerFailure = (cwd: string, cause: unknown) =>
     new SourceControlProviderError({
@@ -225,6 +226,15 @@ const harness = (
   };
   const git = Layer.mock(Git.GitVcsDriver)({
     execute: ({ args, cwd }) => {
+      if (args[0] === "ls-remote")
+        return Effect.succeed({
+          exitCode: ChildProcessSpawner.ExitCode(0),
+          stdout:
+            state.remoteBranchSha === null ? "" : `${state.remoteBranchSha}\t${args.at(-1)}\n`,
+          stderr: "",
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        });
       if (args[0] === "rev-list") {
         state.comparedBases.push(args);
         return Effect.succeed({
@@ -236,7 +246,8 @@ const harness = (
         });
       }
       if (args[0] === "push") {
-        state.calls.push(`push:${args[3]}`);
+        state.calls.push(`push:${args.at(-1)}`);
+        if (state.push === "ok") state.remoteBranchSha = first;
         return state.push === "ok"
           ? Effect.succeed({
               exitCode: ChildProcessSpawner.ExitCode(0),
@@ -1609,6 +1620,7 @@ const grantTaskResult = (
   kind: "publish-pr" | "merge-pr",
   commandId: string,
   recheck: Effect.Effect<void, FactoryDeliveryError> = Effect.void,
+  headBranch = taskBranch,
 ) =>
   Effect.flatMap(Delivery.FactoryDeliveryService, (service) =>
     service.grantCommit({
@@ -1620,7 +1632,7 @@ const grantTaskResult = (
       threadId: claimed,
       headSha: first,
       baseRef: taskBase,
-      publish: { title: "Audio ring demo", body: "Task T-36", headBranch: taskBranch },
+      publish: { title: "Audio ring demo", body: "Task T-36", headBranch },
       recheck,
     }),
   );
@@ -1642,6 +1654,52 @@ it.effect.each([1, 2])("refuses task publication with %i extra base commits", (c
     assert.deepEqual(state.calls, []);
   }).pipe(Effect.provide(layer));
 });
+
+it.effect.each(["branch", "pull request"])(
+  "refuses to update a task publication's branch owned by another %s",
+  (owner) => {
+    const { state, layer } = harness();
+    if (owner === "branch") state.remoteBranchSha = second;
+    else state.publications = [publishedChangeRequest({ headSha: second })];
+    return Effect.gen(function* () {
+      const granted = yield* grantTaskResult("publish-pr", "occupied");
+      yield* (yield* Delivery.FactoryDeliveryService).execute(granted.id);
+      assert.equal((yield* only).status, "failed");
+      assert.deepEqual(state.calls, []);
+      if (owner === "branch") assert.equal(state.remoteBranchSha, second);
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "reuses a task publication's pushed branch after a failed create and a title edit",
+  () => {
+    const { state, layer } = harness();
+    return Effect.gen(function* () {
+      const service = yield* Delivery.FactoryDeliveryService;
+      state.create = "definite";
+      const original = yield* grantTaskResult("publish-pr", "first-try");
+      yield* service.execute(original.id);
+      assert.equal((yield* only).status, "failed");
+      assert.equal(state.remoteBranchSha, first);
+      state.create = "ok";
+      const retry = yield* grantTaskResult(
+        "publish-pr",
+        "retry-renamed",
+        Effect.void,
+        "t3/T-36-a-new-title",
+      );
+      assert.equal("headBranch" in retry.payload && retry.payload.headBranch, taskBranch);
+      yield* service.execute(retry.id);
+      assert.equal(
+        Option.getOrThrow(yield* (yield* DeliveryStore.FactoryDeliveryStore).get(retry.id)).status,
+        "confirmed",
+      );
+      assert.equal(state.calls.filter((call) => call.startsWith("push:")).length, 1);
+      assert.equal(createCalls(state), 2);
+    }).pipe(Effect.provide(layer));
+  },
+);
 
 it.effect(
   "a task result publishes its accepted commit on its own branch and merges that commit",

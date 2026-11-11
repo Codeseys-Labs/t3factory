@@ -553,6 +553,24 @@ it("saves a comment for the people on the task", async () => {
   );
 });
 
+it("clears the comment draft when navigating to another task", async () => {
+  const { screen, router } = await renderDetail(taskPath("T-38.1"));
+  await using _screen = screen;
+  await userEvent.type(
+    page.getByRole("textbox", { name: "Comment" }),
+    "Private note for contract task",
+  );
+  await router.navigate({
+    to: "/tasks/$environmentId/$displayId",
+    params: { environmentId, displayId: "T-38" },
+  });
+  await expect.element(page.getByRole("textbox", { name: "Comment" })).toHaveValue("");
+  await expect
+    .element(page.getByRole("button", { name: "Comment", exact: true }).last())
+    .toBeDisabled();
+  expect(state.actions.comment).not.toHaveBeenCalled();
+});
+
 it("keeps Cancel unavailable while a descendant has a live run", async () => {
   const { screen } = await renderDetail(taskPath("T-38"));
   await using _screen = screen;

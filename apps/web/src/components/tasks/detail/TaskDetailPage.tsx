@@ -1,4 +1,5 @@
 import { factoryTaskQueryStatus } from "@t3tools/client-runtime/state/factory-task-list";
+import { factoryTaskKey } from "@t3tools/client-runtime/state/factory-task-view";
 import {
   FactoryTaskDisplayId,
   type EnvironmentId,
@@ -91,7 +92,14 @@ function TaskDetailLoader({
   const result = useFactoryTaskDetailByDisplayId(environmentId, displayId);
   const { isReady, presentation } = useEnvironmentPresentation(environmentId);
   if (result._tag === "Success")
-    return <TaskDetail detail={result.value} tab={tab} onTabChange={onTabChange} />;
+    return (
+      <TaskDetail
+        key={factoryTaskKey(result.value.task.ref)}
+        detail={result.value}
+        tab={tab}
+        onTabChange={onTabChange}
+      />
+    );
   const phase = presentation?.connection.phase;
   const link =
     phase === "connected"

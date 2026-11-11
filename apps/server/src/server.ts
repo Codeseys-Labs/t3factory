@@ -10,6 +10,9 @@ import * as FactoryResearchStore from "./persistence/FactoryResearchStore.ts";
 import * as FactoryClaimsService from "./factory/FactoryClaimsService.ts";
 import * as FactoryWorkService from "./factory/FactoryWorkService.ts";
 import * as FactoryPlanService from "./factory/FactoryPlanService.ts";
+import * as FactoryTaskPlanningService from "./factory/FactoryTaskPlanningService.ts";
+import * as FactoryTaskService from "./factory/FactoryTaskService.ts";
+import * as FactoryAgentProfileService from "./factory/FactoryAgentProfileService.ts";
 import * as FactoryAcceptanceService from "./factory/FactoryAcceptanceService.ts";
 import * as FactoryPreparationAcceptanceService from "./factory/FactoryPreparationAcceptanceService.ts";
 import * as FactoryKnowledgeService from "./factory/FactoryKnowledgeService.ts";
@@ -17,6 +20,8 @@ import * as FactoryDeliveryService from "./factory/FactoryDeliveryService.ts";
 import * as FactoryAcceptanceStore from "./persistence/FactoryAcceptanceStore.ts";
 import * as FactoryKnowledgeStore from "./persistence/FactoryKnowledgeStore.ts";
 import * as FactoryDeliveryStore from "./persistence/FactoryDeliveryStore.ts";
+import * as FactoryIntakeService from "./factory/FactoryIntakeService.ts";
+import * as FactoryIntakeStore from "./persistence/FactoryIntakeStore.ts";
 import * as FeedFetch from "./factory/FeedFetch.ts";
 import * as ProjectCoordinatorService from "./project/ProjectCoordinatorService.ts";
 import * as ProjectCoordinators from "./persistence/ProjectCoordinators.ts";
@@ -744,6 +749,26 @@ const layerCommandReadiness = HttpRouter.middleware(
   { global: true },
 );
 
+const layerFactoryWorkService = FactoryWorkService.layer.pipe(
+  Layer.provide(FactoryIssueRelations.layer),
+);
+const layerFactoryPlanService = FactoryPlanService.layer.pipe(
+  Layer.provide(layerFactoryWorkService),
+  Layer.provide(RuntimeLayer.layerEventSink),
+);
+// Tasks run through the same plan and execution services the Factory pages use. Planning and
+// intake call it, so they get this same layer: a sibling in one `mergeAll` does not provide it.
+const layerFactoryDeliveryService = FactoryDeliveryService.layer.pipe(
+  Layer.provide(Layer.merge(FactoryAcceptanceService.layer, FactoryKnowledgeService.layer)),
+);
+
+const layerFactoryTaskService = FactoryTaskService.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(layerFactoryPlanService, layerFactoryWorkService, layerFactoryDeliveryService),
+  ),
+  Layer.provide(RuntimeLayer.layerFactoryExecutionServiceProvided),
+);
+
 const layerMakeRoutes = Layer.mergeAll(
   Layer.mergeAll(
     HttpApiBuilder.layer(EnvironmentHttpApi).pipe(
@@ -777,24 +802,33 @@ const layerMakeRoutes = Layer.mergeAll(
 ).pipe(
   Layer.provide(
     Layer.mergeAll(
+      FactoryTaskPlanningService.layer.pipe(
+        Layer.provide(Layer.merge(layerFactoryTaskService, FactoryAgentProfileService.layer)),
+      ),
       FactoryIssueService.layer,
       FactoryIssueRelations.layer,
       FactoryFeedService.layer,
       FactoryResearchService.layer,
       FactoryClaimsService.layer,
-      FactoryWorkService.layer.pipe(Layer.provide(FactoryIssueRelations.layer)),
-      FactoryPlanService.layer.pipe(
-        Layer.provide(FactoryWorkService.layer.pipe(Layer.provide(FactoryIssueRelations.layer))),
-        Layer.provide(RuntimeLayer.layerEventSink),
-      ),
+      layerFactoryWorkService,
+      layerFactoryPlanService,
+      layerFactoryTaskService,
+      FactoryAgentProfileService.layer,
       FactoryAcceptanceService.layer,
       FactoryKnowledgeService.layer,
-      FactoryDeliveryService.layer.pipe(
-        Layer.provide(Layer.merge(FactoryAcceptanceService.layer, FactoryKnowledgeService.layer)),
-      ),
+      layerFactoryDeliveryService,
       RuntimeLayer.layerFactoryExecutionServiceProvided,
       FactoryPreparationAcceptanceService.layer.pipe(Layer.provide(RuntimeLayer.layerEventSink)),
       ProjectCoordinatorService.layer,
+      FactoryIntakeService.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            FactoryIssueService.layer,
+            FactoryFeedService.layer,
+            layerFactoryTaskService,
+          ),
+        ),
+      ),
     ).pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -805,6 +839,7 @@ const layerMakeRoutes = Layer.mergeAll(
           FactoryAcceptanceStore.layer,
           FactoryKnowledgeStore.layer,
           FactoryDeliveryStore.layer,
+          FactoryIntakeStore.layer,
           // The same instance the effect worker drains, so a grant wakes it.
           EffectOutbox.layer,
           FeedFetch.layer,

@@ -18,10 +18,16 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
-const Remote = Schema.Struct({ number: Schema.Int, url: Schema.String });
+const Remote = Schema.Struct({
+  number: Schema.Int,
+  url: Schema.String,
+  merged: Schema.optional(Schema.Literal(true)),
+});
 const StoredIntent = FactoryCommitDeliveryIntent.mapFields((fields) => ({
   ...fields,
   repository: Schema.fromJsonString(FactoryRepository),
@@ -105,13 +111,20 @@ export class FactoryDeliveryStore extends Context.Service<
       id: string,
       settlement: FactoryDeliverySettlement,
     ) => Effect.Effect<Option.Option<FactoryDeliveryIntent>, FactoryDeliveryError>;
+    readonly recordObservedMerge: (
+      id: string,
+      updatedAt: string,
+    ) => Effect.Effect<Option.Option<FactoryDeliveryIntent>, FactoryDeliveryError>;
     /** A `sending` row at startup lost its response: it becomes `unknown`, never `pending`. */
     readonly recoverInterrupted: (updatedAt: string) => Effect.Effect<number, FactoryDeliveryError>;
+    /** The origin of every intent a grant, settle or recovery committed. Never replays the past. */
+    readonly changes: Stream.Stream<FactoryOriginKey>;
   }
 >()("t3/persistence/FactoryDeliveryStore") {}
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  const changed = yield* PubSub.unbounded<FactoryOriginKey>();
   const columns = sql.literal(`id, origin_key AS originKey, thread_id AS threadId,
     project_id AS projectId, kind, acceptance_id AS acceptanceId, repository_json AS repository,
     base_ref AS baseRef, base_branch AS baseBranch, base_sha AS baseSha, head_sha AS headSha, payload_json AS payload,
@@ -222,7 +235,7 @@ const make = Effect.gen(function* () {
     const payload = yield* encodePayload(intent.payload);
     // A merge targets a pull request that already exists, so its remote is known at grant.
     const remote = intent.remote === null ? null : yield* encodeRemote(intent.remote);
-    return yield* sql.withTransaction(
+    const granted = yield* sql.withTransaction(
       Effect.gen(function* () {
         const replay = yield* getByCommand(intent.requestCommandId);
         if (Option.isSome(replay)) {
@@ -278,6 +291,8 @@ const make = Effect.gen(function* () {
         return { intent: stored.value, created: true };
       }),
     );
+    if (granted.created) yield* PubSub.publish(changed, granted.intent.originKey);
+    return granted;
   }, Effect.mapError(persistenceError));
   const markSending = Effect.fn("FactoryDeliveryStore.markSending")(function* (
     id: string,
@@ -295,7 +310,7 @@ const make = Effect.gen(function* () {
     id: string,
     settlement: FactoryDeliverySettlement,
   ) {
-    return yield* sql.withTransaction(
+    const settled = yield* sql.withTransaction(
       Effect.gen(function* () {
         const found = yield* get(id);
         if (Option.isNone(found) || found.value.status === "confirmed") return found;
@@ -338,16 +353,34 @@ const make = Effect.gen(function* () {
         return yield* get(id);
       }),
     );
+    if (Option.isSome(settled)) yield* PubSub.publish(changed, settled.value.originKey);
+    return settled;
+  }, Effect.mapError(persistenceError));
+  const recordObservedMerge = Effect.fn("FactoryDeliveryStore.recordObservedMerge")(function* (
+    id: string,
+    updatedAt: string,
+  ) {
+    const rows = yield* sql<{
+      originKey: FactoryOriginKey;
+    }>`UPDATE factory_delivery_intents SET remote_json = json_set(remote_json, '$.merged', json('true')), updated_at = ${updatedAt} WHERE id = ${id} AND kind = 'publish-pr' AND status = 'confirmed' AND remote_json IS NOT NULL AND json_extract(remote_json, '$.merged') IS NOT 1 RETURNING origin_key AS originKey`;
+    for (const row of rows) yield* PubSub.publish(changed, row.originKey);
+    return yield* get(id);
   }, Effect.mapError(persistenceError));
   const recoverInterrupted = Effect.fn("FactoryDeliveryStore.recoverInterrupted")(function* (
     updatedAt: string,
   ) {
-    const rows = yield* sql<{ readonly id: string }>`UPDATE factory_delivery_intents
+    const rows = yield* sql<{
+      readonly originKey: FactoryOriginKey;
+    }>`UPDATE factory_delivery_intents
       SET status = 'unknown', failure = 'server restarted during send', updated_at = ${updatedAt}
-      WHERE status = 'sending' RETURNING id`;
+      WHERE status = 'sending' RETURNING origin_key AS originKey`;
     const artifacts = yield* sql<{ readonly id: string }>`UPDATE factory_artifact_deliveries
       SET status = 'unknown', failure = 'server restarted during send', updated_at = ${updatedAt}
       WHERE status = 'sending' RETURNING id`;
+    yield* PubSub.publishAll(
+      changed,
+      rows.map((row) => row.originKey),
+    );
     return rows.length + artifacts.length;
   }, Effect.mapError(persistenceError));
   return FactoryDeliveryStore.of({
@@ -360,7 +393,9 @@ const make = Effect.gen(function* () {
     grant,
     markSending,
     settle,
+    recordObservedMerge,
     recoverInterrupted,
+    changes: Stream.fromPubSub(changed),
   });
 });
 export const layer = Layer.effect(FactoryDeliveryStore, make);

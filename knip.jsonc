@@ -140,6 +140,9 @@
       // These workspace packages are private to this monorepo.
       "includeEntryExports": true,
     },
+    "packages/client-runtime": {
+      "includeEntryExports": true,
+    },
     "packages/effect-acp": {
       "includeEntryExports": true,
       "entry": ["test/fixtures/*.ts"],

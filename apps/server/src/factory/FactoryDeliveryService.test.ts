@@ -5,6 +5,7 @@ import * as TestClock from "effect/testing/TestClock";
 import {
   CommandId,
   EnvironmentId,
+  FactoryDeliveryError,
   GitCommandError,
   MessageId,
   ProjectId,
@@ -59,7 +60,11 @@ import * as Acceptance from "./FactoryAcceptanceService.ts";
 import * as Delivery from "./FactoryDeliveryService.ts";
 import * as Knowledge from "./FactoryKnowledgeService.ts";
 import { renderArtifactComment, artifactDeliveryMarker } from "./FactoryArtifactDeliveryBody.ts";
-import { issueOriginKey, knowledgeBriefOriginKey } from "./FactoryOriginKey.ts";
+import {
+  issueOriginKey,
+  knowledgeBriefOriginKey,
+  taskResultOriginKey,
+} from "./FactoryOriginKey.ts";
 import { fakeIssueTracker, issueTrackersLayer } from "./IssueTrackerProviderRegistry.testkit.ts";
 
 const at = "2026-10-27T00:00:00.000Z";
@@ -70,6 +75,7 @@ const unclaimed = ThreadId.make("unclaimed");
 const first = "1".repeat(40);
 const second = "2".repeat(40);
 const base = "b".repeat(40);
+const taskBase = "c".repeat(40);
 const payload: FactoryDeliveryPublishPayload = {
   title: "Fix the thing",
   body: "Details",
@@ -176,6 +182,9 @@ const harness = (
       SourceControlProvider.SourceControlProvider["Service"]["listChangeRequests"]
     >[0][],
     providerDestinationMatches: true,
+    extraBaseCommits: "0",
+    comparedBases: [] as ReadonlyArray<string>[],
+    remoteBranchSha: null as string | null,
   };
   const providerFailure = (cwd: string, cause: unknown) =>
     new SourceControlProviderError({
@@ -216,16 +225,59 @@ const harness = (
     checkoutChangeRequest: () => unsupported("checkoutChangeRequest"),
   };
   const git = Layer.mock(Git.GitVcsDriver)({
-    execute: ({ args }) => {
+    execute: ({ args, cwd }) => {
+      if (args[0] === "ls-remote")
+        return Effect.succeed({
+          exitCode: ChildProcessSpawner.ExitCode(0),
+          stdout:
+            state.remoteBranchSha === null ? "" : `${state.remoteBranchSha}\t${args.at(-1)}\n`,
+          stderr: "",
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        });
+      if (args[0] === "rev-list") {
+        state.comparedBases.push(args);
+        return Effect.succeed({
+          exitCode: ChildProcessSpawner.ExitCode(0),
+          stdout: `${state.extraBaseCommits}\n`,
+          stderr: "",
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        });
+      }
+      if (args[0] === "push") {
+        state.calls.push(`push:${args.at(-1)}`);
+        if (state.push === "ok") state.remoteBranchSha = first;
+        return state.push === "ok"
+          ? Effect.succeed({
+              exitCode: ChildProcessSpawner.ExitCode(0),
+              stdout: "",
+              stderr: "",
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            })
+          : Effect.fail(
+              new GitCommandError({
+                operation: "push",
+                command: "git push",
+                cwd,
+                detail: "remote rejected",
+              }),
+            );
+      }
       const revision = args[2];
       const stdout =
         args[0] === "remote"
           ? state.origin
           : revision === "HEAD^{commit}"
             ? state.head
-            : revision === `${base}^{commit}`
+            : revision === `${base}^{commit}` || revision === "refs/remotes/origin/main^{commit}"
               ? base
-              : null;
+              : revision === `${taskBase}^{commit}`
+                ? taskBase
+                : revision === `${first}^{commit}`
+                  ? first
+                  : null;
       if (stdout === null) return Effect.die(`Unexpected git arguments: ${JSON.stringify(args)}`);
       return Effect.succeed({
         exitCode: ChildProcessSpawner.ExitCode(0),
@@ -235,6 +287,7 @@ const harness = (
         stderrTruncated: false,
       });
     },
+    resolveDefaultBranchName: () => Effect.succeed("main"),
     pushCurrentBranch: (cwd) => {
       state.calls.push("push");
       return state.push === "ok"
@@ -278,6 +331,7 @@ const harness = (
               url: null,
             })),
             capabilities: { mergeMethods: ["merge", "squash"] },
+            mergeCapabilities: { merge: true, squash: true, rebase: false },
           } as unknown as PullRequestDetail);
     },
     runAction: (input) => {
@@ -935,10 +989,7 @@ it.effect(
       assert.deepEqual(confirmed.remote, pullRequest);
       assert.deepEqual(state.calls, []);
       assert.lengthOf(state.links, 1);
-      assert.equal(
-        (yield* service.reconcile({ projectId, intentId: granted.id }).pipe(Effect.flip)).reason,
-        "not-reconcilable",
-      );
+      assert.deepEqual(yield* service.reconcile({ projectId, intentId: granted.id }), confirmed);
       assert.equal(
         (yield* service.reconcile({ projectId, intentId: "delivery:missing" }).pipe(Effect.flip))
           .reason,
@@ -1036,6 +1087,36 @@ it.effect.each(["publish-pr", "merge-pr"] as const)(
   },
 );
 
+it.effect.each(["merged", "open", "closed", "head-moved", "base-moved", "unreadable"] as const)(
+  "checking a confirmed publication observes %s without sending",
+  (outcome) => {
+    const { state, layer } = harness();
+    return Effect.gen(function* () {
+      yield* accept;
+      const service = yield* Delivery.FactoryDeliveryService;
+      const granted = yield* executeGranted();
+      const calls = [...state.calls];
+      const outbox = yield* outboxRows;
+      state.pr.state = outcome === "open" || outcome === "closed" ? outcome : "merged";
+      if (outcome === "head-moved") state.pr.headSha = second;
+      if (outcome === "base-moved") state.pr.baseBranch = "other";
+      if (outcome === "unreadable") state.read = "fail";
+      const merged = yield* service.reconcile({ projectId, intentId: granted.id });
+      assert.deepEqual(merged.remote, {
+        ...pullRequest,
+        ...(outcome === "merged" ? { merged: true } : {}),
+      });
+      assert.equal(merged.status, "confirmed");
+      assert.deepEqual(state.calls, calls);
+      assert.deepEqual(yield* outboxRows, outbox);
+      assert.deepEqual(
+        Option.getOrThrow(yield* (yield* DeliveryStore.FactoryDeliveryStore).get(granted.id)),
+        merged,
+      );
+    }).pipe(Effect.provide(layer));
+  },
+);
+
 it.effect("a missing publication stays unknown and blocks a replacement grant", () => {
   const { state, layer } = harness();
   return Effect.gen(function* () {
@@ -1078,7 +1159,10 @@ it.effect.each(["open", "closed", "merged"] as const)(
       });
       if (recovered.kind !== "publish-pr") return yield* Effect.die("expected publication");
       assert.equal(recovered.status, "confirmed");
-      assert.deepEqual(recovered.remote, pullRequest);
+      assert.deepEqual(recovered.remote, {
+        ...pullRequest,
+        ...(state.pr.state === "merged" ? { merged: true } : {}),
+      });
       assert.equal(recovered.headSha, first);
       assert.equal(recovered.baseBranch, baseBranch);
       assert.deepEqual(recovered.repository, intent.repository);
@@ -1530,6 +1614,206 @@ it.effect("reconciling a merge reads the pull request and never merges again", (
     );
   }).pipe(Effect.provide(layer));
 });
+
+const taskBranch = "t3/T-36-audio-ring-demo";
+const grantTaskResult = (
+  kind: "publish-pr" | "merge-pr",
+  commandId: string,
+  recheck: Effect.Effect<void, FactoryDeliveryError> = Effect.void,
+  headBranch = taskBranch,
+) =>
+  Effect.flatMap(Delivery.FactoryDeliveryService, (service) =>
+    service.grantCommit({
+      kind,
+      commandId,
+      originKey: taskResultOriginKey("root", "task", 1),
+      acceptanceId: "task:root/task@1",
+      projectId,
+      threadId: claimed,
+      headSha: first,
+      baseRef: taskBase,
+      publish: { title: "Audio ring demo", body: "Task T-36", headBranch },
+      recheck,
+    }),
+  );
+const createCalls = (state: { readonly calls: ReadonlyArray<string> }) =>
+  state.calls.filter((call) => call.startsWith("create:")).length;
+
+it.effect.each([1, 2])("refuses task publication with %i extra base commits", (count) => {
+  const { state, layer } = harness();
+  state.extraBaseCommits = String(count);
+  return Effect.gen(function* () {
+    const refused = yield* grantTaskResult("publish-pr", "extra-base").pipe(Effect.flip);
+    assert.equal(refused.reason, "unreviewed-base-commits");
+    assert.equal(
+      refused.message,
+      `The task's base includes ${count} extra ${count === 1 ? "commit" : "commits"} outside origin's default branch. Publish or rebase them first.`,
+    );
+    assert.deepEqual(state.comparedBases, [["rev-list", "--count", `${base}..${taskBase}`, "--"]]);
+    assert.deepEqual(yield* (yield* DeliveryStore.FactoryDeliveryStore).listByThread(claimed), []);
+    assert.deepEqual(state.calls, []);
+  }).pipe(Effect.provide(layer));
+});
+
+it.effect.each(["branch", "pull request"])(
+  "refuses to update a task publication's branch owned by another %s",
+  (owner) => {
+    const { state, layer } = harness();
+    if (owner === "branch") state.remoteBranchSha = second;
+    else state.publications = [publishedChangeRequest({ headSha: second })];
+    return Effect.gen(function* () {
+      const granted = yield* grantTaskResult("publish-pr", "occupied");
+      yield* (yield* Delivery.FactoryDeliveryService).execute(granted.id);
+      assert.equal((yield* only).status, "failed");
+      assert.deepEqual(state.calls, []);
+      if (owner === "branch") assert.equal(state.remoteBranchSha, second);
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "reuses a task publication's pushed branch after a failed create and a title edit",
+  () => {
+    const { state, layer } = harness();
+    return Effect.gen(function* () {
+      const service = yield* Delivery.FactoryDeliveryService;
+      state.create = "definite";
+      const original = yield* grantTaskResult("publish-pr", "first-try");
+      yield* service.execute(original.id);
+      assert.equal((yield* only).status, "failed");
+      assert.equal(state.remoteBranchSha, first);
+      state.create = "ok";
+      const retry = yield* grantTaskResult(
+        "publish-pr",
+        "retry-renamed",
+        Effect.void,
+        "t3/T-36-a-new-title",
+      );
+      assert.equal("headBranch" in retry.payload && retry.payload.headBranch, taskBranch);
+      yield* service.execute(retry.id);
+      assert.equal(
+        Option.getOrThrow(yield* (yield* DeliveryStore.FactoryDeliveryStore).get(retry.id)).status,
+        "confirmed",
+      );
+      assert.equal(state.calls.filter((call) => call.startsWith("push:")).length, 1);
+      assert.equal(createCalls(state), 2);
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "a task result publishes its accepted commit on its own branch and merges that commit",
+  () => {
+    const { state, layer } = harness();
+    return Effect.gen(function* () {
+      const service = yield* Delivery.FactoryDeliveryService;
+      // The task's own acceptance is rechecked inside the grant, so a reopen in between wins.
+      assert.equal(
+        (yield* grantTaskResult(
+          "publish-pr",
+          "reopened",
+          Effect.fail(new FactoryDeliveryError({ reason: "not-accepted" })),
+        ).pipe(Effect.flip)).reason,
+        "not-accepted",
+      );
+      assert.equal(
+        (yield* grantTaskResult("merge-pr", "early").pipe(Effect.flip)).reason,
+        "not-published",
+      );
+      const publish = yield* grantTaskResult("publish-pr", "publish");
+      assert.deepEqual(
+        [publish.status, publish.baseBranch, publish.headSha, publish.payload],
+        [
+          "pending",
+          "main",
+          first,
+          { title: "Audio ring demo", body: "Task T-36", draft: false, headBranch: taskBranch },
+        ],
+      );
+      assert.deepEqual(yield* grantTaskResult("publish-pr", "publish"), publish);
+      assert.equal(
+        (yield* grantTaskResult("publish-pr", "publish-twice").pipe(Effect.flip)).reason,
+        "already-delivering",
+      );
+
+      yield* service.execute(publish.id);
+      // The commit is pushed by its id; no worktree or checked-out branch takes part.
+      assert.deepEqual(state.calls, [
+        `push:${first}:refs/heads/${taskBranch}`,
+        `create:main:${taskBranch}:Audio ring demo`,
+      ]);
+      assert.equal(state.headLookups, 0);
+      const opened = yield* only;
+      assert.deepEqual(
+        [opened.status, opened.remote, opened.failure],
+        ["confirmed", pullRequest, null],
+      );
+      assert.equal(state.links.length, 1);
+
+      const merge = yield* grantTaskResult("merge-pr", "merge");
+      assert.deepEqual([merge.remote, merge.payload], [pullRequest, { mergeMethod: "merge" }]);
+      yield* service.execute(merge.id);
+      assert.deepEqual(
+        state.mergeCalls.map((call) => [call.number, call.expectedHeadSha, call.mergeMethod]),
+        [[12, first, "merge"]],
+      );
+      assert.equal((yield* only).status, "confirmed");
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "checking an unconfirmed task publish settles it both ways and never creates again",
+  () => {
+    const { state, layer } = harness();
+    return Effect.gen(function* () {
+      const service = yield* Delivery.FactoryDeliveryService;
+      state.create = "ambiguous";
+      const lost = yield* grantTaskResult("publish-pr", "publish");
+      yield* service.execute(lost.id);
+      assert.equal((yield* only).status, "unknown");
+      assert.equal(createCalls(state), 1);
+
+      // Its own branch listed in every state with nothing on it proves nothing was opened.
+      state.publications = [];
+      const absent = yield* service.reconcile({ projectId, intentId: lost.id });
+      assert.deepEqual(
+        [absent.status, absent.failure],
+        ["failed", `no pull request was opened from ${taskBranch}`],
+      );
+      assert.equal(createCalls(state), 1);
+
+      // The person publishes again; this time the pull request exists but the answer is lost.
+      const retried = yield* grantTaskResult("publish-pr", "publish-again");
+      yield* service.execute(retried.id);
+      const store = yield* DeliveryStore.FactoryDeliveryStore;
+      assert.equal(Option.getOrThrow(yield* store.get(retried.id)).status, "unknown");
+      assert.equal(createCalls(state), 2);
+      // Someone pushed another commit to the branch after the lost answer: a pull request exists,
+      // so absence is not proven and the publication stays unconfirmed.
+      state.publications = [
+        publishedChangeRequest({ headRefName: taskBranch, headSha: "f".repeat(40) }),
+      ];
+      const moved = yield* service.reconcile({ projectId, intentId: retried.id });
+      assert.equal(moved.status, "unknown");
+      assert.include(moved.failure, "different commit");
+      state.publications = [publishedChangeRequest({ headRefName: taskBranch })];
+      const found = yield* service.reconcile({ projectId, intentId: retried.id });
+      assert.deepEqual([found.status, found.remote], ["confirmed", pullRequest]);
+      assert.equal(createCalls(state), 2);
+      assert.deepEqual(
+        state.publicationLookups.map((lookup) => [lookup.headSelector, lookup.state]),
+        [
+          [taskBranch, "open"],
+          [taskBranch, "all"],
+          [taskBranch, "open"],
+          [taskBranch, "all"],
+          [taskBranch, "all"],
+        ],
+      );
+    }).pipe(Effect.provide(layer));
+  },
+);
 
 const gitlabIntent: FactoryLaunchIntent = {
   ...intent,

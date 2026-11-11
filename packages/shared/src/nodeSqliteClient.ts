@@ -51,6 +51,11 @@ export const readOnly = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect
     restore(Effect.provideService(effect, ReadOnly, restore)),
   );
 
+/** Whether the caller runs inside `readOnly`. */
+export const isReadOnly: Effect.Effect<boolean> = Effect.withFiber((fiber) =>
+  Effect.succeed(Context.get(fiber.context, ReadOnly) !== undefined),
+);
+
 interface Acquired {
   readonly connection: "writer" | "reader";
   readonly lockWaitMs: number;

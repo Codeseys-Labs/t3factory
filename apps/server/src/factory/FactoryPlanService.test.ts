@@ -61,19 +61,39 @@ const observed: FactoryWorkReadResult = {
 const dependencies = Layer.mergeAll(EventStore.layer, ProjectionStore.layer).pipe(
   Layer.provideMerge(Sqlite.layerMemory),
 );
-const base = Layer.mergeAll(
-  dependencies,
-  EventSink.layer.pipe(Layer.provide(dependencies)),
-  NodeCrypto.layer,
-  Layer.succeed(ServerEnvironmentIdentity, { getEnvironmentId: Effect.succeed(environmentId) }),
-  AuthSessions.layer.pipe(Layer.provide(dependencies)),
-);
+const base = (published: number[]) =>
+  Layer.mergeAll(
+    dependencies,
+    EventSink.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          dependencies,
+          Layer.effect(
+            EventStore.EventStoreV2,
+            Effect.map(EventStore.EventStoreV2, (store) => ({
+              ...store,
+              publishCommitted: (events) =>
+                Effect.sync(() => {
+                  published.push(...events.map((event) => event.sequence));
+                }).pipe(Effect.andThen(store.publishCommitted(events))),
+            })),
+          ).pipe(Layer.provide(dependencies)),
+        ),
+      ),
+    ),
+    NodeCrypto.layer,
+    Layer.succeed(ServerEnvironmentIdentity, { getEnvironmentId: Effect.succeed(environmentId) }),
+    AuthSessions.layer.pipe(Layer.provide(dependencies)),
+  );
 const layerWith = (
   read: Work.FactoryWorkService["Service"]["read"] = () =>
     Effect.fail(new FactoryWorkError({ reason: "missing-work" })),
+  published: number[] = [],
 ) =>
   Plans.layer.pipe(
-    Layer.provideMerge(Layer.mergeAll(base, Layer.mock(Work.FactoryWorkService)({ read }))),
+    Layer.provideMerge(
+      Layer.mergeAll(base(published), Layer.mock(Work.FactoryWorkService)({ read })),
+    ),
   );
 const seed = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -561,3 +581,49 @@ it.effect(
       assert.equal((yield* sql`SELECT run_id FROM orchestration_v2_projection_runs`).length, 0);
     }).pipe(Effect.provide(layerWith())),
 );
+
+it.effect("publishes plan events only after the outermost transaction commits", () => {
+  const published: number[] = [];
+  return Effect.gen(function* () {
+    yield* seed;
+    const plans = yield* Plans.FactoryPlanService;
+    const sql = yield* SqlClient.SqlClient;
+    const { plan } = yield* plans.create(createInput, human);
+    published.length = 0;
+    const before = yield* (yield* EventStore.EventStoreV2).latestApplicationSequence;
+    const outerInput: FactoryPlanApplyInput = {
+      commandId: CommandId.make("outer-crash"),
+      ref: plan.ref,
+      expectedRevision: 1,
+      operations: [{ type: "task.update", id: plan.ref.rootId, title: "Outer rollback" }],
+    };
+    yield* sql
+      .withTransaction(
+        Effect.gen(function* () {
+          yield* plans.apply(outerInput, human);
+          return yield* Effect.fail("outer failure");
+        }),
+      )
+      .pipe(Effect.flip);
+    assert.equal(published.length, 0);
+    assert.equal((yield* plans.read({ ref: plan.ref })).revision, 1);
+    assert.equal(yield* (yield* EventStore.EventStoreV2).latestApplicationSequence, before);
+    assert.equal(
+      (yield* sql`SELECT command_id FROM factory_plan_commands WHERE command_id = 'outer-crash'`)
+        .length,
+      0,
+    );
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* plans.apply(outerInput, human);
+        yield* plans.apply(
+          { ...outerInput, commandId: CommandId.make("second-nested"), expectedRevision: 2 },
+          human,
+        );
+        assert.equal(published.length, 0);
+      }),
+    );
+    assert.deepEqual(published, [before + 1, before + 2]);
+    assert.equal((yield* plans.read({ ref: plan.ref })).revision, 3);
+  }).pipe(Effect.provide(layerWith(undefined, published)));
+});

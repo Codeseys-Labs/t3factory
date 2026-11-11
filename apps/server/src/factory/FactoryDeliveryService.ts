@@ -9,6 +9,7 @@ import {
   type FactoryAcceptanceError,
   type FactoryDeliveryGrantInput,
   type FactoryDeliveryIntent,
+  type FactoryDeliveryCommitKind,
   type FactoryDeliveryKind,
   type FactoryDeliveryMergePayload,
   type FactoryDeliveryPayload,
@@ -21,8 +22,11 @@ import {
   type FactoryDeliveryReconcileInput,
   type FactoryOriginKey,
   type FactoryRepository,
+  type ProjectId,
   type PullRequestDetail,
+  type PullRequestMergeMethod,
   type PullRequestRef,
+  type ThreadId,
 } from "@t3tools/contracts";
 import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- the digest must be one pure, synchronous function so the transactional grant recheck and prepare compute byte-identical values without a service boundary between them.
@@ -57,6 +61,9 @@ import { IssueTrackerProviderRegistry } from "./IssueTrackerProviderRegistry.ts"
 
 const FAILURE_MAX_CHARS = 1000;
 const PUBLICATION_LOOKUP_LIMIT = 100;
+const REMOTE_READ_TIMEOUT_MS = 30_000;
+// A push that times out may still have landed; the next Publish finds the branch at this commit.
+const PUSH_TIMEOUT_MS = 300_000;
 
 // Only these GitHub rejections prove no write occurred; all other failures stay unknown.
 // Other hosts cannot publish until their definite rejections are classified here.
@@ -189,6 +196,8 @@ export const deliveryPayloadDigest = (
               input.payload.title,
               input.payload.body,
               input.payload.draft,
+              // Appended only when set, so digests granted before branch publishing still match.
+              ...(input.payload.headBranch === undefined ? [] : [input.payload.headBranch]),
             ],
       ),
       "utf8",
@@ -223,6 +232,28 @@ const summarizePullRequest = (detail: PullRequestDetail): FactoryDeliveryPullReq
   mergeMethods: detail.capabilities.mergeMethods,
 });
 
+export interface FactoryCommitGrant {
+  readonly kind: FactoryDeliveryCommitKind;
+  readonly commandId: string;
+  readonly originKey: FactoryOriginKey;
+  readonly acceptanceId: string;
+  readonly projectId: ProjectId;
+  readonly threadId: ThreadId;
+  readonly headSha: string;
+  readonly baseRef: string | null;
+  /** What a `publish-pr` opens, and the new branch the commit is pushed to. */
+  readonly publish: {
+    readonly title: string;
+    readonly body: string;
+    readonly headBranch: string;
+  };
+  readonly recheck: Effect.Effect<void, FactoryDeliveryError>;
+}
+
+// The host's own order among the methods it allows, so no client setting is needed here.
+const allowedMergeMethod = (detail: PullRequestDetail): PullRequestMergeMethod | null =>
+  detail.capabilities.mergeMethods.find((method) => detail.mergeCapabilities[method]) ?? null;
+
 export class FactoryDeliveryService extends Context.Service<
   FactoryDeliveryService,
   {
@@ -237,6 +268,14 @@ export class FactoryDeliveryService extends Context.Service<
     readonly grant: (
       input: FactoryDeliveryGrantInput,
     ) => Effect.Effect<FactoryDeliveryIntent, FactoryDeliveryError>;
+    /**
+     * The same single-use grant for a commit whose owner, not a Factory claim, recorded the
+     * acceptance: a task result. The owner names the exact commit and rechecks its own acceptance
+     * inside the grant transaction. A person's act, never an agent's.
+     */
+    readonly grantCommit: (
+      input: FactoryCommitGrant,
+    ) => Effect.Effect<FactoryCommitDeliveryIntent, FactoryDeliveryError>;
     readonly read: (
       input: FactoryDeliveryReadInput,
     ) => Effect.Effect<FactoryDeliveryReadResult, FactoryDeliveryError>;
@@ -762,6 +801,224 @@ const makeService = Effect.gen(function* () {
     return granted.intent;
   });
 
+  const revParse = (cwd: string, revision: string) =>
+    git
+      .execute({
+        operation: "FactoryDeliveryService.revParse",
+        cwd,
+        args: ["rev-parse", "--verify", `${revision}^{commit}`],
+        allowNonZeroExit: true,
+        maxOutputBytes: 4096,
+      })
+      .pipe(
+        Effect.map((result) => (result.exitCode === 0 ? result.stdout.trim() : null)),
+        Effect.orElseSucceed(() => null),
+      );
+
+  // A commit delivery works from the project's own repository: the accepted commit is pushed by
+  // its id, so where it was made no longer matters.
+  const commitDestination = Effect.fn("FactoryDeliveryService.commitDestination")(function* (
+    projectId: ProjectId,
+    kind: FactoryDeliveryCommitKind,
+  ) {
+    const resolved = yield* resolveRepository(projectId).pipe(
+      Effect.mapError(
+        (cause) =>
+          new FactoryDeliveryError({
+            reason:
+              cause.reason === "unsupported-provider"
+                ? "capability-unsupported"
+                : "repository-changed",
+            cause,
+          }),
+      ),
+    );
+    const { capabilities } = resolved.tracker;
+    if (!capabilities.publish || (kind === "merge-pr" && !capabilities.headPinnedMerge))
+      return yield* new FactoryDeliveryError({ reason: "capability-unsupported" });
+    return resolved;
+  });
+
+  const grantCommit = Effect.fn("FactoryDeliveryService.grantCommit")(function* (
+    input: FactoryCommitGrant,
+  ) {
+    const replay = yield* store.getByCommand(input.commandId);
+    if (Option.isSome(replay)) {
+      const stored = replay.value;
+      if (
+        stored.kind === "publish-artifact" ||
+        stored.kind !== input.kind ||
+        stored.originKey !== input.originKey
+      )
+        return yield* new FactoryDeliveryError({ reason: "intent-not-found" });
+      return stored;
+    }
+    const destination = yield* commitDestination(input.projectId, input.kind);
+    const cwd = destination.project.workspaceRoot;
+    if ((yield* revParse(cwd, input.headSha)) !== input.headSha)
+      return yield* new FactoryDeliveryError({ reason: "worktree-unavailable" });
+    const target = yield* Effect.gen(function* () {
+      if (input.kind === "publish-pr") {
+        const baseBranch = yield* git
+          .resolveDefaultBranchName(cwd, "origin")
+          .pipe(Effect.orElseSucceed(() => null));
+        if (!baseBranch) return yield* new FactoryDeliveryError({ reason: "missing-base-branch" });
+        const baseRef = `refs/remotes/origin/${baseBranch}`;
+        const baseSha = yield* revParse(cwd, baseRef);
+        if (baseSha === null)
+          return yield* new FactoryDeliveryError({ reason: "missing-base-branch" });
+        const comparisonBase = input.baseRef === null ? null : yield* revParse(cwd, input.baseRef);
+        if (comparisonBase === null)
+          return yield* new FactoryDeliveryError({ reason: "worktree-unavailable" });
+        const commits = yield* git
+          .execute({
+            operation: "FactoryDeliveryService.countUnreviewedBaseCommits",
+            cwd,
+            args: ["rev-list", "--count", `${baseSha}..${comparisonBase}`, "--"],
+            maxOutputBytes: 4096,
+          })
+          .pipe(
+            Effect.mapError(
+              (cause) => new FactoryDeliveryError({ reason: "worktree-unavailable", cause }),
+            ),
+          );
+        const count = Number(commits.stdout.trim());
+        if (
+          commits.exitCode !== 0 ||
+          commits.stdoutTruncated ||
+          !/^\d+$/.test(commits.stdout.trim()) ||
+          !Number.isSafeInteger(count)
+        )
+          return yield* new FactoryDeliveryError({ reason: "worktree-unavailable" });
+        if (count > 0)
+          return yield* new FactoryDeliveryError({
+            reason: "unreviewed-base-commits",
+            extraCommitCount: count,
+          });
+        const previous = (yield* store.listByThread(input.threadId)).find(
+          (intent) =>
+            intent.kind === "publish-pr" &&
+            intent.originKey === input.originKey &&
+            intent.headSha === input.headSha &&
+            intent.repository.canonicalKey === destination.repository.canonicalKey &&
+            intent.repository.host === destination.repository.host &&
+            intent.repository.provider === destination.repository.provider &&
+            "headBranch" in intent.payload &&
+            intent.payload.headBranch !== undefined,
+        );
+        const payload: FactoryDeliveryPublishPayload = {
+          title: input.publish.title,
+          body: input.publish.body,
+          draft: false,
+          headBranch:
+            (previous && "headBranch" in previous.payload
+              ? previous.payload.headBranch
+              : undefined) ?? input.publish.headBranch,
+        };
+        const common = {
+          repository: destination.repository,
+          baseRef,
+          baseBranch,
+          baseSha,
+          headSha: input.headSha,
+        };
+        return {
+          ...common,
+          payload,
+          payloadDigest: deliveryPayloadDigest({ ...common, kind: "publish-pr", payload }),
+          remote: null,
+        };
+      }
+      // A merge acts on the pull request this revision's confirmed publish opened, at its base.
+      const published = yield* store.getLive(input.originKey, "publish-pr");
+      if (
+        Option.isNone(published) ||
+        published.value.status !== "confirmed" ||
+        published.value.remote === null
+      )
+        return yield* new FactoryDeliveryError({ reason: "not-published" });
+      const { repository, baseRef, baseSha, remote } = published.value;
+      const baseBranch = published.value.baseBranch ?? null;
+      if (
+        repository.canonicalKey !== destination.repository.canonicalKey ||
+        repository.host !== destination.repository.host ||
+        repository.provider !== destination.repository.provider
+      )
+        return yield* new FactoryDeliveryError({ reason: "repository-changed" });
+      const detail = yield* readPullRequest(
+        pullRequestRef(input.projectId, repository, remote.number),
+        { fresh: true },
+      );
+      if (detail.baseBranch !== baseBranch)
+        return yield* new FactoryDeliveryError({ reason: "payload-changed" });
+      if (detail.state === "merged")
+        return yield* new FactoryDeliveryError({ reason: "already-merged" });
+      if (detail.headSha !== input.headSha)
+        return yield* new FactoryDeliveryError({ reason: "pull-request-head-moved" });
+      const mergeMethod = allowedMergeMethod(detail);
+      if (
+        detail.state !== "open" ||
+        detail.isDraft ||
+        detail.mergeability === "conflicting" ||
+        mergeMethod === null
+      )
+        return yield* new FactoryDeliveryError({ reason: "not-mergeable" });
+      const payload: FactoryDeliveryMergePayload = { mergeMethod };
+      const common = { repository, baseRef, baseBranch, baseSha, headSha: input.headSha };
+      return {
+        ...common,
+        payload,
+        payloadDigest: deliveryPayloadDigest({
+          ...common,
+          kind: "merge-pr",
+          payload,
+          pullRequestNumber: remote.number,
+        }),
+        remote: { number: detail.number, url: detail.url },
+      };
+    });
+    const at = yield* nowIso;
+    const intent: FactoryCommitDeliveryIntent = {
+      id: `delivery:${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`,
+      originKey: input.originKey,
+      threadId: input.threadId,
+      projectId: input.projectId,
+      kind: input.kind,
+      acceptanceId: input.acceptanceId,
+      repository: target.repository,
+      baseRef: target.baseRef,
+      baseBranch: target.baseBranch,
+      baseSha: target.baseSha,
+      headSha: target.headSha,
+      payload: target.payload,
+      payloadDigest: target.payloadDigest,
+      grantedBy: yield* environment.getEnvironmentId,
+      grantedAt: at,
+      requestCommandId: input.commandId,
+      status: "pending",
+      remote: target.remote,
+      failure: null,
+      updatedAt: at,
+    };
+    const granted = yield* store.grant(intent, {
+      recheck: input.recheck,
+      enqueue: outbox
+        .enqueue([
+          {
+            id: `${intent.id}:execute`,
+            commandId: CommandId.make(input.commandId),
+            threadId: input.threadId,
+            request: { type: "factory.delivery.execute", intentId: intent.id },
+          },
+        ])
+        .pipe(Effect.mapError(persistenceFailure)),
+    });
+    if (granted.created) yield* outbox.notifyAvailable(1);
+    if (granted.intent.kind === "publish-artifact")
+      return yield* new FactoryDeliveryError({ reason: "intent-not-found" });
+    return granted.intent;
+  });
+
   const read = Effect.fn("FactoryDeliveryService.read")(function* (
     input: FactoryDeliveryReadInput,
   ) {
@@ -835,7 +1092,12 @@ const makeService = Effect.gen(function* () {
           : "confirmed";
     const settled = yield* store.settle(intent.id, {
       status,
-      remote,
+      remote: {
+        ...remote,
+        ...(status === "confirmed" && detail._tag === "Success" && detail.success.state === "merged"
+          ? { merged: true as const }
+          : {}),
+      },
       failure:
         status === "unknown"
           ? "could not verify pull request destination"
@@ -854,6 +1116,173 @@ const makeService = Effect.gen(function* () {
     readonly worktreePath: string | null;
   }) => (shell.deletedAt === null ? shell.worktreePath : null);
 
+  const providerContext = (intent: FactoryCommitDeliveryIntent) => ({
+    provider: {
+      kind: intent.repository.provider,
+      name: intent.repository.provider,
+      baseUrl: `https://${intent.repository.host}`,
+    },
+    remoteName: "origin",
+    remoteUrl: intent.repository.url,
+  });
+
+  // A pull request is this publication's only when every pinned part of the intent matches it.
+  const matchesPublication = (
+    intent: FactoryCommitDeliveryIntent,
+    candidate: {
+      readonly provider: string;
+      readonly number: number;
+      readonly url: string;
+      readonly headSha?: string | null | undefined;
+      readonly baseRefName: string;
+    },
+  ) => {
+    const parsed = sourceControlDefinitions.parseChangeRequestUrl(candidate.url);
+    return (
+      candidate.provider === intent.repository.provider &&
+      candidate.headSha === intent.headSha &&
+      candidate.baseRefName === intent.baseBranch &&
+      parsed?.definition.kind === intent.repository.provider &&
+      parsed.link.number === candidate.number &&
+      parsed.link.host === intent.repository.host &&
+      sourceControlDefinitions.canonicalRepositoryKey(
+        `${parsed.link.host}/${parsed.link.repository}`,
+      ) === intent.repository.canonicalKey
+    );
+  };
+
+  // A task result's publish: the accepted commit is pushed by its id to a new branch from the
+  // project's repository, then the pull request is opened from that branch.
+  const sendBranch = Effect.fn("FactoryDeliveryService.sendBranch")(function* (
+    intent: FactoryCommitDeliveryIntent,
+    payload: FactoryDeliveryPublishPayload,
+    headBranch: string,
+  ) {
+    const fail = (failure: string) => settle(intent, "failed", failure);
+    if (!intent.baseBranch) return yield* fail("missing-base-branch");
+    const baseBranch = intent.baseBranch;
+    const destination = yield* Effect.result(resolveRepository(intent.projectId));
+    if (
+      destination._tag === "Failure" ||
+      destination.success.repository.canonicalKey !== intent.repository.canonicalKey ||
+      destination.success.repository.host !== intent.repository.host ||
+      destination.success.repository.provider !== intent.repository.provider
+    )
+      return yield* fail("repository-changed");
+    const cwd = destination.success.project.workspaceRoot;
+    const [owner, repository, ...rest] = intent.repository.repository.split("/");
+    if (!owner || !repository || rest.length > 0) return yield* fail("repository-changed");
+    const context = providerContext(intent);
+    const resolved = yield* Effect.result(providers.resolveHandle({ cwd, context }));
+    if (resolved._tag === "Failure")
+      return yield* fail(describe("no source control provider", resolved.failure));
+    const { provider } = resolved.success;
+    if (provider.kind !== intent.repository.provider) return yield* fail("repository-changed");
+    if (
+      provider.createsChangeRequestsIn &&
+      !(yield* provider.createsChangeRequestsIn({
+        cwd,
+        context,
+        repository: intent.repository.repository,
+      }))
+    )
+      return yield* fail("repository-changed");
+    // Suspended: the lookup runs once before the push and again after the create.
+    const findOpen = Effect.suspend(() =>
+      provider.listChangeRequests({
+        cwd,
+        context,
+        headSelector: headBranch,
+        state: "open",
+        limit: PUBLICATION_LOOKUP_LIMIT,
+      }),
+    );
+    // An earlier attempt for the same branch and commit may already have opened it.
+    const before = yield* Effect.result(findOpen);
+    if (before._tag === "Failure")
+      return yield* fail(describe("could not read pull requests", before.failure));
+    if (before.success.length >= PUBLICATION_LOOKUP_LIMIT)
+      return yield* fail("The branch's pull requests could not be fully checked.");
+    if (before.success.some((candidate) => !matchesPublication(intent, candidate)))
+      return yield* fail("The branch is already used by another pull request.");
+    if (before.success[0] !== undefined) {
+      yield* confirm(intent, before.success[0]);
+      return;
+    }
+    const branchRef = `refs/heads/${headBranch}`;
+    const remote = yield* Effect.result(
+      git.execute({
+        operation: "FactoryDeliveryService.readPublicationBranch",
+        cwd,
+        args: ["ls-remote", "--heads", "--", "origin", branchRef],
+        timeoutMs: REMOTE_READ_TIMEOUT_MS,
+        maxOutputBytes: 4096,
+      }),
+    );
+    if (remote._tag === "Failure")
+      return yield* fail(describe("could not read the publication branch", remote.failure));
+    if (remote.success.exitCode !== 0 || remote.success.stdoutTruncated)
+      return yield* fail("The publication branch could not be checked.");
+    const remoteHead = remote.success.stdout.trim();
+    if (remoteHead !== "" && remoteHead !== `${intent.headSha}\t${branchRef}`)
+      return yield* fail("The publication branch already points at a different commit.");
+    if (remoteHead === "") {
+      const pushed = yield* Effect.result(
+        git.execute({
+          operation: "FactoryDeliveryService.pushCommit",
+          cwd,
+          // An empty lease creates the branch only if it is still absent at the remote.
+          args: [
+            "push",
+            `--force-with-lease=${branchRef}:`,
+            "--",
+            "origin",
+            `${intent.headSha}:${branchRef}`,
+          ],
+          timeoutMs: PUSH_TIMEOUT_MS,
+        }),
+      );
+      if (pushed._tag === "Failure") return yield* fail(describe("push failed", pushed.failure));
+      if (pushed.success.exitCode !== 0) return yield* fail("The publication branch push failed.");
+    }
+    const bodyFile = path.join(
+      tempDir,
+      `t3code-delivery-body-${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}.md`,
+    );
+    const written = yield* Effect.result(fileSystem.writeFileString(bodyFile, payload.body));
+    if (written._tag === "Failure")
+      return yield* fail(describe("could not write the pull request body", written.failure));
+    // From here the request may reach the forge: only a definite rejection proves it did not.
+    const created = yield* Effect.result(
+      provider
+        .createChangeRequest({
+          cwd,
+          context,
+          target: { owner, repository, refName: baseBranch },
+          baseRefName: baseBranch,
+          headSelector: headBranch,
+          title: payload.title,
+          bodyFile,
+          draft: payload.draft,
+        })
+        .pipe(Effect.ensuring(fileSystem.remove(bodyFile).pipe(Effect.ignore))),
+    );
+    if (created._tag === "Failure")
+      return isDefiniteRejection(created.failure)
+        ? yield* fail(describe("pull request rejected", created.failure))
+        : yield* settle(intent, "unknown", describe("response lost", created.failure));
+    const after = yield* Effect.result(findOpen);
+    const opened =
+      after._tag === "Success"
+        ? after.success.find((candidate) => matchesPublication(intent, candidate))
+        : undefined;
+    if (opened !== undefined) {
+      yield* confirm(intent, opened);
+      return;
+    }
+    yield* settle(intent, "unknown", "created, but the pull request could not be read back");
+  });
+
   // Business outcomes settle the intent and return normally; only infrastructure errors escape.
   const send = Effect.fn("FactoryDeliveryService.send")(function* (
     intent: FactoryCommitDeliveryIntent,
@@ -861,6 +1290,8 @@ const makeService = Effect.gen(function* () {
     const fail = (failure: string) => settle(intent, "failed", failure);
     const { payload } = intent;
     if (isMergePayload(payload)) return yield* fail("payload does not match the delivery kind");
+    if (payload.headBranch !== undefined)
+      return yield* sendBranch(intent, payload, payload.headBranch);
     if (!intent.baseBranch) return yield* fail("missing-base-branch");
     const shell = yield* threads
       .getThreadShell(intent.threadId)
@@ -883,15 +1314,7 @@ const makeService = Effect.gen(function* () {
     const [owner, repository, ...rest] = intent.repository.repository.split("/");
     if (!owner || !repository || rest.length > 0) return yield* fail("repository-changed");
 
-    const context = {
-      provider: {
-        kind: intent.repository.provider,
-        name: intent.repository.provider,
-        baseUrl: `https://${intent.repository.host}`,
-      },
-      remoteName: "origin",
-      remoteUrl: intent.repository.url,
-    };
+    const context = providerContext(intent);
     const provider = yield* Effect.result(providers.resolveHandle({ cwd: worktree, context }));
     if (provider._tag === "Failure")
       return yield* fail(describe("no source control provider", provider.failure));
@@ -1196,6 +1619,25 @@ const makeService = Effect.gen(function* () {
     if (Option.isNone(found))
       return yield* new FactoryDeliveryError({ reason: "intent-not-found" });
     const intent = found.value;
+    if (intent.kind === "publish-pr" && intent.status === "confirmed" && intent.remote !== null) {
+      if (intent.remote.merged) return intent;
+      const observed = yield* readPullRequest(
+        pullRequestRef(intent.projectId, intent.repository, intent.remote.number),
+        { fresh: true },
+      ).pipe(Effect.result);
+      if (
+        observed._tag === "Success" &&
+        observed.success.state === "merged" &&
+        intent.baseBranch &&
+        observed.success.baseBranch === intent.baseBranch &&
+        observed.success.headSha === intent.headSha
+      )
+        return Option.getOrElse(
+          yield* store.recordObservedMerge(intent.id, yield* nowIso),
+          () => intent,
+        );
+      return intent;
+    }
     if (intent.status !== "unknown" && intent.status !== "failed")
       return yield* new FactoryDeliveryError({ reason: "not-reconcilable" });
     if (intent.kind === "publish-artifact") return yield* reconcileArtifact(intent);
@@ -1208,29 +1650,34 @@ const makeService = Effect.gen(function* () {
         });
     }
     if (intent.kind === "merge-pr") return yield* reconcileMerge(intent);
-    const shell = yield* threads
-      .getThreadShell(intent.threadId)
-      .pipe(Effect.mapError(persistenceFailure));
-    const worktree = shell === null ? null : worktreeOf(shell);
-    if (worktree === null)
-      return yield* new FactoryDeliveryError({ reason: "worktree-unavailable" });
+    // A branch publish was pushed from the project's repository; a worktree publish from its own.
+    const headBranch = isMergePayload(intent.payload) ? undefined : intent.payload.headBranch;
+    const cwd =
+      headBranch === undefined
+        ? yield* Effect.gen(function* () {
+            const shell = yield* threads
+              .getThreadShell(intent.threadId)
+              .pipe(Effect.mapError(persistenceFailure));
+            const worktree = shell === null ? null : worktreeOf(shell);
+            if (worktree === null)
+              return yield* new FactoryDeliveryError({ reason: "worktree-unavailable" });
+            return worktree;
+          })
+        : (yield* resolveRepository(intent.projectId).pipe(
+            Effect.mapError(
+              (cause) => new FactoryDeliveryError({ reason: "repository-changed", cause }),
+            ),
+          )).project.workspaceRoot;
     const looked = yield* Effect.result(
       Effect.gen(function* () {
-        const context = {
-          provider: {
-            kind: intent.repository.provider,
-            name: intent.repository.provider,
-            baseUrl: `https://${intent.repository.host}`,
-          },
-          remoteName: "origin",
-          remoteUrl: intent.repository.url,
-        };
-        const { provider } = yield* providers.resolveHandle({ cwd: worktree, context });
+        const context = providerContext(intent);
+        const { provider } = yield* providers.resolveHandle({ cwd, context });
         if (provider.kind !== intent.repository.provider)
           return yield* new FactoryDeliveryError({ reason: "repository-changed" });
-        const { headSelector } = yield* gitManager.findOpenPullRequestForHead(worktree);
+        const headSelector =
+          headBranch ?? (yield* gitManager.findOpenPullRequestForHead(cwd)).headSelector;
         return yield* provider.listChangeRequests({
-          cwd: worktree,
+          cwd,
           context,
           headSelector,
           state: "all",
@@ -1241,23 +1688,27 @@ const makeService = Effect.gen(function* () {
     const matches =
       looked._tag === "Failure"
         ? []
-        : looked.success.filter((candidate) => {
-            const parsed = sourceControlDefinitions.parseChangeRequestUrl(candidate.url);
-            return (
-              candidate.provider === intent.repository.provider &&
-              candidate.headSha === intent.headSha &&
-              candidate.baseRefName === intent.baseBranch &&
-              parsed?.definition.kind === intent.repository.provider &&
-              parsed.link.number === candidate.number &&
-              parsed.link.host === intent.repository.host &&
-              sourceControlDefinitions.canonicalRepositoryKey(
-                `${parsed.link.host}/${parsed.link.repository}`,
-              ) === intent.repository.canonicalKey
-            );
-          });
+        : looked.success.filter((candidate) => matchesPublication(intent, candidate));
     const truncated =
       looked._tag === "Success" && looked.success.length >= PUBLICATION_LOOKUP_LIMIT;
     if (!truncated && matches.length === 1) return yield* confirm(intent, matches[0]!, "unknown");
+    // A branch made for this one publish, listed in every state with nothing on it, proves absence.
+    // Publishing again looks for an open pull request on it before creating one, so nothing is
+    // duplicated. A pull request that fails the match (the head moved) is not absence.
+    if (
+      headBranch !== undefined &&
+      looked._tag === "Success" &&
+      !truncated &&
+      looked.success.length === 0
+    )
+      return Option.getOrElse(
+        yield* store.settle(intent.id, {
+          status: "failed",
+          failure: `no pull request was opened from ${headBranch}`.slice(0, FAILURE_MAX_CHARS),
+          updatedAt: yield* nowIso,
+        }),
+        () => intent,
+      );
     // Bounded head listings cannot prove absence: the PR may have merged, moved or aged out.
     const reason =
       looked._tag === "Failure"
@@ -1266,7 +1717,9 @@ const makeService = Effect.gen(function* () {
           ? "pull request listing may be truncated; publication remains unverified"
           : matches.length > 1
             ? "multiple pull requests match this publication; attribution is ambiguous"
-            : "no matching pull request found; publication remains unverified";
+            : headBranch !== undefined && looked.success.length > 0
+              ? `a pull request on ${headBranch} is at a different commit or base than this publication; publication remains unconfirmed`
+              : "no matching pull request found; publication remains unverified";
     const refreshed = yield* store.settle(intent.id, {
       status: intent.status,
       failure: reason.slice(0, FAILURE_MAX_CHARS),
@@ -1284,7 +1737,7 @@ const makeService = Effect.gen(function* () {
   });
 
   return {
-    service: FactoryDeliveryService.of({ prepare, grant, read, reconcile, execute }),
+    service: FactoryDeliveryService.of({ prepare, grant, grantCommit, read, reconcile, execute }),
     recoverInterrupted,
   };
 });

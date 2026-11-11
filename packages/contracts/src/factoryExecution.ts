@@ -55,6 +55,12 @@ export const FactoryExecutionPolicy = Schema.Struct({
     Schema.isMaxLength(64),
   ),
   edges: Schema.Array(FactoryExecutionEdgeRule).check(Schema.isMaxLength(128)),
+  // Tasks check blockers before they start one task. When true, a plan edge without a rule
+  // passes no input and holds nothing.
+  advisoryEdges: Schema.optional(Schema.Boolean),
+  // Attempts admitted under an earlier grant of this plan revision that this grant keeps
+  // authorized. Each must still be listed in `tasks` with the spec it was admitted with.
+  continues: Schema.optional(Schema.Array(RunAttemptId).check(Schema.isMaxLength(64))),
   maxAttempts: Count,
   maxRetriesPerTask: Count,
   maxConcurrent: Count,

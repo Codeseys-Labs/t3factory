@@ -1,8 +1,9 @@
 import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
-  FactoryIcon,
-  MessageSquareIcon,
+  InboxIcon,
+  PanelsTopLeftIcon,
+  ZapIcon,
   SettingsIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -36,6 +37,11 @@ import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { observeResize } from "~/lib/observeResize";
+import { useNeedsYou } from "../tasks/shared/taskScope";
+import { CountBadge } from "../tasks/kit";
+import { APP_BASE_NAME } from "../../branding";
+
+const SIDEBAR_APP_NAME = APP_BASE_NAME.replace("T3 Code Factory", "T3 Factory");
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
@@ -80,7 +86,6 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
           ) : null}
         </div>
       </div>
-      <SidebarPrimaryNavigation />
     </>
   );
 });
@@ -109,39 +114,49 @@ export function SidebarBrandWidthProbe({
   );
 }
 
-function SidebarPrimaryNavigation() {
+export function SidebarTaskNavigation() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { isMobile, setOpenMobile } = useSidebar();
-  const factoryActive = pathname === "/factory" || pathname.startsWith("/factory/");
+  const { needs, incomplete } = useNeedsYou();
   const closeMobileSidebar = () => {
     if (isMobile) setOpenMobile(false);
   };
 
   return (
-    <div className="shrink-0 px-2 pb-2">
-      <SidebarMenu className="flex-row" aria-label="Primary navigation">
-        <SidebarMenuItem className="min-w-0 flex-1">
-          <SidebarMenuButton
-            isActive={factoryActive}
-            aria-current={factoryActive ? "page" : undefined}
-            render={<Link to="/factory" search={{ state: "open", view: "list" }} />}
-            onClick={closeMobileSidebar}
-          >
-            <FactoryIcon />
-            <span>Factory</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem className="min-w-0 flex-1">
-          <SidebarMenuButton
-            isActive={!factoryActive && !isSidebarUtilityPage(pathname)}
-            aria-current={!factoryActive && !isSidebarUtilityPage(pathname) ? "page" : undefined}
-            render={<Link to="/" />}
-            onClick={closeMobileSidebar}
-          >
-            <MessageSquareIcon />
-            <span>Sessions</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+    <div className="shrink-0 pt-2">
+      <SidebarMenu aria-label="Primary navigation">
+        {[
+          { to: "/tasks", label: "Tasks", Icon: PanelsTopLeftIcon },
+          { to: "/inbox", label: "Inbox", Icon: InboxIcon },
+          { to: "/automations", label: "Automations", Icon: ZapIcon },
+        ].map(({ to, label, Icon }) => (
+          <SidebarMenuItem key={to}>
+            <SidebarMenuButton
+              isActive={pathname === to || pathname.startsWith(`${to}/`)}
+              aria-current={pathname === to || pathname.startsWith(`${to}/`) ? "page" : undefined}
+              render={<Link to={to} />}
+              onClick={closeMobileSidebar}
+            >
+              <Icon />
+              <span className="flex-1">{label}</span>
+              {to === "/inbox" ? (
+                <span
+                  aria-label={
+                    incomplete
+                      ? `At least ${needs.count} asks; count incomplete`
+                      : `${needs.count} asks`
+                  }
+                >
+                  {incomplete ? (
+                    <span className="text-xs text-muted-foreground">{needs.count}+</span>
+                  ) : (
+                    <CountBadge count={needs.count} tone="attention" />
+                  )}
+                </span>
+              ) : null}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ))}
       </SidebarMenu>
     </div>
   );
@@ -151,13 +166,12 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   const { isMobile, setOpenMobile } = useSidebar();
   return (
     <Link
-      aria-label="T3 Code Factory home"
+      aria-label={`${SIDEBAR_APP_NAME} home`}
       className={cn(
         "relative z-10 ml-[var(--workspace-titlebar-content-left)] hidden h-7 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
         onBackdrop ? "text-white" : "text-foreground",
       )}
-      to="/factory"
-      search={{ state: "open", view: "list" }}
+      to="/tasks"
       onClick={() => {
         if (isMobile) setOpenMobile(false);
       }}
@@ -179,7 +193,7 @@ function SidebarBrandMark({ onBackdrop }: { onBackdrop: boolean }) {
           onBackdrop ? "text-white/70" : "text-muted-foreground",
         )}
       >
-        Code Factory
+        {SIDEBAR_APP_NAME.replace(/^T3\s*/u, "")}
       </span>
     </span>
   );

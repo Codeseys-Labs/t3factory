@@ -10,6 +10,7 @@ import {
   type FactoryPlanError,
   type FactoryExecutionError,
   type ProjectCoordinatorError,
+  type FactoryTaskError,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Factory from "../../../factory/FactoryIssueService.ts";
@@ -22,6 +23,7 @@ import * as Delivery from "../../../factory/FactoryDeliveryService.ts";
 import * as Knowledge from "../../../factory/FactoryKnowledgeService.ts";
 import * as Work from "../../../factory/FactoryWorkService.ts";
 import * as Plans from "../../../factory/FactoryPlanService.ts";
+import * as Planning from "../../../factory/FactoryTaskPlanningService.ts";
 import * as Execution from "../../../factory/FactoryExecutionService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { DispatchModeLimit } from "../../../orchestration-v2/DispatchModeLimit.ts";
@@ -42,7 +44,8 @@ const failure = (
     | FactoryWorkError
     | FactoryPlanError
     | FactoryExecutionError
-    | ProjectCoordinatorError,
+    | ProjectCoordinatorError
+    | FactoryTaskError,
 ) =>
   new OrchestratorMcpFailure({
     code:
@@ -50,6 +53,20 @@ const failure = (
     message: error.message,
   });
 export const layer = McpToolAccess.toLayer(FactoryToolkit, {
+  factory_propose_subtasks: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const caller = yield* readCaller();
+      if (caller.scope.client !== undefined || callerLinkOrigin(caller) !== undefined)
+        return yield* new OrchestratorMcpFailure({
+          code: "capability_denied",
+          message: "Submitting a task plan requires its local planning thread.",
+        });
+      const { thread } = yield* McpInvocationContext.requireThreadScope(caller.scope, "This tool");
+      return yield* (yield* Planning.FactoryTaskPlanningService)
+        .propose(input, thread.threadId)
+        .pipe(Effect.mapError(failure));
+    }),
+  ),
   factory_read_execution: McpToolAccess.reads((input) =>
     Effect.gen(function* () {
       yield* readCaller();

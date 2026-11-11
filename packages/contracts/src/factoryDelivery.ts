@@ -47,6 +47,9 @@ export const FactoryDeliveryPublishPayload = Schema.Struct({
   title: TrimmedNonEmptyString.check(Schema.isMaxLength(FACTORY_DELIVERY_TITLE_MAX_CHARS)),
   body: Schema.String.check(Schema.isMaxLength(FACTORY_DELIVERY_BODY_MAX_CHARS)),
   draft: Schema.Boolean,
+  // Set for a task result: the accepted commit itself is pushed to this new branch, so no
+  // worktree is involved. Absent, the claimed worktree's current branch is published.
+  headBranch: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(255))),
 });
 export type FactoryDeliveryPublishPayload = typeof FactoryDeliveryPublishPayload.Type;
 
@@ -111,7 +114,13 @@ export const FactoryCommitDeliveryIntent = Schema.Struct({
   baseSha: Schema.String,
   headSha: Schema.String,
   payload: FactoryDeliveryCommitPayload,
-  remote: Schema.NullOr(Schema.Struct({ number: Schema.Int, url: Schema.String })),
+  remote: Schema.NullOr(
+    Schema.Struct({
+      number: Schema.Int,
+      url: Schema.String,
+      merged: Schema.optional(Schema.Literal(true)),
+    }),
+  ),
 });
 export type FactoryCommitDeliveryIntent = typeof FactoryCommitDeliveryIntent.Type;
 
@@ -300,13 +309,17 @@ export class FactoryDeliveryError extends Schema.TaggedError<FactoryDeliveryErro
       "destination-not-found",
       "missing-base-branch",
       "repository-changed",
+      "unreviewed-base-commits",
     ]),
+    extraCommitCount: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
     replacementDeliveryId: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {
     switch (this.reason) {
+      case "unreviewed-base-commits":
+        return `The task's base includes ${this.extraCommitCount} extra ${this.extraCommitCount === 1 ? "commit" : "commits"} outside origin's default branch. Publish or rebase them first.`;
       case "missing-base-branch":
         return "This task has no reviewed host base branch. Start a new task from a named origin branch before publishing.";
       case "repository-changed":
@@ -338,7 +351,7 @@ export class FactoryDeliveryError extends Schema.TaggedError<FactoryDeliveryErro
       case "not-reconcilable":
         if (this.replacementDeliveryId !== undefined)
           return "A replacement delivery already holds this slot.";
-        return "Only a delivery whose outcome is unknown or failed can be reconciled.";
+        return "This delivery cannot be checked in its current state.";
       case "worktree-unavailable":
         return "The task's worktree is no longer available, so its commit cannot be read.";
       case "persistence-failure":

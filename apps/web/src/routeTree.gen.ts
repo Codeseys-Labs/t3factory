@@ -21,7 +21,10 @@ import { Route as ChatUsageRouteImport } from './routes/_chat.usage'
 import { Route as ChatSettingsRouteImport } from './routes/_chat.settings'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
+import { Route as ChatInboxRouteImport } from './routes/_chat.inbox'
 import { Route as ChatFactoryRouteImport } from './routes/_chat.factory'
+import { Route as ChatAutomationsRouteImport } from './routes/_chat.automations'
+import { Route as ChatTasksIndexRouteImport } from './routes/_chat.tasks.index'
 import { Route as ChatFactoryIndexRouteImport } from './routes/_chat.factory.index'
 import { Route as ChatSettingsWorktreesRouteImport } from './routes/_chat.settings.worktrees'
 import { Route as ChatSettingsThreadsRouteImport } from './routes/_chat.settings.threads'
@@ -57,6 +60,7 @@ import { Route as ChatFactoryIssuesRouteImport } from './routes/_chat.factory.is
 import { Route as ChatFactoryBriefsRouteImport } from './routes/_chat.factory.briefs'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
+import { Route as ChatTasksEnvironmentIdDisplayIdRouteImport } from './routes/_chat.tasks.$environmentId.$displayId'
 
 const WelcomeRoute = WelcomeRouteImport.update({
   id: '/welcome',
@@ -117,9 +121,24 @@ const ChatNewRoute = ChatNewRouteImport.update({
   path: '/new',
   getParentRoute: () => ChatRoute,
 } as any)
+const ChatInboxRoute = ChatInboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ChatFactoryRoute = ChatFactoryRouteImport.update({
   id: '/factory',
   path: '/factory',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatAutomationsRoute = ChatAutomationsRouteImport.update({
+  id: '/automations',
+  path: '/automations',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatTasksIndexRoute = ChatTasksIndexRouteImport.update({
+  id: '/tasks/',
+  path: '/tasks/',
   getParentRoute: () => ChatRoute,
 } as any)
 const ChatFactoryIndexRoute = ChatFactoryIndexRouteImport.update({
@@ -302,6 +321,12 @@ const ChatEnvironmentIdThreadIdRoute =
     path: '/$environmentId/$threadId',
     getParentRoute: () => ChatRoute,
   } as any)
+const ChatTasksEnvironmentIdDisplayIdRoute =
+  ChatTasksEnvironmentIdDisplayIdRouteImport.update({
+    id: '/tasks/$environmentId/$displayId',
+    path: '/tasks/$environmentId/$displayId',
+    getParentRoute: () => ChatRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
@@ -310,7 +335,9 @@ export interface FileRoutesByFullPath {
   '/guest': typeof GuestRoute
   '/pair': typeof PairRoute
   '/welcome': typeof WelcomeRoute
+  '/automations': typeof ChatAutomationsRoute
   '/factory': typeof ChatFactoryRouteWithChildren
+  '/inbox': typeof ChatInboxRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/settings': typeof ChatSettingsRouteWithChildren
@@ -351,6 +378,8 @@ export interface FileRoutesByFullPath {
   '/settings/threads': typeof ChatSettingsThreadsRoute
   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
   '/factory/': typeof ChatFactoryIndexRoute
+  '/tasks/': typeof ChatTasksIndexRoute
+  '/tasks/$environmentId/$displayId': typeof ChatTasksEnvironmentIdDisplayIdRoute
 }
 export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
@@ -358,6 +387,8 @@ export interface FileRoutesByTo {
   '/guest': typeof GuestRoute
   '/pair': typeof PairRoute
   '/welcome': typeof WelcomeRoute
+  '/automations': typeof ChatAutomationsRoute
+  '/inbox': typeof ChatInboxRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/settings': typeof ChatSettingsRouteWithChildren
@@ -399,6 +430,8 @@ export interface FileRoutesByTo {
   '/settings/threads': typeof ChatSettingsThreadsRoute
   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
   '/factory': typeof ChatFactoryIndexRoute
+  '/tasks': typeof ChatTasksIndexRoute
+  '/tasks/$environmentId/$displayId': typeof ChatTasksEnvironmentIdDisplayIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -408,7 +441,9 @@ export interface FileRoutesById {
   '/guest': typeof GuestRoute
   '/pair': typeof PairRoute
   '/welcome': typeof WelcomeRoute
+  '/_chat/automations': typeof ChatAutomationsRoute
   '/_chat/factory': typeof ChatFactoryRouteWithChildren
+  '/_chat/inbox': typeof ChatInboxRoute
   '/_chat/new': typeof ChatNewRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/_chat/settings': typeof ChatSettingsRouteWithChildren
@@ -450,6 +485,8 @@ export interface FileRoutesById {
   '/_chat/settings/threads': typeof ChatSettingsThreadsRoute
   '/_chat/settings/worktrees': typeof ChatSettingsWorktreesRoute
   '/_chat/factory/': typeof ChatFactoryIndexRoute
+  '/_chat/tasks/': typeof ChatTasksIndexRoute
+  '/_chat/tasks/$environmentId/$displayId': typeof ChatTasksEnvironmentIdDisplayIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -460,7 +497,9 @@ export interface FileRouteTypes {
     | '/guest'
     | '/pair'
     | '/welcome'
+    | '/automations'
     | '/factory'
+    | '/inbox'
     | '/new'
     | '/pull-requests'
     | '/settings'
@@ -501,6 +540,8 @@ export interface FileRouteTypes {
     | '/settings/threads'
     | '/settings/worktrees'
     | '/factory/'
+    | '/tasks/'
+    | '/tasks/$environmentId/$displayId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/connect'
@@ -508,6 +549,8 @@ export interface FileRouteTypes {
     | '/guest'
     | '/pair'
     | '/welcome'
+    | '/automations'
+    | '/inbox'
     | '/new'
     | '/pull-requests'
     | '/settings'
@@ -549,6 +592,8 @@ export interface FileRouteTypes {
     | '/settings/threads'
     | '/settings/worktrees'
     | '/factory'
+    | '/tasks'
+    | '/tasks/$environmentId/$displayId'
   id:
     | '__root__'
     | '/_chat'
@@ -557,7 +602,9 @@ export interface FileRouteTypes {
     | '/guest'
     | '/pair'
     | '/welcome'
+    | '/_chat/automations'
     | '/_chat/factory'
+    | '/_chat/inbox'
     | '/_chat/new'
     | '/_chat/pull-requests'
     | '/_chat/settings'
@@ -599,6 +646,8 @@ export interface FileRouteTypes {
     | '/_chat/settings/threads'
     | '/_chat/settings/worktrees'
     | '/_chat/factory/'
+    | '/_chat/tasks/'
+    | '/_chat/tasks/$environmentId/$displayId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -697,11 +746,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatNewRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/inbox': {
+      id: '/_chat/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof ChatInboxRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/factory': {
       id: '/_chat/factory'
       path: '/factory'
       fullPath: '/factory'
       preLoaderRoute: typeof ChatFactoryRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/automations': {
+      id: '/_chat/automations'
+      path: '/automations'
+      fullPath: '/automations'
+      preLoaderRoute: typeof ChatAutomationsRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/tasks/': {
+      id: '/_chat/tasks/'
+      path: '/tasks'
+      fullPath: '/tasks/'
+      preLoaderRoute: typeof ChatTasksIndexRouteImport
       parentRoute: typeof ChatRoute
     }
     '/_chat/factory/': {
@@ -949,6 +1019,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatEnvironmentIdThreadIdRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/tasks/$environmentId/$displayId': {
+      id: '/_chat/tasks/$environmentId/$displayId'
+      path: '/tasks/$environmentId/$displayId'
+      fullPath: '/tasks/$environmentId/$displayId'
+      preLoaderRoute: typeof ChatTasksEnvironmentIdDisplayIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
   }
 }
 
@@ -1039,7 +1116,9 @@ const ChatSettingsRouteWithChildren = ChatSettingsRoute._addFileChildren(
 )
 
 interface ChatRouteChildren {
+  ChatAutomationsRoute: typeof ChatAutomationsRoute
   ChatFactoryRoute: typeof ChatFactoryRouteWithChildren
+  ChatInboxRoute: typeof ChatInboxRoute
   ChatNewRoute: typeof ChatNewRoute
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
   ChatSettingsRoute: typeof ChatSettingsRouteWithChildren
@@ -1047,10 +1126,14 @@ interface ChatRouteChildren {
   ChatIndexRoute: typeof ChatIndexRoute
   ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
   ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
+  ChatTasksIndexRoute: typeof ChatTasksIndexRoute
+  ChatTasksEnvironmentIdDisplayIdRoute: typeof ChatTasksEnvironmentIdDisplayIdRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
+  ChatAutomationsRoute: ChatAutomationsRoute,
   ChatFactoryRoute: ChatFactoryRouteWithChildren,
+  ChatInboxRoute: ChatInboxRoute,
   ChatNewRoute: ChatNewRoute,
   ChatPullRequestsRoute: ChatPullRequestsRoute,
   ChatSettingsRoute: ChatSettingsRouteWithChildren,
@@ -1058,6 +1141,8 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatIndexRoute: ChatIndexRoute,
   ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,
   ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,
+  ChatTasksIndexRoute: ChatTasksIndexRoute,
+  ChatTasksEnvironmentIdDisplayIdRoute: ChatTasksEnvironmentIdDisplayIdRoute,
 }
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)

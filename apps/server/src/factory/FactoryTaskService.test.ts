@@ -2070,6 +2070,53 @@ it.effect(
 );
 
 it.effect(
+  "a sibling that starts after Request changes' check wins, and the request leaves nothing behind",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, subtask, start, finish, until } = yield* harness;
+        const parent = yield* create("Unified task model");
+        const contract = yield* subtask("Contract and migration", parent);
+        const notes = yield* subtask("Release notes", parent);
+        yield* finish((yield* start(contract, setupOf("opus", "root"))).run!, "sealed", "Drafted.");
+        yield* until(contract, (current) => current.status === "in-review");
+
+        // Hold Request changes after its own check, at the plan read that starts its launch.
+        const gate = yield* PlanGate;
+        const reached = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        gate.next = Effect.sync(() => {
+          gate.next = Deferred.succeed(reached, undefined).pipe(
+            Effect.andThen(Deferred.await(release)),
+          );
+        });
+        const overtaken = yield* Effect.forkChild(
+          tasks
+            .requestChanges(
+              { commandId: command("overtaken"), ref: contract.ref, revision: 1, note: "Later" },
+              human,
+            )
+            .pipe(Effect.flip),
+        );
+        yield* Deferred.await(reached);
+        yield* start(notes, setupOf("flash", "root"));
+        yield* Deferred.succeed(release, undefined);
+        assert.equal((yield* Fiber.join(overtaken)).reason, "run-active");
+        assert.deepEqual(
+          yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${contract.ref.taskId}`,
+          [{ note: null }],
+        );
+        assert.deepEqual(
+          (yield* tasks.activity({ ref: contract.ref })).entries
+            .filter((entry) => entry.event.type === "changes-requested")
+            .map((entry) => entry.event),
+          [],
+        );
+      }),
+    ),
+);
+
+it.effect(
   "auto resolves through the parent, a profile for the type, the project and the environment",
   () =>
     scenario(

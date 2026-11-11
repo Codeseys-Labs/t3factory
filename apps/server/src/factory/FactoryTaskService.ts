@@ -1475,6 +1475,7 @@ const make = Effect.gen(function* () {
     // Refused before the note is kept, so a request that cannot run leaves nothing behind.
     if (!resumed) yield* nextRound(row);
     const at = yield* now;
+    const activityKey = `changes-requested:${input.commandId}`;
     // A sealed attempt cannot continue, so the note travels in the next attempt's input.
     yield* transact(
       Effect.gen(function* () {
@@ -1488,7 +1489,7 @@ const make = Effect.gen(function* () {
           at,
           actor: PERSON,
           event: { type: "changes-requested", revision: latest.revision, note: input.note },
-          dedupeKey: `changes-requested:${input.commandId}`,
+          dedupeKey: activityKey,
         });
       }),
     );
@@ -1502,11 +1503,16 @@ const make = Effect.gen(function* () {
       baseCommit: latest.kind === "code" ? latest.commit : null,
       record: command.record,
     }).pipe(
-      // A run that was never admitted leaves no note for a later one; an Accept that won says so.
+      // A run that was never admitted leaves no trace for a later one; an Accept that won says so.
       Effect.catch((error) =>
         Effect.gen(function* () {
           if (yield* store.launched(derived(input.commandId, "admit"))) return yield* error;
-          yield* store.updateBoard(row, { inputNote: null, bumpVersion: false, at });
+          yield* transact(
+            Effect.gen(function* () {
+              yield* store.updateBoard(row, { inputNote: null, bumpVersion: false, at });
+              yield* store.retractActivity(activityKey);
+            }),
+          );
           if ((yield* store.acceptedRevision(row)) !== null)
             return yield* refuse("invalid-transition");
           return yield* error;

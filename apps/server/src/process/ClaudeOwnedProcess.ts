@@ -97,7 +97,11 @@ export const makeClaudeOwnedSpawner = Effect.fn("ClaudeOwnedProcess.makeSpawner"
           );
         yield* Fiber.interrupt(output);
         yield* Fiber.interrupt(stderr);
-        if (Option.isSome(code)) exitCode = Number(code.value);
+        // A stopped Windows job ends with code 1; an exit 0 that raced the stop is kept.
+        if (Option.isSome(code) && !(killed && Number(code.value) !== 0)) {
+          exitCode = Number(code.value);
+          signalCode = null;
+        }
         // Effect does not expose which signal ended it; the owner stops roots with SIGKILL.
         else signalCode ??= "SIGKILL";
         events.emit("exit", exitCode, signalCode);

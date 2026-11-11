@@ -208,9 +208,16 @@ it.effect("emits Claude exit when descendants keep stdout and stderr open", () =
   }).pipe(Effect.scoped),
 );
 
-it.live.each([false, true])(
-  "routes Claude SDK stdin, stdout, stderr and exit through the attempt owner (killed %s)",
-  (killed) => {
+// A stopped Windows job reports a numeric root exit (1); an exit 0 that races the stop is kept.
+it.live.each([
+  { stop: "none", expected: [0, null] },
+  { stop: "signal", expected: [null, "SIGKILL"] },
+  { stop: "code", expected: [null, "SIGKILL"] },
+  { stop: "race", expected: [0, null] },
+] as const)(
+  "routes Claude SDK stdin, stdout, stderr and exit through the attempt owner (stop $stop)",
+  ({ stop, expected }) => {
+    const killed = stop !== "none";
     let owned = 0;
     return Effect.gen(function* () {
       let output = "";
@@ -232,7 +239,7 @@ it.live.each([false, true])(
         });
         child.on("error", exited.reject);
         child.once("exit", (code, signal) => {
-          if (killed ? code === null && signal === "SIGKILL" : code === 0) exited.resolve();
+          if (code === expected[0] && signal === expected[1]) exited.resolve();
           else exited.reject(new Error(`exit ${code} ${signal}`));
         });
         child.stdin.end("owned-input");
@@ -271,22 +278,27 @@ it.live.each([false, true])(
           // Node reports a POSIX signal exit as an exitCode failure; Windows reports a code instead.
           return native.spawn(command).pipe(
             Effect.map((handle) =>
-              killed
-                ? {
+              stop === "none"
+                ? handle
+                : {
                     ...handle,
-                    exitCode: handle.exitCode.pipe(
-                      Effect.andThen(
-                        Effect.fail(
-                          PlatformError.systemError({
-                            module: "ChildProcess",
-                            method: "exitCode",
-                            _tag: "Unknown",
-                          }),
-                        ),
-                      ),
-                    ),
-                  }
-                : handle,
+                    exitCode:
+                      stop === "signal"
+                        ? handle.exitCode.pipe(
+                            Effect.andThen(
+                              Effect.fail(
+                                PlatformError.systemError({
+                                  module: "ChildProcess",
+                                  method: "exitCode",
+                                  _tag: "Unknown",
+                                }),
+                              ),
+                            ),
+                          )
+                        : Effect.exit(handle.exitCode).pipe(
+                            Effect.as(ChildProcessSpawner.ExitCode(stop === "code" ? 1 : 0)),
+                          ),
+                  },
             ),
           );
         },

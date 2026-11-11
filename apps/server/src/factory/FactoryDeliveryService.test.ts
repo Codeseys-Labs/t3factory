@@ -75,6 +75,7 @@ const unclaimed = ThreadId.make("unclaimed");
 const first = "1".repeat(40);
 const second = "2".repeat(40);
 const base = "b".repeat(40);
+const taskBase = "c".repeat(40);
 const payload: FactoryDeliveryPublishPayload = {
   title: "Fix the thing",
   body: "Details",
@@ -181,6 +182,8 @@ const harness = (
       SourceControlProvider.SourceControlProvider["Service"]["listChangeRequests"]
     >[0][],
     providerDestinationMatches: true,
+    extraBaseCommits: "0",
+    comparedBases: [] as ReadonlyArray<string>[],
   };
   const providerFailure = (cwd: string, cause: unknown) =>
     new SourceControlProviderError({
@@ -222,6 +225,16 @@ const harness = (
   };
   const git = Layer.mock(Git.GitVcsDriver)({
     execute: ({ args, cwd }) => {
+      if (args[0] === "rev-list") {
+        state.comparedBases.push(args);
+        return Effect.succeed({
+          exitCode: ChildProcessSpawner.ExitCode(0),
+          stdout: `${state.extraBaseCommits}\n`,
+          stderr: "",
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        });
+      }
       if (args[0] === "push") {
         state.calls.push(`push:${args[3]}`);
         return state.push === "ok"
@@ -249,9 +262,11 @@ const harness = (
             ? state.head
             : revision === `${base}^{commit}` || revision === "refs/remotes/origin/main^{commit}"
               ? base
-              : revision === `${first}^{commit}`
-                ? first
-                : null;
+              : revision === `${taskBase}^{commit}`
+                ? taskBase
+                : revision === `${first}^{commit}`
+                  ? first
+                  : null;
       if (stdout === null) return Effect.die(`Unexpected git arguments: ${JSON.stringify(args)}`);
       return Effect.succeed({
         exitCode: ChildProcessSpawner.ExitCode(0),
@@ -1604,12 +1619,29 @@ const grantTaskResult = (
       projectId,
       threadId: claimed,
       headSha: first,
+      baseRef: taskBase,
       publish: { title: "Audio ring demo", body: "Task T-36", headBranch: taskBranch },
       recheck,
     }),
   );
 const createCalls = (state: { readonly calls: ReadonlyArray<string> }) =>
   state.calls.filter((call) => call.startsWith("create:")).length;
+
+it.effect.each([1, 2])("refuses task publication with %i extra base commits", (count) => {
+  const { state, layer } = harness();
+  state.extraBaseCommits = String(count);
+  return Effect.gen(function* () {
+    const refused = yield* grantTaskResult("publish-pr", "extra-base").pipe(Effect.flip);
+    assert.equal(refused.reason, "unreviewed-base-commits");
+    assert.equal(
+      refused.message,
+      `The task's base includes ${count} extra ${count === 1 ? "commit" : "commits"} outside origin's default branch. Publish or rebase them first.`,
+    );
+    assert.deepEqual(state.comparedBases, [["rev-list", "--count", `${base}..${taskBase}`, "--"]]);
+    assert.deepEqual(yield* (yield* DeliveryStore.FactoryDeliveryStore).listByThread(claimed), []);
+    assert.deepEqual(state.calls, []);
+  }).pipe(Effect.provide(layer));
+});
 
 it.effect(
   "a task result publishes its accepted commit on its own branch and merges that commit",

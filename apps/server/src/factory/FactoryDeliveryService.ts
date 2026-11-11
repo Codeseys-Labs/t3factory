@@ -237,6 +237,7 @@ export interface FactoryCommitGrant {
   readonly projectId: ProjectId;
   readonly threadId: ThreadId;
   readonly headSha: string;
+  readonly baseRef: string | null;
   /** What a `publish-pr` opens, and the new branch the commit is pushed to. */
   readonly publish: {
     readonly title: string;
@@ -863,6 +864,34 @@ const makeService = Effect.gen(function* () {
         const baseSha = yield* revParse(cwd, baseRef);
         if (baseSha === null)
           return yield* new FactoryDeliveryError({ reason: "missing-base-branch" });
+        const comparisonBase = input.baseRef === null ? null : yield* revParse(cwd, input.baseRef);
+        if (comparisonBase === null)
+          return yield* new FactoryDeliveryError({ reason: "worktree-unavailable" });
+        const commits = yield* git
+          .execute({
+            operation: "FactoryDeliveryService.countUnreviewedBaseCommits",
+            cwd,
+            args: ["rev-list", "--count", `${baseSha}..${comparisonBase}`, "--"],
+            maxOutputBytes: 4096,
+          })
+          .pipe(
+            Effect.mapError(
+              (cause) => new FactoryDeliveryError({ reason: "worktree-unavailable", cause }),
+            ),
+          );
+        const count = Number(commits.stdout.trim());
+        if (
+          commits.exitCode !== 0 ||
+          commits.stdoutTruncated ||
+          !/^\d+$/.test(commits.stdout.trim()) ||
+          !Number.isSafeInteger(count)
+        )
+          return yield* new FactoryDeliveryError({ reason: "worktree-unavailable" });
+        if (count > 0)
+          return yield* new FactoryDeliveryError({
+            reason: "unreviewed-base-commits",
+            extraCommitCount: count,
+          });
         const payload: FactoryDeliveryPublishPayload = {
           title: input.publish.title,
           body: input.publish.body,

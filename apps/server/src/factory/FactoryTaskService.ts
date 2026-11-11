@@ -1531,6 +1531,8 @@ const make = Effect.gen(function* () {
         projectId: row.projectId,
         threadId: result.threadId,
         headSha: result.commit,
+        baseRef:
+          task.runs.find((run) => run.purpose === "work" && run.baseRef !== null)?.baseRef ?? null,
         publish: {
           title: row.title,
           body: [description.trim(), `Task ${row.displayId} · result rev ${result.revision}`]

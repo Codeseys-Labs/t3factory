@@ -601,36 +601,46 @@ const make = Effect.gen(function* () {
     const slot = latestSlotAtOrBefore(config.schedule, nowMs);
     const next = nextSlotAfter(config.schedule, nowMs);
     const due = source.lastSlotAt === null || slot > millisOf(source.lastSlotAt);
+    let assignment = config.task.assignment;
+    const create = (chosen: FactoryTaskAssignment) =>
+      tasks.create(
+        {
+          commandId: CommandId.make(`factory-intake:${source.id}:${isoOf(slot)}`),
+          projectId: source.projectId,
+          title: config.task.title,
+          description: config.task.description,
+          type: config.task.type,
+          lane: config.task.lane,
+          assignment: chosen,
+        },
+        source.actor,
+        {
+          source: { kind: "schedule", label: "Schedule", url: null, key: null, workRef: null },
+          ruleName: null,
+        },
+      );
     // The command id names the slot, so a retry after a crash replays the same task.
     const created = due
-      ? yield* tasks
-          .create(
-            {
-              commandId: CommandId.make(`factory-intake:${source.id}:${isoOf(slot)}`),
-              projectId: source.projectId,
-              title: config.task.title,
-              description: config.task.description,
-              type: config.task.type,
-              lane: config.task.lane,
-              assignment: config.task.assignment,
+      ? yield* create(assignment).pipe(
+          Effect.catchTags({
+            FactoryTaskError: (error) => {
+              if (error.reason !== "missing-profile" || assignment.mode !== "profile")
+                return Effect.fail(error);
+              assignment = { mode: "unassigned" };
+              return create(assignment);
             },
-            source.actor,
-            {
-              source: { kind: "schedule", label: "Schedule", url: null, key: null, workRef: null },
-              ruleName: null,
-            },
-          )
-          .pipe(
-            Effect.as(true),
-            Effect.catchTags({
-              FactoryTaskError: (error) =>
-                Effect.logWarning("Scheduled task could not be made").pipe(
-                  Effect.annotateLogs({ sourceId: source.id, reason: error.reason }),
-                  Effect.as(false),
-                ),
-            }),
-          )
+          }),
+          Effect.as(true),
+          Effect.catchTags({
+            FactoryTaskError: (error) =>
+              Effect.logWarning("Scheduled task could not be made").pipe(
+                Effect.annotateLogs({ sourceId: source.id, reason: error.reason }),
+                Effect.as(false),
+              ),
+          }),
+        )
       : true;
+    const normalized = assignment !== config.task.assignment;
     return yield* store
       .transact(
         Effect.gen(function* () {
@@ -644,6 +654,13 @@ const make = Effect.gen(function* () {
           const now = isoOf(nowMs);
           yield* store.putSource({
             ...current.value,
+            ...(normalized
+              ? {
+                  config: { ...config, task: { ...config.task, assignment } },
+                  version: current.value.version + 1,
+                  updatedAt: now,
+                }
+              : {}),
             status: created ? "ok" : "failed",
             lastCheckedAt: now,
             lastSlotAt: due && created ? isoOf(slot) : current.value.lastSlotAt,

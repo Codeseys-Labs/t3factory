@@ -145,7 +145,9 @@ const harness = Effect.gen(function* () {
   const feed = yield* Ref.make<FeedState>({ sources: [], candidates: [], binds: 0, refreshes: 0 });
   const created = yield* Queue.unbounded<CreateCall>();
   const createCalls = yield* Ref.make<ReadonlyArray<CreateCall>>([]);
+  const profileExists = yield* Ref.make(true);
   const tasksByCommand = new Map<string, FactoryTaskSummary>();
+  const inputsByCommand = new Map<string, FactoryTaskCreateInput>();
   const now = DateTime.formatIso(yield* DateTime.now);
   const fakes = Layer.mergeAll(
     NodeCrypto.layer,
@@ -237,10 +239,22 @@ const harness = Effect.gen(function* () {
         Effect.gen(function* () {
           const call = { input, actor, origin };
           const calls = yield* Ref.updateAndGet(createCalls, (current) => [...current, call]);
-          yield* Queue.offer(created, call);
           const existing = tasksByCommand.get(input.commandId);
+          if (
+            existing !== undefined &&
+            JSON.stringify(inputsByCommand.get(input.commandId)) !== JSON.stringify(input)
+          )
+            return yield* new FactoryTaskError({ reason: "command-conflict" });
+          if (
+            existing === undefined &&
+            input.assignment?.mode === "profile" &&
+            !(yield* Ref.get(profileExists))
+          )
+            return yield* new FactoryTaskError({ reason: "missing-profile" });
+          if (existing === undefined) yield* Queue.offer(created, call);
           const task = existing ?? summaryOf(calls.length, input, origin);
           tasksByCommand.set(input.commandId, task);
+          inputsByCommand.set(input.commandId, input);
           return { task, replayed: existing !== undefined };
         }),
       resolveAssignee: ({ assignment }) =>
@@ -297,6 +311,7 @@ const harness = Effect.gen(function* () {
     feed,
     created,
     createCalls,
+    profileExists,
     sql: Context.get(database, SqlClient.SqlClient),
   };
 });
@@ -900,7 +915,7 @@ it.effect(
               title: "Weekly dependency review",
               description: "Check outdated packages.",
               type: "research",
-              assignment: { mode: "auto" },
+              assignment: { mode: "profile", profileId: "implementer" },
               lane: "ready",
             },
           },
@@ -922,7 +937,7 @@ it.effect(
         description: "Check outdated packages.",
         type: "research",
         lane: "ready",
-        assignment: { mode: "auto" },
+        assignment: { mode: "profile", profileId: "implementer" },
       });
       assert.deepStrictEqual(monday.actor, human);
       assert.deepStrictEqual(monday.origin, {
@@ -932,14 +947,30 @@ it.effect(
       yield* awaitChange(first.changes, (change) => change.sources);
 
       yield* first.stop;
+      yield* Ref.set(h.profileExists, false);
+      // Recover a task committed before the source's slot checkpoint was saved.
+      yield* h.sql`UPDATE factory_intake_sources SET last_slot_at = ${DateTime.formatIso(DateTime.makeUnsafe(local(9, 8)))}, next_check_at = ${DateTime.formatIso(DateTime.makeUnsafe(local(9, 9, 1)))} WHERE source_id = ${saved.source!.id}`;
       const second = yield* h.start;
       yield* TestClock.adjust("1 minute");
+      yield* awaitChange(second.changes, (change) => change.sources);
+      assert.strictEqual((yield* second.intake.listSources({})).sources[0]?.status, "ok");
+      assert.deepStrictEqual((yield* Ref.get(h.createCalls)).at(-1)?.input, monday.input);
+      assert.strictEqual(yield* Queue.size(h.created), 0);
       // Wednesday is the next scheduled day; Tuesday is skipped.
       yield* TestClock.setTime(local(11, 9));
-      const wednesday = yield* Queue.take(h.created);
-      assert.notStrictEqual(wednesday.input.commandId, monday.input.commandId);
       yield* awaitChange(second.changes, (change) => change.sources);
-      assert.strictEqual((yield* Ref.get(h.createCalls)).length, 2);
+      assert.deepStrictEqual((yield* Ref.get(h.createCalls)).at(-1)?.input.assignment, {
+        mode: "unassigned",
+      });
+      const wednesday = yield* Queue.take(h.created);
+      assert.deepStrictEqual(wednesday.input.assignment, { mode: "unassigned" });
+      assert.notStrictEqual(wednesday.input.commandId, monday.input.commandId);
+      const normalized = (yield* second.intake.listSources({})).sources[0]!;
+      assert.strictEqual(normalized.config.kind, "schedule");
+      if (normalized.config.kind === "schedule")
+        assert.deepStrictEqual(normalized.config.task.assignment, { mode: "unassigned" });
+      assert.strictEqual(normalized.version, saved.source!.version + 1);
+      assert.strictEqual((yield* Ref.get(h.createCalls)).length, 4);
       assert.strictEqual(yield* Queue.size(h.created), 0);
     }),
 );

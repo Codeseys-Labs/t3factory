@@ -1139,53 +1139,56 @@ const make = Effect.gen(function* () {
       const input = yield* decodeUpdate(raw).pipe(Effect.mapError(invalid));
       const command = yield* begin("update", input.commandId, actor, input);
       if (command.replayed) return yield* replay(input.ref);
-      const { task } = yield* requireTask(input.ref);
-      const { row } = task;
-      if (row.version !== input.expectedVersion)
-        return yield* new FactoryTaskError({
-          reason: "version-conflict",
-          currentVersion: row.version,
-        });
       yield* requireProfile(input.assignment);
-      const latestResult = task.derived.result;
-      if (input.lane !== undefined) {
-        const move = checkLaneMove({
-          from: row.lane,
-          to: input.lane,
-          status: task.derived.status,
-          accepted: row.acceptedRevision !== null,
-          runLive: task.derived.liveRuns.length > 0,
-          resultWaiting: latestResult !== null && latestResult.state !== "accepted",
-        });
-        if (!move.allowed) return yield* refuse(move.reason);
-      }
-      const ref = planRef(row);
-      const plan = yield* plans.read({ ref }).pipe(Effect.mapError(planError));
-      const current = plan.tasks.find((entry) => entry.id === row.taskId);
-      const title = input.title !== undefined && input.title !== current?.title;
-      const description = input.description !== undefined && input.description !== current?.context;
-      if (title || description)
-        yield* applyPlan({
-          commandId: input.commandId,
-          ref,
-          actor,
-          operations: () => [
-            {
-              type: "task.update",
-              id: row.taskId,
-              ...(title ? { title: input.title! } : {}),
-              ...(description ? { context: input.description! } : {}),
-            },
-          ],
-        });
-      const type = input.type !== undefined && input.type !== row.type;
-      const lane = input.lane !== undefined && input.lane !== row.lane;
-      const assignment =
-        input.assignment !== undefined &&
-        executionDigest(input.assignment) !== executionDigest(row.assignment);
       const at = yield* now;
-      yield* transact(
+      // Checked and written in one transaction, so two devices editing from the same version
+      // cannot both land.
+      const row = yield* transact(
         Effect.gen(function* () {
+          const { task } = yield* requireTask(input.ref);
+          const { row } = task;
+          if (row.version !== input.expectedVersion)
+            return yield* new FactoryTaskError({
+              reason: "version-conflict",
+              currentVersion: row.version,
+            });
+          const latestResult = task.derived.result;
+          if (input.lane !== undefined) {
+            const move = checkLaneMove({
+              from: row.lane,
+              to: input.lane,
+              status: task.derived.status,
+              accepted: row.acceptedRevision !== null,
+              runLive: task.derived.liveRuns.length > 0,
+              resultWaiting: latestResult !== null && latestResult.state !== "accepted",
+            });
+            if (!move.allowed) return yield* refuse(move.reason);
+          }
+          const ref = planRef(row);
+          const plan = yield* plans.read({ ref }).pipe(Effect.mapError(planError));
+          const current = plan.tasks.find((entry) => entry.id === row.taskId);
+          const title = input.title !== undefined && input.title !== current?.title;
+          const description =
+            input.description !== undefined && input.description !== current?.context;
+          if (title || description)
+            yield* applyPlan({
+              commandId: input.commandId,
+              ref,
+              actor,
+              operations: () => [
+                {
+                  type: "task.update",
+                  id: row.taskId,
+                  ...(title ? { title: input.title! } : {}),
+                  ...(description ? { context: input.description! } : {}),
+                },
+              ],
+            });
+          const type = input.type !== undefined && input.type !== row.type;
+          const lane = input.lane !== undefined && input.lane !== row.lane;
+          const assignment =
+            input.assignment !== undefined &&
+            executionDigest(input.assignment) !== executionDigest(row.assignment);
           yield* store.updateBoard(row, {
             ...(type ? { type: input.type! } : {}),
             ...(lane ? { lane: input.lane! } : {}),
@@ -1213,6 +1216,7 @@ const make = Effect.gen(function* () {
             });
           yield* command.record(row);
           yield* changes.announce({ rootIds: [row.rootId] });
+          return row;
         }),
       );
       return { task: yield* summaryOf(row), replayed: false };

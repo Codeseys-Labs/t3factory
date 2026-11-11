@@ -31,7 +31,9 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
@@ -232,6 +234,29 @@ const deliveries = Layer.effect(
     ),
   ),
 );
+/** Runs once before the next plan read, so a test can hold one command at that point. */
+class PlanGate extends Context.Service<PlanGate, { next: Effect.Effect<void> | null }>()(
+  "t3/factory/FactoryTaskService.test/PlanGate",
+) {}
+const gatedPlans = Layer.effect(
+  Plans.FactoryPlanService,
+  Effect.gen(function* () {
+    const plans = yield* Plans.FactoryPlanService;
+    const gate = yield* PlanGate;
+    return Plans.FactoryPlanService.of({
+      ...plans,
+      read: (input) =>
+        Effect.suspend(() => {
+          const next = gate.next ?? Effect.void;
+          gate.next = null;
+          return next;
+        }).pipe(Effect.andThen(plans.read(input))),
+    });
+  }),
+).pipe(
+  Layer.provide(Plans.layer),
+  Layer.provideMerge(Layer.sync(PlanGate, () => ({ next: null }))),
+);
 const eventStores = EventStore.layerFromOrchestrationEventStore.pipe(
   Layer.provideMerge(OrchestrationEventStore.layer),
 );
@@ -259,7 +284,7 @@ const layerWith = (environmentDefault: ModelSelection | null = null) => {
     }),
   );
   const engine = Layer.mergeAll(
-    Plans.layer,
+    gatedPlans,
     Executions.layer,
     ExecutionStore.layer,
     deliveries,
@@ -539,6 +564,34 @@ it.effect("replays a command id, refuses it with other input, and reports a stal
         (yield* tasks.update({ ...move, lane: "backlog" }, human).pipe(Effect.flip)).reason,
         "command-conflict",
       );
+      // Two devices that read the same version: one write lands, the other is refused, not lost.
+      const retype = (type: "feature" | "bug") =>
+        tasks
+          .update(
+            {
+              commandId: command(`retype:${type}`),
+              ref,
+              expectedVersion: moved.task.version,
+              type,
+            },
+            human,
+          )
+          .pipe(Effect.flip, Effect.result);
+      const gate = yield* PlanGate;
+      const reached = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      gate.next = Deferred.succeed(reached, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+      );
+      const first = yield* Effect.forkChild(retype("feature"));
+      yield* Deferred.await(reached);
+      const second = yield* Effect.forkChild(retype("bug"), { startImmediately: true });
+      yield* Deferred.succeed(release, undefined);
+      const refused = [yield* Fiber.join(first), yield* Fiber.join(second)].flatMap((write) =>
+        write._tag === "Success" ? [write.success.reason] : [],
+      );
+      assert.deepEqual(refused, ["version-conflict"]);
+      assert.equal((yield* tasks.read({ task: { ref } })).task.version, moved.task.version + 1);
       assert.equal(
         (yield* tasks
           .read({ task: { ref: { ...ref, environmentId: EnvironmentId.make("elsewhere") } } })

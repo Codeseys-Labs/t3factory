@@ -407,6 +407,8 @@ const make = Effect.gen(function* () {
   const deliveryStore = yield* DeliveryStore.FactoryDeliveryStore;
   const environmentId = yield* (yield* ServerEnvironmentIdentity).getEnvironmentId;
 
+  // Request changes still starting a run in this process, by task.
+  const requestingChanges = new Set<string>();
   const transact = <A, R>(effect: Effect.Effect<A, FactoryTaskError, R>) =>
     sql.withTransaction(effect).pipe(Effect.mapError(asTaskError));
   const now = Effect.map(DateTime.now, DateTime.formatIso);
@@ -1462,63 +1464,73 @@ const make = Effect.gen(function* () {
     if (command.replayed) return yield* replay(input.ref);
     const { root, task } = yield* requireTask(input.ref);
     const { row } = task;
-    const resumed = yield* store.launched(derived(input.commandId, "admit"));
-    if (!resumed) yield* requireRunnable(root, task);
-    const latest = resumed
-      ? task.results.findLast((result) => result.revision === input.revision)
-      : yield* reviewed(task, input.revision);
-    if (latest === undefined) return yield* refuse("no-result");
-    const author =
-      task.runs.find((entry) => entry.threadId === latest.threadId) ??
-      task.runs.findLast((entry) => entry.purpose === "work");
-    if (author === undefined) return yield* refuse("no-run");
-    // Refused before the note is kept, so a request that cannot run leaves nothing behind.
-    if (!resumed) yield* nextRound(row);
-    const at = yield* now;
-    const activityKey = `changes-requested:${input.commandId}`;
-    // A sealed attempt cannot continue, so the note travels in the next attempt's input.
-    yield* transact(
-      Effect.gen(function* () {
-        yield* store.updateBoard(row, {
-          inputNote: `Changes requested on the previous result:\n${input.note}`,
-          bumpVersion: false,
-          at,
-        });
-        yield* store.appendActivity({
-          key: row,
-          at,
-          actor: PERSON,
-          event: { type: "changes-requested", revision: latest.revision, note: input.note },
-          dedupeKey: activityKey,
-        });
-      }),
-    );
-    return yield* run({
-      commandId: input.commandId,
-      task,
-      setup: author.setup,
-      profileId: author.profileId,
-      actor,
-      // Code continues from the result under review; a document starts from the task again.
-      baseCommit: latest.kind === "code" ? latest.commit : null,
-      record: command.record,
-    }).pipe(
-      // A run that was never admitted leaves no trace for a later one; an Accept that won says so.
-      Effect.catch((error) =>
+    // A failed request clears the pending note, so two in flight on one task could clear the other's.
+    const pendingKey = `${row.rootId}/${row.taskId}`;
+    if (requestingChanges.has(pendingKey))
+      return yield* new FactoryTaskError({
+        reason: "run-active",
+        detail: "Changes are already being requested on this task. Try again in a moment.",
+      });
+    requestingChanges.add(pendingKey);
+    return yield* Effect.gen(function* () {
+      const resumed = yield* store.launched(derived(input.commandId, "admit"));
+      if (!resumed) yield* requireRunnable(root, task);
+      const latest = resumed
+        ? task.results.findLast((result) => result.revision === input.revision)
+        : yield* reviewed(task, input.revision);
+      if (latest === undefined) return yield* refuse("no-result");
+      const author =
+        task.runs.find((entry) => entry.threadId === latest.threadId) ??
+        task.runs.findLast((entry) => entry.purpose === "work");
+      if (author === undefined) return yield* refuse("no-run");
+      // Refused before the note is kept, so a request that cannot run leaves nothing behind.
+      if (!resumed) yield* nextRound(row);
+      const at = yield* now;
+      const activityKey = `changes-requested:${input.commandId}`;
+      // A sealed attempt cannot continue, so the note travels in the next attempt's input.
+      yield* transact(
         Effect.gen(function* () {
-          if (yield* store.launched(derived(input.commandId, "admit"))) return yield* error;
-          yield* transact(
-            Effect.gen(function* () {
-              yield* store.updateBoard(row, { inputNote: null, bumpVersion: false, at });
-              yield* store.retractActivity(activityKey);
-            }),
-          );
-          if ((yield* store.acceptedRevision(row)) !== null)
-            return yield* refuse("invalid-transition");
-          return yield* error;
+          yield* store.updateBoard(row, {
+            inputNote: `Changes requested on the previous result:\n${input.note}`,
+            bumpVersion: false,
+            at,
+          });
+          yield* store.appendActivity({
+            key: row,
+            at,
+            actor: PERSON,
+            event: { type: "changes-requested", revision: latest.revision, note: input.note },
+            dedupeKey: activityKey,
+          });
         }),
-      ),
-    );
+      );
+      return yield* run({
+        commandId: input.commandId,
+        task,
+        setup: author.setup,
+        profileId: author.profileId,
+        actor,
+        // Code continues from the result under review; a document starts from the task again.
+        baseCommit: latest.kind === "code" ? latest.commit : null,
+        record: command.record,
+      }).pipe(
+        // A run that was never admitted leaves no trace for a later one; an Accept that won says so.
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            if (yield* store.launched(derived(input.commandId, "admit"))) return yield* error;
+            yield* transact(
+              Effect.gen(function* () {
+                yield* store.updateBoard(row, { inputNote: null, bumpVersion: false, at });
+                yield* store.retractActivity(activityKey);
+              }),
+            );
+            if ((yield* store.acceptedRevision(row)) !== null)
+              return yield* refuse("invalid-transition");
+            return yield* error;
+          }),
+        ),
+      );
+    }).pipe(Effect.ensuring(Effect.sync(() => requestingChanges.delete(pendingKey))));
   });
 
   const reopen: FactoryTaskService["Service"]["reopen"] = Effect.fn("FactoryTaskService.reopen")(

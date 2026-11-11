@@ -2130,6 +2130,20 @@ it.effect(
             .pipe(Effect.flip),
         );
         yield* Deferred.await(reached);
+        // A second request on the same task waits its turn instead of racing for the note.
+        const second = yield* tasks
+          .requestChanges(
+            { commandId: command("second"), ref: contract.ref, revision: 1, note: "Sooner" },
+            human,
+          )
+          .pipe(Effect.flip);
+        assert.deepEqual(
+          [second.reason, second.detail],
+          [
+            "run-active",
+            "Changes are already being requested on this task. Try again in a moment.",
+          ],
+        );
         yield* start(notes, setupOf("flash", "root"));
         yield* Deferred.succeed(release, undefined);
         assert.equal((yield* Fiber.join(overtaken)).reason, "run-active");

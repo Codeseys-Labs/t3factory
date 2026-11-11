@@ -348,7 +348,8 @@ it.effect(
       assert.include(h.launches[0]!.initialMessage!.text, "factory_propose_subtasks exactly once");
       assert.include(h.launches[0]!.initialMessage!.text, "Unify the task views");
       assert.lengthOf(h.runs, 1);
-      assert.deepEqual(h.runs[0]!.setup, setup);
+      assert.deepEqual(h.runs[0]!.setup, { ...setup, workspace: "root" });
+      assert.notProperty(h.launches[0], "workspace");
       assert.isTrue((yield* h.service.requestBreakdown(h.request, human)).replayed);
       assert.lengthOf(h.launches, 1);
       assert.equal(

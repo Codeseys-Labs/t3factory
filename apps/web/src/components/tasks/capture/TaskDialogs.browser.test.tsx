@@ -364,11 +364,14 @@ it("asks for a plan without creating anything", async () => {
   openTaskSetup(task.ref, "break-down");
   await using _screen = await render(<TaskDialogsHost />);
   await expect.element(page.getByText("Break down T-43")).toBeVisible();
+  await expect
+    .element(page.getByRole("textbox", { name: "Workspace" }))
+    .toHaveValue("Project checkout");
   await userEvent.click(page.getByRole("button", { name: "Ask for a plan" }));
   await vi.waitFor(() => expect(callsOf("requestTaskBreakdown")).toHaveLength(1));
   expect(callsOf("requestTaskBreakdown")[0]).toMatchObject({
     ref: task.ref,
-    setup: profile("implementer").setup,
+    setup: { ...profile("implementer").setup, workspace: "root" },
   });
   expect(state.calls.map((call) => call.name)).toEqual(["requestTaskBreakdown"]);
   expect(toast).toHaveBeenCalledWith(

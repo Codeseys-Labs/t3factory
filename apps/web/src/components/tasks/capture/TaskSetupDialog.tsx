@@ -238,14 +238,18 @@ function TaskSetupForm({
   );
   const canUpdate = useAtomValue(factoryTasks.updateTask.permissionAtom(environmentId));
 
+  const planning = intent === "break-down";
   const base = assignmentRunsAgent(assignment) ? resolved.setup : null;
   const setup = base
-    ? { ...base, runtimeMode: mode ?? base.runtimeMode, workspace: workspace ?? base.workspace }
+    ? {
+        ...base,
+        runtimeMode: mode ?? base.runtimeMode,
+        workspace: planning ? "root" : (workspace ?? base.workspace),
+      }
     : null;
   const shownMode = setup?.runtimeMode ?? mode ?? "approval-required";
   const shownWorkspace = setup?.workspace ?? workspace ?? "worktree";
-  const blockers =
-    intent === "break-down" ? [] : task.blockedBy.map((blocker) => blocker.displayId);
+  const blockers = planning ? [] : task.blockedBy.map((blocker) => blocker.displayId);
   const changedAssignment = !sameAssignment(assignment, task.assignee.assignment);
   const ready =
     setup !== null &&
@@ -369,24 +373,28 @@ function TaskSetupForm({
             </Select>
           </Field>
           <Field label="Workspace">
-            <Select
-              value={shownWorkspace}
-              disabled={base === null}
-              onValueChange={(value) => value !== null && setWorkspace(value)}
-            >
-              <SelectTrigger aria-label="Workspace">
-                <SelectValue>
-                  {WORKSPACES.find((entry) => entry.value === shownWorkspace)?.label}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectPopup>
-                {WORKSPACES.map((entry) => (
-                  <SelectItem key={entry.value} value={entry.value}>
-                    {entry.label}
-                  </SelectItem>
-                ))}
-              </SelectPopup>
-            </Select>
+            {planning ? (
+              <Input readOnly aria-label="Workspace" value="Project checkout" />
+            ) : (
+              <Select
+                value={shownWorkspace}
+                disabled={base === null}
+                onValueChange={(value) => value !== null && setWorkspace(value)}
+              >
+                <SelectTrigger aria-label="Workspace">
+                  <SelectValue>
+                    {WORKSPACES.find((entry) => entry.value === shownWorkspace)?.label}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup>
+                  {WORKSPACES.map((entry) => (
+                    <SelectItem key={entry.value} value={entry.value}>
+                      {entry.label}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+            )}
           </Field>
           <Field label="Machine">
             <Input readOnly aria-label="Machine" value={machine ?? ""} />

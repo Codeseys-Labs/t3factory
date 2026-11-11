@@ -11,6 +11,7 @@ import {
   MessageId,
   ThreadId,
   sessionGrantsScope,
+  type FactoryAgentSetup,
   type FactoryTaskMutationResult,
   type FactoryTaskPlanProposalMutationResult,
   type FactoryTaskPlanProposalReadInput,
@@ -80,6 +81,11 @@ export class FactoryTaskPlanningService extends Context.Service<
     ) => Effect.Effect<FactoryTaskPlanProposalMutationResult, FactoryTaskError>;
   }
 >()("t3/factory/FactoryTaskPlanningService") {}
+
+const planningSetup = (setup: FactoryAgentSetup): FactoryAgentSetup => ({
+  ...setup,
+  workspace: "root",
+});
 
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -258,7 +264,9 @@ const make = Effect.gen(function* () {
         threadId: request.threadId,
         projectId: input.ref.projectId,
         title: request.title,
-        ...input.setup,
+        modelSelection: input.setup.modelSelection,
+        runtimeMode: input.setup.runtimeMode,
+        interactionMode: input.setup.interactionMode,
         workspaceStrategy: { type: "root" },
         initialMessage: { messageId: request.messageId, text: request.prompt, attachments: [] },
         createdBy: "user",
@@ -290,7 +298,7 @@ const make = Effect.gen(function* () {
             ref: input.ref,
             threadId: request.threadId,
             runId,
-            setup: input.setup,
+            setup: planningSetup(input.setup),
           });
           const current = yield* store.request(input.ref);
           yield* store.saveRequest({
@@ -335,7 +343,7 @@ const make = Effect.gen(function* () {
             id: prior?.id ?? (yield* randomUuidV4),
             ref: input.ref,
             status: "proposed",
-            proposedBy: { threadId, setup: request.input.setup },
+            proposedBy: { threadId, setup: planningSetup(request.input.setup) },
             items,
             version: prior === null ? 0 : prior.version + 1,
             createdAt: prior?.createdAt ?? now,

@@ -191,8 +191,14 @@ vi.mock(import("../shared/taskActions"), () => ({
     accept: true,
     requestChanges: true,
     reopen: true,
+    publish: true,
+    merge: true,
+    check: true,
     resolvePlan: true,
   }),
+}));
+vi.mock(import("../shared/taskPullRequest"), () => ({
+  useTaskPullRequestChecks: () => "passing",
 }));
 vi.mock(import("../taskDialogs"), () => ({
   openTaskSetup: ((...args: unknown[]) => state.openTaskSetup(...args)) as never,

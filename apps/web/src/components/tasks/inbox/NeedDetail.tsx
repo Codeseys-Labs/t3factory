@@ -25,7 +25,6 @@ import {
   useTaskPermissions,
 } from "../shared";
 import { openTaskSetup } from "../taskDialogs";
-import { splitResultSummary } from "../shared/TaskBanner";
 
 export function NeedDetail({ need }: { need: FactoryTaskNeed }) {
   const detail = useFactoryTaskDetail(need.ref);
@@ -119,7 +118,31 @@ function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSu
   if (need.reason === "review" || need.reason === "changed")
     return <ReviewResult key={task.result?.revision} task={task} />;
   if (need.reason === "plan") return <ReviewPlan task={task} />;
+  if (need.reason === "unconfirmed") return <CheckDelivery need={need} task={task} />;
   return <p className="text-muted-foreground text-sm">{need.detail}</p>;
+}
+
+/** A sent Publish or Merge whose outcome is unknown. Check reads the host; it sends nothing. */
+function CheckDelivery({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSummary }) {
+  const actions = useTaskActions();
+  const permissions = useTaskPermissions(task.ref.environmentId);
+  const [busy, setBusy] = useState(false);
+  return (
+    <section aria-label="Unconfirmed" className="space-y-3 rounded-lg border bg-card p-4">
+      <h3 className="font-medium text-sm">Unconfirmed</h3>
+      <p className="text-muted-foreground text-sm">{need.detail}</p>
+      <Button
+        size="sm"
+        disabled={busy || !permissions.check}
+        onClick={() => {
+          setBusy(true);
+          void actions.check(task).then(() => setBusy(false));
+        }}
+      >
+        Check
+      </Button>
+    </section>
+  );
 }
 
 function ReviewResult({ task }: { task: FactoryTaskSummary }) {
@@ -154,7 +177,7 @@ function ReviewResult({ task }: { task: FactoryTaskSummary }) {
   const result = read.value.result;
   if (result.state === "accepted")
     return <p className="text-sm">Accepted · rev {result.acceptedRevision ?? result.revision}</p>;
-  const summary = splitResultSummary(result.summary);
+  const pullRequest = result.pullRequest ?? null;
   const run = async (operation: () => Promise<unknown>) => {
     setBusy(true);
     await operation();
@@ -164,15 +187,15 @@ function ReviewResult({ task }: { task: FactoryTaskSummary }) {
     <div className="space-y-3">
       <div className="[&>div]:flex-wrap">
         <ResultCard
-          kind={
-            result.kind === "document"
-              ? "document"
-              : /^PR #\d+/u.test(result.summary)
-                ? "pull-request"
-                : "code"
+          kind={pullRequest ? "pull-request" : result.kind}
+          title={
+            pullRequest
+              ? `PR #${pullRequest.number}`
+              : result.kind === "document"
+                ? "Document"
+                : "Code changes"
           }
-          title={summary.title ?? (result.kind === "document" ? "Document" : "Code changes")}
-          meta={summary.detail}
+          meta={result.summary}
           review="pending"
           revisionLabel={`rev ${result.revision}`}
           pending={busy}

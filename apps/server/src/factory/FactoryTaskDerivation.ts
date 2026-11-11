@@ -1,8 +1,10 @@
 import type {
   FactoryTaskAttention,
   FactoryTaskAttentionReason,
+  FactoryTaskDelivery,
   FactoryTaskLane,
   FactoryTaskLiveRun,
+  FactoryTaskPullRequest,
   FactoryTaskResult,
   FactoryTaskRun,
   FactoryTaskRunState,
@@ -52,6 +54,16 @@ export function planningRunState(nativeStatus: string | null): {
 export const isLiveRunState = (state: FactoryTaskRunState): boolean =>
   state === "running" || state === "stopping" || state === "held";
 
+/** One Publish or Merge of a result revision, as the delivery store holds it. */
+export interface TaskDeliveryFact {
+  readonly kind: "publish-pr" | "merge-pr";
+  readonly status: "pending" | "sending" | "confirmed" | "failed" | "unknown";
+  readonly remote: { readonly number: number; readonly url: string } | null;
+  readonly host: string;
+  readonly repository: string;
+  readonly failure: string | null;
+}
+
 export interface TaskResultFact {
   readonly revision: number;
   readonly kind: FactoryTaskResult["kind"];
@@ -59,7 +71,57 @@ export interface TaskResultFact {
   readonly runOrdinal: number;
   readonly threadId: FactoryTaskResult["threadId"];
   readonly observedAt: string;
+  readonly pullRequest: FactoryTaskPullRequest | null;
+  readonly delivery: FactoryTaskDelivery | null;
 }
+
+/**
+ * What a revision's deliveries add up to, oldest first: the pull request its confirmed publish
+ * opened, merged once a merge is confirmed, and the latest Publish or Merge still unsettled.
+ */
+export function deliveryState(deliveries: ReadonlyArray<TaskDeliveryFact>): {
+  readonly pullRequest: FactoryTaskPullRequest | null;
+  readonly delivery: FactoryTaskDelivery | null;
+} {
+  const published = deliveries.findLast(
+    (entry) => entry.kind === "publish-pr" && entry.status === "confirmed" && entry.remote !== null,
+  );
+  const merged = deliveries.some(
+    (entry) => entry.kind === "merge-pr" && entry.status === "confirmed",
+  );
+  const latest = deliveries.at(-1);
+  return {
+    pullRequest:
+      published?.remote == null
+        ? null
+        : {
+            number: published.remote.number,
+            url: published.remote.url,
+            host: published.host,
+            repository: published.repository,
+            state: merged ? "merged" : "open",
+          },
+    delivery:
+      latest === undefined || latest.status === "confirmed"
+        ? null
+        : {
+            action: latest.kind === "merge-pr" ? "merge" : "publish",
+            state:
+              latest.status === "unknown"
+                ? "unconfirmed"
+                : latest.status === "failed"
+                  ? "failed"
+                  : "sending",
+            detail:
+              latest.status === "failed" ? (latest.failure ?? "").slice(0, 200) || null : null,
+          },
+  };
+}
+
+const unconfirmedDetail = (result: TaskResultFact) =>
+  result.delivery?.action === "merge" && result.pullRequest !== null
+    ? `Merge of PR #${result.pullRequest.number} sent · outcome unknown`
+    : "Publish sent · outcome unknown";
 
 export interface TaskFacts {
   readonly taskId: string;
@@ -141,6 +203,10 @@ export function deriveTask(facts: TaskFacts, subtasks: ReadonlyArray<SubtaskFact
     if (facts.proposalItems !== null)
       raise("plan", facts.proposalItems === 1 ? "1 sub-task" : `${facts.proposalItems} sub-tasks`);
   }
+  // A Publish or Merge was a person's click; until the host is read, only they can settle it.
+  if (ownStatus !== "canceled")
+    for (const result of facts.results)
+      if (result.delivery?.state === "unconfirmed") raise("unconfirmed", unconfirmedDetail(result));
   const attention = [...own, ...subtasks.flatMap((subtask) => subtask.attention)]
     .map((entry, index) => ({ entry, index }))
     .sort(
@@ -189,6 +255,8 @@ export function deriveTask(facts: TaskFacts, subtasks: ReadonlyArray<SubtaskFact
             runOrdinal: latest.runOrdinal,
             threadId: latest.threadId,
             observedAt: latest.observedAt,
+            pullRequest: latest.pullRequest,
+            delivery: latest.delivery,
           },
     run: facts.runs.at(-1) ?? null,
   };

@@ -42,6 +42,11 @@ const TASK: Omit<Record<TaskReason, string>, keyof typeof SHARED> = {
   "provider-unavailable": "That agent is unavailable on this machine. Pick another one.",
   "unsupported-capability": "That agent can't run tasks on this machine yet. Pick another one.",
   "task-limit": "A top-level task holds at most 64 tasks.",
+  "not-accepted": "Accept the result first.",
+  "not-code": "Only a code result becomes a pull request.",
+  "not-published": "Publish the pull request first.",
+  "delivery-active": "This was already sent. Wait for it, or Check it if it stays unconfirmed.",
+  "delivery-refused": "The repository's host refused it. Try again later.",
 };
 
 const INTAKE: Omit<Record<IntakeReason, string>, keyof typeof SHARED> = {
@@ -71,6 +76,8 @@ export function taskErrorMessage(
     const task = context.task;
     if (error.reason === "blocked" && task && task.blockedBy.length > 0)
       return `This task waits on ${task.blockedBy.map((blocker) => blocker.displayId).join(", ")}.`;
+    // The server words a host's refusal itself, since only it knows which check failed.
+    if (error.reason === "delivery-refused" && error.detail) return error.detail;
     if (error.reason === "invalid-transition" && task) {
       if (task.status === "in-review") return "Accept the result first.";
       if (task.status === "done" && task.result?.state === "accepted")

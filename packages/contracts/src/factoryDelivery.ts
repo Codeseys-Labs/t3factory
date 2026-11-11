@@ -47,6 +47,9 @@ export const FactoryDeliveryPublishPayload = Schema.Struct({
   title: TrimmedNonEmptyString.check(Schema.isMaxLength(FACTORY_DELIVERY_TITLE_MAX_CHARS)),
   body: Schema.String.check(Schema.isMaxLength(FACTORY_DELIVERY_BODY_MAX_CHARS)),
   draft: Schema.Boolean,
+  // Set for a task result: the accepted commit itself is pushed to this new branch, so no
+  // worktree is involved. Absent, the claimed worktree's current branch is published.
+  headBranch: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(255))),
 });
 export type FactoryDeliveryPublishPayload = typeof FactoryDeliveryPublishPayload.Type;
 

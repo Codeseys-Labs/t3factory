@@ -5,7 +5,9 @@ import {
   feedItemOriginKey,
   issueOriginKey,
   knowledgeBriefOriginKey,
+  parseTaskResultOriginKey,
   researchRunOriginKey,
+  taskResultOriginKey,
 } from "./FactoryOriginKey.ts";
 
 const github = SourceControlProviderKind.make("github");
@@ -48,5 +50,11 @@ it.effect("origin keys escape delimiters and percent sequences without component
       feedItemOriginKey("a%|#:", "b%|#:", "c%|#:"),
       "feed:a%25%7C%23%3A|b%25%7C%23%3A|c%25%7C%23%3A",
     );
+    assert.deepStrictEqual(parseTaskResultOriginKey(taskResultOriginKey("r|1#", "t%:2", 3)), {
+      rootId: "r|1#",
+      taskId: "t%:2",
+      revision: 3,
+    });
+    assert.isNull(parseTaskResultOriginKey(issueOriginKey(github, "repo", 3)));
   }),
 );

@@ -6,14 +6,17 @@ import {
   AuthSessionId,
   CommandId,
   EnvironmentId,
+  FactoryDeliveryError,
   FactoryWorkError,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   RunAttemptId,
   RunId,
+  SourceControlProviderKind,
   ThreadId,
   type FactoryAgentSetup,
+  type FactoryTaskError,
   type FactoryTaskChange,
   type FactoryTaskCreateInput,
   type FactoryTaskRun,
@@ -24,9 +27,11 @@ import {
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import type * as Scope from "effect/Scope";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -38,12 +43,14 @@ import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import { ProviderAdapterRegistryV2 } from "../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as AuthSessions from "../persistence/AuthSessions.ts";
+import * as DeliveryStore from "../persistence/FactoryDeliveryStore.ts";
 import * as ExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Processes from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as Profiles from "./FactoryAgentProfileService.ts";
+import * as Delivery from "./FactoryDeliveryService.ts";
 import { canonicalExecutionJson, executionDigest } from "./FactoryExecutionDigest.ts";
 import * as Executions from "./FactoryExecutionService.ts";
 import * as Plans from "./FactoryPlanService.ts";
@@ -129,6 +136,98 @@ const adapters = Layer.effect(
     }),
   ),
 );
+/** What the delivery fake was asked, and what a Check finds on the host. */
+class DeliveryProbe extends Context.Service<
+  DeliveryProbe,
+  {
+    readonly grants: Array<string>;
+    readonly checks: Array<string>;
+    found: Omit<DeliveryStore.FactoryDeliverySettlement, "updatedAt">;
+  }
+>()("t3/factory/FactoryTaskService.test/DeliveryProbe") {}
+const pullUrl = "https://github.com/owner/repo/pull/12";
+// The real store keeps the intents the task reads; the host side is the test's to settle.
+const deliveries = Layer.effect(
+  Delivery.FactoryDeliveryService,
+  Effect.gen(function* () {
+    const store = yield* DeliveryStore.FactoryDeliveryStore;
+    const probe = yield* DeliveryProbe;
+    const unused = () => Effect.die("tasks deliver through grantCommit and reconcile only");
+    return Delivery.FactoryDeliveryService.of({
+      prepare: unused,
+      grant: unused,
+      read: unused,
+      execute: unused,
+      grantCommit: (input) =>
+        Effect.gen(function* () {
+          probe.grants.push(input.kind);
+          if (
+            input.kind === "merge-pr" &&
+            Option.getOrUndefined(yield* store.getLive(input.originKey, "publish-pr"))?.status !==
+              "confirmed"
+          )
+            return yield* new FactoryDeliveryError({ reason: "not-published" });
+          const granted = yield* store.grant(
+            {
+              id: `delivery:${input.commandId}`,
+              originKey: input.originKey,
+              threadId: input.threadId,
+              projectId: input.projectId,
+              kind: input.kind,
+              acceptanceId: input.acceptanceId,
+              repository: {
+                provider: SourceControlProviderKind.make("github"),
+                host: "github.com",
+                repository: "owner/repo",
+                canonicalKey: "github.com/owner/repo",
+                url: "https://github.com/owner/repo",
+              },
+              baseRef: "refs/remotes/origin/main",
+              baseBranch: "main",
+              baseSha: "f".repeat(40),
+              headSha: input.headSha,
+              payload:
+                input.kind === "publish-pr"
+                  ? { ...input.publish, draft: false }
+                  : { mergeMethod: "merge" },
+              payloadDigest: "d".repeat(64),
+              grantedBy: environmentId,
+              grantedAt: at,
+              requestCommandId: input.commandId,
+              status: "pending",
+              remote: input.kind === "merge-pr" ? { number: 12, url: pullUrl } : null,
+              failure: null,
+              updatedAt: at,
+            },
+            { recheck: input.recheck, enqueue: Effect.void },
+          );
+          return granted.intent.kind === "publish-artifact"
+            ? yield* Effect.die("a task never delivers an artifact")
+            : granted.intent;
+        }),
+      reconcile: (input) =>
+        Effect.gen(function* () {
+          probe.checks.push(input.intentId);
+          const settled = yield* store.settle(input.intentId, { ...probe.found, updatedAt: at });
+          return Option.getOrThrow(settled);
+        }),
+    });
+  }),
+).pipe(
+  Layer.provideMerge(
+    Layer.merge(
+      DeliveryStore.layer,
+      Layer.effect(
+        DeliveryProbe,
+        Effect.sync(() => ({
+          grants: [],
+          checks: [],
+          found: { status: "unknown" as const, failure: null },
+        })),
+      ),
+    ),
+  ),
+);
 const eventStores = EventStore.layerFromOrchestrationEventStore.pipe(
   Layer.provideMerge(OrchestrationEventStore.layer),
 );
@@ -155,9 +254,12 @@ const layerWith = (environmentDefault: ModelSelection | null = null) => {
           : Effect.fail(new FactoryWorkError({ reason: "missing-work" })),
     }),
   );
-  const engine = Layer.mergeAll(Plans.layer, Executions.layer, ExecutionStore.layer).pipe(
-    Layer.provideMerge(base),
-  );
+  const engine = Layer.mergeAll(
+    Plans.layer,
+    Executions.layer,
+    ExecutionStore.layer,
+    deliveries,
+  ).pipe(Layer.provideMerge(base));
   return Layer.mergeAll(Tasks.layer, Profiles.layer, Changes.layer).pipe(
     Layer.provideMerge(engine),
   );
@@ -1041,6 +1143,157 @@ it.effect(
     ),
 );
 
+it.effect(
+  "publishes an accepted code result, merges it, and settles an unconfirmed merge by checking",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, start, finish, until } = yield* harness;
+        const store = yield* DeliveryStore.FactoryDeliveryStore;
+        const probe = yield* DeliveryProbe;
+        const reason = <A>(effect: Effect.Effect<A, FactoryTaskError>) =>
+          effect.pipe(
+            Effect.flip,
+            Effect.map((error) => error.reason),
+          );
+        const task = yield* create("Audio ring demo", { lane: "ready" });
+        const deliver = (
+          kind: "publish" | "merge",
+          name: string,
+          revision = 1,
+          actor: Parameters<typeof tasks.publish>[1] = human,
+        ) => tasks[kind]({ commandId: command(name), ref: task.ref, revision }, actor);
+        const intentOf = (name: string) =>
+          sql<{
+            id: string;
+          }>`SELECT id FROM factory_delivery_intents WHERE request_command_id = ${`factory-task:${name.startsWith("merge") ? "merge-pr" : "publish-pr"}:${name}`}`.pipe(
+            Effect.map((rows) => rows[0]!.id),
+          );
+        yield* finish((yield* start(task)).run!, "sealed");
+        yield* until(task, (current) => current.status === "in-review");
+
+        // Accepting is not publishing: nothing goes out before it, and only a person sends it.
+        assert.equal(yield* reason(deliver("publish", "early")), "not-accepted");
+        yield* tasks.accept({ commandId: command("accept"), ref: task.ref, revision: 1 }, human);
+        const agent = { kind: "agent", threadId: ThreadId.make("agent") } as const;
+        assert.equal(yield* reason(deliver("publish", "by-agent", 1, agent)), "forbidden");
+        assert.equal(yield* reason(deliver("publish", "unknown-revision", 2)), "no-result");
+        assert.equal(yield* reason(deliver("merge", "merge-early")), "not-published");
+
+        const sending = (yield* deliver("publish", "publish")).task;
+        assert.deepEqual(
+          [sending.status, sending.result?.pullRequest, sending.result?.delivery],
+          ["done", null, { action: "publish", state: "sending", detail: null }],
+        );
+        assert.isTrue((yield* deliver("publish", "publish")).replayed);
+        assert.equal(yield* reason(deliver("publish", "publish-again")), "delivery-active");
+        assert.deepEqual(probe.grants, ["merge-pr", "publish-pr", "publish-pr"]);
+        const publishId = yield* intentOf("publish");
+        assert.deepEqual(
+          yield* sql`SELECT json_extract(payload_json, '$.headBranch') AS branch, head_sha AS head FROM factory_delivery_intents WHERE id = ${publishId}`,
+          [{ branch: "t3/T-1-audio-ring-demo", head: resultCommit }],
+        );
+
+        // The effect worker's outcome reaches the task without anyone asking.
+        yield* store.settle(publishId, {
+          status: "confirmed",
+          remote: { number: 12, url: pullUrl },
+          failure: null,
+          updatedAt: at,
+        });
+        const open = yield* until(task, (current) => current.result?.pullRequest != null);
+        assert.deepEqual(
+          [open.result?.pullRequest, open.result?.delivery, open.attention],
+          [
+            {
+              number: 12,
+              url: pullUrl,
+              host: "github.com",
+              repository: "owner/repo",
+              state: "open",
+            },
+            null,
+            [],
+          ],
+        );
+
+        yield* deliver("merge", "merge");
+        const mergeId = yield* intentOf("merge");
+        yield* store.markSending(mergeId, at);
+        yield* store.settle(mergeId, {
+          status: "unknown",
+          failure: "response lost",
+          updatedAt: at,
+        });
+        const unconfirmed = yield* until(task, (current) => current.attention.length > 0);
+        assert.deepEqual(
+          [
+            unconfirmed.status,
+            unconfirmed.attention.map((entry) => [entry.reason, entry.detail]),
+            unconfirmed.result?.delivery,
+          ],
+          [
+            "done",
+            [["unconfirmed", "Merge of PR #12 sent · outcome unknown"]],
+            { action: "merge", state: "unconfirmed", detail: null },
+          ],
+        );
+        assert.deepEqual(
+          (yield* tasks.list({ attention: true })).items.map((item) => item.displayId),
+          [task.displayId],
+        );
+
+        // Check reads the host and never sends: here the merge did not happen.
+        probe.found = { status: "failed", failure: "pull request is not merged" };
+        const notMerged = (yield* tasks.check(
+          { commandId: command("check-1"), ref: task.ref },
+          human,
+        )).task;
+        assert.deepEqual(
+          [notMerged.attention, notMerged.result?.pullRequest?.state, notMerged.result?.delivery],
+          [[], "open", { action: "merge", state: "failed", detail: "pull request is not merged" }],
+        );
+
+        yield* deliver("merge", "merge-again");
+        const againId = yield* intentOf("merge-again");
+        yield* store.settle(againId, {
+          status: "unknown",
+          failure: "response lost",
+          updatedAt: at,
+        });
+        // Here it did.
+        probe.found = { status: "confirmed", remote: { number: 12, url: pullUrl }, failure: null };
+        const merged = (yield* tasks.check({ commandId: command("check-2"), ref: task.ref }, human))
+          .task;
+        assert.deepEqual(
+          [
+            merged.status,
+            merged.result?.pullRequest?.state,
+            merged.result?.delivery,
+            merged.attention,
+          ],
+          ["done", "merged", null, []],
+        );
+        assert.deepEqual(probe.checks, [mergeId, againId]);
+        assert.deepEqual(probe.grants, [
+          "merge-pr",
+          "publish-pr",
+          "publish-pr",
+          "merge-pr",
+          "merge-pr",
+        ]);
+        assert.deepEqual(
+          (yield* tasks.activity({ ref: task.ref })).entries.flatMap((entry) =>
+            entry.event.type === "pull-request"
+              ? [`${entry.event.action} #${entry.event.number} rev ${entry.event.revision}`]
+              : [],
+          ),
+          ["opened #12 rev 1", "merged #12 rev 1"],
+        );
+      }),
+    ),
+);
+
 it.effect("a task made from retained Work carries it as its source", () =>
   scenario(
     Effect.gen(function* () {
@@ -1147,6 +1400,13 @@ it.effect(
             .task.status,
           "done",
         );
+        // Publish names the revision its person saw accepted; an older one is refused.
+        assert.equal(
+          (yield* tasks
+            .publish({ commandId: command("publish-old"), ref: task.ref, revision: 1 }, human)
+            .pipe(Effect.flip)).reason,
+          "result-conflict",
+        );
         assert.equal((yield* tasks.readResult({ ref: task.ref, revision: 1 })).result.revision, 1);
       }),
     ),
@@ -1170,6 +1430,13 @@ it.effect("a run in the project root gives a document result", () =>
       assert.equal(
         (yield* tasks.readResult({ ref: task.ref, revision: 7 }).pipe(Effect.flip)).reason,
         "no-result",
+      );
+      yield* tasks.accept({ commandId: command("accept-doc"), ref: task.ref, revision: 1 }, human);
+      assert.equal(
+        (yield* tasks
+          .publish({ commandId: command("publish-doc"), ref: task.ref, revision: 1 }, human)
+          .pipe(Effect.flip)).reason,
+        "not-code",
       );
     }),
   ),

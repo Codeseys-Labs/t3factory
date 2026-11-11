@@ -9,6 +9,7 @@ import {
   type FactoryAgentProfile,
   type FactoryAgentSetup,
   type FactoryTaskAssignee,
+  type FactoryTaskPullRequest,
   type FactoryTaskSummary,
   type FactoryTaskStatus,
 } from "@t3tools/contracts";
@@ -97,6 +98,13 @@ const definitions: readonly [
   ["34", "Rename repository identity", "t3code-factory", "done", "reviewer"],
   ["31", "Scholar page sync", "website", "done", "writer"],
 ];
+// T-36 was published and reopened; T-38.1's is open; T-35's and T-34's are merged.
+const PULL_REQUESTS: Readonly<Record<string, number>> = {
+  "36": 112,
+  "38.1": 108,
+  "35": 99,
+  "34": 91,
+};
 const setup = (profile: string): FactoryAgentSetup =>
   profiles.find((entry) => entry.id === profile)!.setup;
 const threadId = (id: string) => ThreadId.make(`task-${id}-run`);
@@ -107,16 +115,27 @@ const tasks: readonly FactoryTaskSummary[] = definitions.map(
     const result = status === "in-review" || status === "done";
     const summary =
       id === "36"
-        ? "PR #112 · +184 −20 · 6 files · checks pass"
+        ? "+184 −20 · 6 files"
         : id === "33"
           ? "Document · rev 2"
           : id === "38.1"
-            ? "PR #108 is open · +212 −48 · checks pass"
+            ? "+212 −48 · 7 files"
             : id === "35"
-              ? "PR #99 merged"
+              ? "+64 −12 · 3 files"
               : id === "34"
-                ? "PR #91 merged"
+                ? "+30 −30 · 4 files"
                 : "Document · rev 1";
+    const number = PULL_REQUESTS[id];
+    const pullRequest: FactoryTaskPullRequest | null =
+      number === undefined
+        ? null
+        : {
+            number,
+            url: `https://github.com/Codeseys-Labs/t3factory/pull/${number}`,
+            host: "github.com",
+            repository: "Codeseys-Labs/t3factory",
+            state: status === "done" && id !== "38.1" ? "merged" : "open",
+          };
     return {
       ref: {
         environmentId,
@@ -210,6 +229,8 @@ const tasks: readonly FactoryTaskSummary[] = definitions.map(
             runOrdinal: 1,
             threadId: threadId(id),
             observedAt: at,
+            pullRequest,
+            delivery: null,
           }
         : null,
       version: 0,

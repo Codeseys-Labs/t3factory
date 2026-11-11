@@ -121,6 +121,7 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.factoryAcceptTaskResult,
       WS_METHODS.factoryRequestTaskChanges,
       WS_METHODS.factoryReopenTask,
+      WS_METHODS.factoryCheckTaskResult,
       WS_METHODS.factoryAddTaskComment,
       WS_METHODS.factorySaveAgentProfile,
       WS_METHODS.factoryDeleteAgentProfile,
@@ -139,6 +140,11 @@ describe("RPC authorization scopes", () => {
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthSettingsWriteScope);
     }
+  });
+
+  it("keeps publishing and merging a task result behind source-control write, apart from accepting", () => {
+    for (const method of [WS_METHODS.factoryPublishTaskResult, WS_METHODS.factoryMergeTaskResult])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthSourceControlWriteScope);
   });
 
   it("rejects unknown RPC method names", () => {

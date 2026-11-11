@@ -180,6 +180,31 @@ export const FactoryTaskAttention = Schema.Struct({
 });
 export type FactoryTaskAttention = typeof FactoryTaskAttention.Type;
 
+/** The pull request a person published from this result revision. */
+export const FactoryTaskPullRequest = Schema.Struct({
+  number: PositiveInt,
+  url: Url,
+  // Host and `owner/name`, so a client can read the pull request's live checks.
+  host: ShortText,
+  repository: ShortText,
+  // `merged` once a person's Merge is confirmed by the host.
+  state: Schema.Literals(["open", "merged"]),
+});
+export type FactoryTaskPullRequest = typeof FactoryTaskPullRequest.Type;
+
+/**
+ * The person's latest Publish or Merge of this revision that has not settled as done.
+ * `unconfirmed` means it was sent and its outcome is not known; Check reads the host and
+ * settles it without sending again.
+ */
+export const FactoryTaskDelivery = Schema.Struct({
+  action: Schema.Literals(["publish", "merge"]),
+  state: Schema.Literals(["sending", "unconfirmed", "failed"]),
+  // Why it failed, bounded. Null while sending or unconfirmed.
+  detail: Schema.NullOr(ShortText),
+});
+export type FactoryTaskDelivery = typeof FactoryTaskDelivery.Type;
+
 export const FactoryTaskResult = Schema.Struct({
   kind: Schema.Literals(["document", "code"]),
   // Counts the results this task has produced. Accepting names one revision.
@@ -192,6 +217,9 @@ export const FactoryTaskResult = Schema.Struct({
   runOrdinal: PositiveInt,
   threadId: ThreadId,
   observedAt: IsoDateTime,
+  // Absent from servers before publishing existed.
+  pullRequest: Schema.optionalKey(Schema.NullOr(FactoryTaskPullRequest)),
+  delivery: Schema.optionalKey(Schema.NullOr(FactoryTaskDelivery)),
 });
 export type FactoryTaskResult = typeof FactoryTaskResult.Type;
 
@@ -369,6 +397,20 @@ export type FactoryTaskRequestChangesInput = typeof FactoryTaskRequestChangesInp
 /** Reopens an accepted task. It keeps its history and starts nothing. */
 export const FactoryTaskReopenInput = Schema.Struct({ commandId: CommandId, ref: FactoryTaskRef });
 export type FactoryTaskReopenInput = typeof FactoryTaskReopenInput.Type;
+/**
+ * A person's act, never an agent's or a rule's. Publish opens a pull request from the accepted
+ * code result; Merge merges that pull request at the accepted commit. `revision` is the one the
+ * person saw accepted: any other is refused.
+ */
+export const FactoryTaskDeliverInput = Schema.Struct({
+  commandId: CommandId,
+  ref: FactoryTaskRef,
+  revision: PositiveInt,
+});
+export type FactoryTaskDeliverInput = typeof FactoryTaskDeliverInput.Type;
+/** Reads the host to settle an unconfirmed Publish or Merge. It never sends again. */
+export const FactoryTaskCheckInput = Schema.Struct({ commandId: CommandId, ref: FactoryTaskRef });
+export type FactoryTaskCheckInput = typeof FactoryTaskCheckInput.Type;
 
 export const FactoryTaskResultReadInput = Schema.Struct({
   ref: FactoryTaskRef,
@@ -441,6 +483,13 @@ export const FactoryTaskActivityEvent = Schema.Union([
     note: CommentBody,
   }),
   Schema.Struct({ type: Schema.Literal("reopened") }),
+  Schema.Struct({
+    type: Schema.Literal("pull-request"),
+    action: Schema.Literals(["opened", "merged"]),
+    revision: PositiveInt,
+    number: PositiveInt,
+    url: Url,
+  }),
 ]);
 export type FactoryTaskActivityEvent = typeof FactoryTaskActivityEvent.Type;
 
@@ -637,8 +686,17 @@ export class FactoryTaskError extends Schema.TaggedError<FactoryTaskError>()("Fa
     "task-limit",
     "name-taken",
     "persistence-failure",
+    // Publish and Merge: the named revision is not the accepted one, or it is not code.
+    "not-accepted",
+    "not-code",
+    "not-published",
+    // A Publish or Merge of this revision is already sent, unconfirmed or done.
+    "delivery-active",
+    // The repository or its host refused; `detail` says why.
+    "delivery-refused",
   ]),
   currentVersion: Schema.optional(NonNegativeInt),
+  detail: Schema.optionalKey(ShortText),
   cause: Schema.optionalKey(Schema.Defect()),
 }) {
   override get message(): string {

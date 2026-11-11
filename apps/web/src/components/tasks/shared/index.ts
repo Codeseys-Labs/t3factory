@@ -13,4 +13,5 @@ export { presentTaskSetup, type TaskAssigneeParent } from "./taskAssigneeModel";
 export { useTaskCatalog } from "./taskCatalog";
 export { TASK_PERMISSION_MESSAGE, taskErrorMessage } from "./taskErrors";
 export { TaskStateMark, useTaskLive } from "./taskLive";
+export { useTaskPullRequestChecks } from "./taskPullRequest";
 export { type TaskLivePill, resolveTaskStateMark, type TaskStateMarkValue } from "./taskStateMark";

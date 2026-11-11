@@ -140,8 +140,11 @@ function useActivityPresenter(detail: FactoryTaskDetail) {
       };
     }
     const text = presentFactoryTaskActivity(entry, catalog);
+    // A pull request opened or merged reads as a fact of the task, as C7 draws it.
     const named =
-      (actor.kind === "person" || actor.kind === "agent") && !text.startsWith(actor.label);
+      (actor.kind === "person" || actor.kind === "agent") &&
+      event.type !== "pull-request" &&
+      !text.startsWith(actor.label);
     return { kind: "event", text, author: named ? actor.label : "", time };
   };
 }

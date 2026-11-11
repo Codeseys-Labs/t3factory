@@ -10,11 +10,13 @@ import {
 import { assert, describe, it } from "@effect/vitest";
 import {
   checkLaneMove,
+  deliveryState,
   deriveTask,
   deriveTree,
   planningRunState,
   workRunState,
   type SubtaskFacts,
+  type TaskDeliveryFact,
   type TaskFacts,
   type TaskResultFact,
 } from "./FactoryTaskDerivation.ts";
@@ -47,7 +49,16 @@ const result = (revision: number): TaskResultFact => ({
   runOrdinal: revision,
   threadId: ThreadId.make(`thread-${revision}`),
   observedAt: at,
+  pullRequest: null,
+  delivery: null,
 });
+const pullRequest = {
+  number: 108,
+  url: "https://github.com/owner/repo/pull/108",
+  host: "github.com",
+  repository: "owner/repo",
+  state: "open",
+} as const;
 const facts = (overrides: Partial<TaskFacts> = {}): TaskFacts => ({
   taskId: "task",
   displayId: "T-1",
@@ -119,6 +130,37 @@ describe("deriveTask", () => {
     {
       name: "an accepted latest result is done",
       facts: { runs: [run(1, "completed")], results: [result(1)], acceptedRevision: 1 },
+      status: "done",
+      attention: [],
+      result: "accepted",
+    },
+    {
+      name: "an unconfirmed merge of a done task asks for a check and keeps it done",
+      facts: {
+        runs: [run(1, "completed")],
+        results: [
+          {
+            ...result(1),
+            pullRequest,
+            delivery: { action: "merge", state: "unconfirmed", detail: null },
+          },
+        ],
+        acceptedRevision: 1,
+      },
+      status: "done",
+      attention: ["unconfirmed:Merge of PR #108 sent · outcome unknown"],
+      result: "accepted",
+    },
+    {
+      name: "a failed or sending publish asks for nothing",
+      facts: {
+        runs: [run(1, "completed"), run(2, "completed")],
+        results: [
+          { ...result(1), delivery: { action: "publish", state: "failed", detail: "rejected" } },
+          { ...result(2), delivery: { action: "publish", state: "sending", detail: null } },
+        ],
+        acceptedRevision: 2,
+      },
       status: "done",
       attention: [],
       result: "accepted",
@@ -259,6 +301,76 @@ it("a parent carries its sub-tasks' reasons and live runs, most urgent first", (
   );
   assert.deepEqual(root.progress, { done: 0, total: 2 });
   assert.deepEqual(tree.get("failed")!.progress, { done: 0, total: 1 });
+});
+
+describe("deliveryState", () => {
+  const delivery = (
+    kind: TaskDeliveryFact["kind"],
+    status: TaskDeliveryFact["status"],
+    failure: string | null = null,
+  ): TaskDeliveryFact => ({
+    kind,
+    status,
+    remote:
+      kind === "merge-pr" || status === "confirmed" ? { number: 108, url: pullRequest.url } : null,
+    host: "github.com",
+    repository: "owner/repo",
+    failure,
+  });
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly deliveries: ReadonlyArray<TaskDeliveryFact>;
+    readonly pullRequest: "open" | "merged" | null;
+    readonly delivery: string | null;
+  }> = [
+    { name: "nothing published", deliveries: [], pullRequest: null, delivery: null },
+    {
+      name: "a publish on its way",
+      deliveries: [delivery("publish-pr", "sending")],
+      pullRequest: null,
+      delivery: "publish:sending",
+    },
+    {
+      name: "a refused publish keeps its reason",
+      deliveries: [delivery("publish-pr", "failed", "push failed: rejected")],
+      pullRequest: null,
+      delivery: "publish:failed:push failed: rejected",
+    },
+    {
+      name: "a confirmed publish opens the pull request",
+      deliveries: [delivery("publish-pr", "failed"), delivery("publish-pr", "confirmed")],
+      pullRequest: "open",
+      delivery: null,
+    },
+    {
+      name: "an unknown merge leaves it open and unconfirmed",
+      deliveries: [delivery("publish-pr", "confirmed"), delivery("merge-pr", "unknown")],
+      pullRequest: "open",
+      delivery: "merge:unconfirmed",
+    },
+    {
+      name: "a confirmed merge after a failed one is merged",
+      deliveries: [
+        delivery("publish-pr", "confirmed"),
+        delivery("merge-pr", "failed", "pull request is not merged"),
+        delivery("merge-pr", "confirmed"),
+      ],
+      pullRequest: "merged",
+      delivery: null,
+    },
+  ];
+  it.each(cases)("$name", (testCase) => {
+    const state = deliveryState(testCase.deliveries);
+    assert.equal(state.pullRequest?.state ?? null, testCase.pullRequest);
+    assert.equal(
+      state.delivery === null
+        ? null
+        : [state.delivery.action, state.delivery.state, state.delivery.detail]
+            .filter((part) => part !== null)
+            .join(":"),
+      testCase.delivery,
+    );
+  });
 });
 
 describe("workRunState", () => {

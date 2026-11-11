@@ -127,6 +127,27 @@ export function useTaskActions() {
         { commandId: commandId(), ref: task.ref },
         { task },
       ),
+    publish: (task: FactoryTaskSummary, revision: number) =>
+      run(
+        factoryTasks.publishTaskResult,
+        task.ref.environmentId,
+        { commandId: commandId(), ref: task.ref, revision },
+        { task },
+      ),
+    merge: (task: FactoryTaskSummary, revision: number) =>
+      run(
+        factoryTasks.mergeTaskResult,
+        task.ref.environmentId,
+        { commandId: commandId(), ref: task.ref, revision },
+        { task },
+      ),
+    check: (task: FactoryTaskSummary) =>
+      run(
+        factoryTasks.checkTaskResult,
+        task.ref.environmentId,
+        { commandId: commandId(), ref: task.ref },
+        { task },
+      ),
     comment: (ref: FactoryTaskRef, body: string) =>
       run(
         factoryTasks.addTaskComment,
@@ -164,6 +185,9 @@ export function useTaskPermissions(environmentId: EnvironmentId) {
     accept: useAtomValue(factoryTasks.acceptTaskResult.permissionAtom(environmentId)),
     requestChanges: useAtomValue(factoryTasks.requestTaskChanges.permissionAtom(environmentId)),
     reopen: useAtomValue(factoryTasks.reopenTask.permissionAtom(environmentId)),
+    publish: useAtomValue(factoryTasks.publishTaskResult.permissionAtom(environmentId)),
+    merge: useAtomValue(factoryTasks.mergeTaskResult.permissionAtom(environmentId)),
+    check: useAtomValue(factoryTasks.checkTaskResult.permissionAtom(environmentId)),
     resolvePlan: useAtomValue(factoryTasks.resolveTaskPlanProposal.permissionAtom(environmentId)),
   };
 }

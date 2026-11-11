@@ -27,3 +27,25 @@ export const researchRunOriginKey = (protocolId: string, role: string): FactoryO
 
 export const knowledgeBriefOriginKey = (briefId: string): FactoryOriginKey =>
   FactoryOriginKey.make(`knowledge:${component(briefId)}`);
+
+// One revision of one task's result. Each accepted revision is its own delivery origin, so a
+// re-accepted task can be published again without touching the pull request of an earlier one.
+export const taskResultOriginKey = (
+  rootId: string,
+  taskId: string,
+  revision: number,
+): FactoryOriginKey =>
+  FactoryOriginKey.make(`task:${component(rootId)}|${component(taskId)}#${revision}`);
+
+export const parseTaskResultOriginKey = (
+  key: string,
+): { readonly rootId: string; readonly taskId: string; readonly revision: number } | null => {
+  const match = /^task:([^|#]+)\|([^|#]+)#(\d+)$/.exec(key);
+  if (match === null) return null;
+  // `component` escapes exactly `%`, `|`, `#` and `:`, which `decodeURIComponent` reverses.
+  return {
+    rootId: decodeURIComponent(match[1]!),
+    taskId: decodeURIComponent(match[2]!),
+    revision: Number(match[3]),
+  };
+};

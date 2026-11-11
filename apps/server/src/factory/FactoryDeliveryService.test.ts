@@ -5,6 +5,7 @@ import * as TestClock from "effect/testing/TestClock";
 import {
   CommandId,
   EnvironmentId,
+  FactoryDeliveryError,
   GitCommandError,
   MessageId,
   ProjectId,
@@ -59,7 +60,11 @@ import * as Acceptance from "./FactoryAcceptanceService.ts";
 import * as Delivery from "./FactoryDeliveryService.ts";
 import * as Knowledge from "./FactoryKnowledgeService.ts";
 import { renderArtifactComment, artifactDeliveryMarker } from "./FactoryArtifactDeliveryBody.ts";
-import { issueOriginKey, knowledgeBriefOriginKey } from "./FactoryOriginKey.ts";
+import {
+  issueOriginKey,
+  knowledgeBriefOriginKey,
+  taskResultOriginKey,
+} from "./FactoryOriginKey.ts";
 import { fakeIssueTracker, issueTrackersLayer } from "./IssueTrackerProviderRegistry.testkit.ts";
 
 const at = "2026-10-27T00:00:00.000Z";
@@ -216,16 +221,37 @@ const harness = (
     checkoutChangeRequest: () => unsupported("checkoutChangeRequest"),
   };
   const git = Layer.mock(Git.GitVcsDriver)({
-    execute: ({ args }) => {
+    execute: ({ args, cwd }) => {
+      if (args[0] === "push") {
+        state.calls.push(`push:${args[3]}`);
+        return state.push === "ok"
+          ? Effect.succeed({
+              exitCode: ChildProcessSpawner.ExitCode(0),
+              stdout: "",
+              stderr: "",
+              stdoutTruncated: false,
+              stderrTruncated: false,
+            })
+          : Effect.fail(
+              new GitCommandError({
+                operation: "push",
+                command: "git push",
+                cwd,
+                detail: "remote rejected",
+              }),
+            );
+      }
       const revision = args[2];
       const stdout =
         args[0] === "remote"
           ? state.origin
           : revision === "HEAD^{commit}"
             ? state.head
-            : revision === `${base}^{commit}`
+            : revision === `${base}^{commit}` || revision === "refs/remotes/origin/main^{commit}"
               ? base
-              : null;
+              : revision === `${first}^{commit}`
+                ? first
+                : null;
       if (stdout === null) return Effect.die(`Unexpected git arguments: ${JSON.stringify(args)}`);
       return Effect.succeed({
         exitCode: ChildProcessSpawner.ExitCode(0),
@@ -235,6 +261,7 @@ const harness = (
         stderrTruncated: false,
       });
     },
+    resolveDefaultBranchName: () => Effect.succeed("main"),
     pushCurrentBranch: (cwd) => {
       state.calls.push("push");
       return state.push === "ok"
@@ -278,6 +305,7 @@ const harness = (
               url: null,
             })),
             capabilities: { mergeMethods: ["merge", "squash"] },
+            mergeCapabilities: { merge: true, squash: true, rebase: false },
           } as unknown as PullRequestDetail);
     },
     runAction: (input) => {
@@ -1530,6 +1558,133 @@ it.effect("reconciling a merge reads the pull request and never merges again", (
     );
   }).pipe(Effect.provide(layer));
 });
+
+const taskBranch = "t3/T-36-audio-ring-demo";
+const grantTaskResult = (
+  kind: "publish-pr" | "merge-pr",
+  commandId: string,
+  recheck: Effect.Effect<void, FactoryDeliveryError> = Effect.void,
+) =>
+  Effect.flatMap(Delivery.FactoryDeliveryService, (service) =>
+    service.grantCommit({
+      kind,
+      commandId,
+      originKey: taskResultOriginKey("root", "task", 1),
+      acceptanceId: "task:root/task@1",
+      projectId,
+      threadId: claimed,
+      headSha: first,
+      publish: { title: "Audio ring demo", body: "Task T-36", headBranch: taskBranch },
+      recheck,
+    }),
+  );
+const createCalls = (state: { readonly calls: ReadonlyArray<string> }) =>
+  state.calls.filter((call) => call.startsWith("create:")).length;
+
+it.effect(
+  "a task result publishes its accepted commit on its own branch and merges that commit",
+  () => {
+    const { state, layer } = harness();
+    return Effect.gen(function* () {
+      const service = yield* Delivery.FactoryDeliveryService;
+      // The task's own acceptance is rechecked inside the grant, so a reopen in between wins.
+      assert.equal(
+        (yield* grantTaskResult(
+          "publish-pr",
+          "reopened",
+          Effect.fail(new FactoryDeliveryError({ reason: "not-accepted" })),
+        ).pipe(Effect.flip)).reason,
+        "not-accepted",
+      );
+      assert.equal(
+        (yield* grantTaskResult("merge-pr", "early").pipe(Effect.flip)).reason,
+        "not-published",
+      );
+      const publish = yield* grantTaskResult("publish-pr", "publish");
+      assert.deepEqual(
+        [publish.status, publish.baseBranch, publish.headSha, publish.payload],
+        [
+          "pending",
+          "main",
+          first,
+          { title: "Audio ring demo", body: "Task T-36", draft: false, headBranch: taskBranch },
+        ],
+      );
+      assert.deepEqual(yield* grantTaskResult("publish-pr", "publish"), publish);
+      assert.equal(
+        (yield* grantTaskResult("publish-pr", "publish-twice").pipe(Effect.flip)).reason,
+        "already-delivering",
+      );
+
+      yield* service.execute(publish.id);
+      // The commit is pushed by its id; no worktree or checked-out branch takes part.
+      assert.deepEqual(state.calls, [
+        `push:${first}:refs/heads/${taskBranch}`,
+        `create:main:${taskBranch}:Audio ring demo`,
+      ]);
+      assert.equal(state.headLookups, 0);
+      const opened = yield* only;
+      assert.deepEqual(
+        [opened.status, opened.remote, opened.failure],
+        ["confirmed", pullRequest, null],
+      );
+      assert.equal(state.links.length, 1);
+
+      const merge = yield* grantTaskResult("merge-pr", "merge");
+      assert.deepEqual([merge.remote, merge.payload], [pullRequest, { mergeMethod: "merge" }]);
+      yield* service.execute(merge.id);
+      assert.deepEqual(
+        state.mergeCalls.map((call) => [call.number, call.expectedHeadSha, call.mergeMethod]),
+        [[12, first, "merge"]],
+      );
+      assert.equal((yield* only).status, "confirmed");
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "checking an unconfirmed task publish settles it both ways and never creates again",
+  () => {
+    const { state, layer } = harness();
+    return Effect.gen(function* () {
+      const service = yield* Delivery.FactoryDeliveryService;
+      state.create = "ambiguous";
+      const lost = yield* grantTaskResult("publish-pr", "publish");
+      yield* service.execute(lost.id);
+      assert.equal((yield* only).status, "unknown");
+      assert.equal(createCalls(state), 1);
+
+      // Its own branch listed in every state with nothing on it proves nothing was opened.
+      state.publications = [];
+      const absent = yield* service.reconcile({ projectId, intentId: lost.id });
+      assert.deepEqual(
+        [absent.status, absent.failure],
+        ["failed", `no pull request was opened from ${taskBranch}`],
+      );
+      assert.equal(createCalls(state), 1);
+
+      // The person publishes again; this time the pull request exists but the answer is lost.
+      const retried = yield* grantTaskResult("publish-pr", "publish-again");
+      yield* service.execute(retried.id);
+      const store = yield* DeliveryStore.FactoryDeliveryStore;
+      assert.equal(Option.getOrThrow(yield* store.get(retried.id)).status, "unknown");
+      assert.equal(createCalls(state), 2);
+      state.publications = [publishedChangeRequest({ headRefName: taskBranch })];
+      const found = yield* service.reconcile({ projectId, intentId: retried.id });
+      assert.deepEqual([found.status, found.remote], ["confirmed", pullRequest]);
+      assert.equal(createCalls(state), 2);
+      assert.deepEqual(
+        state.publicationLookups.map((lookup) => [lookup.headSelector, lookup.state]),
+        [
+          [taskBranch, "open"],
+          [taskBranch, "all"],
+          [taskBranch, "open"],
+          [taskBranch, "all"],
+        ],
+      );
+    }).pipe(Effect.provide(layer));
+  },
+);
 
 const gitlabIntent: FactoryLaunchIntent = {
   ...intent,

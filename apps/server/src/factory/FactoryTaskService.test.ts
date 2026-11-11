@@ -1031,6 +1031,18 @@ it.effect("follows a run from start through failure, retry, review, acceptance a
         [[], "backlog", null, []],
       );
 
+      // Picking another agent cannot fix a host refusal, so the reason travels with it.
+      const refused = yield* start(task).pipe(
+        Effect.provideService(HostProcess.Platform, "darwin"),
+        Effect.flip,
+      );
+      assert.deepEqual(
+        [refused.reason, refused.detail],
+        [
+          "unsupported-capability",
+          "This machine cannot prove that detached agent processes have stopped; task runs require Windows Job Objects or a delegated Linux cgroup v2.",
+        ],
+      );
       const started = yield* start(task);
       const firstRun = started.run!;
       assert.deepEqual(

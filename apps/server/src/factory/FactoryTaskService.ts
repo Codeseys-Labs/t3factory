@@ -309,7 +309,11 @@ const executionError = (error: FactoryExecutionError) => {
     "not-quiescent": "run-active",
     "persistence-failure": "persistence-failure",
   };
-  return new FactoryTaskError({ reason: reasons[error.reason], cause: error });
+  return new FactoryTaskError({
+    reason: reasons[error.reason],
+    ...(error.capabilityReason === undefined ? {} : { detail: error.capabilityReason }),
+    cause: error,
+  });
 };
 
 /** Plain words for what stopped a Publish or Merge; the client shows `detail` as it is. */

@@ -17,7 +17,9 @@ import {
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
@@ -123,6 +125,10 @@ const makeHarness = Effect.fn("FactoryTaskPlanningTest.makeHarness")(function* (
   const creates: Array<Parameters<Tasks.FactoryTaskService["Service"]["createSubtasks"]>[0]> = [];
   let failLaunch = false;
   let failRecord = false;
+  let gate: {
+    readonly entered: Deferred.Deferred<void>;
+    readonly release: Deferred.Deferred<void>;
+  } | null = null;
   const dependencies = Layer.mergeAll(
     Layer.succeed(ServerEnvironmentIdentity, {
       getEnvironmentId: Effect.succeed(ref.environmentId),
@@ -198,17 +204,19 @@ const makeHarness = Effect.fn("FactoryTaskPlanningTest.makeHarness")(function* (
     }),
     Layer.mock(Launch.ThreadLaunchService)({
       launch: (input) =>
-        Effect.suspend(() => {
+        Effect.gen(function* () {
+          if (gate !== null) {
+            yield* Deferred.succeed(gate.entered, undefined);
+            yield* Deferred.await(gate.release);
+          }
           if (failLaunch)
-            return Effect.fail(
-              new Launch.ThreadLaunchError({
-                operation: "dispatch-message",
-                commandId: input.commandId,
-                projectId: ref.projectId,
-                threadId: input.threadId!,
-                cause: "test",
-              }),
-            );
+            return yield* new Launch.ThreadLaunchError({
+              operation: "dispatch-message",
+              commandId: input.commandId,
+              projectId: ref.projectId,
+              threadId: input.threadId!,
+              cause: "test",
+            });
           launches.push(input);
           const shell = {
             ...liveThreadShell(input.threadId!),
@@ -218,7 +226,7 @@ const makeHarness = Effect.fn("FactoryTaskPlanningTest.makeHarness")(function* (
           };
           shells.set(shell.id, shell);
           const projection = idleThreadProjection(shell);
-          return Effect.succeed({
+          return {
             threadId: shell.id,
             resumed: false,
             projection: {
@@ -243,7 +251,7 @@ const makeHarness = Effect.fn("FactoryTaskPlanningTest.makeHarness")(function* (
                 },
               ],
             },
-          });
+          };
         }),
     }),
   );
@@ -309,6 +317,14 @@ const makeHarness = Effect.fn("FactoryTaskPlanningTest.makeHarness")(function* (
     setFailRecord: (value: boolean) => {
       failRecord = value;
     },
+    holdLaunch: Effect.fn("FactoryTaskPlanningTest.holdLaunch")(function* () {
+      const held = {
+        entered: yield* Deferred.make<void>(),
+        release: yield* Deferred.make<void>(),
+      };
+      gate = held;
+      return held;
+    }),
     request: { commandId: CommandId.make("breakdown"), ref, expectedVersion: 0, setup },
   };
 });
@@ -372,6 +388,50 @@ it.effect(
       h.setFailLaunch(false);
       yield* h.service.requestBreakdown(h.request, human);
       assert.equal(h.launches[0]!.threadId, JSON.parse(before[0]!.json).threadId);
+      assert.lengthOf(h.runs, 1);
+    }),
+);
+
+it.effect(
+  "a failed launch gives way to the next request, but not while a launch is still in flight",
+  () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      const reservedThread = Effect.map(
+        h.sql<{ json: string }>`SELECT request_json AS json FROM factory_task_breakdowns`,
+        (rows) => ThreadId.make(JSON.parse(rows[0]!.json).threadId),
+      );
+      h.setFailLaunch(true);
+      yield* h.service.requestBreakdown(h.request, human).pipe(Effect.flip);
+      const failed = yield* reservedThread;
+      h.shells.set(failed, { ...liveThreadShell(failed), status: "idle", activeRunId: null });
+      assert.equal(
+        (yield* h.service
+          .requestBreakdown({ ...h.request, commandId: CommandId.make("after-failure") }, human)
+          .pipe(Effect.flip)).reason,
+        "persistence-failure",
+      );
+      h.setFailLaunch(false);
+      const held = yield* h.holdLaunch();
+      const other = {
+        ...h.request,
+        commandId: CommandId.make("other-agent"),
+        setup: { ...setup, modelSelection: { ...setup.modelSelection, model: "gpt-6-sol" } },
+      };
+      const launching = yield* h.service.requestBreakdown(other, human).pipe(Effect.forkChild);
+      yield* Deferred.await(held.entered);
+      assert.equal(
+        (yield* h.service
+          .requestBreakdown({ ...h.request, commandId: CommandId.make("double-press") }, human)
+          .pipe(Effect.flip)).reason,
+        "run-active",
+      );
+      yield* Deferred.succeed(held.release, undefined);
+      assert.isFalse((yield* Fiber.join(launching)).replayed);
+      assert.lengthOf(h.launches, 1);
+      assert.notEqual(h.launches[0]!.threadId, failed);
+      assert.equal(h.launches[0]!.modelSelection.model, "gpt-6-sol");
+      assert.equal(yield* reservedThread, h.launches[0]!.threadId);
       assert.lengthOf(h.runs, 1);
     }),
 );

@@ -653,6 +653,36 @@ const make = Effect.gen(function* () {
     return sha;
   });
 
+  /**
+   * Where the task's next run starts in the engine. The engine runs a task once per plan
+   * revision, so another round takes a new revision, which stops authorizing every sibling run
+   * admitted under the current one: a round waits until no sibling is running.
+   */
+  const nextRound = Effect.fn("FactoryTaskService.nextRound")(function* (row: Tasks.TaskRow) {
+    const head = yield* plans.read({ ref: planRef(row) }).pipe(Effect.mapError(planError));
+    const prior = yield* store.engineAttempt({
+      rootId: row.rootId,
+      revision: head.revision,
+      taskId: row.taskId,
+    });
+    if (prior !== null && !prior.quiescent) return yield* refuse("run-active");
+    const retryable =
+      prior !== null &&
+      prior.latestStatus !== "sealed" &&
+      (FAILED_NATIVE.has(prior.nativeStatus ?? "") || prior.latestStatus === "failed");
+    const round = prior !== null && !retryable;
+    if (
+      round &&
+      (yield* store.liveAttempts({
+        rootId: row.rootId,
+        revision: head.revision,
+        exceptTaskId: row.taskId,
+      })).length > 0
+    )
+      return yield* refuse("run-active");
+    return { head, prior, round };
+  });
+
   /** Issues the person's grant for this one task at the current plan revision and admits it. */
   const launch = Effect.fn("FactoryTaskService.launch")(function* (input: {
     readonly commandId: CommandId;
@@ -668,19 +698,9 @@ const make = Effect.gen(function* () {
     const admitId = derived(input.commandId, "admit");
     yield* store.registerLaunch({ commandId: admitId, profileId: input.profileId, actor: PERSON });
     if (yield* store.launched(admitId)) return;
-    let head = yield* plans.read({ ref }).pipe(Effect.mapError(planError));
-    let prior = yield* store.engineAttempt({
-      rootId: row.rootId,
-      revision: head.revision,
-      taskId: row.taskId,
-    });
-    if (prior !== null && !prior.quiescent) return yield* refuse("run-active");
-    const retryable =
-      prior !== null &&
-      prior.latestStatus !== "sealed" &&
-      (FAILED_NATIVE.has(prior.nativeStatus ?? "") || prior.latestStatus === "failed");
-    if (prior !== null && !retryable) {
-      // The engine runs a task once per plan revision. Another round takes a new revision.
+    const next = yield* nextRound(row);
+    let { head, prior } = next;
+    if (next.round) {
       const title = head.tasks.find((task) => task.id === row.taskId)?.title ?? row.title;
       head = (yield* plans
         .apply(
@@ -1404,6 +1424,12 @@ const make = Effect.gen(function* () {
       const at = yield* now;
       yield* transact(
         Effect.gen(function* () {
+          // A Request changes may have started a run since the first check; mirror what the
+          // engine admitted and check again where the acceptance is written.
+          const sealed = yield* store.syncRuns(row.rootId, at);
+          yield* reviewed((yield* loadTask(row)).task, input.revision);
+          if (sealed.some((result) => result.taskId === row.taskId))
+            return yield* refuse("result-conflict");
           yield* store.updateBoard(row, {
             acceptedRevision: latest.revision,
             bumpVersion: true,
@@ -1443,6 +1469,8 @@ const make = Effect.gen(function* () {
       task.runs.find((entry) => entry.threadId === latest.threadId) ??
       task.runs.findLast((entry) => entry.purpose === "work");
     if (author === undefined) return yield* refuse("no-run");
+    // Refused before the note is kept, so a request that cannot run leaves nothing behind.
+    if (!resumed) yield* nextRound(row);
     const at = yield* now;
     // A sealed attempt cannot continue, so the note travels in the next attempt's input.
     yield* transact(

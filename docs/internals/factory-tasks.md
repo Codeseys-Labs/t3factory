@@ -47,7 +47,9 @@ on the host is recorded by Check against the publication's pinned head and base 
 - A work run's thread refuses messages (`FactoryExecutionLifecycle.guardCommand`), so "Message agent"
   works only for planning runs; changes go through Request changes, which starts a new attempt.
 - Editing a plan bumps its revision. The engine then refuses approval answers for runs admitted under
-  the old revision, so a sibling run waiting on approval must be stopped and started again.
+  the old revision, so a sibling run waiting on approval must be stopped and started again. The
+  engine runs a task once per revision, so Request changes on a task with a result takes a new
+  revision too; it is refused with `run-active` while a sibling runs.
 - A live stream subscription atom stays `waiting` until the stream ends and may not emit before the
   first change. Read only its failure; treating `waiting` as loading kept every task list loading.
 - Hermes does not apply `\P{…}` inside a negated character class. Shared client code that runs on the

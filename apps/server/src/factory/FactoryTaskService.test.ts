@@ -21,6 +21,7 @@ import {
   type FactoryTaskError,
   type FactoryTaskChange,
   type FactoryTaskCreateInput,
+  type FactoryTaskMutationResult,
   type FactoryTaskRun,
   type FactoryTaskSummary,
   type FactoryWorkReadResult,
@@ -260,6 +261,29 @@ const gatedPlans = Layer.effect(
   Layer.provide(Plans.layer),
   Layer.provideMerge(Layer.sync(PlanGate, () => ({ next: null }))),
 );
+/** Runs once before the next result read, so a test can hold an Accept after its first check. */
+class OutputGate extends Context.Service<OutputGate, { next: Effect.Effect<void> | null }>()(
+  "t3/factory/FactoryTaskService.test/OutputGate",
+) {}
+const gatedExecutions = Layer.effect(
+  Executions.FactoryExecutionService,
+  Effect.gen(function* () {
+    const executions = yield* Executions.FactoryExecutionService;
+    const gate = yield* OutputGate;
+    return Executions.FactoryExecutionService.of({
+      ...executions,
+      readOutput: (input) =>
+        Effect.suspend(() => {
+          const next = gate.next ?? Effect.void;
+          gate.next = null;
+          return next;
+        }).pipe(Effect.andThen(executions.readOutput(input))),
+    });
+  }),
+).pipe(
+  Layer.provide(Executions.layer),
+  Layer.provideMerge(Layer.sync(OutputGate, () => ({ next: null }))),
+);
 const eventStores = EventStore.layerFromOrchestrationEventStore.pipe(
   Layer.provideMerge(OrchestrationEventStore.layer),
 );
@@ -286,12 +310,9 @@ const layerWith = (environmentDefault: ModelSelection | null = null) => {
           : Effect.fail(new FactoryWorkError({ reason: "missing-work" })),
     }),
   );
-  const engine = Layer.mergeAll(
-    gatedPlans,
-    Executions.layer,
-    ExecutionStore.layer,
-    deliveries,
-  ).pipe(Layer.provideMerge(base));
+  const engine = Layer.mergeAll(gatedPlans, gatedExecutions, ExecutionStore.layer, deliveries).pipe(
+    Layer.provideMerge(base),
+  );
   return Layer.mergeAll(Tasks.layer, Profiles.layer, Changes.layer).pipe(
     Layer.provideMerge(engine),
   );
@@ -1098,7 +1119,7 @@ it.effect.each(
       const running = yield* start(task);
       yield* finish(running.run!, operation === "retry" ? "failed" : "sealed", "Answer");
       yield* until(task, (current) =>
-        operation === "retry" ? current.liveRuns.length === 0 : current.status === "in-review",
+        operation === "retry" ? current.run?.endedAt != null : current.status === "in-review",
       );
       if (condition === "blocked") {
         const ref = { environmentId, projectId, rootId: task.ref.rootId };
@@ -1744,10 +1765,27 @@ it.effect(
         yield* finish(first, "sealed");
         const review = yield* until(task, (current) => current.status === "in-review");
 
-        const changing = (yield* tasks.requestChanges(
-          { commandId: command("changes"), ref: task.ref, revision: 1, note: "Keep cursor paging" },
-          human,
-        )).task;
+        // A Request changes that lands while an Accept reads the result wins: the run it started
+        // is not covered by an acceptance of the result before it.
+        const requested = yield* Deferred.make<FactoryTaskMutationResult, FactoryTaskError>();
+        (yield* OutputGate).next = tasks
+          .requestChanges(
+            {
+              commandId: command("changes"),
+              ref: task.ref,
+              revision: 1,
+              note: "Keep cursor paging",
+            },
+            human,
+          )
+          .pipe(Deferred.into(requested), Effect.asVoid);
+        assert.equal(
+          (yield* tasks
+            .accept({ commandId: command("racing"), ref: task.ref, revision: 1 }, human)
+            .pipe(Effect.flip)).reason,
+          "run-active",
+        );
+        const changing = (yield* Deferred.await(requested)).task;
         const second = changing.run!;
         assert.deepEqual(
           [changing.status, second.ordinal, second.state, changing.assignee.key],
@@ -1936,6 +1974,33 @@ it.effect(
         assert.deepEqual(
           [waiting.liveRuns.map((live) => live.displayId), waiting.progress],
           [["T-1.2"], { done: 0, total: 2 }],
+        );
+        // Another round of T-1.1 would move the plan revision under T-1.2's run, so it waits.
+        assert.equal(
+          (yield* tasks
+            .requestChanges(
+              {
+                commandId: command("changes-beside-sibling"),
+                ref: contract.ref,
+                revision: 1,
+                note: "Split the migration",
+              },
+              human,
+            )
+            .pipe(Effect.flip)).reason,
+          "run-active",
+        );
+        assert.deepEqual(
+          yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${contract.ref.taskId}`,
+          [{ note: null }],
+        );
+        assert.deepEqual(
+          yield* engine.claimPhase({
+            runAttemptId: yield* attemptOf(guideRun),
+            phase: "workspace",
+            claimantId: "worker",
+          }),
+          { status: "claimed" },
         );
 
         // A title edit moves the plan revision under the running sibling. The engine stops

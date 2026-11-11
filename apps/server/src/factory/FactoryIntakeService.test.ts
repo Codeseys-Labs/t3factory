@@ -1085,3 +1085,66 @@ it.effect("editing a feed URL binds the new URL and can return to the original b
     assert.strictEqual((yield* recheck(intake, source)).source?.status, "ok");
   }),
 );
+
+it.effect("snooze expiry notifies open Inboxes after restart with no source checks", () =>
+  Effect.gen(function* () {
+    const h = yield* harness;
+    const first = yield* h.start;
+    yield* h.setIssues(projectId, [issue(1, "Return first"), issue(2, "Return later")]);
+    const source = yield* connectIssues(first.intake, "connect");
+    const arrivals = (yield* triage(first.intake)).items.toReversed();
+    const now = DateTime.toEpochMillis(yield* DateTime.now);
+    for (const [index, arrival] of arrivals.entries()) {
+      yield* first.intake.resolveArrival(
+        {
+          commandId: CommandId.make(`snooze-${index}`),
+          id: arrival.id,
+          expectedVersion: arrival.version,
+          action: {
+            type: "snooze",
+            until: DateTime.formatIso(DateTime.makeUnsafe(now + (index + 1) * 60_000)),
+          },
+        },
+        human,
+      );
+    }
+    const latest = (yield* first.intake.listSources({})).sources[0]!;
+    yield* first.intake.deleteSource(
+      { commandId: CommandId.make("delete"), id: source.id, expectedVersion: latest.version },
+      human,
+    );
+    yield* first.stop;
+    const second = yield* h.start;
+    assert.strictEqual((yield* triage(second.intake)).waiting, 0);
+    for (const expected of [1, 2]) {
+      yield* TestClock.adjust("1 minute");
+      const change = yield* Queue.take(second.changes);
+      assert.deepStrictEqual(change, {
+        environmentId,
+        arrivals: true,
+        rules: false,
+        sources: false,
+      });
+      assert.strictEqual((yield* triage(second.intake)).waiting, expected);
+      assert.strictEqual((yield* triage(second.intake)).items.length, expected);
+    }
+    const returned = (yield* triage(second.intake)).items[0]!;
+    yield* second.intake.resolveArrival(
+      {
+        commandId: CommandId.make("snooze-again"),
+        id: returned.id,
+        expectedVersion: returned.version,
+        action: {
+          type: "snooze",
+          until: DateTime.formatIso(DateTime.makeUnsafe(now + 3 * 60_000)),
+        },
+      },
+      human,
+    );
+    yield* Queue.take(second.changes);
+    yield* TestClock.adjust("1 minute");
+    assert.strictEqual((yield* Queue.take(second.changes)).arrivals, true);
+    assert.strictEqual((yield* triage(second.intake)).waiting, 2);
+    assert.strictEqual(yield* h.callsFor(projectId), 1);
+  }),
+);

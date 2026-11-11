@@ -645,8 +645,10 @@ const make = Effect.gen(function* () {
   });
 
   const runDueSources = Effect.fn("FactoryIntakeService.runDueSources")(function* () {
-    const due = yield* store.listDueSources(isoOf(yield* Clock.currentTimeMillis));
-    let flags = noChange;
+    const now = isoOf(yield* Clock.currentTimeMillis);
+    const expired = yield* store.expireSnoozedArrivals(now).pipe(serialized);
+    const due = yield* store.listDueSources(now);
+    let flags = { ...noChange, arrivals: expired };
     for (const source of due) {
       flags = mergeFlags(
         flags,
@@ -658,7 +660,7 @@ const make = Effect.gen(function* () {
     yield* publish(flags);
   });
 
-  // Sleeps until the earliest `next_check_at`, or until a save moves it. No source, no work.
+  // Source checks and snooze expiry share one deadline; mutations wake it to recalculate.
   const checkLoopStep = Effect.gen(function* () {
     const next = yield* store.nextCheckAt;
     if (next === null) {
@@ -1144,7 +1146,10 @@ const make = Effect.gen(function* () {
       );
       return { arrival: updated, task, replayed: false };
     }).pipe(serialized);
-    if (!outcome.replayed) yield* publish({ ...noChange, arrivals: true });
+    if (!outcome.replayed) {
+      yield* publish({ ...noChange, arrivals: true });
+      yield* wakeChecks;
+    }
     const [arrival] = yield* presentArrivals([outcome.arrival]);
     if (arrival === undefined) return yield* intakeError("missing-arrival");
     return { arrival, task: outcome.task, replayed: outcome.replayed };

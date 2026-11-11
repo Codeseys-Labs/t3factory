@@ -1278,7 +1278,7 @@
       "origin": "Synthetic transfer task grounded in checkout source; not a captured failure.",
       "path": "apps/server/src/factory/FactoryDeliveryService.test.ts",
       "anchor": "artifact grant refuses changed bytes",
-      "sha256": "9484053c368ebeedc132c462ae7d11704818705534204186aedc4673778ce806"
+      "sha256": "6f07b5eecb33dcd05f2ba3634b2d4ac52141e1342589880d90511f38d00bc3ff"
     },
     "scenario": "Accepted digest belongs to report v1 but the sandbox file contains v2.",
     "expectedActions": [
@@ -3149,7 +3149,7 @@
       "origin": "Synthetic transfer task grounded in checkout source; not a captured failure.",
       "path": "apps/server/src/factory/FactoryDeliveryService.test.ts",
       "anchor": "prepare merge-pr needs a confirmed publish",
-      "sha256": "9484053c368ebeedc132c462ae7d11704818705534204186aedc4673778ce806"
+      "sha256": "6f07b5eecb33dcd05f2ba3634b2d4ac52141e1342589880d90511f38d00bc3ff"
     },
     "scenario": "A current accepted checkpoint exists; no publication grant exists. User asks only for acceptance status.",
     "expectedActions": [

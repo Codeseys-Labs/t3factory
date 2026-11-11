@@ -252,6 +252,10 @@ const BANNERS: {
         label: "Merge PR #108",
         called: (mocks, task) => expect(mocks.actions.merge).toHaveBeenCalledWith(task, 1),
       },
+      {
+        label: "Check",
+        called: (mocks, task) => expect(mocks.actions.check).toHaveBeenCalledWith(task),
+      },
     ],
   },
   {
@@ -283,7 +287,12 @@ const BANNERS: {
     task: withDelivery("open", { action: "merge", state: "sending", detail: null }),
     title: "Accepted · rev 1",
     detail: "Merging PR #108…",
-    actions: [],
+    actions: [
+      {
+        label: "Check",
+        called: (mocks, task) => expect(mocks.actions.check).toHaveBeenCalledWith(task),
+      },
+    ],
   },
   {
     frame: "C7 merged",

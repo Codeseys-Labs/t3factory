@@ -40,8 +40,11 @@ import { useAtomCommand } from "./use-atom-command";
 const accessAtom = Atom.family((environmentId: EnvironmentId) =>
   Atom.make((get): FactoryTaskOwnerStatus => {
     const presentation = get(environmentPresentations.presentationAtom(environmentId));
-    if (presentation?.connection.phase === "unsupported") return "unsupported";
-    if (presentation?.connection.phase !== "connected") return "offline";
+    const phase = presentation?.connection.phase;
+    if (phase === "unsupported") return "unsupported";
+    // Before the first connection settles, the machine is not known to be offline.
+    if (phase === undefined || phase === "available" || phase === "connecting") return "loading";
+    if (phase !== "connected" || !presentation) return "offline";
     if (!presentation.serverConfig) return "loading";
     const session = get(environmentSession.sessionStateAtom(environmentId));
     if (session._tag === "Initial") return "loading";

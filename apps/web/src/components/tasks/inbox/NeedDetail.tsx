@@ -3,10 +3,9 @@ import {
   presentFactoryTaskActivity,
   presentFactoryTaskActor,
 } from "@t3tools/client-runtime/state/factory-task-view";
-import type { FactoryTaskActivityEntry, FactoryTaskSummary } from "@t3tools/contracts";
+import type { FactoryTaskSummary } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import { Atom } from "effect/reactivity";
 import { useContext, useState } from "react";
 
 import { useRelativeTimeState } from "../../../hooks/useRelativeTimeState";
@@ -318,62 +317,28 @@ function ReviewPlan({ task }: { task: FactoryTaskSummary }) {
 
 function RecentActivity({ task }: { task: FactoryTaskSummary }) {
   const registry = useContext(RegistryContext);
-  const read = useAtomValue(
-    Atom.make((get) => {
-      const entries = new Map<string, FactoryTaskActivityEntry>();
-      const cursors: (string | undefined)[] = [];
-      let cursor: string | undefined;
-      for (;;) {
-        cursors.push(cursor);
-        const page = get(
-          factoryTasks.readTaskActivity({
-            environmentId: task.ref.environmentId,
-            input: { ref: task.ref, ...(cursor ? { cursor } : {}) },
-          }),
-        );
-        if (page._tag !== "Success") return { entries: [], cursors, state: page._tag };
-        for (const entry of page.value.entries) entries.set(entry.id, entry);
-        const next = page.value.nextCursor;
-        if (next === null)
-          return {
-            entries: [...entries.values()].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 3),
-            cursors,
-            state: "Success",
-          };
-        if (cursors.includes(next)) return { entries: [], cursors, state: "Failure" };
-        cursor = next;
-      }
-    }),
-  );
+  const latest = factoryTasks.readTaskActivity({
+    environmentId: task.ref.environmentId,
+    input: { ref: task.ref, order: "newest", limit: 3 },
+  });
+  const read = useAtomValue(latest);
   const catalog = useTaskCatalog(task.ref.environmentId);
   return (
     <section aria-label="Recent activity" className="mt-8 space-y-3">
       <h3 className="font-medium text-sm">Recent activity</h3>
-      {read.state === "Failure" ? (
+      {read._tag === "Failure" ? (
         <div role="alert" className="flex items-center gap-2 text-muted-foreground text-xs">
           Couldn't load recent activity.
-          <Button
-            size="xs"
-            variant="outline"
-            onClick={() => {
-              for (const cursor of read.cursors)
-                registry.refresh(
-                  factoryTasks.readTaskActivity({
-                    environmentId: task.ref.environmentId,
-                    input: { ref: task.ref, ...(cursor ? { cursor } : {}) },
-                  }),
-                );
-            }}
-          >
+          <Button size="xs" variant="outline" onClick={() => registry.refresh(latest)}>
             Reload
           </Button>
         </div>
-      ) : read.state === "Initial" ? (
+      ) : read._tag === "Initial" ? (
         <p role="status" className="text-muted-foreground text-xs">
           Loading activity…
         </p>
       ) : (
-        read.entries.map((entry) => (
+        read.value.entries.map((entry) => (
           <RecentEntry
             key={entry.id}
             entry={entry}

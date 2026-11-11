@@ -30,8 +30,6 @@ import {
 import { TaskAssigneeChip, TaskBanner, taskErrorMessage, useTaskCatalog } from "../shared";
 
 const LATEST = 3;
-// Activity is oldest first; a task with more pages than this shows the newest it reached.
-const MAX_ACTIVITY_PAGES = 20;
 
 /**
  * The task beside the board: the same banner and action as its page, its properties and the
@@ -115,7 +113,7 @@ export function TaskPeek({
             </PropertyList>
             <section aria-label="Latest" className="flex min-w-0 flex-col gap-1">
               <SectionHeader title="Latest" />
-              <LatestActivity taskRef={task.ref} carry={[]} page={0} />
+              <LatestActivity taskRef={task.ref} />
             </section>
           </>
         ) : detail._tag === "Failure" ? (
@@ -130,18 +128,8 @@ export function TaskPeek({
   );
 }
 
-function LatestActivity({
-  taskRef,
-  cursor,
-  carry,
-  page,
-}: {
-  taskRef: FactoryTaskRef;
-  cursor?: string;
-  carry: readonly FactoryTaskActivityEntry[];
-  page: number;
-}) {
-  const result = useFactoryTaskActivity(taskRef, cursor);
+function LatestActivity({ taskRef }: { taskRef: FactoryTaskRef }) {
+  const result = useFactoryTaskActivity(taskRef, { order: "newest", limit: LATEST });
   if (result._tag === "Failure")
     return (
       <p role="alert" className="text-muted-foreground text-sm">
@@ -150,17 +138,12 @@ function LatestActivity({
     );
   if (result._tag !== "Success")
     return <p className="text-muted-foreground text-sm">Loading activity…</p>;
-  const entries = [...carry, ...result.value.entries].slice(-LATEST);
-  if (result.value.nextCursor !== null && page + 1 < MAX_ACTIVITY_PAGES)
-    return (
-      <LatestActivity
-        taskRef={taskRef}
-        cursor={result.value.nextCursor}
-        carry={entries}
-        page={page + 1}
-      />
-    );
-  return <ActivityEntries entries={entries} environmentId={taskRef.environmentId} />;
+  return (
+    <ActivityEntries
+      entries={[...result.value.entries].reverse()}
+      environmentId={taskRef.environmentId}
+    />
+  );
 }
 
 function ActivityEntries({

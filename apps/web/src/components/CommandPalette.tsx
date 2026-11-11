@@ -1647,7 +1647,12 @@ function OpenCommandPaletteDialog(props: {
   }
 
   const rootGroups = buildRootGroups({ actionItems, recentThreadItems, taskItems });
-  const openingGroups = rootGroups.map((group) =>
+  const openingGroups = buildRootGroups({
+    actionItems,
+    recentThreadItems,
+    taskItems,
+    opening: true,
+  }).map((group) =>
     group.value === "actions"
       ? { ...group, items: group.items.slice(0, taskActions.length) }
       : group,

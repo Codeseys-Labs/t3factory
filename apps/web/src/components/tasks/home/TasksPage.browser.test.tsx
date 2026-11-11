@@ -26,6 +26,7 @@ const state = vi.hoisted(() => {
     environments: [] as string[],
     failed: new Set<string>(),
     targets: [] as unknown[],
+    assignees: [] as { environmentId: string; assignee: FactoryTaskSummary["assignee"] }[],
     setLane: null as unknown as Spy,
     openTaskSetup: null as unknown as Spy,
     openNewTask: null as unknown as Spy,
@@ -132,6 +133,8 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
         refresh: () => undefined,
       };
     },
+    useFactoryTaskAssignees: (targets: readonly unknown[]) =>
+      targets.length === 0 ? [] : state.assignees,
     useFactoryAgentProfiles: () =>
       AsyncResult.success({ profiles: FACTORY_TASK_FIXTURES.profiles }),
     useFactoryTaskDetail: (ref: { taskId: string }) => AsyncResult.success(detailOf(find(ref))),
@@ -239,9 +242,11 @@ function setup(
     search?: Record<string, unknown>;
     tasks?: FactoryTaskSummary[];
     failed?: string[];
+    assignees?: (typeof state)["assignees"];
   } = {},
 ) {
   state.search = options.search ?? {};
+  state.assignees = options.assignees ?? [];
   state.navigations = [];
   state.version = 0;
   state.listeners.clear();
@@ -439,16 +444,14 @@ it("shows a failed machine beside the tasks that loaded, and A4 when there are n
 });
 
 it.each(["board", "list"] as const)(
-  "keeps sub-task assignees available through filters in %s",
+  "offers every machine's assignees through filters in %s, not only those of loaded tasks",
   async (layout) => {
     const parent = fixture("T-43");
-    const child: FactoryTaskSummary = {
-      ...fixture("T-38.3"),
-      parent: { taskId: parent.ref.taskId, displayId: parent.displayId },
-      ref: { ...fixture("T-38.3").ref, rootId: parent.ref.rootId },
-      assignee: fixture("T-34").assignee,
-    };
-    setup({ tasks: [parent, child], search: { layout, filters: { types: ["bug"] } } });
+    setup({
+      tasks: [parent],
+      assignees: [{ environmentId: parent.ref.environmentId, assignee: fixture("T-34").assignee }],
+      search: { layout, filters: { types: ["bug"] } },
+    });
     await using _screen = await render(<TasksPage />);
     expect(
       state.targets

@@ -750,6 +750,8 @@ export function buildRootGroups(input: {
   actionItems: ReadonlyArray<CommandPaletteActionItem | CommandPaletteSubmenuItem>;
   recentThreadItems: ReadonlyArray<CommandPaletteActionItem>;
   taskItems?: ReadonlyArray<CommandPaletteActionItem>;
+  /** The empty-query view, which leads with Recent Threads. */
+  opening?: boolean;
 }): CommandPaletteGroup[] {
   const groups: CommandPaletteGroup[] = [];
   if (input.actionItems.length > 0) {
@@ -763,7 +765,11 @@ export function buildRootGroups(input: {
     });
   }
   if (input.taskItems && input.taskItems.length > 0) {
-    groups.splice(1, 0, { value: "tasks", label: "Tasks", items: input.taskItems });
+    groups.splice(input.opening ? groups.length : 1, 0, {
+      value: "tasks",
+      label: "Tasks",
+      items: input.taskItems,
+    });
   }
   return groups;
 }

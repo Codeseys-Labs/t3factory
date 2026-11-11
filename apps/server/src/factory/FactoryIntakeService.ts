@@ -11,6 +11,7 @@ import {
   FactoryIntakeSourceSaveInput,
   FactoryTaskSummary,
   type FactoryIntakeArrival,
+  type FactoryIssue,
   type FactoryIntakeArrivalListInput,
   type FactoryIntakeArrivalListResult,
   type FactoryIntakeArrivalResolveResult,
@@ -326,16 +327,34 @@ const make = Effect.gen(function* () {
     return yield* Effect.gen(function* () {
       const first = yield* issues.list({ projectId: source.projectId, state: "open" });
       const { repository, capabilities } = first;
-      const listed = [...first.issues];
-      let nextPage = first.nextPage;
-      while (nextPage !== null) {
-        const page = yield* issues.list({
+      const keyOf = (issue: FactoryIssue) =>
+        issueOriginKey(repository.provider, repository.canonicalKey, issue.number);
+      // Trackers list by last update, newest first. Below a recorded page that predates the last
+      // good check, every open issue was open then too, so it is recorded. Slack covers clock skew.
+      const settledBefore =
+        source.status === "ok" && source.lastCheckedAt !== null
+          ? millisOf(source.lastCheckedAt) - ISSUE_CHECK_INTERVAL_MS
+          : null;
+      const listed: FactoryIssue[] = [];
+      let page = first;
+      while (true) {
+        listed.push(...page.issues);
+        if (page.nextPage === null) break;
+        const oldest = page.issues.at(-1);
+        if (
+          settledBefore !== null &&
+          oldest !== undefined &&
+          millisOf(oldest.updatedAt) < settledBefore
+        ) {
+          const keys = page.issues.map(keyOf);
+          const seen = yield* store.existingItemKeys(source.id, keys);
+          if (keys.every((key) => seen.has(key))) break;
+        }
+        page = yield* issues.list({
           projectId: source.projectId,
           state: "open",
-          page: nextPage,
+          page: page.nextPage,
         });
-        listed.push(...page.issues);
-        nextPage = page.nextPage;
       }
       const name = capabilities.displayName;
       return {
@@ -347,7 +366,7 @@ const make = Effect.gen(function* () {
           .filter((issue) => issue.state === "open")
           .toReversed()
           .map((issue) => {
-            const key = issueOriginKey(repository.provider, repository.canonicalKey, issue.number);
+            const key = keyOf(issue);
             return {
               itemKey: key,
               originKey: key,

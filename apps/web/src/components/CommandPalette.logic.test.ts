@@ -4,6 +4,7 @@ import type { Thread } from "../types";
 import { makeThreadFixture } from "../test-fixtures";
 import {
   buildNestedSearchItems,
+  buildRootGroups,
   buildThreadActionItems,
   buildLinkedThreadActionItems,
   filterPinnedBrowseEntries,
@@ -104,6 +105,29 @@ describe("reduceCommandPaletteUiState", () => {
       openIntent: { kind: "add-project" },
       session: 2,
     });
+  });
+});
+
+describe("buildRootGroups", () => {
+  it("opens on Recent Threads ahead of Tasks, and searches Tasks right after Actions", () => {
+    const item = (value: string) => ({
+      kind: "action" as const,
+      value,
+      searchTerms: [value],
+      title: value,
+      icon: null,
+      run: async () => undefined,
+    });
+    const labels = (opening: boolean) =>
+      buildRootGroups({
+        actionItems: [item("action:new-task")],
+        recentThreadItems: [item("thread:recent")],
+        taskItems: [item("task:T-1")],
+        opening,
+      }).map((group) => group.label);
+
+    expect(labels(true)).toEqual(["Actions", "Recent Threads", "Tasks"]);
+    expect(labels(false)).toEqual(["Actions", "Tasks", "Recent Threads"]);
   });
 });
 

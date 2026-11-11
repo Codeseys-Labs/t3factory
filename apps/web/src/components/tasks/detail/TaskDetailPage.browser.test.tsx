@@ -38,6 +38,7 @@ const state = vi.hoisted(() => ({
   actions: {} as Record<string, Spy>,
   commands: {} as Record<string, Spy>,
   readAccess: true as boolean | null,
+  connection: { phase: "connected" } as { phase: string; error?: string },
 }));
 
 vi.mock(import("../../../state/factoryTasks"), async () => {
@@ -75,9 +76,13 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
     useFactoryTaskDetailByDisplayId: (_environmentId: string, displayId: string) =>
       state.details.get(displayId) ??
       AsyncResult.failure(Cause.fail(new FactoryTaskError({ reason: "missing-task" }))),
-    useFactoryTaskActivity: (ref: { taskId: string }) =>
-      state.activity.get(ref.taskId) ??
-      AsyncResult.success({ entries: [], nextCursor: null, fetchedAt: fixtures.at }),
+    useFactoryTaskActivity: (ref: { taskId: string }, page?: unknown) => {
+      const value = state.activity.get(ref.taskId);
+      if (typeof value === "function") return value(page);
+      return (
+        value ?? AsyncResult.success({ entries: [], nextCursor: null, fetchedAt: fixtures.at })
+      );
+    },
     useFactoryTaskResult: (ref: { taskId: string }) =>
       state.results.get(ref.taskId) ?? AsyncResult.initial(true),
     useFactoryAgentProfiles: () =>
@@ -134,7 +139,7 @@ vi.mock(import("../../../state/presentation"), async (original) => ({
   useEnvironmentPresentation: (() => ({
     isReady: true,
     presentation: {
-      connection: { phase: "connected" },
+      connection: state.connection,
       entry: { target: { label: "DESKTOP-CP4EDJH" } },
     },
   })) as never,
@@ -248,6 +253,7 @@ function entry(
 
 function setup(path: string) {
   state.readAccess = true;
+  state.connection = { phase: "connected" };
   state.details = new Map();
   state.activity = new Map();
   state.results = new Map();
@@ -475,6 +481,34 @@ it("C8 shows the failed run's excerpt in Activity", async () => {
   await expect
     .element(activity.getByText(/AssertionError: expected 3 index paths, got 2/))
     .toBeVisible();
+});
+
+it("reads Activity newest first and loads earlier entries on request", async () => {
+  const comment = (body: string) => entry(body, { type: "comment", body });
+  const read = (entries: FactoryTaskActivityEntry[], nextCursor: string | null) =>
+    AsyncResult.success({ entries, nextCursor, fetchedAt: at });
+  const { screen } = await renderDetail(taskPath("T-29"), () =>
+    state.activity.set("task-29", (input?: { order?: string; cursor?: string }) =>
+      input?.order !== "newest"
+        ? read([comment("Oldest of a capped read")], null)
+        : input.cursor === undefined
+          ? read([comment("Newest note"), comment("Middle note")], "older")
+          : read([comment("First note")], null),
+    ),
+  );
+  await using _screen = screen;
+  const activity = page.getByRole("list", { name: "Activity" });
+  const notes = () =>
+    activity
+      .getByText(/ note$/)
+      .elements()
+      .map((element) => element.textContent);
+  await expect.element(activity.getByText("Newest note")).toBeVisible();
+  expect(notes()).toEqual(["Middle note", "Newest note"]);
+  await userEvent.click(activity.getByRole("button", { name: "Show earlier" }));
+  await expect.element(activity.getByText("First note")).toBeVisible();
+  expect(notes()).toEqual(["First note", "Middle note", "Newest note"]);
+  expect(activity.getByRole("button", { name: "Show earlier" }).elements()).toHaveLength(0);
 });
 
 it("saves only the edited title", async () => {
@@ -779,6 +813,19 @@ it("shows forbidden when a settled session cannot read tasks", async () => {
     .element(page.getByRole("alert"))
     .toHaveTextContent("You don't have access to tasks on this machine.");
   expect(page.getByRole("status").elements()).toHaveLength(0);
+});
+
+it("names the update an unsupported connection needs instead of calling it offline", async () => {
+  const needed =
+    "This client requires a newer server. Update T3 Code on DESKTOP-CP4EDJH to connect.";
+  const { screen } = await renderDetail(taskPath("T-43"), () => {
+    state.readAccess = null;
+    state.connection = { phase: "unsupported", error: needed };
+    state.details.set("T-43", AsyncResult.initial(false));
+  });
+  await using _screen = screen;
+  await expect.element(page.getByRole("alert")).toHaveTextContent(needed);
+  expect(page.getByText(/is offline/).elements()).toHaveLength(0);
 });
 
 it("shows forbidden after read access is revoked", async () => {

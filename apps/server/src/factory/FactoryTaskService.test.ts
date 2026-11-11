@@ -894,7 +894,7 @@ it.effect("keeps title and description in the plan and everything on the board b
 );
 
 it.effect(
-  "lists by status, project, type, source, assignee and text, in pages that agree with the counts",
+  "lists by status, project, type, source, assignee and text, in pages that agree with the counts, and each assignee once",
   () =>
     scenario(
       Effect.gen(function* () {
@@ -994,6 +994,12 @@ it.effect(
           (yield* listed({ scope: "all", assigneeKeys: ["devReplay/opus"] })).toSorted(),
           ["T-3", "T-3.1"],
         );
+        const assignees = (input: Parameters<typeof tasks.listAssignees>[0]) =>
+          tasks
+            .listAssignees(input)
+            .pipe(Effect.map((result) => result.assignees.map((entry) => entry.key)));
+        assert.deepEqual(yield* assignees({}), ["devReplay/opus", "unassigned"]);
+        assert.deepEqual(yield* assignees({ projectIds: [otherProjectId] }), ["unassigned"]);
         assert.deepEqual(bug.source.label, "GitHub #96");
         assert.equal(backlog.source.kind, "local");
         assert.equal(elsewhere.ref.projectId, otherProjectId);

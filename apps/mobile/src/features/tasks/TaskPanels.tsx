@@ -199,7 +199,12 @@ export function TaskQuestionPanel(
     sending.current = false;
     setBusy(false);
     if (result?._tag === "Success") props.onDone();
-    else if (result === undefined) setNote("This question can't be answered from here.");
+    else
+      setNote(
+        result === undefined
+          ? "This question can't be answered from here."
+          : "Your answer wasn't sent. Try again.",
+      );
   };
   return (
     <TaskFrame
@@ -279,7 +284,12 @@ export function TaskApprovalPanel(
     sending.current = false;
     setBusy(false);
     if (result?._tag === "Success") props.onDone();
-    else if (result === undefined) setNote("This request can't be answered from here.");
+    else
+      setNote(
+        result === undefined
+          ? "This request can't be answered from here."
+          : "Your response wasn't sent. Try again.",
+      );
   };
   return (
     <TaskFrame

@@ -65,7 +65,7 @@ type LoadState =
   | { kind: "offline"; machine: string }
   | { kind: "missing" }
   | { kind: "forbidden" }
-  | { kind: "unsupported" }
+  | { kind: "unsupported"; detail?: string }
   | { kind: "failed" };
 
 /** `link` is where the machine's connection stands: up, still being made the first time, or down. */
@@ -116,6 +116,15 @@ function TaskDetailLoader({
     );
   const phase = presentation?.connection.phase;
   const connection = factoryTaskConnectionStatus(phase, isReady);
+  if (connection === "unsupported") {
+    const detail = presentation?.connection.error;
+    return (
+      <TaskDetailState
+        displayId={displayId}
+        state={detail ? { kind: "unsupported", detail } : { kind: "unsupported" }}
+      />
+    );
+  }
   const link = connection === null ? "connected" : connection === "loading" ? "starting" : "down";
   const machine = presentation?.entry.target.label ?? "This machine";
   return <TaskDetailState displayId={displayId} state={loadState(result, link, machine)} />;
@@ -144,7 +153,9 @@ function TaskDetailState({ displayId, state }: { displayId: string; state: LoadS
       message = <p role="alert">You don't have access to tasks on this machine.</p>;
       break;
     case "unsupported":
-      message = <p role="alert">Update this machine's T3 Code server to use tasks.</p>;
+      message = (
+        <p role="alert">{state.detail ?? "Update this machine's T3 Code server to use tasks."}</p>
+      );
       break;
     case "failed":
       message = (

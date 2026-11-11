@@ -1351,7 +1351,10 @@ const make = Effect.gen(function* () {
     (effect) => sql.withTransaction(effect),
     Effect.mapError(failure),
     // After the commit, so a listener reads the settled attempt.
-    (effect, input) => Effect.tap(effect, () => PubSub.publish(settled, input.runAttemptId)),
+    (effect, input) =>
+      input.observation === "unknown"
+        ? effect
+        : Effect.tap(effect, () => PubSub.publish(settled, input.runAttemptId)),
   );
   // Claimants exist only in the owning process. With no owner registered, outstanding
   // claimed/unknown rows belong to a dead process; settleAttempt's all-settled gate

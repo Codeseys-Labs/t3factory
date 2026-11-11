@@ -146,6 +146,7 @@ export function useInboxData(snoozed = false) {
           [next.key]: [...(current[next.key] ?? []), next.cursor],
         }));
     },
+    reloadAsks: () => attentionList.refresh(),
     reload: () => {
       setPages({});
       attentionList.refresh();

@@ -188,6 +188,11 @@ export class FactoryTaskStore extends Context.Service<
       ReadonlyArray<{ readonly status: FactoryTaskStatus; readonly count: number }>,
       FactoryTaskError
     >;
+    /** The most recently updated task of each assignee, at most `limit` of them. */
+    readonly assigneeSamples: (input: {
+      readonly filter: TaskFilter;
+      readonly limit: number;
+    }) => Effect.Effect<ReadonlyArray<TaskKey>, FactoryTaskError>;
     readonly locate: (displayId: string) => Effect.Effect<TaskKey | null, FactoryTaskError>;
     /** The accepted result revision as stored now; read inside a caller's transaction. */
     readonly acceptedRevision: (key: TaskKey) => Effect.Effect<number | null, FactoryTaskError>;
@@ -488,6 +493,17 @@ const make = Effect.gen(function* () {
     },
     Effect.mapError(failure),
   );
+
+  const assigneeSamples: FactoryTaskStore["Service"]["assigneeSamples"] = Effect.fn(
+    "FactoryTaskStore.assigneeSamples",
+  )(function* (input) {
+    // SQLite takes the bare columns from the row that holds MAX(updated_at).
+    return yield* sql<
+      TaskKey & { readonly updatedAt: string }
+    >`SELECT t.root_id AS rootId, t.task_id AS taskId, MAX(t.updated_at) AS updatedAt FROM factory_tasks t WHERE ${sql.and(
+      filterClauses(input.filter, null),
+    )} GROUP BY t.assignee_key ORDER BY updatedAt DESC LIMIT ${input.limit}`;
+  }, Effect.mapError(failure));
 
   const profiles = Effect.fn("FactoryTaskStore.listProfiles")(function* () {
     const rows = yield* sql<{
@@ -1069,6 +1085,7 @@ const make = Effect.gen(function* () {
     loadRoots,
     page,
     count,
+    assigneeSamples,
     locate: Effect.fn("FactoryTaskStore.locate")(function* (displayId) {
       const rows =
         yield* sql<TaskKey>`SELECT root_id AS rootId, task_id AS taskId FROM factory_tasks WHERE display_id = ${displayId} AND retired = 0`;

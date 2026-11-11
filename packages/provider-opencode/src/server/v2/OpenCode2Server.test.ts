@@ -3,6 +3,9 @@ import { assert, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { OwnedProcess, type OwnedProcessSpawner } from "@t3tools/shared/ownedProcess";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Exit from "effect/Exit";
+import * as Scope from "effect/Scope";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -176,6 +179,70 @@ server.listen(0, "127.0.0.1", () => {
   process.stdout.write("server password not-the-t3-password\\n");
 });
 `;
+
+it.effect("closes borrowed dedicated servers when the provider scope closes", () =>
+  Effect.gen(function* () {
+    const providerScope = yield* Scope.make();
+    const borrowed = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    let closed = 0;
+    const server = yield* OpenCode2Server.make({
+      binaryPath: "opencode",
+      serverUrl: "",
+      serverPassword: "",
+      directory: "/project",
+      environment: {},
+    }).pipe(
+      Effect.provideService(Scope.Scope, providerScope),
+      Effect.provide(
+        Layer.mock(OpenCodeRuntime.OpenCodeRuntime)({
+          createOpenCodeSdkClient: () => {
+            throw new Error("The v2 server uses its own client.");
+          },
+          startOpenCodeServerProcess: (input) =>
+            Effect.gen(function* () {
+              yield* Effect.addFinalizer(() =>
+                Effect.sync(() => {
+                  closed++;
+                }),
+              );
+              const url = "http://127.0.0.1:4096";
+              const version = yield* input.verify!(url);
+              return { url, version, isRunning: Effect.succeed(true), exitCode: Effect.never };
+            }),
+        }),
+      ),
+    );
+    const borrower = yield* server
+      .withConnection(() =>
+        Deferred.succeed(borrowed, undefined).pipe(Effect.andThen(Deferred.await(release))),
+      )
+      .pipe(
+        Effect.provideService(OwnedProcess, { spawn: (command, native) => native.spawn(command) }),
+        Effect.forkChild,
+      );
+    yield* Deferred.await(borrowed);
+    yield* Scope.close(providerScope, Exit.void);
+    assert.equal(closed, 1);
+    yield* Deferred.succeed(release, undefined);
+    yield* Fiber.join(borrower);
+    assert.equal(closed, 1);
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(
+      OpenCode2Client.layer.pipe(
+        Layer.provide(
+          layerServerReplying({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ version: "2.0.18", pid: 1, urls: [], paths: { tmp: "/tmp" } }),
+          }),
+        ),
+        Layer.provideMerge(NodeServices.layer),
+      ),
+    ),
+  ),
+);
 
 describe("OpenCode2Server spawned server", () => {
   it.live("is ready once /api/info accepts the generated password", () =>

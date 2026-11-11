@@ -123,6 +123,7 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
 }) {
   const opencode = yield* OpenCode2Client.OpenCode2Client;
   const runtime = yield* OpenCodeRuntime.OpenCodeRuntime;
+  const providerScope = yield* Scope.Scope;
   const crypto = yield* Crypto.Crypto;
   const connectTo = Effect.fn("OpenCode2Server.connectTo")(function* (
     url: string,
@@ -182,7 +183,7 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
       dedicatedServers.delete(attempt);
       yield* Scope.close(existing.scope, Exit.void);
     }
-    const scope = yield* Scope.make();
+    const scope = yield* Scope.fork(providerScope);
     const dedicatedPassword = yield* generatePassword.pipe(
       Effect.provideService(Crypto.Crypto, crypto),
     );

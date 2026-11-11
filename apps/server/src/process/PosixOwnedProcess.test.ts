@@ -14,7 +14,7 @@ import { makePosixOwnedProcess, PosixCgroupController } from "./PosixOwnedProces
 import { ownedWriterPlatformRefusal, makeOwnedProcess } from "./OwnedProcess.ts";
 
 const fixture = (
-  mode: "empty" | "populated" | "unreadable" | "missing" = "empty",
+  mode: "empty" | "populated" | "unreadable" | "missing" | "unkillable" = "empty",
   exit: "code" | "signal" = "code",
 ) => {
   const operations: string[] = [];
@@ -25,7 +25,7 @@ const fixture = (
     exists: () => mode !== "missing",
     kill: () => {
       operations.push("kill");
-      if (mode === "missing") throw new Error("missing");
+      if (mode === "missing" || mode === "unkillable") throw new Error(mode);
     },
     populated: () => {
       operations.push("observe");
@@ -217,11 +217,11 @@ it.effect(
     }).pipe(Effect.provideService(HostProcess.Platform, "darwin"), Effect.scoped),
 );
 
-it.effect.each(["migrated", "denied", "unconfirmed"] as const)(
+it.effect.each(["migrated", "denied", "unconfirmed", "unkillable"] as const)(
   "admits Linux only after a contained migration probe: %s",
   (migration) =>
     Effect.gen(function* () {
-      const fake = fixture();
+      const fake = fixture(migration === "unkillable" ? "unkillable" : "empty");
       let probes = 0;
       const native = ChildProcessSpawner.make((command) => {
         probes++;
@@ -232,7 +232,7 @@ it.effect.each(["migrated", "denied", "unconfirmed"] as const)(
               ChildProcessSpawner.ExitCode(migration === "denied" ? 125 : 0),
             ),
             stdout:
-              migration === "migrated"
+              migration === "migrated" || migration === "unkillable"
                 ? Stream.make(new TextEncoder().encode("contained\n"))
                 : Stream.empty,
           })),

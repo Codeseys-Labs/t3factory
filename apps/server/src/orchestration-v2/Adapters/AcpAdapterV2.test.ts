@@ -420,23 +420,6 @@ function assertReinjectedInstructions(
 }
 
 describe("AcpAdapterV2", () => {
-  it.live("routes the shared ACP CLI runtime through the attempt owner", () => {
-    let owned = 0;
-    return Effect.gen(function* () {
-      const run = yield* makeInstructionCompactionHarness({});
-      yield* run("Owned ACP fixture");
-      assert.equal(owned, 1);
-    }).pipe(
-      Effect.provideService(OwnedProcess, {
-        spawn: (command, native) => {
-          owned++;
-          return native.spawn(command);
-        },
-      }),
-      Effect.provide(layerTest),
-      Effect.scoped,
-    );
-  });
   it.live.each(["details", "none"] as const)(
     "fails the turn on an ACP v2 idle error with %s, settles its open tool, and accepts the next prompt",
     (details) =>
@@ -1054,8 +1037,9 @@ describe("AcpAdapterV2", () => {
 
   it.live(
     "reinjects ACP instructions after protocol compaction, including during reinjection",
-    () =>
-      Effect.gen(function* () {
+    () => {
+      let owned = 0;
+      return Effect.gen(function* () {
         const runTurn = yield* makeInstructionCompactionHarness({
           T3_ACP_COMPACTION_PROMPT_ORDINALS: "2,4",
         });
@@ -1073,7 +1057,19 @@ describe("AcpAdapterV2", () => {
           "Continue after the second compaction.",
         );
         assert.equal((yield* runTurn("Finish work."))[0]?.text, "Finish work.");
-      }).pipe(Effect.provide(layerTest), Effect.scoped),
+        // An attempt owner in context spawns the shared ACP CLI runtime, once per session.
+        assert.equal(owned, 1);
+      }).pipe(
+        Effect.provideService(OwnedProcess, {
+          spawn: (command, native) => {
+            owned++;
+            return native.spawn(command);
+          },
+        }),
+        Effect.provide(layerTest),
+        Effect.scoped,
+      );
+    },
   );
 
   it.live(

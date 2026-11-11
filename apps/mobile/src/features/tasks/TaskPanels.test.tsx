@@ -3,12 +3,35 @@ import {
   resolveFactoryTaskLiveState,
   type FactoryTaskThreadFacts,
 } from "@t3tools/client-runtime/state/factory-task-view";
-import type { ProviderApprovalOption } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  type FactoryTaskSummary,
+  type ProviderApprovalOption,
+} from "@t3tools/contracts";
+import { AsyncResult } from "effect/reactivity";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+
+const routeMocks = vi.hoisted(() => ({ detail: vi.fn(), dispatch: vi.fn() }));
+vi.mock("@react-navigation/native", () => ({
+  StackActions: { push: (name: string, params: unknown) => ({ name, params }) },
+  useNavigation: () => ({ dispatch: routeMocks.dispatch, goBack: vi.fn() }),
+}));
+vi.mock("../../state/factoryTasks", () => ({
+  useFactoryTaskDetailByDisplayId: routeMocks.detail,
+  useFactoryTaskActivity: () => AsyncResult.success({ entries: [] }),
+  useFactoryTaskCatalogs: () => new Map(),
+  useFactoryTaskEntries: (tasks: readonly FactoryTaskSummary[]) =>
+    tasks.map((task) => ({
+      task,
+      live: resolveFactoryTaskLiveState(task, []),
+    })),
+  useFactoryTaskRequests: () => ({ approvals: [], userInputs: [] }),
+}));
+vi.mock("../../lib/clock", () => ({ useNowMinuteMs: () => Date.parse(FACTORY_TASK_FIXTURES.at) }));
 
 vi.mock("react-native", () => ({
   View: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
@@ -35,6 +58,12 @@ vi.mock("react-native", () => ({
       {children}
     </button>
   ),
+}));
+vi.mock("../../components/ui/AppActivityIndicator", () => ({
+  AppActivityIndicator: () => <div role="progressbar" />,
+}));
+vi.mock("../../components/ui/EmptyState", () => ({
+  EmptyState: ({ title }: { title: string }) => <h2>{title}</h2>,
 }));
 vi.mock("react-native-keyboard-controller", () => ({
   KeyboardAvoidingView: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
@@ -76,6 +105,7 @@ vi.mock("../../components/ui/Button", () => ({
 
 const { TaskApprovalPanel, TaskQuestionPanel } = await import("./TaskPanels");
 const { resolveTaskAsk } = await import("./taskAsk");
+const { TaskRouteScreen } = await import("./TaskRouteScreen");
 
 const { tasks, threadFacts } = FACTORY_TASK_FIXTURES;
 const frame = {
@@ -254,3 +284,45 @@ describe("TaskApprovalPanel", () => {
     expect(screen.button("Deny")!.disabled).toBe(true);
   });
 });
+
+it("opens a normally running sub-task from its parent's banner", async () => {
+  routeMocks.dispatch.mockReset();
+  const parent = tasks.find((task) => task.displayId === "T-38")!;
+  const task = { ...parent, attention: [], liveRuns: parent.liveRuns, blockedBy: [] };
+  routeMocks.detail.mockReturnValue({
+    result: AsyncResult.success({ task }),
+    refresh: vi.fn(),
+    status: "current",
+  });
+  const screen = await mount(
+    <TaskRouteScreen
+      route={{ params: { environmentId: task.ref.environmentId, displayId: task.displayId } }}
+    />,
+  );
+  expect(screen.button("Open T-38.2")).toBeDefined();
+  await click(screen.button("Open T-38.2"));
+  expect(routeMocks.dispatch).toHaveBeenCalledExactlyOnceWith({
+    name: "Task",
+    params: { environmentId: task.ref.environmentId, displayId: "T-38.2" },
+  });
+});
+
+it.each(["forbidden", "offline", "unsupported"] as const)(
+  "shows the owning connection's %s state for a task link",
+  async (status) => {
+    routeMocks.detail.mockReset();
+    routeMocks.detail.mockReturnValue({
+      result: AsyncResult.initial(false),
+      refresh: vi.fn(),
+      status,
+    });
+    const environmentId = EnvironmentId.make("other-owner");
+    const screen = await mount(
+      <TaskRouteScreen route={{ params: { environmentId, displayId: "T-99" } }} />,
+    );
+    expect(screen.text()).toContain(
+      status === "forbidden" ? "No access" : status === "offline" ? "Offline" : "Update the server",
+    );
+    expect(routeMocks.detail).toHaveBeenCalledWith(environmentId, "T-99");
+  },
+);

@@ -2,15 +2,15 @@ import { useAtomValue } from "@effect/atom-react";
 import type { FactoryTaskListTarget } from "@t3tools/client-runtime/state/factory-task-list";
 import type { FactoryTaskViewState } from "@t3tools/client-runtime/state/factory-task-url";
 import { factoryTaskKey } from "@t3tools/client-runtime/state/factory-task-view";
-import type {
-  FactoryTaskCountInput,
-  FactoryTaskRef,
+import {
+  type FactoryTaskCountInput,
+  type FactoryTaskRef,
   FactoryTaskStatus,
-  FactoryTaskSummary,
+  type FactoryTaskSummary,
 } from "@t3tools/contracts";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { CommandIcon, PlusIcon, ZapIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { shortcutLabelForCommand } from "../../../keybindings";
 import { useFactoryTasks } from "../../../state/factoryTasks";
@@ -71,6 +71,14 @@ export function TasksPage() {
   const filters = serverFilters(view.filters);
   const statuses = boardStatuses(filters);
   const roots = useFactoryTasks(withFilters(scope.targets, filters, "roots"));
+  const assigneeTasks = useFactoryTasks(
+    withFilters(scope.targets, { statuses: FactoryTaskStatus.literals }, "all"),
+  );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Loads the scoped task cursor pages so assignee choices include sub-tasks and survive view filters.
+  useEffect(() => {
+    for (const owner of assigneeTasks.more)
+      if (owner.available) assigneeTasks.loadMore(owner.environmentId);
+  }, [assigneeTasks]);
   const [stripOpen, setStripOpen] = useState({ board: true, list: false });
 
   const projectNames = new Map(
@@ -130,7 +138,7 @@ export function TasksPage() {
   const countLabel = roots.owners.some((owner) => owner.counts !== null)
     ? `${shown}${roots.countsComplete ? "" : "+"} ${shown === 1 ? "task" : "tasks"}`
     : null;
-  const assignees = assigneeOptions(roots.items.map((entry) => entry.task));
+  const assignees = assigneeOptions(assigneeTasks.items.map((entry) => entry.task));
   const peekKey = view.peek ? factoryTaskKey(view.peek) : null;
   const layout = view.layout;
 

@@ -1,7 +1,9 @@
 import type { FactoryTaskPlanProposal, FactoryTaskSummary } from "@t3tools/contracts";
+import { resolveFactoryTaskDrop } from "@t3tools/client-runtime/state/factory-task-view";
 import {
   ArchiveRestoreIcon,
   CircleXIcon,
+  CheckIcon,
   EllipsisIcon,
   LinkIcon,
   ListXIcon,
@@ -25,6 +27,12 @@ export function TaskPageMenu({
   const permissions = useTaskPermissions(task.ref.environmentId);
   const actions = useTaskActions();
   const runLive = task.liveRuns.length > 0;
+  const lane = task.status === "done" ? "ready" : "done";
+  const manualMove =
+    task.assignee.assignment.mode === "person" &&
+    (task.status === "done"
+      ? task.lane === "done" && task.result?.state !== "accepted"
+      : task.status !== "canceled");
   const copyLink = async () => {
     const url = new URL(window.location.href);
     url.search = "";
@@ -47,6 +55,15 @@ export function TaskPageMenu({
         <EllipsisIcon aria-hidden />
       </MenuTrigger>
       <MenuPopup align="end">
+        {manualMove ? (
+          <MenuItem
+            disabled={!permissions.update || resolveFactoryTaskDrop(task, lane).kind !== "move"}
+            onClick={() => void actions.setLane(task, lane)}
+          >
+            {lane === "done" ? <CheckIcon aria-hidden /> : <ArchiveRestoreIcon aria-hidden />}
+            {lane === "done" ? "Mark done" : "Move to Ready"}
+          </MenuItem>
+        ) : null}
         {task.status === "canceled" ? (
           <MenuItem
             disabled={!permissions.update}

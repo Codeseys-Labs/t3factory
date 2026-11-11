@@ -436,3 +436,25 @@ it("shows a failed machine beside the tasks that loaded, and A4 when there are n
   await userEvent.click(page.getByRole("button", { name: "Connect a source" }));
   expect(state.navigations.at(-1)).toEqual({ to: "/automations", search: { sheet: "source" } });
 });
+
+it.each(["board", "list"] as const)(
+  "keeps sub-task assignees available through filters in %s",
+  async (layout) => {
+    const parent = fixture("T-43");
+    const child: FactoryTaskSummary = {
+      ...fixture("T-38.3"),
+      parent: { taskId: parent.ref.taskId, displayId: parent.displayId },
+      ref: { ...fixture("T-38.3").ref, rootId: parent.ref.rootId },
+      assignee: fixture("T-34").assignee,
+    };
+    setup({ tasks: [parent, child], search: { layout, filters: { types: ["bug"] } } });
+    await using _screen = await render(<TasksPage />);
+    await userEvent.click(page.getByRole("button", { name: /^Filter/ }));
+    const assignee = page.getByRole("menuitemcheckbox", { name: "Claude · Sonnet" });
+    await expect.element(assignee).toBeVisible();
+    await userEvent.click(assignee);
+    await expect.element(assignee).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(assignee);
+    await expect.element(assignee).toHaveAttribute("aria-checked", "false");
+  },
+);

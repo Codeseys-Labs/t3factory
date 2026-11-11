@@ -13,6 +13,7 @@ import {
   type FactoryTaskListInput,
   type FactoryTaskListResult,
   type FactoryTaskCountResult,
+  type FactoryTaskAssigneePreviewInput,
   WS_METHODS,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -221,6 +222,54 @@ it.effect("intake change flags refresh only affected reads", () =>
     yield* Queue.offer(changes, { environmentId, arrivals: true, sources: false, rules: false });
     expect(yield* Queue.take(calls)).toBe("arrivals");
     expect(seen).toEqual(["arrivals"]);
+  }),
+);
+
+it.effect("refreshes Auto previews when their parent's root changes", () =>
+  Effect.gen(function* () {
+    const parent = fixtures.tasks.find((task) => task.displayId === "T-38")!;
+    const other = fixtures.tasks.find((task) => task.displayId === "T-41")!;
+    let assignee = parent.assignee;
+    const calls: string[] = [];
+    const h = yield* makeHarness({
+      [WS_METHODS.factorySubscribeTaskChanges]: () => Stream.never,
+      [WS_METHODS.factoryPreviewTaskAssignee]: (input: FactoryTaskAssigneePreviewInput) =>
+        Effect.sync(() => {
+          calls.push(input.parent?.rootId ?? "profiles");
+          return assignee;
+        }),
+    });
+    const preview = (task?: typeof parent) =>
+      h.tasks.previewTaskAssignee({
+        environmentId,
+        input: {
+          projectId: parent.ref.projectId,
+          type: "task",
+          assignment: { mode: "auto" },
+          ...(task ? { parent: task.ref } : {}),
+        },
+      });
+    const queries = [preview(parent), preview(other), preview()];
+    for (const query of queries) {
+      h.registry.mount(query);
+      yield* AtomRegistry.getResult(h.registry, query, { suspendOnWaiting: true });
+    }
+    calls.length = 0;
+    assignee = other.assignee;
+    h.tasks.invalidate(h.registry, {
+      environmentId,
+      rootIds: [parent.ref.rootId],
+      profiles: false,
+    });
+    expect(
+      yield* AtomRegistry.getResult(h.registry, queries[0]!, { suspendOnWaiting: true }),
+    ).toEqual(assignee);
+    expect(calls).toEqual([parent.ref.rootId]);
+    calls.length = 0;
+    h.tasks.invalidate(h.registry, { environmentId, rootIds: [], profiles: true });
+    for (const query of queries)
+      yield* AtomRegistry.getResult(h.registry, query, { suspendOnWaiting: true });
+    expect(calls.sort()).toEqual([parent.ref.rootId, other.ref.rootId, "profiles"].sort());
   }),
 );
 

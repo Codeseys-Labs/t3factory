@@ -37,6 +37,7 @@ const state = vi.hoisted(() => ({
   permissions: {} as Record<string, boolean>,
   actions: {} as Record<string, Spy>,
   commands: {} as Record<string, Spy>,
+  readAccess: true as boolean | null,
 }));
 
 vi.mock(import("../../../state/factoryTasks"), async () => {
@@ -144,6 +145,24 @@ vi.mock(import("../../../state/entities"), async (original) => ({
 vi.mock(import("../../../state/session"), async (original) => ({
   ...(await original()),
   useEnvironmentScope: () => true,
+  useEnvironmentSessionState: () => ({
+    data:
+      state.readAccess === null
+        ? null
+        : {
+            authenticated: true,
+            auth: {
+              policy: "loopback-browser",
+              bootstrapMethods: ["one-time-token"],
+              sessionMethods: ["browser-session-cookie"],
+              sessionCookieName: "t3_session",
+              serverUiUrl: null,
+            },
+            scopes: state.readAccess ? ["orchestration:read"] : [],
+          },
+    hasError: false,
+    isPending: state.readAccess === null,
+  }),
 }));
 vi.mock(import("../../../hooks/useNowMinute"), () => ({
   useNowMinute: () => "2026-11-09T17:13",
@@ -227,6 +246,7 @@ function entry(
 }
 
 function setup(path: string) {
+  state.readAccess = true;
   state.details = new Map();
   state.activity = new Map();
   state.results = new Map();
@@ -706,4 +726,32 @@ it.each(["T-99", "not-a-task"])("shows %s as a task that does not exist", async 
     .element(page.getByRole("alert"))
     .toHaveTextContent(`There is no task ${displayId} on this machine.`);
   expect(page.getByRole("status").elements()).toHaveLength(0);
+});
+
+it("shows forbidden when a settled session cannot read tasks", async () => {
+  const { screen } = await renderDetail(taskPath("T-43"), () => {
+    state.readAccess = false;
+    state.details.set("T-43", AsyncResult.initial(false));
+  });
+  await using _screen = screen;
+  await expect
+    .element(page.getByRole("alert"))
+    .toHaveTextContent("You don't have access to tasks on this machine.");
+  expect(page.getByRole("status").elements()).toHaveLength(0);
+});
+
+it("shows forbidden after read access is revoked", async () => {
+  const { screen, router } = await renderDetail(taskPath("T-43"));
+  await using _screen = screen;
+  await expect.element(page.getByRole("textbox", { name: "Comment" })).toBeVisible();
+  state.readAccess = false;
+  state.details.set("T-38", AsyncResult.initial(false));
+  await router.navigate({
+    to: "/tasks/$environmentId/$displayId",
+    params: { environmentId, displayId: "T-38" },
+  });
+  await expect
+    .element(page.getByRole("alert"))
+    .toHaveTextContent("You don't have access to tasks on this machine.");
+  expect(page.getByRole("textbox", { name: "Comment" }).elements()).toHaveLength(0);
 });

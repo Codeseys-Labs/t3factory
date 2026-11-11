@@ -1,10 +1,12 @@
 import { factoryTaskQueryStatus } from "@t3tools/client-runtime/state/factory-task-list";
 import { factoryTaskKey } from "@t3tools/client-runtime/state/factory-task-view";
 import {
+  AuthOrchestrationReadScope,
   FactoryTaskDisplayId,
   type EnvironmentId,
   FactoryTaskError,
   type FactoryTaskDetail,
+  sessionGrantsScope,
 } from "@t3tools/contracts";
 import {
   Link,
@@ -22,6 +24,7 @@ import type { ReactNode } from "react";
 
 import { useFactoryTaskDetailByDisplayId } from "../../../state/factoryTasks";
 import { useEnvironmentPresentation } from "../../../state/presentation";
+import { useEnvironmentSessionState } from "../../../state/session";
 import { PageHeader } from "../kit";
 import { TaskPageFrame } from "../TaskPageFrame";
 import { TaskDetail, type TaskDetailTab } from "./TaskDetail";
@@ -91,6 +94,14 @@ function TaskDetailLoader({
 }) {
   const result = useFactoryTaskDetailByDisplayId(environmentId, displayId);
   const { isReady, presentation } = useEnvironmentPresentation(environmentId);
+  const session = useEnvironmentSessionState(environmentId);
+  if (
+    presentation?.connection.phase === "connected" &&
+    session.data !== null &&
+    !session.hasError &&
+    !sessionGrantsScope(session.data, AuthOrchestrationReadScope)
+  )
+    return <TaskDetailState displayId={displayId} state={{ kind: "forbidden" }} />;
   if (result._tag === "Success")
     return (
       <TaskDetail

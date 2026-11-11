@@ -108,5 +108,5 @@ export function useNeedsYou() {
   useEffect(() => {
     for (const owner of list.more) if (owner.available) list.loadMore(owner.environmentId);
   }, [list]);
-  return { needs, tasks, incomplete: list.incomplete || !snapshotsReady || !configsReady };
+  return { needs, tasks, list, incomplete: list.incomplete || !snapshotsReady || !configsReady };
 }

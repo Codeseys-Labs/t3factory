@@ -21,7 +21,8 @@ export const needKey = (need: FactoryTaskNeed) =>
   JSON.stringify([factoryTaskKey(need.ref), need.reason, need.threadId, need.requestId]);
 
 export function InboxPage() {
-  const data = useInboxData();
+  const [snoozed, setSnoozed] = useState(false);
+  const data = useInboxData(snoozed);
   const search = validateInboxSearch(useSearch({ strict: false }));
   const navigate = useNavigate();
   const change = (next: InboxSearch) =>
@@ -118,6 +119,23 @@ export function InboxPage() {
       }
     >
       <div aria-live="polite">
+        {triage ? (
+          <div className="border-b px-6 py-2">
+            <ToggleGroup
+              aria-label="Triage arrivals"
+              value={[snoozed ? "snoozed" : "new"]}
+              onValueChange={(value) => {
+                if (value[0]) {
+                  setSnoozed(value[0] === "snoozed");
+                  change({ tab: "triage" });
+                }
+              }}
+            >
+              <Toggle value="new">New arrivals</Toggle>
+              <Toggle value="snoozed">Snoozed</Toggle>
+            </ToggleGroup>
+          </div>
+        ) : null}
         {data.machines
           .filter((machine) => machine.state !== "current")
           .map((machine) => (
@@ -171,10 +189,14 @@ export function InboxPage() {
         <div className="flex flex-1 items-center justify-center">
           <TaskEmptyState
             icon="inbox"
-            title={triage ? "No new arrivals" : "Nothing needs you"}
+            title={
+              triage ? (snoozed ? "No snoozed arrivals" : "No new arrivals") : "Nothing needs you"
+            }
             body={
               triage
-                ? `Sources and rules add items here. ${ruleLine}`
+                ? snoozed
+                  ? "Snooze an arrival to set it aside until later."
+                  : `Sources and rules add items here. ${ruleLine}`
                 : `${running} ${running === 1 ? "task is" : "tasks are"} running. You will see them here when they have a question or a result.`
             }
             primary={

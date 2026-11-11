@@ -31,6 +31,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import * as Store from "../persistence/FactoryIntakeStore.ts";
+import * as FeedStore from "../persistence/FactoryFeedStore.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Projects from "../project/ProjectService.ts";
 import * as Feeds from "./FactoryFeedService.ts";
@@ -134,6 +135,10 @@ const feedCandidate = (itemKey: string, title: string): FactoryFeedCandidate => 
 
 const harness = Effect.gen(function* () {
   const database = yield* Layer.build(Sqlite.layerMemory);
+  const feedStore = yield* FeedStore.FactoryFeedStore.pipe(
+    Effect.provide(FeedStore.layer),
+    Effect.provideContext(database),
+  );
   const issueLists = yield* Ref.make(new Map<ProjectId, ReadonlyArray<FactoryIssue>>());
   const issueFailure = yield* Ref.make<FactoryIssueError["reason"] | null>(null);
   const issueCalls = yield* Ref.make(new Map<ProjectId, number>());
@@ -183,22 +188,35 @@ const harness = Effect.gen(function* () {
     Layer.mock(Feeds.FactoryFeedService)({
       listSources: () => Ref.get(feed).pipe(Effect.map(({ sources }) => ({ sources }))),
       bindSource: (input) =>
-        Ref.modify(feed, (state) => {
-          const source: FactoryFeedSource = {
-            id: FactoryFeedSourceId.make("feed-1"),
+        Effect.gen(function* () {
+          const bound = yield* feedStore.bind({
+            id: FactoryFeedSourceId.make(`feed-${(yield* Ref.get(feed)).binds + 1}`),
             projectId: input.projectId,
             locator: input.url,
-            title: "Release notes",
-            status: "active",
-            createdAt: now,
-            lastCheckedAt: now,
-            nextAllowedAt: "2030-01-01T00:00:00.000Z",
-            lastError: null,
-          };
-          return [
-            { source, observed: 0, notModified: false },
-            { ...state, sources: [source], binds: state.binds + 1 },
-          ];
+            commandId: input.commandId,
+            at: now,
+          });
+          return yield* Ref.modify(feed, (state) => {
+            const source: FactoryFeedSource = {
+              id: bound.id,
+              projectId: input.projectId,
+              locator: input.url,
+              title: "Release notes",
+              status: "active",
+              createdAt: now,
+              lastCheckedAt: now,
+              nextAllowedAt: "2030-01-01T00:00:00.000Z",
+              lastError: null,
+            };
+            return [
+              { source, observed: 0, notModified: false },
+              {
+                ...state,
+                sources: [...state.sources.filter((item) => item.id !== source.id), source],
+                binds: state.binds + 1,
+              },
+            ];
+          });
         }),
       refreshSource: () =>
         Ref.modify(feed, (state) => [
@@ -1030,5 +1048,168 @@ it.effect("a feed source reads through the feed service and waits for its refres
       ),
     );
     assert.strictEqual(invalid.reason, "invalid-input");
+  }),
+);
+
+it.effect("editing a feed URL binds the new URL and can return to the original binding", () =>
+  Effect.gen(function* () {
+    const h = yield* harness;
+    const { intake } = yield* h.start;
+    const saved = yield* intake.saveSource(
+      {
+        commandId: CommandId.make("feed-a"),
+        projectId,
+        config: { kind: "feed", url: "https://news.example.org/a.xml" },
+        enabled: true,
+      },
+      human,
+    );
+    let source = saved.source!;
+    for (const [index, url] of [
+      "https://news.example.org/b.xml",
+      "https://news.example.org/a.xml",
+    ].entries()) {
+      const input = {
+        commandId: CommandId.make(`edit-feed-${index}`),
+        id: source.id,
+        expectedVersion: source.version,
+        projectId,
+        config: { kind: "feed" as const, url },
+        enabled: true,
+      };
+      source = (yield* intake.saveSource(input, human)).source!;
+      assert.strictEqual(source.status, "ok");
+      assert.strictEqual((yield* intake.saveSource(input, human)).replayed, true);
+    }
+    assert.strictEqual((yield* Ref.get(h.feed)).binds, 2);
+    assert.strictEqual((yield* recheck(intake, source)).source?.status, "ok");
+  }),
+);
+
+it.effect("snooze expiry notifies open Inboxes after restart with no source checks", () =>
+  Effect.gen(function* () {
+    const h = yield* harness;
+    const first = yield* h.start;
+    yield* h.setIssues(projectId, [issue(1, "Return first"), issue(2, "Return later")]);
+    const source = yield* connectIssues(first.intake, "connect");
+    const arrivals = (yield* triage(first.intake)).items.toReversed();
+    const now = DateTime.toEpochMillis(yield* DateTime.now);
+    for (const [index, arrival] of arrivals.entries()) {
+      yield* first.intake.resolveArrival(
+        {
+          commandId: CommandId.make(`snooze-${index}`),
+          id: arrival.id,
+          expectedVersion: arrival.version,
+          action: {
+            type: "snooze",
+            until: DateTime.formatIso(DateTime.makeUnsafe(now + (index + 1) * 60_000)),
+          },
+        },
+        human,
+      );
+    }
+    const latest = (yield* first.intake.listSources({})).sources[0]!;
+    yield* first.intake.deleteSource(
+      { commandId: CommandId.make("delete"), id: source.id, expectedVersion: latest.version },
+      human,
+    );
+    yield* first.stop;
+    const second = yield* h.start;
+    assert.strictEqual((yield* triage(second.intake)).waiting, 0);
+    for (const expected of [1, 2]) {
+      yield* TestClock.adjust("1 minute");
+      const change = yield* Queue.take(second.changes);
+      assert.deepStrictEqual(change, {
+        environmentId,
+        arrivals: true,
+        rules: false,
+        sources: false,
+      });
+      assert.strictEqual((yield* triage(second.intake)).waiting, expected);
+      assert.strictEqual((yield* triage(second.intake)).items.length, expected);
+    }
+    const returned = (yield* triage(second.intake)).items[0]!;
+    yield* second.intake.resolveArrival(
+      {
+        commandId: CommandId.make("snooze-again"),
+        id: returned.id,
+        expectedVersion: returned.version,
+        action: {
+          type: "snooze",
+          until: DateTime.formatIso(DateTime.makeUnsafe(now + 3 * 60_000)),
+        },
+      },
+      human,
+    );
+    yield* Queue.take(second.changes);
+    yield* TestClock.adjust("1 minute");
+    assert.strictEqual((yield* Queue.take(second.changes)).arrivals, true);
+    assert.strictEqual((yield* triage(second.intake)).waiting, 2);
+    assert.strictEqual(yield* h.callsFor(projectId), 1);
+  }),
+);
+
+it.effect("unsnooze restores a persisted arrival with version checks and command replay", () =>
+  Effect.gen(function* () {
+    const h = yield* harness;
+    const first = yield* h.start;
+    yield* h.setIssues(projectId, [issue(1, "Bring me back")]);
+    const source = yield* connectIssues(first.intake, "connect");
+    yield* setEnabled(first.intake, source, false);
+    const arrival = (yield* triage(first.intake)).items[0]!;
+    const now = DateTime.toEpochMillis(yield* DateTime.now);
+    const snoozed = yield* first.intake.resolveArrival(
+      {
+        commandId: CommandId.make("snooze"),
+        id: arrival.id,
+        expectedVersion: arrival.version,
+        action: { type: "snooze", until: DateTime.formatIso(DateTime.makeUnsafe(now + DAY_MS)) },
+      },
+      human,
+    );
+    yield* first.stop;
+    const { intake, changes } = yield* h.start;
+    const [persisted] = (yield* intake.listArrivals({ states: ["snoozed"] })).items;
+    assert.strictEqual(persisted?.id, arrival.id);
+    const input = {
+      commandId: CommandId.make("unsnooze"),
+      id: arrival.id,
+      expectedVersion: snoozed.arrival.version,
+      action: { type: "unsnooze" as const },
+    };
+    const stale = yield* Effect.flip(
+      intake.resolveArrival({ ...input, expectedVersion: arrival.version }, human),
+    );
+    assert.strictEqual(stale.reason, "version-conflict");
+    const restored = yield* intake.resolveArrival(input, human);
+    assert.strictEqual(restored.arrival.state, "new");
+    assert.strictEqual(restored.arrival.snoozedUntil, null);
+    assert.strictEqual(restored.arrival.version, snoozed.arrival.version + 1);
+    assert.strictEqual(restored.task, null);
+    assert.deepStrictEqual(yield* Queue.take(changes), {
+      environmentId,
+      arrivals: true,
+      rules: false,
+      sources: false,
+    });
+    assert.strictEqual((yield* triage(intake)).waiting, 1);
+    assert.strictEqual((yield* intake.listArrivals({ states: ["snoozed"] })).items.length, 0);
+    assert.strictEqual((yield* intake.resolveArrival(input, human)).replayed, true);
+    const conflict = yield* Effect.flip(
+      intake.resolveArrival({ ...input, action: { type: "decline" } }, human),
+    );
+    assert.strictEqual(conflict.reason, "command-conflict");
+    const invalid = yield* Effect.flip(
+      intake.resolveArrival(
+        {
+          ...input,
+          commandId: CommandId.make("unsnooze-new"),
+          expectedVersion: restored.arrival.version,
+        },
+        human,
+      ),
+    );
+    assert.strictEqual(invalid.reason, "invalid-input");
+    assert.strictEqual((yield* Ref.get(h.createCalls)).length, 0);
   }),
 );

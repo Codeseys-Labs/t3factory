@@ -7,6 +7,7 @@ import {
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
+import { useState } from "react";
 import { expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
@@ -23,6 +24,8 @@ const state = vi.hoisted(() => ({
   rules: [] as FactoryIntakeRule[],
   failures: {} as Record<string, unknown>,
   phase: "connected",
+  ownerStatus: "current",
+  refreshTasks: null as unknown as ReturnType<typeof vi.fn>,
   taskQueries: null as unknown as ReturnType<typeof vi.fn<(...args: unknown[]) => unknown>>,
   arrivalQueries: null as unknown as ReturnType<typeof vi.fn<(...args: unknown[]) => unknown>>,
 }));
@@ -39,11 +42,18 @@ vi.mock(import("../shared/taskScope"), () => ({
     single: null,
     label: "All projects",
   })) as never,
-  useNeedsYou: () => ({
+  useNeedsYou: (() => ({
     tasks: [],
     needs: { rows: [], blocking: [], review: [], count: 0 },
     incomplete: false,
-  }),
+    list: {
+      owners: state.environments.map((environmentId) => ({
+        environmentId,
+        status: state.ownerStatus,
+      })),
+      refresh: state.refreshTasks,
+    },
+  })) as never,
 }));
 vi.mock(import("../../../state/presentation"), async () => {
   const { Atom } = await import("effect/reactivity");
@@ -75,13 +85,18 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
       },
     },
     factoryIntake: {
-      listIntakeArrivals: (target: { environmentId: string; input: { cursor?: string } }) => {
+      listIntakeArrivals: (target: {
+        environmentId: string;
+        input: { cursor?: string; states?: string[] };
+      }) => {
         state.arrivalQueries(target);
         const failure = state.failures[target.environmentId];
         return Atom.make(
           failure ??
             AsyncResult.success(
-              state.pages[`${target.environmentId}:${target.input.cursor ?? ""}`],
+              state.pages[
+                `${target.environmentId}:${target.input.cursor ?? (target.input.states ? "snoozed" : "")}`
+              ],
             ),
         );
       },
@@ -98,6 +113,8 @@ function setup() {
   state.rules = [...FACTORY_INTAKE_FIXTURES.rules];
   state.failures = {};
   state.phase = "connected";
+  state.ownerStatus = "current";
+  state.refreshTasks = vi.fn();
   state.taskQueries = vi.fn();
   state.arrivalQueries = vi.fn();
   state.pages = {
@@ -120,7 +137,8 @@ function setup() {
 }
 
 function Probe() {
-  const data = useInboxData();
+  const [snoozed, setSnoozed] = useState(false);
+  const data = useInboxData(snoozed);
   return (
     <div>
       <output aria-label="Arrivals">
@@ -133,6 +151,12 @@ function Probe() {
       </output>
       <button type="button" onClick={() => data.loadMore(EnvironmentId.make("local"))}>
         Load local
+      </button>
+      <button type="button" onClick={data.reload}>
+        Reload
+      </button>
+      <button type="button" onClick={() => setSnoozed(!snoozed)}>
+        Snoozed
       </button>
     </div>
   );
@@ -153,10 +177,10 @@ it("combines scoped machines newest first, keeps the full count, and follows a m
     environmentId: "local",
     input: { cursor: "older" },
   });
-  expect(state.taskQueries).toHaveBeenCalledWith({
-    environmentId: "remote",
-    input: { scope: "all", attention: true },
-  });
+  expect(state.taskQueries).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+  expect(state.refreshTasks).toHaveBeenCalledOnce();
+  expect(state.taskQueries).not.toHaveBeenCalled();
 });
 
 it("uses project filters and only counts rules from those projects' sources", async () => {
@@ -171,11 +195,54 @@ it("uses project filters and only counts rules from those projects' sources", as
     environmentId: "local",
     input: { projectIds: ["t3code-factory"] },
   });
-  expect(state.taskQueries).toHaveBeenCalledWith({
-    environmentId: "local",
-    input: { projectIds: ["t3code-factory"], scope: "all", attention: true },
-  });
+  expect(state.taskQueries).not.toHaveBeenCalled();
 });
+
+it("loads persisted snoozes with the project scope and keeps their cursors separate", async () => {
+  setup();
+  state.environments = ["local"];
+  state.projectIds = ["t3code-factory"];
+  state.pages["local:snoozed"] = {
+    items: [{ ...FACTORY_INTAKE_FIXTURES.arrivals[1]!, state: "snoozed" }],
+    waiting: 2,
+    nextCursor: null,
+  };
+  await using screen = await render(<Probe />);
+  await userEvent.click(screen.getByRole("button", { name: "Load local" }));
+  await expect
+    .element(screen.getByRole("status", { name: "Arrivals" }))
+    .toHaveTextContent("local/github-101,local/github-102");
+  state.arrivalQueries.mockClear();
+  await userEvent.click(screen.getByRole("button", { name: "Snoozed" }));
+  await expect
+    .element(screen.getByRole("status", { name: "Arrivals" }))
+    .toHaveTextContent("local/vite-9");
+  expect(state.arrivalQueries).toHaveBeenCalledWith({
+    environmentId: "local",
+    input: { projectIds: ["t3code-factory"], states: ["snoozed"] },
+  });
+  expect(
+    state.arrivalQueries.mock.calls.every(
+      ([target]) => !(target as { input: { cursor?: string } }).input.cursor,
+    ),
+  ).toBe(true);
+  await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+  await expect.element(screen.getByRole("status", { name: "Waiting" })).toHaveTextContent("2");
+});
+
+it.each(["loading", "failed", "forbidden", "unsupported", "offline"])(
+  "uses the shared attention owner's %s state",
+  async (status) => {
+    setup();
+    state.environments = ["local"];
+    state.ownerStatus = status;
+    await using screen = await render(<Probe />);
+    await expect
+      .element(screen.getByRole("status", { name: "Machines" }))
+      .toHaveTextContent(`local:${status}`);
+    expect(state.taskQueries).not.toHaveBeenCalled();
+  },
+);
 
 it.each([
   { reason: "forbidden", expected: "forbidden" },

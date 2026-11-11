@@ -391,8 +391,11 @@ const make = Effect.gen(function* () {
       // A periodic check never revives a feed the host told us to stop reading.
       if (feed !== undefined && feed.status === "suspended" && !options.rebind) return failed;
       if (feed === undefined || feed.status === "suspended") {
+        const bindingKey = yield* crypto
+          .digest("SHA-256", new TextEncoder().encode(url))
+          .pipe(Effect.map(Hex.encode), Effect.orDie);
         feed = (yield* feeds.bindSource({
-          commandId: CommandId.make(`factory-intake:${source.id}`),
+          commandId: CommandId.make(`factory-intake:${source.id}:${bindingKey}`),
           projectId,
           url,
         })).source;
@@ -642,7 +645,10 @@ const make = Effect.gen(function* () {
   });
 
   const runDueSources = Effect.fn("FactoryIntakeService.runDueSources")(function* () {
-    const due = yield* store.listDueSources(isoOf(yield* Clock.currentTimeMillis));
+    const now = isoOf(yield* Clock.currentTimeMillis);
+    const expired = yield* store.expireSnoozedArrivals(now).pipe(serialized);
+    if (expired) yield* publish({ ...noChange, arrivals: true });
+    const due = yield* store.listDueSources(now);
     let flags = noChange;
     for (const source of due) {
       flags = mergeFlags(
@@ -655,7 +661,7 @@ const make = Effect.gen(function* () {
     yield* publish(flags);
   });
 
-  // Sleeps until the earliest `next_check_at`, or until a save moves it. No source, no work.
+  // Source checks and snooze expiry share one deadline; mutations wake it to recalculate.
   const checkLoopStep = Effect.gen(function* () {
     const next = yield* store.nextCheckAt;
     if (next === null) {
@@ -1109,6 +1115,11 @@ const make = Effect.gen(function* () {
           next = { state: "snoozed", snoozedUntil: DateTime.formatIso(until.value), task: null };
           break;
         }
+        case "unsnooze": {
+          if (arrival.state !== "snoozed") return yield* intakeError("invalid-input");
+          next = { state: "new", snoozedUntil: null, task: null };
+          break;
+        }
         case "decline": {
           next = { state: "declined", snoozedUntil: null, task: null };
           break;
@@ -1141,7 +1152,10 @@ const make = Effect.gen(function* () {
       );
       return { arrival: updated, task, replayed: false };
     }).pipe(serialized);
-    if (!outcome.replayed) yield* publish({ ...noChange, arrivals: true });
+    if (!outcome.replayed) {
+      yield* publish({ ...noChange, arrivals: true });
+      yield* wakeChecks;
+    }
     const [arrival] = yield* presentArrivals([outcome.arrival]);
     if (arrival === undefined) return yield* intakeError("missing-arrival");
     return { arrival, task: outcome.task, replayed: outcome.replayed };

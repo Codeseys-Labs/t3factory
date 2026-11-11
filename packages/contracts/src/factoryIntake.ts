@@ -245,6 +245,7 @@ export const FactoryIntakeArrivalAction = Schema.Union([
     assignment: Schema.optional(FactoryTaskAssignment),
   }),
   Schema.Struct({ type: Schema.Literal("snooze"), until: IsoDateTime }),
+  Schema.Struct({ type: Schema.Literal("unsnooze") }),
   Schema.Struct({ type: Schema.Literal("decline") }),
   Schema.Struct({ type: Schema.Literal("duplicate"), of: Schema.NullOr(FactoryTaskRef) }),
 ]);

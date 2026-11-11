@@ -146,6 +146,7 @@ export class FactoryIntakeStore extends Context.Service<
     /** Removes the source and its rules; its arrivals stay. */
     readonly deleteSource: (id: string) => Effect.Effect<void, FactoryIntakeError>;
     readonly nextCheckAt: Effect.Effect<string | null, FactoryIntakeError>;
+    readonly expireSnoozedArrivals: (now: string) => Effect.Effect<boolean, FactoryIntakeError>;
     readonly listDueSources: (
       now: string,
     ) => Effect.Effect<ReadonlyArray<StoredSource>, FactoryIntakeError>;
@@ -304,12 +305,25 @@ const make = Effect.gen(function* () {
     yield* sql`DELETE FROM factory_intake_sources WHERE source_id = ${id}`;
   }, Effect.mapError(persistenceError));
   const nextCheckAt = sql<{ readonly next: string | null }>`
-    SELECT MIN(next_check_at) AS next FROM factory_intake_sources
-    WHERE next_check_at IS NOT NULL AND enabled = 1`.pipe(
+    SELECT MIN(deadline) AS next FROM (
+      SELECT next_check_at AS deadline FROM factory_intake_sources
+        WHERE next_check_at IS NOT NULL AND enabled = 1
+      UNION ALL
+      SELECT snoozed_until AS deadline FROM factory_intake_arrivals
+        WHERE state = 'snoozed' AND snoozed_until IS NOT NULL
+    )`.pipe(
     Effect.map((rows) => rows[0]?.next ?? null),
     Effect.mapError(persistenceError),
     Effect.withSpan("FactoryIntakeStore.nextCheckAt"),
   );
+  const expireSnoozedArrivals = Effect.fn("FactoryIntakeStore.expireSnoozedArrivals")(function* (
+    now: string,
+  ) {
+    const rows = yield* sql`UPDATE factory_intake_arrivals
+      SET state = 'new', snoozed_until = NULL, version = version + 1
+      WHERE state = 'snoozed' AND snoozed_until <= ${now} RETURNING arrival_id`;
+    return rows.length > 0;
+  }, Effect.mapError(persistenceError));
   const listDueSources = Effect.fn("FactoryIntakeStore.listDueSources")(function* (now: string) {
     return yield* decodeSources(
       yield* sql`SELECT ${sourceColumns} FROM factory_intake_sources
@@ -451,6 +465,7 @@ const make = Effect.gen(function* () {
     putSource,
     deleteSource,
     nextCheckAt,
+    expireSnoozedArrivals,
     listDueSources,
     listRules,
     getRule,

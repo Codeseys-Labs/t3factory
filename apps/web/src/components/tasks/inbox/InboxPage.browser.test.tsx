@@ -65,7 +65,12 @@ vi.mock(import("@tanstack/react-router"), async (original) => {
 vi.mock(import("./inboxData"), () => ({
   arrivalKey: (entry: { environmentId: string; arrival: { id: string } }) =>
     JSON.stringify([entry.environmentId, entry.arrival.id]),
-  useInboxData: (() => state.data) as never,
+  useInboxData: ((snoozed = false) => ({
+    ...state.data,
+    arrivals: state.data.arrivals.filter(
+      (entry) => (entry.arrival.state === "snoozed") === snoozed,
+    ),
+  })) as never,
 }));
 vi.mock(import("../../../state/factoryTasks"), async () => {
   const { Atom, AsyncResult } = await import("effect/reactivity");
@@ -383,6 +388,52 @@ it("accepts edited type and assignment", async () => {
     }),
   );
 });
+
+it.each([true, false])(
+  "finds snoozed arrivals and gates Unsnooze by permission (%s)",
+  async (permission) => {
+    const mocks = setup();
+    state.search = { tab: "triage" };
+    state.permission = permission;
+    await page.viewport(1440, 900);
+    const original = state.data.arrivals[0]!;
+    state.data.arrivals = [
+      {
+        ...original,
+        arrival: {
+          ...original.arrival,
+          state: "snoozed",
+          snoozedUntil: "2030-01-01T17:00:00.000Z",
+          version: 4,
+        },
+      },
+    ];
+    await using screen = await render(<InboxPage />);
+    await expect.element(screen.getByText("No new arrivals", { exact: true })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Snoozed", exact: true }));
+    await expect
+      .element(screen.getByRole("heading", { name: original.arrival.title }))
+      .toBeVisible();
+    const unsnooze = screen.getByRole("button", { name: "Unsnooze", exact: true });
+    if (permission) {
+      await userEvent.click(unsnooze);
+      expect(mocks.resolve).toHaveBeenCalledWith({
+        environmentId: original.environmentId,
+        input: {
+          commandId: expect.any(String),
+          id: original.arrival.id,
+          expectedVersion: 4,
+          action: { type: "unsnooze" },
+        },
+      });
+    } else {
+      await expect.element(unsnooze).toBeDisabled();
+      expect(mocks.resolve).not.toHaveBeenCalled();
+    }
+    await userEvent.click(screen.getByRole("button", { name: "New arrivals", exact: true }));
+    await expect.element(screen.getByText("No new arrivals", { exact: true })).toBeVisible();
+  },
+);
 
 it.each([
   { label: "Tomorrow", action: { type: "snooze", until: "2026-11-11T17:00:00.000Z" } },

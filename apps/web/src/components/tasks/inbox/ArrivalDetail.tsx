@@ -60,6 +60,7 @@ export function ArrivalDetail({
   const duplicate = useArrivalCommand(target, { type: "duplicate", of: null });
   const tomorrow = useArrivalCommand(target, { type: "snooze", until: snoozeUntil(now, 1) });
   const nextWeek = useArrivalCommand(target, { type: "snooze", until: snoozeUntil(now, 7) });
+  const unsnooze = useArrivalCommand(target, { type: "unsnooze" });
   const send = async (selected: typeof command) => {
     if (busy || !selected.permission) return;
     setError(null);
@@ -87,6 +88,11 @@ export function ArrivalDetail({
         />
       )}
       <h2 className="mt-3 font-semibold text-xl">{arrival.title}</h2>
+      {arrival.snoozedUntil ? (
+        <p className="mt-2 text-muted-foreground text-sm">
+          Snoozed until {new Date(arrival.snoozedUntil).toLocaleString()}
+        </p>
+      ) : null}
       <div className="mt-3">
         <ProjectChip name={project} />
       </div>
@@ -163,10 +169,12 @@ export function ArrivalDetail({
         <Button
           size="sm"
           variant="outline"
-          disabled={busy || !command.permission}
-          onClick={() => setSnoozing(!snoozing)}
+          disabled={busy || !(arrival.state === "snoozed" ? unsnooze : tomorrow).permission}
+          onClick={() =>
+            arrival.state === "snoozed" ? void send(unsnooze) : setSnoozing(!snoozing)
+          }
         >
-          Snooze
+          {arrival.state === "snoozed" ? "Unsnooze" : "Snooze"}
         </Button>
         <Button
           size="sm"
@@ -185,7 +193,7 @@ export function ArrivalDetail({
           Mark duplicate
         </Button>
       </div>
-      {snoozing ? (
+      {snoozing && arrival.state !== "snoozed" ? (
         <div aria-label="Snooze until" className="mt-3 flex gap-2">
           <Button
             size="sm"

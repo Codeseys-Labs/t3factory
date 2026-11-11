@@ -18,7 +18,9 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
 const Remote = Schema.Struct({ number: Schema.Int, url: Schema.String });
@@ -107,11 +109,14 @@ export class FactoryDeliveryStore extends Context.Service<
     ) => Effect.Effect<Option.Option<FactoryDeliveryIntent>, FactoryDeliveryError>;
     /** A `sending` row at startup lost its response: it becomes `unknown`, never `pending`. */
     readonly recoverInterrupted: (updatedAt: string) => Effect.Effect<number, FactoryDeliveryError>;
+    /** The origin of every intent a grant, settle or recovery committed. Never replays the past. */
+    readonly changes: Stream.Stream<FactoryOriginKey>;
   }
 >()("t3/persistence/FactoryDeliveryStore") {}
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  const changed = yield* PubSub.unbounded<FactoryOriginKey>();
   const columns = sql.literal(`id, origin_key AS originKey, thread_id AS threadId,
     project_id AS projectId, kind, acceptance_id AS acceptanceId, repository_json AS repository,
     base_ref AS baseRef, base_branch AS baseBranch, base_sha AS baseSha, head_sha AS headSha, payload_json AS payload,
@@ -211,43 +216,44 @@ const make = Effect.gen(function* () {
           : -1,
     );
   }, Effect.mapError(persistenceError));
-  const grant = Effect.fn("FactoryDeliveryStore.grant")(function* (
-    intent: FactoryDeliveryIntent,
-    steps: {
-      readonly recheck: Effect.Effect<void, FactoryDeliveryError>;
-      readonly enqueue: Effect.Effect<void, FactoryDeliveryError>;
-    },
-  ) {
-    const repository = yield* encodeRepository(intent.repository);
-    const payload = yield* encodePayload(intent.payload);
-    // A merge targets a pull request that already exists, so its remote is known at grant.
-    const remote = intent.remote === null ? null : yield* encodeRemote(intent.remote);
-    return yield* sql.withTransaction(
-      Effect.gen(function* () {
-        const replay = yield* getByCommand(intent.requestCommandId);
-        if (Option.isSome(replay)) {
-          // A command id names one grant: reusing it for another target or payload is refused
-          // rather than answered with someone else's intent.
-          if (
-            replay.value.threadId !== intent.threadId ||
-            replay.value.projectId !== intent.projectId ||
-            replay.value.kind !== intent.kind
-          )
-            return yield* new FactoryDeliveryError({ reason: "intent-not-found" });
-          if (replay.value.payloadDigest !== intent.payloadDigest)
-            return yield* new FactoryDeliveryError({ reason: "payload-changed" });
-          return { intent: replay.value, created: false };
-        }
-        const live =
-          intent.kind === "publish-artifact"
-            ? Option.isSome(yield* getLiveArtifact(intent.originKey, intent.destinationKey))
-            : Option.isSome(yield* getLive(intent.originKey, intent.kind));
-        if (live) return yield* new FactoryDeliveryError({ reason: "already-delivering" });
-        yield* steps.recheck;
-        // The partial unique index arbitrates a concurrent grant that slipped between the read
-        // above and this insert; the loser reads its own row back as absent.
-        if (intent.kind === "publish-artifact") {
-          yield* sql`INSERT INTO factory_artifact_deliveries
+  const grant = Effect.fn("FactoryDeliveryStore.grant")(
+    function* (
+      intent: FactoryDeliveryIntent,
+      steps: {
+        readonly recheck: Effect.Effect<void, FactoryDeliveryError>;
+        readonly enqueue: Effect.Effect<void, FactoryDeliveryError>;
+      },
+    ) {
+      const repository = yield* encodeRepository(intent.repository);
+      const payload = yield* encodePayload(intent.payload);
+      // A merge targets a pull request that already exists, so its remote is known at grant.
+      const remote = intent.remote === null ? null : yield* encodeRemote(intent.remote);
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const replay = yield* getByCommand(intent.requestCommandId);
+          if (Option.isSome(replay)) {
+            // A command id names one grant: reusing it for another target or payload is refused
+            // rather than answered with someone else's intent.
+            if (
+              replay.value.threadId !== intent.threadId ||
+              replay.value.projectId !== intent.projectId ||
+              replay.value.kind !== intent.kind
+            )
+              return yield* new FactoryDeliveryError({ reason: "intent-not-found" });
+            if (replay.value.payloadDigest !== intent.payloadDigest)
+              return yield* new FactoryDeliveryError({ reason: "payload-changed" });
+            return { intent: replay.value, created: false };
+          }
+          const live =
+            intent.kind === "publish-artifact"
+              ? Option.isSome(yield* getLiveArtifact(intent.originKey, intent.destinationKey))
+              : Option.isSome(yield* getLive(intent.originKey, intent.kind));
+          if (live) return yield* new FactoryDeliveryError({ reason: "already-delivering" });
+          yield* steps.recheck;
+          // The partial unique index arbitrates a concurrent grant that slipped between the read
+          // above and this insert; the loser reads its own row back as absent.
+          if (intent.kind === "publish-artifact") {
+            yield* sql`INSERT INTO factory_artifact_deliveries
             (id, origin_key, thread_id, project_id, kind, acceptance_id, brief_id, artifact_path,
              artifact_sha256, artifact_bytes, repository_json, destination_key, payload_json,
              body, payload_digest, granted_by, granted_at, request_command_id, status,
@@ -259,8 +265,8 @@ const make = Effect.gen(function* () {
               ${intent.grantedAt}, ${intent.requestCommandId}, 'pending', ${remote}, NULL,
               ${intent.updatedAt})
             ON CONFLICT DO NOTHING`;
-        } else {
-          yield* sql`INSERT INTO factory_delivery_intents
+          } else {
+            yield* sql`INSERT INTO factory_delivery_intents
             (id, origin_key, thread_id, project_id, kind, acceptance_id, repository_json, base_ref,
              base_branch, base_sha, head_sha, payload_json, payload_digest, granted_by, granted_at,
              request_command_id, status, remote_json, failure, updated_at)
@@ -270,15 +276,20 @@ const make = Effect.gen(function* () {
               ${intent.grantedBy}, ${intent.grantedAt}, ${intent.requestCommandId}, 'pending',
               ${remote}, NULL, ${intent.updatedAt})
             ON CONFLICT DO NOTHING`;
-        }
-        const stored = yield* getByCommand(intent.requestCommandId);
-        if (Option.isNone(stored))
-          return yield* new FactoryDeliveryError({ reason: "already-delivering" });
-        yield* steps.enqueue;
-        return { intent: stored.value, created: true };
-      }),
-    );
-  }, Effect.mapError(persistenceError));
+          }
+          const stored = yield* getByCommand(intent.requestCommandId);
+          if (Option.isNone(stored))
+            return yield* new FactoryDeliveryError({ reason: "already-delivering" });
+          yield* steps.enqueue;
+          return { intent: stored.value, created: true };
+        }),
+      );
+    },
+    Effect.mapError(persistenceError),
+    Effect.tap(({ intent, created }) =>
+      created ? PubSub.publish(changed, intent.originKey) : Effect.void,
+    ),
+  );
   const markSending = Effect.fn("FactoryDeliveryStore.markSending")(function* (
     id: string,
     updatedAt: string,
@@ -291,63 +302,74 @@ const make = Effect.gen(function* () {
       WHERE id = ${id} AND status = 'pending' RETURNING id`;
     return rows.length + artifacts.length === 1;
   }, Effect.mapError(persistenceError));
-  const settle = Effect.fn("FactoryDeliveryStore.settle")(function* (
-    id: string,
-    settlement: FactoryDeliverySettlement,
-  ) {
-    return yield* sql.withTransaction(
-      Effect.gen(function* () {
-        const found = yield* get(id);
-        if (Option.isNone(found) || found.value.status === "confirmed") return found;
-        const current = found.value;
-        let remote =
-          settlement.remote === undefined ? null : yield* encodeRemote(settlement.remote);
-        // An inconclusive read cannot undo an earlier release of the live slot.
-        let effectiveStatus =
-          current.status === "failed" && settlement.status === "unknown"
-            ? "failed"
-            : settlement.status;
-        let failure = settlement.failure;
-        if (effectiveStatus !== "failed") {
-          const live =
-            current.kind === "publish-artifact"
-              ? Option.getOrNull(yield* getLiveArtifact(current.originKey, current.destinationKey))
-              : Option.getOrNull(yield* getLive(current.originKey, current.kind));
-          if (live !== null && live.id !== current.id) {
-            effectiveStatus = "failed";
-            if (current.kind === "publish-artifact") {
-              // The exact attempt marker identifies the old comment despite the replacement.
-              failure ??= settlement.remote
-                ? `Remote delivery found, but replacement delivery ${live.id} already holds the live slot.`
-                : `Replacement delivery ${live.id} already holds the live slot.`;
-            } else {
-              // Head-based PR reads cannot distinguish this attempt from its replacement.
-              remote = null;
-              failure ??= `Replacement delivery ${live.id} already holds the live slot; its remote cannot be attributed to this attempt.`;
+  const settle = Effect.fn("FactoryDeliveryStore.settle")(
+    function* (id: string, settlement: FactoryDeliverySettlement) {
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const found = yield* get(id);
+          if (Option.isNone(found) || found.value.status === "confirmed") return found;
+          const current = found.value;
+          let remote =
+            settlement.remote === undefined ? null : yield* encodeRemote(settlement.remote);
+          // An inconclusive read cannot undo an earlier release of the live slot.
+          let effectiveStatus =
+            current.status === "failed" && settlement.status === "unknown"
+              ? "failed"
+              : settlement.status;
+          let failure = settlement.failure;
+          if (effectiveStatus !== "failed") {
+            const live =
+              current.kind === "publish-artifact"
+                ? Option.getOrNull(
+                    yield* getLiveArtifact(current.originKey, current.destinationKey),
+                  )
+                : Option.getOrNull(yield* getLive(current.originKey, current.kind));
+            if (live !== null && live.id !== current.id) {
+              effectiveStatus = "failed";
+              if (current.kind === "publish-artifact") {
+                // The exact attempt marker identifies the old comment despite the replacement.
+                failure ??= settlement.remote
+                  ? `Remote delivery found, but replacement delivery ${live.id} already holds the live slot.`
+                  : `Replacement delivery ${live.id} already holds the live slot.`;
+              } else {
+                // Head-based PR reads cannot distinguish this attempt from its replacement.
+                remote = null;
+                failure ??= `Replacement delivery ${live.id} already holds the live slot; its remote cannot be attributed to this attempt.`;
+              }
             }
           }
-        }
-        const table =
-          current.kind === "publish-artifact"
-            ? sql("factory_artifact_deliveries")
-            : sql("factory_delivery_intents");
-        yield* sql`UPDATE ${table}
+          const table =
+            current.kind === "publish-artifact"
+              ? sql("factory_artifact_deliveries")
+              : sql("factory_delivery_intents");
+          yield* sql`UPDATE ${table}
           SET status = ${effectiveStatus}, remote_json = COALESCE(${remote}, remote_json),
             failure = ${failure}, updated_at = ${settlement.updatedAt}
           WHERE id = ${id}`;
-        return yield* get(id);
-      }),
-    );
-  }, Effect.mapError(persistenceError));
+          return yield* get(id);
+        }),
+      );
+    },
+    Effect.mapError(persistenceError),
+    Effect.tap((settled) =>
+      Option.isSome(settled) ? PubSub.publish(changed, settled.value.originKey) : Effect.void,
+    ),
+  );
   const recoverInterrupted = Effect.fn("FactoryDeliveryStore.recoverInterrupted")(function* (
     updatedAt: string,
   ) {
-    const rows = yield* sql<{ readonly id: string }>`UPDATE factory_delivery_intents
+    const rows = yield* sql<{
+      readonly originKey: FactoryOriginKey;
+    }>`UPDATE factory_delivery_intents
       SET status = 'unknown', failure = 'server restarted during send', updated_at = ${updatedAt}
-      WHERE status = 'sending' RETURNING id`;
+      WHERE status = 'sending' RETURNING origin_key AS originKey`;
     const artifacts = yield* sql<{ readonly id: string }>`UPDATE factory_artifact_deliveries
       SET status = 'unknown', failure = 'server restarted during send', updated_at = ${updatedAt}
       WHERE status = 'sending' RETURNING id`;
+    yield* PubSub.publishAll(
+      changed,
+      rows.map((row) => row.originKey),
+    );
     return rows.length + artifacts.length;
   }, Effect.mapError(persistenceError));
   return FactoryDeliveryStore.of({
@@ -361,6 +383,7 @@ const make = Effect.gen(function* () {
     markSending,
     settle,
     recoverInterrupted,
+    changes: Stream.fromPubSub(changed),
   });
 });
 export const layer = Layer.effect(FactoryDeliveryStore, make);

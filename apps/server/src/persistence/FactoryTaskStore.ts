@@ -14,7 +14,9 @@ import {
   type FactoryPlanSnapshot,
   type FactoryTaskAssignee,
   type FactoryTaskCountInput,
+  type FactoryTaskDelivery,
   type FactoryTaskLane,
+  type FactoryTaskPullRequest,
   type FactoryTaskRun,
   type FactoryTaskStatus,
   type ProjectId,
@@ -29,12 +31,15 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import { resolveAssignee, setupKey } from "../factory/FactoryTaskAssignee.ts";
 import {
+  deliveryState,
   deriveTree,
   isLiveRunState,
   planningRunState,
   workRunState,
   type DerivedTask,
+  type TaskDeliveryFact,
 } from "../factory/FactoryTaskDerivation.ts";
+import { taskResultOriginKey } from "../factory/FactoryOriginKey.ts";
 import { canonicalExecutionJson } from "../factory/FactoryExecutionDigest.ts";
 
 export const LOCAL_TASK_SOURCE: FactoryTaskSource = {
@@ -88,6 +93,8 @@ export interface TaskResultRow {
   readonly filesOmitted: number;
   readonly commit: string | null;
   readonly observedAt: string;
+  readonly pullRequest: FactoryTaskPullRequest | null;
+  readonly delivery: FactoryTaskDelivery | null;
 }
 
 export interface TaskRunRow extends FactoryTaskRun {
@@ -180,6 +187,8 @@ export class FactoryTaskStore extends Context.Service<
       FactoryTaskError
     >;
     readonly locate: (displayId: string) => Effect.Effect<TaskKey | null, FactoryTaskError>;
+    /** The accepted result revision as stored now; read inside a caller's transaction. */
+    readonly acceptedRevision: (key: TaskKey) => Effect.Effect<number | null, FactoryTaskError>;
     readonly taskOfThread: (threadId: ThreadId) => Effect.Effect<TaskKey | null, FactoryTaskError>;
     readonly rootOfAttempt: (
       attemptId: RunAttemptId,
@@ -339,6 +348,14 @@ const decodeHandles = Schema.decodeUnknownEffect(HandlesJson);
 const encodeHandles = Schema.encodeEffect(HandlesJson);
 const decodeFiles = Schema.decodeUnknownEffect(FilesJson);
 const encodeFiles = Schema.encodeEffect(FilesJson);
+const RemoteJson = Schema.NullOr(
+  Schema.fromJsonString(Schema.Struct({ number: Schema.Number, url: Schema.String })),
+);
+const RepositoryJson = Schema.fromJsonString(
+  Schema.Struct({ host: Schema.String, repository: Schema.String }),
+);
+const decodeRemote = Schema.decodeUnknownEffect(RemoteJson);
+const decodeRepository = Schema.decodeUnknownEffect(RepositoryJson);
 const OutcomeJson = Schema.fromJsonString(Schema.Unknown);
 const decodeOutcome = Schema.decodeUnknownEffect(OutcomeJson);
 const encodeOutcome = Schema.encodeEffect(OutcomeJson);
@@ -530,6 +547,32 @@ const make = Effect.gen(function* () {
       commit: string | null;
       observedAt: string;
     }>`SELECT root_id AS rootId, task_id AS taskId, revision, result_id AS resultId, thread_id AS threadId, plan_revision AS planRevision, kind, summary, files_json AS files, files_omitted AS filesOmitted, commit_sha AS "commit", observed_at AS observedAt FROM factory_task_results WHERE root_id IN ${sql.in(rootIds)} ORDER BY root_id, task_id, revision`;
+    // Publish and Merge of code results, which the delivery service records per result revision.
+    const deliveryKeys = resultRecords
+      .filter((record) => record.kind === "code")
+      .map((record) => taskResultOriginKey(record.rootId, record.taskId, record.revision));
+    const deliveries = new Map<string, TaskDeliveryFact[]>();
+    if (deliveryKeys.length > 0)
+      for (const record of yield* sql<{
+        originKey: string;
+        kind: TaskDeliveryFact["kind"];
+        status: TaskDeliveryFact["status"];
+        remote: string | null;
+        repository: string;
+        failure: string | null;
+      }>`SELECT origin_key AS originKey, kind, status, remote_json AS remote, repository_json AS repository, failure FROM factory_delivery_intents WHERE origin_key IN ${sql.in(deliveryKeys)} ORDER BY granted_at, rowid`) {
+        const repository = yield* decodeRepository(record.repository);
+        const entries = deliveries.get(record.originKey) ?? [];
+        entries.push({
+          kind: record.kind,
+          status: record.status,
+          remote: yield* decodeRemote(record.remote),
+          host: repository.host,
+          repository: repository.repository,
+          failure: record.failure,
+        });
+        deliveries.set(record.originKey, entries);
+      }
     const blockerRecords = yield* sql<{
       rootId: string;
       taskId: string;
@@ -598,7 +641,13 @@ const make = Effect.gen(function* () {
         if (record.rootId !== rootId) continue;
         const { rootId: _rootId, taskId, files, ...fields } = record;
         const results = resultsByTask.get(taskId) ?? [];
-        results.push({ ...fields, files: yield* decodeFiles(files) });
+        results.push({
+          ...fields,
+          files: yield* decodeFiles(files),
+          ...deliveryState(
+            deliveries.get(taskResultOriginKey(rootId, taskId, record.revision)) ?? [],
+          ),
+        });
         resultsByTask.set(taskId, results);
       }
       const derived = deriveTree(
@@ -617,6 +666,8 @@ const make = Effect.gen(function* () {
               runOrdinal: runs.find((run) => run.threadId === result.threadId)?.ordinal ?? 1,
               threadId: result.threadId,
               observedAt: result.observedAt,
+              pullRequest: result.pullRequest,
+              delivery: result.delivery,
             })),
             acceptedRevision: record.acceptedRevision,
             proposalItems:
@@ -996,6 +1047,12 @@ const make = Effect.gen(function* () {
       const rows =
         yield* sql<TaskKey>`SELECT root_id AS rootId, task_id AS taskId FROM factory_tasks WHERE display_id = ${displayId} AND retired = 0`;
       return rows[0] ?? null;
+    }, Effect.mapError(failure)),
+    acceptedRevision: Effect.fn("FactoryTaskStore.acceptedRevision")(function* (key) {
+      const rows = yield* sql<{
+        acceptedRevision: number | null;
+      }>`SELECT accepted_revision AS acceptedRevision FROM factory_tasks WHERE root_id = ${key.rootId} AND task_id = ${key.taskId}`;
+      return rows[0]?.acceptedRevision ?? null;
     }, Effect.mapError(failure)),
     taskOfThread: Effect.fn("FactoryTaskStore.taskOfThread")(function* (threadId) {
       const rows =

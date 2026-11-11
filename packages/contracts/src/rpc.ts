@@ -148,6 +148,8 @@ import {
   FactoryTaskPlanProposalUpdateInput,
   FactoryTaskReadInput,
   FactoryTaskReopenInput,
+  FactoryTaskDeliverInput,
+  FactoryTaskCheckInput,
   FactoryTaskRequestChangesInput,
   FactoryTaskResultReadInput,
   FactoryTaskResultReadResult,
@@ -650,6 +652,9 @@ export const WS_METHODS = {
   factoryAcceptTaskResult: "factory.acceptTaskResult",
   factoryRequestTaskChanges: "factory.requestTaskChanges",
   factoryReopenTask: "factory.reopenTask",
+  factoryPublishTaskResult: "factory.publishTaskResult",
+  factoryMergeTaskResult: "factory.mergeTaskResult",
+  factoryCheckTaskResult: "factory.checkTaskResult",
   factoryReadTaskResult: "factory.readTaskResult",
   factoryAddTaskComment: "factory.addTaskComment",
   factoryReadTaskActivity: "factory.readTaskActivity",
@@ -2514,6 +2519,21 @@ const WsFactoryReopenTaskRpc = Rpc.make(WS_METHODS.factoryReopenTask, {
   success: FactoryTaskMutationResult,
   error: factoryTaskError,
 });
+const WsFactoryPublishTaskResultRpc = Rpc.make(WS_METHODS.factoryPublishTaskResult, {
+  payload: FactoryTaskDeliverInput,
+  success: FactoryTaskMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryMergeTaskResultRpc = Rpc.make(WS_METHODS.factoryMergeTaskResult, {
+  payload: FactoryTaskDeliverInput,
+  success: FactoryTaskMutationResult,
+  error: factoryTaskError,
+});
+const WsFactoryCheckTaskResultRpc = Rpc.make(WS_METHODS.factoryCheckTaskResult, {
+  payload: FactoryTaskCheckInput,
+  success: FactoryTaskMutationResult,
+  error: factoryTaskError,
+});
 const WsFactoryReadTaskResultRpc = Rpc.make(WS_METHODS.factoryReadTaskResult, {
   payload: FactoryTaskResultReadInput,
   success: FactoryTaskResultReadResult,
@@ -2774,6 +2794,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsFactoryAcceptTaskResultRpc,
   WsFactoryRequestTaskChangesRpc,
   WsFactoryReopenTaskRpc,
+  WsFactoryPublishTaskResultRpc,
+  WsFactoryMergeTaskResultRpc,
+  WsFactoryCheckTaskResultRpc,
   WsFactoryReadTaskResultRpc,
   WsFactoryAddTaskCommentRpc,
   WsFactoryReadTaskActivityRpc,

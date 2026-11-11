@@ -2753,6 +2753,12 @@ export const layerWsRpc = (
           factoryTasks.requestChanges(input, { kind: "human", sessionId: currentSessionId }),
         [WS_METHODS.factoryReopenTask]: (input) =>
           factoryTasks.reopen(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryPublishTaskResult]: (input) =>
+          factoryTasks.publish(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryMergeTaskResult]: (input) =>
+          factoryTasks.merge(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryCheckTaskResult]: (input) =>
+          factoryTasks.check(input, { kind: "human", sessionId: currentSessionId }),
         [WS_METHODS.factoryReadTaskResult]: (input) => factoryTasks.readResult(input),
         [WS_METHODS.factoryAddTaskComment]: (input) =>
           factoryTasks.comment(input, { kind: "human", sessionId: currentSessionId }),

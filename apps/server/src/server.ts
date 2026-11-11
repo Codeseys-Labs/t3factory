@@ -758,8 +758,14 @@ const layerFactoryPlanService = FactoryPlanService.layer.pipe(
 );
 // Tasks run through the same plan and execution services the Factory pages use. Planning and
 // intake call it, so they get this same layer: a sibling in one `mergeAll` does not provide it.
+const layerFactoryDeliveryService = FactoryDeliveryService.layer.pipe(
+  Layer.provide(Layer.merge(FactoryAcceptanceService.layer, FactoryKnowledgeService.layer)),
+);
+
 const layerFactoryTaskService = FactoryTaskService.layer.pipe(
-  Layer.provide(Layer.merge(layerFactoryPlanService, layerFactoryWorkService)),
+  Layer.provide(
+    Layer.mergeAll(layerFactoryPlanService, layerFactoryWorkService, layerFactoryDeliveryService),
+  ),
   Layer.provide(RuntimeLayer.layerFactoryExecutionServiceProvided),
 );
 
@@ -810,9 +816,7 @@ const layerMakeRoutes = Layer.mergeAll(
       FactoryAgentProfileService.layer,
       FactoryAcceptanceService.layer,
       FactoryKnowledgeService.layer,
-      FactoryDeliveryService.layer.pipe(
-        Layer.provide(Layer.merge(FactoryAcceptanceService.layer, FactoryKnowledgeService.layer)),
-      ),
+      layerFactoryDeliveryService,
       RuntimeLayer.layerFactoryExecutionServiceProvided,
       FactoryPreparationAcceptanceService.layer.pipe(Layer.provide(RuntimeLayer.layerEventSink)),
       ProjectCoordinatorService.layer,

@@ -51,6 +51,10 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.factoryAcceptTaskResult]: AuthOrchestrationOperateScope,
   [WS_METHODS.factoryRequestTaskChanges]: AuthOrchestrationOperateScope,
   [WS_METHODS.factoryReopenTask]: AuthOrchestrationOperateScope,
+  // Opening and merging a pull request write to the repository's host, as a PR merge does.
+  [WS_METHODS.factoryPublishTaskResult]: AuthSourceControlWriteScope,
+  [WS_METHODS.factoryMergeTaskResult]: AuthSourceControlWriteScope,
+  [WS_METHODS.factoryCheckTaskResult]: AuthOrchestrationOperateScope,
   [WS_METHODS.factoryAddTaskComment]: AuthOrchestrationOperateScope,
   [WS_METHODS.factorySaveAgentProfile]: AuthOrchestrationOperateScope,
   [WS_METHODS.factoryDeleteAgentProfile]: AuthOrchestrationOperateScope,

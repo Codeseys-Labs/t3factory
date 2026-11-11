@@ -4,9 +4,11 @@ import {
   FactoryTaskActivityInput,
   FactoryTaskAssignment,
   FactoryTaskByThreadInput,
+  FactoryTaskCheckInput,
   FactoryTaskCommentInput,
   FactoryTaskCountInput,
   FactoryTaskCreateInput,
+  FactoryTaskDeliverInput,
   FactoryTaskError,
   FactoryTaskListInput,
   FactoryTaskReadInput,
@@ -18,6 +20,7 @@ import {
   FactoryTaskStopInput,
   FactoryTaskUpdateInput,
   type ApplicationStoredEvent,
+  FactoryDeliveryError,
   type FactoryAgentSetup,
   type FactoryExecutionError,
   type FactoryExecutionPolicy,
@@ -56,17 +59,20 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
+import * as DeliveryStore from "../persistence/FactoryDeliveryStore.ts";
 import * as ExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as Tasks from "../persistence/FactoryTaskStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as Processes from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as Delivery from "./FactoryDeliveryService.ts";
 import { executionDigest } from "./FactoryExecutionDigest.ts";
 import * as Executions from "./FactoryExecutionService.ts";
 import type { FactoryPlanActor } from "./FactoryPlanReducer.ts";
 import * as Plans from "./FactoryPlanService.ts";
 import { resolveAssignee, setupKey } from "./FactoryTaskAssignee.ts";
 import * as Changes from "./FactoryTaskChanges.ts";
+import { parseTaskResultOriginKey, taskResultOriginKey } from "./FactoryOriginKey.ts";
 import { checkLaneMove, isLiveRunState } from "./FactoryTaskDerivation.ts";
 import * as Work from "./FactoryWorkService.ts";
 
@@ -119,6 +125,24 @@ export class FactoryTaskService extends Context.Service<
     ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
     readonly reopen: (
       input: FactoryTaskReopenInput,
+      actor: FactoryPlanActor,
+    ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
+    /**
+     * Opens a pull request from the accepted code result. A person's act only: no rule, plan or
+     * agent publishes, and no MCP tool exposes it.
+     */
+    readonly publish: (
+      input: FactoryTaskDeliverInput,
+      actor: FactoryPlanActor,
+    ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
+    /** Merges the published pull request at the accepted commit. A person's act only. */
+    readonly merge: (
+      input: FactoryTaskDeliverInput,
+      actor: FactoryPlanActor,
+    ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
+    /** Reads the host to settle an unconfirmed Publish or Merge. It never sends again. */
+    readonly check: (
+      input: FactoryTaskCheckInput,
       actor: FactoryPlanActor,
     ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
     readonly readResult: (
@@ -202,6 +226,8 @@ const decodeRetry = Schema.decodeEffect(FactoryTaskRetryInput);
 const decodeAccept = Schema.decodeEffect(FactoryTaskAcceptInput);
 const decodeRequestChanges = Schema.decodeEffect(FactoryTaskRequestChangesInput);
 const decodeReopen = Schema.decodeEffect(FactoryTaskReopenInput);
+const decodeDeliver = Schema.decodeEffect(FactoryTaskDeliverInput);
+const decodeCheck = Schema.decodeEffect(FactoryTaskCheckInput);
 const decodeResultRead = Schema.decodeEffect(FactoryTaskResultReadInput);
 const decodeComment = Schema.decodeEffect(FactoryTaskCommentInput);
 const decodeActivity = Schema.decodeEffect(FactoryTaskActivityInput);
@@ -284,6 +310,52 @@ const executionError = (error: FactoryExecutionError) => {
   return new FactoryTaskError({ reason: reasons[error.reason], cause: error });
 };
 
+/** Plain words for what stopped a Publish or Merge; the client shows `detail` as it is. */
+const deliveryRefusal = (error: FactoryDeliveryError): FactoryTaskError => {
+  const as = (reason: FactoryTaskError["reason"]) => new FactoryTaskError({ reason, cause: error });
+  const refused = (detail: string) =>
+    new FactoryTaskError({ reason: "delivery-refused", detail, cause: error });
+  switch (error.reason) {
+    case "already-delivering":
+      return as("delivery-active");
+    case "not-published":
+      return as("not-published");
+    case "not-accepted":
+    case "acceptance-stale":
+      return as("not-accepted");
+    case "persistence-failure":
+    case "intent-not-found":
+      return as("persistence-failure");
+    case "missing-base-branch":
+      return refused(
+        "The repository has no default branch on origin to open a pull request against.",
+      );
+    case "capability-unsupported":
+      return refused("This repository's host can't open or merge pull requests from here.");
+    case "repository-changed":
+      return refused("The project's origin repository changed or can't be read.");
+    case "worktree-unavailable":
+      return refused("The accepted commit is no longer in the project's repository.");
+    case "pull-request-head-moved":
+      return refused("The pull request has commits beyond the accepted one. Merge it on the host.");
+    case "payload-changed":
+      return refused("The pull request's base branch changed on the host.");
+    default:
+      return refused(error.message);
+  }
+};
+
+/** `t3/T-36-audio-ring-demo`, and `-rev2` for a later revision, so each revision has its own. */
+const deliveryBranch = (displayId: string, title: string, revision: number) => {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/g, "");
+  return `t3/${displayId}${slug ? `-${slug}` : ""}${revision > 1 ? `-rev${revision}` : ""}`;
+};
+
 const sameSetup = (left: FactoryAgentSetup | undefined, right: FactoryAgentSetup) =>
   left !== undefined && executionDigest(left) === executionDigest(right);
 const unfinished = (status: FactoryTaskStatus) => status !== "done" && status !== "canceled";
@@ -316,6 +388,8 @@ const make = Effect.gen(function* () {
   const settings = yield* ServerSettings.ServerSettingsService;
   const processes = yield* Processes.ProcessRunner;
   const changes = yield* Changes.FactoryTaskChanges;
+  const delivery = yield* Delivery.FactoryDeliveryService;
+  const deliveryStore = yield* DeliveryStore.FactoryDeliveryStore;
   const environmentId = yield* (yield* ServerEnvironmentIdentity).getEnvironmentId;
 
   const transact = <A, R>(effect: Effect.Effect<A, FactoryTaskError, R>) =>
@@ -1373,6 +1447,158 @@ const make = Effect.gen(function* () {
     },
   );
 
+  /** The accepted code result a Publish or Merge names; any other revision is refused. */
+  const deliverable = Effect.fn("FactoryTaskService.deliverable")(function* (
+    task: Tasks.TaskView,
+    revision: number,
+  ) {
+    const result = task.results.find((entry) => entry.revision === revision);
+    if (result === undefined) return yield* refuse("no-result");
+    if (task.row.acceptedRevision === null) return yield* refuse("not-accepted");
+    if (task.row.acceptedRevision !== revision) return yield* refuse("result-conflict");
+    if (result.kind !== "code" || result.commit === null) return yield* refuse("not-code");
+    return { ...result, commit: result.commit };
+  });
+
+  const deliver = Effect.fn("FactoryTaskService.deliver")(function* (
+    kind: "publish-pr" | "merge-pr",
+    raw: FactoryTaskDeliverInput,
+    actor: FactoryPlanActor,
+  ) {
+    yield* requireHuman(actor);
+    const input = yield* decodeDeliver(raw).pipe(Effect.mapError(invalid));
+    const command = yield* begin(kind, input.commandId, actor, input);
+    if (command.replayed) return yield* replay(input.ref);
+    const { task } = yield* requireTask(input.ref);
+    const { row } = task;
+    const result = yield* deliverable(task, input.revision);
+    const description =
+      kind === "publish-pr"
+        ? ((yield* plans.read({ ref: planRef(row) }).pipe(Effect.mapError(planError))).tasks.find(
+            (entry) => entry.id === row.taskId,
+          )?.context ?? "")
+        : "";
+    yield* delivery
+      .grantCommit({
+        kind,
+        commandId: derived(input.commandId, kind),
+        originKey: taskResultOriginKey(row.rootId, row.taskId, result.revision),
+        acceptanceId: `task:${row.rootId}/${row.taskId}@${result.revision}`,
+        projectId: row.projectId,
+        threadId: result.threadId,
+        headSha: result.commit,
+        publish: {
+          title: row.title,
+          body: [description.trim(), `Task ${row.displayId} · result rev ${result.revision}`]
+            .filter((part) => part !== "")
+            .join("\n\n"),
+          headBranch: deliveryBranch(row.displayId, row.title, result.revision),
+        },
+        // Inside the grant transaction: a reopen between the click and the grant wins.
+        recheck: store.acceptedRevision(row).pipe(
+          Effect.mapError(
+            (cause) => new FactoryDeliveryError({ reason: "persistence-failure", cause }),
+          ),
+          Effect.flatMap((accepted) =>
+            accepted === result.revision
+              ? Effect.void
+              : Effect.fail(new FactoryDeliveryError({ reason: "not-accepted" })),
+          ),
+        ),
+      })
+      .pipe(Effect.mapError(deliveryRefusal));
+    yield* transact(
+      Effect.gen(function* () {
+        yield* store.refreshRoots([row.rootId]);
+        yield* command.record(row);
+        yield* changes.announce({ rootIds: [row.rootId] });
+      }),
+    );
+    return { task: yield* summaryOf(row), replayed: false };
+  });
+
+  const publish: FactoryTaskService["Service"]["publish"] = (input, actor) =>
+    deliver("publish-pr", input, actor);
+  const merge: FactoryTaskService["Service"]["merge"] = (input, actor) =>
+    deliver("merge-pr", input, actor);
+
+  const check: FactoryTaskService["Service"]["check"] = Effect.fn("FactoryTaskService.check")(
+    function* (raw, actor) {
+      yield* requireHuman(actor);
+      const input = yield* decodeCheck(raw).pipe(Effect.mapError(invalid));
+      const { task } = yield* requireTask(input.ref);
+      const { row } = task;
+      for (const result of task.results) {
+        if (result.delivery?.state !== "unconfirmed") continue;
+        const originKey = taskResultOriginKey(row.rootId, row.taskId, result.revision);
+        for (const kind of ["publish-pr", "merge-pr"] as const) {
+          const live = yield* deliveryStore
+            .getLive(originKey, kind)
+            .pipe(Effect.mapError(deliveryRefusal));
+          if (live._tag === "Some" && live.value.status === "unknown")
+            yield* delivery
+              .reconcile({ projectId: row.projectId, intentId: live.value.id })
+              .pipe(Effect.mapError(deliveryRefusal));
+        }
+      }
+      yield* followDeliveries(row);
+      return { task: yield* summaryOf(row), replayed: false };
+    },
+  );
+
+  /**
+   * Mirrors what the delivery store settled for one task: the index, and one activity entry per
+   * pull request opened or merged.
+   */
+  const followDeliveries = Effect.fn("FactoryTaskService.followDeliveries")(function* (
+    key: Tasks.TaskKey,
+  ) {
+    const { task } = yield* loadTask(key);
+    const at = yield* now;
+    const entries: Array<{
+      readonly id: string;
+      readonly revision: number;
+      readonly event: "opened" | "merged";
+      readonly remote: { readonly number: number; readonly url: string };
+    }> = [];
+    for (const result of task.results) {
+      if (result.kind !== "code") continue;
+      const originKey = taskResultOriginKey(key.rootId, key.taskId, result.revision);
+      for (const kind of ["publish-pr", "merge-pr"] as const) {
+        const live = yield* deliveryStore
+          .getLive(originKey, kind)
+          .pipe(Effect.mapError(asTaskError));
+        if (live._tag === "Some" && live.value.status === "confirmed" && live.value.remote !== null)
+          entries.push({
+            id: live.value.id,
+            revision: result.revision,
+            event: kind === "publish-pr" ? "opened" : "merged",
+            remote: live.value.remote,
+          });
+      }
+    }
+    yield* transact(
+      Effect.gen(function* () {
+        for (const entry of entries)
+          yield* store.appendActivity({
+            key,
+            at,
+            actor: PERSON,
+            event: {
+              type: "pull-request",
+              action: entry.event,
+              revision: entry.revision,
+              number: entry.remote.number,
+              url: entry.remote.url,
+            },
+            dedupeKey: `pull-request:${entry.id}`,
+          });
+        yield* store.refreshRoots([key.rootId]);
+        yield* changes.announce({ rootIds: [key.rootId] });
+      }),
+    );
+  });
+
   const readResult: FactoryTaskService["Service"]["readResult"] = Effect.fn(
     "FactoryTaskService.readResult",
   )(function* (raw) {
@@ -1416,6 +1642,8 @@ const make = Effect.gen(function* () {
               runOrdinal: task.runs.find((entry) => entry.threadId === row.threadId)?.ordinal ?? 1,
               threadId: row.threadId,
               observedAt: row.observedAt,
+              pullRequest: row.pullRequest,
+              delivery: row.delivery,
             },
       text,
       files: row.files,
@@ -1637,6 +1865,13 @@ const make = Effect.gen(function* () {
     ),
     Effect.forkScoped,
   );
+  yield* deliveryStore.changes.pipe(
+    Stream.runForEach((originKey) => {
+      const task = parseTaskResultOriginKey(originKey);
+      return task === null ? Effect.void : quietly(followDeliveries(task));
+    }),
+    Effect.forkScoped,
+  );
   yield* settings.streamChanges.pipe(
     Stream.runForEach((next) => quietly(mirrorEnvironmentDefault(next.defaultModelSelection))),
     Effect.forkScoped,
@@ -1654,6 +1889,9 @@ const make = Effect.gen(function* () {
     accept,
     requestChanges,
     reopen,
+    publish,
+    merge,
+    check,
     readResult,
     comment,
     activity,

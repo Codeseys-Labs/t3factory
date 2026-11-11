@@ -167,8 +167,8 @@ export function InboxPage() {
             className="flex items-center gap-3 border-b px-6 py-2 text-muted-foreground text-sm"
           >
             <p>More may be waiting on you.</p>
-            <Button size="xs" variant="outline" onClick={data.reload}>
-              Load more
+            <Button size="xs" variant="outline" onClick={data.reloadAsks}>
+              Reload
             </Button>
           </div>
         ) : null}

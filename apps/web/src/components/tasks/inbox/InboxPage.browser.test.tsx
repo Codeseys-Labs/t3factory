@@ -203,6 +203,7 @@ function setup() {
     ],
     scope: { targets: [], projects: [], single: null, label: "All projects" },
     reload: vi.fn(),
+    reloadAsks: vi.fn(),
     loadMore: vi.fn(),
   };
   return state;
@@ -551,14 +552,15 @@ it.each(["loading", "offline", "forbidden", "failed", "unsupported"] as const)(
   },
 );
 
-it("offers to load an incomplete ask list and disables mutations without permission", async () => {
+it("reloads only the asks of an incomplete ask list and disables mutations without permission", async () => {
   setup();
   state.data.incomplete = true;
   state.search = { tab: "triage" };
   state.permission = false;
   await using screen = await render(<InboxPage />);
-  await userEvent.click(screen.getByRole("button", { name: "Load more", exact: true }));
-  expect(state.data.reload).toHaveBeenCalledOnce();
+  await userEvent.click(screen.getByRole("button", { name: "Reload", exact: true }));
+  expect(state.data.reloadAsks).toHaveBeenCalledOnce();
+  expect(state.data.reload).not.toHaveBeenCalled();
   await expect.element(screen.getByRole("button", { name: "Accept", exact: true })).toBeDisabled();
   expect(state.resolve).not.toHaveBeenCalled();
 });

@@ -448,6 +448,7 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
         "factory_read_plan",
         "factory_read_plan_history",
         "factory_apply_plan",
+        "factory_propose_subtasks",
       ].includes(tool.name),
     ),
   );

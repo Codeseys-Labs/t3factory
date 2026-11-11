@@ -31,7 +31,9 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
@@ -110,7 +112,9 @@ const git = Layer.mock(Processes.ProcessRunner)({
       stdout:
         input.args[0] === "rev-parse"
           ? `${projectHead}\n`
-          : "180\t20\tsrc/board.ts\u00004\t0\tsrc/card.ts\u0000",
+          : input.args[4] === input.args[5]
+            ? ""
+            : "180\t20\tsrc/board.ts\u00004\t0\tsrc/card.ts\u0000",
       stderr: "",
       code: ChildProcessSpawner.ExitCode(0),
       timedOut: false,
@@ -232,6 +236,29 @@ const deliveries = Layer.effect(
     ),
   ),
 );
+/** Runs once before the next plan read, so a test can hold one command at that point. */
+class PlanGate extends Context.Service<PlanGate, { next: Effect.Effect<void> | null }>()(
+  "t3/factory/FactoryTaskService.test/PlanGate",
+) {}
+const gatedPlans = Layer.effect(
+  Plans.FactoryPlanService,
+  Effect.gen(function* () {
+    const plans = yield* Plans.FactoryPlanService;
+    const gate = yield* PlanGate;
+    return Plans.FactoryPlanService.of({
+      ...plans,
+      read: (input) =>
+        Effect.suspend(() => {
+          const next = gate.next ?? Effect.void;
+          gate.next = null;
+          return next;
+        }).pipe(Effect.andThen(plans.read(input))),
+    });
+  }),
+).pipe(
+  Layer.provide(Plans.layer),
+  Layer.provideMerge(Layer.sync(PlanGate, () => ({ next: null }))),
+);
 const eventStores = EventStore.layerFromOrchestrationEventStore.pipe(
   Layer.provideMerge(OrchestrationEventStore.layer),
 );
@@ -259,7 +286,7 @@ const layerWith = (environmentDefault: ModelSelection | null = null) => {
     }),
   );
   const engine = Layer.mergeAll(
-    Plans.layer,
+    gatedPlans,
     Executions.layer,
     ExecutionStore.layer,
     deliveries,
@@ -539,6 +566,34 @@ it.effect("replays a command id, refuses it with other input, and reports a stal
         (yield* tasks.update({ ...move, lane: "backlog" }, human).pipe(Effect.flip)).reason,
         "command-conflict",
       );
+      // Two devices that read the same version: one write lands, the other is refused, not lost.
+      const retype = (type: "feature" | "bug") =>
+        tasks
+          .update(
+            {
+              commandId: command(`retype:${type}`),
+              ref,
+              expectedVersion: moved.task.version,
+              type,
+            },
+            human,
+          )
+          .pipe(Effect.flip, Effect.result);
+      const gate = yield* PlanGate;
+      const reached = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      gate.next = Deferred.succeed(reached, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+      );
+      const first = yield* Effect.forkChild(retype("feature"));
+      yield* Deferred.await(reached);
+      const second = yield* Effect.forkChild(retype("bug"), { startImmediately: true });
+      yield* Deferred.succeed(release, undefined);
+      const refused = [yield* Fiber.join(first), yield* Fiber.join(second)].flatMap((write) =>
+        write._tag === "Success" ? [write.success.reason] : [],
+      );
+      assert.deepEqual(refused, ["version-conflict"]);
+      assert.equal((yield* tasks.read({ task: { ref } })).task.version, moved.task.version + 1);
       assert.equal(
         (yield* tasks
           .read({ task: { ref: { ...ref, environmentId: EnvironmentId.make("elsewhere") } } })
@@ -1519,11 +1574,32 @@ it.effect(
           "run-active",
         );
 
-        yield* finish(second, "sealed");
+        // A retry repeats the failed attempt: the same note, from the same result.
+        yield* finish(second, "failed");
+        const failed = yield* until(task, (current) => current.run?.state === "failed");
+        const third = (yield* tasks.retry(
+          { commandId: command("retry-changes"), ref: task.ref, expectedVersion: failed.version },
+          human,
+        )).task.run!;
+        const retriedBinding = yield* sql<{
+          text: string;
+          baseRef: string;
+        }>`SELECT json_extract(binding_json, '$.inputText') AS text, json_extract(binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef FROM factory_execution_bindings WHERE thread_id = ${third.threadId}`;
+        assert.include(retriedBinding[0]!.text, "Keep cursor paging");
+        assert.equal(retriedBinding[0]!.baseRef, resultCommit);
+
+        // The revision changed no file of its own, yet still carries the code under review.
+        yield* finish(third, "sealed");
         const replaced = yield* until(task, (current) => current.result?.revision === 2);
         assert.deepEqual(
-          [replaced.status, replaced.result?.state, replaced.result?.runOrdinal],
-          ["in-review", "ready", 2],
+          [
+            replaced.status,
+            replaced.result?.state,
+            replaced.result?.runOrdinal,
+            replaced.result?.kind,
+            replaced.result?.summary,
+          ],
+          ["in-review", "ready", 3, "code", "+184 −20 · 2 files"],
         );
         assert.deepEqual(
           yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${task.ref.taskId}`,

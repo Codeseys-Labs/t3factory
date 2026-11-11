@@ -963,10 +963,7 @@ it.effect(
       assert.deepEqual(confirmed.remote, pullRequest);
       assert.deepEqual(state.calls, []);
       assert.lengthOf(state.links, 1);
-      assert.equal(
-        (yield* service.reconcile({ projectId, intentId: granted.id }).pipe(Effect.flip)).reason,
-        "not-reconcilable",
-      );
+      assert.deepEqual(yield* service.reconcile({ projectId, intentId: granted.id }), confirmed);
       assert.equal(
         (yield* service.reconcile({ projectId, intentId: "delivery:missing" }).pipe(Effect.flip))
           .reason,
@@ -1064,6 +1061,36 @@ it.effect.each(["publish-pr", "merge-pr"] as const)(
   },
 );
 
+it.effect.each(["merged", "open", "closed", "head-moved", "base-moved", "unreadable"] as const)(
+  "checking a confirmed publication observes %s without sending",
+  (outcome) => {
+    const { state, layer } = harness();
+    return Effect.gen(function* () {
+      yield* accept;
+      const service = yield* Delivery.FactoryDeliveryService;
+      const granted = yield* executeGranted();
+      const calls = [...state.calls];
+      const outbox = yield* outboxRows;
+      state.pr.state = outcome === "open" || outcome === "closed" ? outcome : "merged";
+      if (outcome === "head-moved") state.pr.headSha = second;
+      if (outcome === "base-moved") state.pr.baseBranch = "other";
+      if (outcome === "unreadable") state.read = "fail";
+      const merged = yield* service.reconcile({ projectId, intentId: granted.id });
+      assert.deepEqual(merged.remote, {
+        ...pullRequest,
+        ...(outcome === "merged" ? { merged: true } : {}),
+      });
+      assert.equal(merged.status, "confirmed");
+      assert.deepEqual(state.calls, calls);
+      assert.deepEqual(yield* outboxRows, outbox);
+      assert.deepEqual(
+        Option.getOrThrow(yield* (yield* DeliveryStore.FactoryDeliveryStore).get(granted.id)),
+        merged,
+      );
+    }).pipe(Effect.provide(layer));
+  },
+);
+
 it.effect("a missing publication stays unknown and blocks a replacement grant", () => {
   const { state, layer } = harness();
   return Effect.gen(function* () {
@@ -1106,7 +1133,10 @@ it.effect.each(["open", "closed", "merged"] as const)(
       });
       if (recovered.kind !== "publish-pr") return yield* Effect.die("expected publication");
       assert.equal(recovered.status, "confirmed");
-      assert.deepEqual(recovered.remote, pullRequest);
+      assert.deepEqual(recovered.remote, {
+        ...pullRequest,
+        ...(state.pr.state === "merged" ? { merged: true } : {}),
+      });
       assert.equal(recovered.headSha, first);
       assert.equal(recovered.baseBranch, baseBranch);
       assert.deepEqual(recovered.repository, intent.repository);

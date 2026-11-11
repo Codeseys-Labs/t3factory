@@ -1556,16 +1556,22 @@ const make = Effect.gen(function* () {
       const { task } = yield* requireTask(input.ref);
       const { row } = task;
       for (const result of task.results) {
-        if (result.delivery?.state !== "unconfirmed") continue;
+        if (result.delivery?.state !== "unconfirmed" && result.pullRequest?.state !== "open")
+          continue;
         const originKey = taskResultOriginKey(row.rootId, row.taskId, result.revision);
-        for (const kind of ["publish-pr", "merge-pr"] as const) {
+        for (const kind of ["merge-pr", "publish-pr"] as const) {
           const live = yield* deliveryStore
             .getLive(originKey, kind)
             .pipe(Effect.mapError(deliveryRefusal));
-          if (live._tag === "Some" && live.value.status === "unknown")
+          if (
+            live._tag === "Some" &&
+            (live.value.status === "unknown" ||
+              (kind === "publish-pr" && live.value.status === "confirmed"))
+          )
             yield* delivery
               .reconcile({ projectId: row.projectId, intentId: live.value.id })
               .pipe(Effect.mapError(deliveryRefusal));
+          if (kind === "merge-pr" && live._tag === "Some") break;
         }
       }
       yield* followDeliveries(row);
@@ -1595,13 +1601,25 @@ const make = Effect.gen(function* () {
         const live = yield* deliveryStore
           .getLive(originKey, kind)
           .pipe(Effect.mapError(asTaskError));
-        if (live._tag === "Some" && live.value.status === "confirmed" && live.value.remote !== null)
+        if (
+          live._tag === "Some" &&
+          live.value.status === "confirmed" &&
+          live.value.remote !== null
+        ) {
           entries.push({
             id: live.value.id,
             revision: result.revision,
             event: kind === "publish-pr" ? "opened" : "merged",
             remote: live.value.remote,
           });
+          if (kind === "publish-pr" && live.value.remote.merged)
+            entries.push({
+              id: `${live.value.id}:merged`,
+              revision: result.revision,
+              event: "merged",
+              remote: live.value.remote,
+            });
+        }
       }
     }
     yield* transact(

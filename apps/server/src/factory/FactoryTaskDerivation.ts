@@ -58,7 +58,11 @@ export const isLiveRunState = (state: FactoryTaskRunState): boolean =>
 export interface TaskDeliveryFact {
   readonly kind: "publish-pr" | "merge-pr";
   readonly status: "pending" | "sending" | "confirmed" | "failed" | "unknown";
-  readonly remote: { readonly number: number; readonly url: string } | null;
+  readonly remote: {
+    readonly number: number;
+    readonly url: string;
+    readonly merged?: true | undefined;
+  } | null;
   readonly host: string;
   readonly repository: string;
   readonly failure: string | null;
@@ -86,9 +90,9 @@ export function deliveryState(deliveries: ReadonlyArray<TaskDeliveryFact>): {
   const published = deliveries.findLast(
     (entry) => entry.kind === "publish-pr" && entry.status === "confirmed" && entry.remote !== null,
   );
-  const merged = deliveries.some(
-    (entry) => entry.kind === "merge-pr" && entry.status === "confirmed",
-  );
+  const merged =
+    published?.remote?.merged === true ||
+    deliveries.some((entry) => entry.kind === "merge-pr" && entry.status === "confirmed");
   const latest = deliveries.at(-1);
   return {
     pullRequest:

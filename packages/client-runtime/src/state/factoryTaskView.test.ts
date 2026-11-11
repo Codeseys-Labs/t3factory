@@ -214,7 +214,7 @@ describe("task presentation", () => {
     ["C4", "T-38", "subtask-attention", "open-task", null],
     ["C5", "T-38.2", "question", "answer", null],
     ["C6", "T-36", "review", "accept", "request-changes"],
-    ["C7", "T-38.1", "done", "merge", null],
+    ["C7", "T-38.1", "done", "merge", "check"],
     ["C8", "T-29", "failed", "retry", "reassign"],
     ["C9", "T-41", "working", "stop", null],
     ["C10", "T-39", "approval", "approve", "always-allow"],

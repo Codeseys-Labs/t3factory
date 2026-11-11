@@ -463,6 +463,7 @@ export function presentFactoryTaskBanner(input: {
       delivery.title ?? accepted,
       delivery.detail ?? line,
       delivery.action ? action(delivery.action.kind, delivery.action.label) : null,
+      result.pullRequest?.state === "open" ? action("check", "Check") : null,
     );
   }
   if (need && need.ref.taskId !== task.ref.taskId)

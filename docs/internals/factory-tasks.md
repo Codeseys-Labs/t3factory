@@ -31,6 +31,9 @@ No rule, approved plan or finished blocker starts an agent (issue #84). Intake r
 an `auto-start` rule can be saved but not enabled (`autonomy-not-allowed`). An unblocked sub-task
 stays Ready. Accepting a result is not publishing.
 
+Publish and Merge each require a person's action for the accepted code revision. Check only reads
+the host; a merge observed there is recorded against the publication's pinned head and base branch.
+
 ## Traps
 
 - A work run's thread refuses messages (`FactoryExecutionLifecycle.guardCommand`), so "Message agent"

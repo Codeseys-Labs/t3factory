@@ -349,7 +349,13 @@ const encodeHandles = Schema.encodeEffect(HandlesJson);
 const decodeFiles = Schema.decodeUnknownEffect(FilesJson);
 const encodeFiles = Schema.encodeEffect(FilesJson);
 const RemoteJson = Schema.NullOr(
-  Schema.fromJsonString(Schema.Struct({ number: Schema.Number, url: Schema.String })),
+  Schema.fromJsonString(
+    Schema.Struct({
+      number: Schema.Number,
+      url: Schema.String,
+      merged: Schema.optional(Schema.Literal(true)),
+    }),
+  ),
 );
 const RepositoryJson = Schema.fromJsonString(
   Schema.Struct({ host: Schema.String, repository: Schema.String }),

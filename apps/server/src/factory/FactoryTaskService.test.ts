@@ -210,6 +210,8 @@ const deliveries = Layer.effect(
       reconcile: (input) =>
         Effect.gen(function* () {
           probe.checks.push(input.intentId);
+          if (probe.found.remote && "merged" in probe.found.remote && probe.found.remote.merged)
+            return Option.getOrThrow(yield* store.recordObservedMerge(input.intentId, at));
           const settled = yield* store.settle(input.intentId, { ...probe.found, updatedAt: at });
           return Option.getOrThrow(settled);
         }),
@@ -1385,6 +1387,51 @@ it.effect(
         );
       }),
     ),
+);
+
+it.effect("Check records a directly merged task PR and its activity without a merge grant", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { tasks, create, start, finish, until } = yield* harness;
+      const store = yield* DeliveryStore.FactoryDeliveryStore;
+      const probe = yield* DeliveryProbe;
+      const task = yield* create("Direct host merge");
+      yield* finish((yield* start(task)).run!, "sealed");
+      yield* until(task, (current) => current.status === "in-review");
+      yield* tasks.accept({ commandId: command("accept-host"), ref: task.ref, revision: 1 }, human);
+      yield* tasks.publish(
+        { commandId: command("publish-host"), ref: task.ref, revision: 1 },
+        human,
+      );
+      const intentId = "delivery:factory-task:publish-pr:publish-host";
+      yield* store.settle(intentId, {
+        status: "confirmed",
+        remote: { number: 12, url: pullUrl },
+        failure: null,
+        updatedAt: at,
+      });
+      yield* until(task, (current) => current.result?.pullRequest?.state === "open");
+      probe.found = {
+        status: "confirmed",
+        remote: { number: 12, url: pullUrl, merged: true },
+        failure: null,
+      };
+      const checked = (yield* tasks.check(
+        { commandId: command("check-host"), ref: task.ref },
+        human,
+      )).task;
+      assert.equal(checked.result?.pullRequest?.state, "merged");
+      assert.deepEqual(probe.grants, ["publish-pr"]);
+      assert.deepEqual(probe.checks, [intentId]);
+      yield* tasks.check({ commandId: command("check-host-again"), ref: task.ref }, human);
+      assert.deepEqual(
+        (yield* tasks.activity({ ref: task.ref })).entries.flatMap((entry) =>
+          entry.event.type === "pull-request" ? [entry.event.action] : [],
+        ),
+        ["opened", "merged"],
+      );
+    }),
+  ),
 );
 
 it.effect("a task made from retained Work carries it as its source", () =>

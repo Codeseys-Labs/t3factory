@@ -36,6 +36,9 @@ new run with it.
 **Accept** records your review of that revision and marks the task Done. **Request changes** runs the
 task again with your note. **Reopen**, in the task page's menu, takes a Done task back to In review.
 
+After accepting a code result, **Publish** opens a pull request and **Merge** merges it. Use **Check**
+to refresh its state after merging on the host, or when a Publish or Merge needs confirmation.
+
 ## Automations
 
 **Automations** connects sources (GitHub issues, a feed, or a schedule), rules that decide which new

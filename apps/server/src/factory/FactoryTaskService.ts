@@ -1414,6 +1414,12 @@ const make = Effect.gen(function* () {
       const at = yield* now;
       yield* transact(
         Effect.gen(function* () {
+          // A Request changes may have started a run since the first check; mirror what the
+          // engine admitted and check again where the acceptance is written.
+          const sealed = yield* store.syncRuns(row.rootId, at);
+          yield* reviewed((yield* loadTask(row)).task, input.revision);
+          if (sealed.some((result) => result.taskId === row.taskId))
+            return yield* refuse("result-conflict");
           yield* store.updateBoard(row, {
             acceptedRevision: latest.revision,
             bumpVersion: true,

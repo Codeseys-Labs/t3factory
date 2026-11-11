@@ -440,6 +440,14 @@ it.effect(
       assert.equal(h.launches[0]!.modelSelection.model, "gpt-6-sol");
       assert.equal(yield* reservedThread, h.launches[0]!.threadId);
       assert.lengthOf(h.runs, 1);
+      // The replaced request's command never launches or takes the current request back.
+      assert.equal(
+        (yield* h.service.requestBreakdown(h.request, human).pipe(Effect.flip)).reason,
+        "version-conflict",
+      );
+      assert.lengthOf(h.launches, 1);
+      assert.equal(yield* reservedThread, h.launches[0]!.threadId);
+      assert.lengthOf(h.runs, 1);
     }),
 );
 

@@ -1098,7 +1098,7 @@ it.effect.each(
       const running = yield* start(task);
       yield* finish(running.run!, operation === "retry" ? "failed" : "sealed", "Answer");
       yield* until(task, (current) =>
-        operation === "retry" ? current.liveRuns.length === 0 : current.status === "in-review",
+        operation === "retry" ? current.run?.endedAt != null : current.status === "in-review",
       );
       if (condition === "blocked") {
         const ref = { environmentId, projectId, rootId: task.ref.rootId };
@@ -1872,6 +1872,33 @@ it.effect(
         assert.deepEqual(
           [waiting.liveRuns.map((live) => live.displayId), waiting.progress],
           [["T-1.2"], { done: 0, total: 2 }],
+        );
+        // Another round of T-1.1 would move the plan revision under T-1.2's run, so it waits.
+        assert.equal(
+          (yield* tasks
+            .requestChanges(
+              {
+                commandId: command("changes-beside-sibling"),
+                ref: contract.ref,
+                revision: 1,
+                note: "Split the migration",
+              },
+              human,
+            )
+            .pipe(Effect.flip)).reason,
+          "run-active",
+        );
+        assert.deepEqual(
+          yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${contract.ref.taskId}`,
+          [{ note: null }],
+        );
+        assert.deepEqual(
+          yield* engine.claimPhase({
+            runAttemptId: yield* attemptOf(guideRun),
+            phase: "workspace",
+            claimantId: "worker",
+          }),
+          { status: "claimed" },
         );
 
         // A title edit moves the plan revision under the running sibling. The engine stops

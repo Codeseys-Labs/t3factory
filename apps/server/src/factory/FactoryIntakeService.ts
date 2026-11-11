@@ -391,8 +391,11 @@ const make = Effect.gen(function* () {
       // A periodic check never revives a feed the host told us to stop reading.
       if (feed !== undefined && feed.status === "suspended" && !options.rebind) return failed;
       if (feed === undefined || feed.status === "suspended") {
+        const bindingKey = yield* crypto
+          .digest("SHA-256", new TextEncoder().encode(url))
+          .pipe(Effect.map(Hex.encode), Effect.orDie);
         feed = (yield* feeds.bindSource({
-          commandId: CommandId.make(`factory-intake:${source.id}`),
+          commandId: CommandId.make(`factory-intake:${source.id}:${bindingKey}`),
           projectId,
           url,
         })).source;

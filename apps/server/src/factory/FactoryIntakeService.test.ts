@@ -31,6 +31,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import * as Store from "../persistence/FactoryIntakeStore.ts";
+import * as FeedStore from "../persistence/FactoryFeedStore.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Projects from "../project/ProjectService.ts";
 import * as Feeds from "./FactoryFeedService.ts";
@@ -134,6 +135,10 @@ const feedCandidate = (itemKey: string, title: string): FactoryFeedCandidate => 
 
 const harness = Effect.gen(function* () {
   const database = yield* Layer.build(Sqlite.layerMemory);
+  const feedStore = yield* FeedStore.FactoryFeedStore.pipe(
+    Effect.provide(FeedStore.layer),
+    Effect.provideContext(database),
+  );
   const issueLists = yield* Ref.make(new Map<ProjectId, ReadonlyArray<FactoryIssue>>());
   const issueFailure = yield* Ref.make<FactoryIssueError["reason"] | null>(null);
   const issueCalls = yield* Ref.make(new Map<ProjectId, number>());
@@ -183,22 +188,35 @@ const harness = Effect.gen(function* () {
     Layer.mock(Feeds.FactoryFeedService)({
       listSources: () => Ref.get(feed).pipe(Effect.map(({ sources }) => ({ sources }))),
       bindSource: (input) =>
-        Ref.modify(feed, (state) => {
-          const source: FactoryFeedSource = {
-            id: FactoryFeedSourceId.make("feed-1"),
+        Effect.gen(function* () {
+          const bound = yield* feedStore.bind({
+            id: FactoryFeedSourceId.make(`feed-${(yield* Ref.get(feed)).binds + 1}`),
             projectId: input.projectId,
             locator: input.url,
-            title: "Release notes",
-            status: "active",
-            createdAt: now,
-            lastCheckedAt: now,
-            nextAllowedAt: "2030-01-01T00:00:00.000Z",
-            lastError: null,
-          };
-          return [
-            { source, observed: 0, notModified: false },
-            { ...state, sources: [source], binds: state.binds + 1 },
-          ];
+            commandId: input.commandId,
+            at: now,
+          });
+          return yield* Ref.modify(feed, (state) => {
+            const source: FactoryFeedSource = {
+              id: bound.id,
+              projectId: input.projectId,
+              locator: input.url,
+              title: "Release notes",
+              status: "active",
+              createdAt: now,
+              lastCheckedAt: now,
+              nextAllowedAt: "2030-01-01T00:00:00.000Z",
+              lastError: null,
+            };
+            return [
+              { source, observed: 0, notModified: false },
+              {
+                ...state,
+                sources: [...state.sources.filter((item) => item.id !== source.id), source],
+                binds: state.binds + 1,
+              },
+            ];
+          });
         }),
       refreshSource: () =>
         Ref.modify(feed, (state) => [
@@ -1030,5 +1048,40 @@ it.effect("a feed source reads through the feed service and waits for its refres
       ),
     );
     assert.strictEqual(invalid.reason, "invalid-input");
+  }),
+);
+
+it.effect("editing a feed URL binds the new URL and can return to the original binding", () =>
+  Effect.gen(function* () {
+    const h = yield* harness;
+    const { intake } = yield* h.start;
+    const saved = yield* intake.saveSource(
+      {
+        commandId: CommandId.make("feed-a"),
+        projectId,
+        config: { kind: "feed", url: "https://news.example.org/a.xml" },
+        enabled: true,
+      },
+      human,
+    );
+    let source = saved.source!;
+    for (const [index, url] of [
+      "https://news.example.org/b.xml",
+      "https://news.example.org/a.xml",
+    ].entries()) {
+      const input = {
+        commandId: CommandId.make(`edit-feed-${index}`),
+        id: source.id,
+        expectedVersion: source.version,
+        projectId,
+        config: { kind: "feed" as const, url },
+        enabled: true,
+      };
+      source = (yield* intake.saveSource(input, human)).source!;
+      assert.strictEqual(source.status, "ok");
+      assert.strictEqual((yield* intake.saveSource(input, human)).replayed, true);
+    }
+    assert.strictEqual((yield* Ref.get(h.feed)).binds, 2);
+    assert.strictEqual((yield* recheck(intake, source)).source?.status, "ok");
   }),
 );

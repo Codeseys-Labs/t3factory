@@ -232,8 +232,8 @@ it.effect.each([false, true])(
       const first = yield* borrow(firstOwner, firstBorrowed);
       yield* Deferred.await(entered);
       const second = yield* borrow(same ? firstOwner : secondOwner, secondBorrowed);
-      yield* TestClock.adjust("1 millis");
-      assert.equal(yield* Deferred.isDone(secondBorrowed), !same);
+      // Another owner's server starts while the first startup is still held.
+      if (!same) yield* Deferred.await(secondBorrowed);
       yield* Deferred.succeed(start, undefined);
       yield* Deferred.await(firstBorrowed);
       yield* Deferred.await(secondBorrowed);

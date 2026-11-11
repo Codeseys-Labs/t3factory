@@ -8,9 +8,54 @@ import { assert, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as SqlitePersistence from "./Sqlite.ts";
+
+it.effect("publishes only successful transaction callbacks, dropping rolled-back savepoints", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const published: number[] = [];
+    const publish = (value: number) =>
+      SqlitePersistence.afterCommit(
+        Effect.sync(() => {
+          published.push(value);
+        }),
+      );
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* publish(1);
+        yield* sql
+          .withTransaction(
+            Effect.gen(function* () {
+              yield* publish(2);
+              return yield* Effect.fail("rollback savepoint");
+            }),
+          )
+          .pipe(Effect.flip);
+        yield* sql.withTransaction(publish(3));
+        assert.deepEqual(published, []);
+      }),
+    );
+    assert.deepEqual(published, [1, 3]);
+    const ready = yield* Deferred.make<void>();
+    const interrupted = yield* sql
+      .withTransaction(
+        Effect.gen(function* () {
+          yield* publish(4);
+          yield* Deferred.succeed(ready, undefined);
+          return yield* Effect.never;
+        }),
+      )
+      .pipe(Effect.forkChild);
+    yield* Deferred.await(ready);
+    yield* Fiber.interrupt(interrupted);
+    yield* sql.withTransaction(publish(5));
+    assert.deepEqual(published, [1, 3, 5]);
+  }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
 
 // Linux names an open, already-deleted file "<path> (deleted)" in /proc/self/fd.
 // SQLite names its temp files "etilqs_*" and, without TMPDIR, puts them in

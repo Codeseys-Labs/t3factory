@@ -30,6 +30,7 @@ import {
   groupFactoryTaskNeeds,
   resolveFactoryTaskLiveState,
 } from "@t3tools/client-runtime/state/factory-task-view";
+import { environmentCatalog } from "../connection/catalog";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { resolveThreadStatusPill } from "../components/Sidebar.logic";
 import { environmentPresentations } from "./presentation";
@@ -44,7 +45,10 @@ export const factoryIntake = createFactoryIntakeEnvironmentAtoms(connectionAtomR
 const accessAtom = Atom.family((environmentId: EnvironmentId) =>
   Atom.make((get): FactoryTaskOwnerStatus => {
     const presentation = get(environmentPresentations.presentationAtom(environmentId));
-    const connection = factoryTaskConnectionStatus(presentation?.connection.phase);
+    const connection = factoryTaskConnectionStatus(
+      presentation?.connection.phase,
+      get(environmentCatalog.catalogValueAtom).isReady,
+    );
     if (connection !== null || !presentation) return connection ?? "loading";
     if (!presentation.serverConfig) return "loading";
     const session = get(environmentSession.sessionStateAtom(environmentId));

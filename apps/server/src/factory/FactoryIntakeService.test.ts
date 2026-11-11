@@ -456,14 +456,18 @@ it.effect("a new issue arrives once, however often the tracker shows it", () =>
   }),
 );
 
-it.effect("issue intake follows every page and deduplicates later checks", () =>
+it.effect("issue intake sweeps every page once, then pages only past what changed", () =>
   Effect.gen(function* () {
     const h = yield* harness;
     const { intake, changes } = yield* h.start;
-    yield* h.setIssues(
-      projectId,
-      Array.from({ length: 65 }, (_, index) => issue(index + 1, `Issue ${index + 1}`)),
-    );
+    const numbered = (number: number, updatedAt: string) => ({
+      ...issue(number, `Issue ${number}`),
+      updatedAt,
+    });
+    const before = "1969-12-31T00:00:00.000Z";
+    const since = "1970-01-01T00:05:00.000Z";
+    const old = Array.from({ length: 65 }, (_, index) => numbered(index + 1, before));
+    yield* h.setIssues(projectId, old);
     yield* connectIssues(intake, "connect");
     const first = yield* intake.listArrivals({ limit: 50 });
     const second =
@@ -481,7 +485,19 @@ it.effect("issue intake follows every page and deduplicates later checks", () =>
     yield* TestClock.adjust("5 minutes");
     yield* awaitChange(changes, (change) => change.sources);
     assert.strictEqual((yield* intake.listArrivals({})).waiting, 65);
-    assert.strictEqual(yield* h.callsFor(projectId), 6);
+    assert.strictEqual(yield* h.callsFor(projectId), 4);
+
+    // A page of recorded issues updated since the last check can sit above a new one.
+    yield* h.setIssues(projectId, [
+      ...old.slice(0, 35),
+      numbered(66, since),
+      ...old.slice(35).map((entry) => ({ ...entry, updatedAt: since })),
+    ]);
+    yield* Queue.clear(changes);
+    yield* TestClock.adjust("5 minutes");
+    yield* awaitChange(changes, (change) => change.sources);
+    assert.strictEqual((yield* intake.listArrivals({})).waiting, 66);
+    assert.strictEqual(yield* h.callsFor(projectId), 7);
   }),
 );
 

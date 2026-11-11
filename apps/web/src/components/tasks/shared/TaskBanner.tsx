@@ -33,6 +33,7 @@ import { useTaskAssigneeChip } from "./taskAssigneeChip";
 import { presentTaskSetup } from "./taskAssigneeModel";
 import { useTaskCatalog } from "./taskCatalog";
 import { useTaskLive } from "./taskLive";
+import { useTaskPullRequestChecks } from "./taskPullRequest";
 
 const NO_PLAN: Atom.Atom<AsyncResult.AsyncResult<FactoryTaskPlanProposalReadResult, unknown>> =
   Atom.make(AsyncResult.initial(false));
@@ -53,14 +54,6 @@ const BANNER_STATES: Record<string, StatusBannerState> = {
   backlog: "backlog",
   ready: "ready",
 };
-
-/** `PR #112 · +184 −20 · 6 files` names its pull request first; the rest is the detail line. */
-export function splitResultSummary(summary: string): { title: string | null; detail: string } {
-  const match = /^(PR #\d+) · (.+)$/u.exec(summary);
-  return match
-    ? { title: match[1] ?? null, detail: match[2] ?? "" }
-    : { title: null, detail: summary };
-}
 
 /**
  * Where the task stands and the action that fits, under the task title. A question or approval
@@ -83,6 +76,7 @@ export function TaskBanner({
   const actions = useTaskActions();
   const navigate = useNavigate();
   const machine = useEnvironmentPresentation(environmentId).presentation?.entry.target.label;
+  const checks = useTaskPullRequestChecks(task);
   const [busy, setBusy] = useState(false);
   const [requestingChanges, setRequestingChanges] = useState(false);
   const need = needs[0];
@@ -106,7 +100,6 @@ export function TaskBanner({
     return <TaskAsk environmentId={environmentId} threadId={need.threadId} from={askFrom} />;
 
   const proposal = plan._tag === "Success" ? plan.value.proposal : null;
-  const result = task.result ? splitResultSummary(task.result.summary) : null;
   const where = [runLabel, machine].filter(Boolean).join(" · ");
   const presented = presentFactoryTaskBanner({
     task,
@@ -114,7 +107,7 @@ export function TaskBanner({
     assigneeLabel: assigneeText(chip),
     liveLabel: pill ? `${pill.label} · ${pill.duration}` : null,
     ...(proposal ? { planCount: proposal.items.length } : {}),
-    ...(result?.title ? { resultTitle: result.title } : {}),
+    checks,
     ...(where
       ? {
           runDetail:
@@ -129,8 +122,6 @@ export function TaskBanner({
       ? `${task.progress.done} of ${task.progress.total} sub-tasks done`
       : need.detail;
   }
-  if ((presented.state === "review" || presented.state === "changed") && result?.title)
-    line = result.detail;
 
   const displayIdOf = (taskId: string) =>
     [
@@ -148,6 +139,7 @@ export function TaskBanner({
     void work().then(() => setBusy(false));
   };
   const revision = task.result?.revision;
+  const acceptedRevision = task.result?.acceptedRevision ?? undefined;
 
   const toKit = (action: FactoryTaskBannerAction | null): KitAction | undefined => {
     if (action === null) return undefined;
@@ -178,6 +170,22 @@ export function TaskBanner({
         );
       case "reopen":
         return kit(() => runAction(() => actions.reopen(task)), permissions.reopen);
+      case "publish":
+        return kit(
+          () =>
+            acceptedRevision !== undefined &&
+            runAction(() => actions.publish(task, acceptedRevision)),
+          permissions.publish && acceptedRevision !== undefined,
+        );
+      case "merge":
+        return kit(
+          () =>
+            acceptedRevision !== undefined &&
+            runAction(() => actions.merge(task, acceptedRevision)),
+          permissions.merge && acceptedRevision !== undefined,
+        );
+      case "check":
+        return kit(() => runAction(() => actions.check(task)), permissions.check);
       case "approve-plan":
         return kit(
           () => proposal && runAction(() => actions.resolvePlan(task, proposal, "approve")),

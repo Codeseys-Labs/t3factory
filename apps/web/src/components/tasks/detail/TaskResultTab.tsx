@@ -1,9 +1,10 @@
+import { presentFactoryTaskChecks } from "@t3tools/client-runtime/state/factory-task-view";
 import type { FactoryTaskSummary } from "@t3tools/contracts";
 import { FileIcon } from "lucide-react";
 
 import { useFactoryTaskResult } from "../../../state/factoryTasks";
 import { ResultCard, SectionHeader, TruncatedText } from "../kit";
-import { splitResultSummary } from "../shared/TaskBanner";
+import { useTaskPullRequestChecks } from "../shared";
 
 /** What the task produced. Accept and Request changes sit in the banner right above. */
 export function TaskResultTab({ task }: { task: FactoryTaskSummary }) {
@@ -14,6 +15,7 @@ export function TaskResultTab({ task }: { task: FactoryTaskSummary }) {
 
 function TaskResult({ task }: { task: FactoryTaskSummary }) {
   const read = useFactoryTaskResult(task.ref);
+  const checks = useTaskPullRequestChecks(task);
   if (read._tag === "Failure")
     return (
       <p role="alert" className="text-destructive-foreground text-sm">
@@ -27,15 +29,24 @@ function TaskResult({ task }: { task: FactoryTaskSummary }) {
       </p>
     );
   const { result, files, filesOmitted, text } = read.value;
-  const summary = splitResultSummary(result.summary);
+  const pullRequest = result.pullRequest ?? null;
   const accepted = result.state === "accepted";
   const fileCount = files.length + filesOmitted;
   return (
     <div className="flex flex-col gap-4">
       <ResultCard
-        kind={summary.title ? "pull-request" : result.kind}
-        title={summary.title ? `${summary.title} · ${task.title}` : task.title}
-        meta={summary.detail}
+        kind={pullRequest ? "pull-request" : result.kind}
+        title={pullRequest ? `PR #${pullRequest.number} · ${task.title}` : task.title}
+        meta={[
+          result.summary,
+          pullRequest?.state === "merged"
+            ? "merged"
+            : pullRequest && checks
+              ? presentFactoryTaskChecks(checks)
+              : null,
+        ]
+          .filter((part) => part !== null)
+          .join(" · ")}
         review={accepted ? "accepted" : "pending"}
         revisionLabel={`rev ${accepted ? (result.acceptedRevision ?? result.revision) : result.revision}`}
         showActions={false}

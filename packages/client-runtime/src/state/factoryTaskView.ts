@@ -4,6 +4,7 @@ import type {
   FactoryTaskAttentionReason,
   FactoryTaskLane,
   FactoryTaskRef,
+  FactoryTaskResult,
   FactoryTaskStatus,
   FactoryTaskSummary,
   RuntimeRequestId,
@@ -320,9 +321,79 @@ export interface FactoryTaskBannerAction {
     | "reassign"
     | "stop"
     | "reopen"
-    | "check";
+    | "check"
+    | "publish"
+    | "merge";
   readonly label: string;
   readonly taskId?: string;
+}
+
+/** A pull request's checks in the words the result line uses. */
+export type FactoryTaskChecks = "passing" | "failing" | "pending";
+const CHECK_WORDS: Record<FactoryTaskChecks, string> = {
+  passing: "checks pass",
+  failing: "checks fail",
+  pending: "checks running",
+};
+export const presentFactoryTaskChecks = (checks: FactoryTaskChecks): string => CHECK_WORDS[checks];
+
+/**
+ * The result line with its pull request: `PR #112 · +184 −20 · 6 files · checks pass`, or
+ * `PR #108 is open · …` once accepted. Checks come from the host and are known only on screens
+ * that read the pull request.
+ */
+function presentFactoryTaskResultLine(
+  result: Pick<FactoryTaskResult, "summary" | "state" | "pullRequest">,
+  checks: FactoryTaskChecks | null = null,
+): string {
+  const pullRequest = result.pullRequest ?? null;
+  const lead =
+    pullRequest === null
+      ? null
+      : pullRequest.state === "merged"
+        ? `PR #${pullRequest.number} merged`
+        : result.state === "accepted"
+          ? `PR #${pullRequest.number} is open`
+          : `PR #${pullRequest.number}`;
+  return [
+    lead,
+    result.summary,
+    pullRequest?.state === "open" && checks ? CHECK_WORDS[checks] : null,
+  ]
+    .filter((part) => part !== null && part !== "")
+    .join(" · ");
+}
+
+/** Where an accepted code result stands on its way out: Publish, then Merge, then merged. */
+function presentDelivery(result: FactoryTaskResult) {
+  const pullRequest = result.pullRequest ?? null;
+  const delivery = result.delivery ?? null;
+  const failed =
+    delivery?.state === "failed"
+      ? `${delivery.action === "merge" ? "Merge" : "Publish"} failed${delivery.detail ? `: ${delivery.detail}` : ""}`
+      : null;
+  if (pullRequest?.state === "merged")
+    return {
+      title: `Accepted · PR #${pullRequest.number} merged`,
+      detail: result.summary,
+      action: null,
+    };
+  if (delivery?.state === "sending")
+    return {
+      title: null,
+      detail:
+        delivery.action === "merge" && pullRequest
+          ? `Merging PR #${pullRequest.number}…`
+          : "Opening a pull request…",
+      action: null,
+    };
+  if (pullRequest)
+    return {
+      title: null,
+      detail: failed,
+      action: { kind: "merge" as const, label: `Merge PR #${pullRequest.number}` },
+    };
+  return { title: null, detail: failed, action: { kind: "publish" as const, label: "Publish" } };
 }
 export function presentFactoryTaskBanner(input: {
   readonly task: FactoryTaskSummary;
@@ -330,8 +401,9 @@ export function presentFactoryTaskBanner(input: {
   readonly assigneeLabel: string;
   readonly liveLabel?: string | null;
   readonly planCount?: number;
-  readonly resultTitle?: string;
   readonly runDetail?: string;
+  /** The published pull request's checks, when the screen reads them. */
+  readonly checks?: FactoryTaskChecks | null;
 }) {
   const { task, assigneeLabel } = input;
   const action = (
@@ -349,19 +421,28 @@ export function presentFactoryTaskBanner(input: {
     additional: readonly FactoryTaskBannerAction[] = [],
   ) => ({ state, tone, title, detail, primary, secondary, additional });
   if (task.status === "canceled") return banner("canceled", "neutral", "Canceled", "", null);
-  if (task.status === "done")
-    return banner(
-      "done",
-      "done",
-      task.result?.state === "accepted"
-        ? `Accepted · rev ${task.result.acceptedRevision ?? task.result.revision}`
-        : "Done",
-      task.result?.summary ?? "",
-      null,
-    );
   const need = [...input.attention].sort(
     (a, b) => attentionOrder.indexOf(a.reason) - attentionOrder.indexOf(b.reason),
   )[0];
+  // A sent Publish or Merge whose outcome is unknown waits on a person even after Done.
+  if (need?.reason === "unconfirmed" && need.ref.taskId === task.ref.taskId)
+    return banner("unconfirmed", "attention", "Unconfirmed", need.detail, action("check", "Check"));
+  if (task.status === "done") {
+    const result = task.result;
+    if (result?.state !== "accepted")
+      return banner("done", "done", "Done", result?.summary ?? "", null);
+    const accepted = `Accepted · rev ${result.acceptedRevision ?? result.revision}`;
+    const line = presentFactoryTaskResultLine(result, input.checks ?? null);
+    if (result.kind !== "code") return banner("done", "done", accepted, line, null);
+    const delivery = presentDelivery(result);
+    return banner(
+      "done",
+      "done",
+      delivery.title ?? accepted,
+      delivery.detail ?? line,
+      delivery.action ? action(delivery.action.kind, delivery.action.label) : null,
+    );
+  }
   if (need && need.ref.taskId !== task.ref.taskId)
     return banner(
       "subtask-attention",
@@ -401,8 +482,6 @@ export function presentFactoryTaskBanner(input: {
       need.detail,
       action("answer", "Send answer"),
     );
-  if (need?.reason === "unconfirmed")
-    return banner("unconfirmed", "attention", "Unconfirmed", need.detail, action("check", "Check"));
   if (need?.reason === "plan")
     return banner(
       "plan",
@@ -412,15 +491,21 @@ export function presentFactoryTaskBanner(input: {
       action("approve-plan", "Approve plan"),
       action("edit-plan", "Edit"),
     );
-  if (task.status === "in-review" || need?.reason === "review" || need?.reason === "changed")
+  if (task.status === "in-review" || need?.reason === "review" || need?.reason === "changed") {
+    const pullRequest = task.result?.pullRequest ?? null;
     return banner(
       need?.reason === "changed" ? "changed" : "review",
       "attention",
-      input.resultTitle ? `Result ready: ${input.resultTitle}` : "Result ready",
-      task.result?.summary ?? need?.detail ?? "",
+      pullRequest ? `Result ready: PR #${pullRequest.number}` : "Result ready",
+      task.result
+        ? [task.result.summary, pullRequest && input.checks ? CHECK_WORDS[input.checks] : null]
+            .filter((part) => part !== null && part !== "")
+            .join(" · ")
+        : (need?.detail ?? ""),
       action("accept", "Accept"),
       action("request-changes", "Request changes"),
     );
+  }
   if (task.status === "in-progress")
     return banner(
       "working",
@@ -494,5 +579,7 @@ export function presentFactoryTaskActivity(
       return `Changes requested: ${oneLine(event.note)}`;
     case "reopened":
       return "Reopened task";
+    case "pull-request":
+      return `PR #${event.number} ${event.action}`;
   }
 }

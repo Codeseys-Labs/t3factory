@@ -234,6 +234,21 @@ export function createFactoryTaskEnvironmentAtoms<R, E>(
       tag: WS_METHODS.factoryReopenTask,
       onSettled: refreshRoot,
     }),
+    publishTaskResult: createEnvironmentRpcCommand(runtime, {
+      label: "factory-tasks:publish",
+      tag: WS_METHODS.factoryPublishTaskResult,
+      onSettled: refreshRoot,
+    }),
+    mergeTaskResult: createEnvironmentRpcCommand(runtime, {
+      label: "factory-tasks:merge",
+      tag: WS_METHODS.factoryMergeTaskResult,
+      onSettled: refreshRoot,
+    }),
+    checkTaskResult: createEnvironmentRpcCommand(runtime, {
+      label: "factory-tasks:check",
+      tag: WS_METHODS.factoryCheckTaskResult,
+      onSettled: refreshRoot,
+    }),
     addTaskComment: createEnvironmentRpcCommand(runtime, {
       label: "factory-tasks:comment",
       tag: WS_METHODS.factoryAddTaskComment,

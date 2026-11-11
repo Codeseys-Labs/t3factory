@@ -93,14 +93,15 @@ export function moveTaskFocus(
   return null;
 }
 
-/** `PR #112 · +184 −20 · 6 files` reads `#112 · +184 −20` on a card; `Document` reads `Doc`. */
-function shortResultLine(summary: string): string {
-  const pullRequest = /^PR (#\d+)(?: · ([^·]+))?/u.exec(summary);
-  if (pullRequest) {
-    const [, number, first] = pullRequest;
-    return first ? `${number} · ${first.trim()}` : summary.replace(/^PR /u, "");
-  }
-  return summary.replace(/^Document\b/u, "Doc");
+/**
+ * A card's result: `#99 merged`, `#112 · +184 −20` for a pull request still open, otherwise the
+ * summary with `Document` shortened to `Doc`.
+ */
+function shortResultLine(result: NonNullable<FactoryTaskSummary["result"]>): string {
+  const pullRequest = result.pullRequest ?? null;
+  if (pullRequest?.state === "merged") return `#${pullRequest.number} merged`;
+  if (pullRequest) return `#${pullRequest.number} · ${result.summary.split(" · ")[0]}`;
+  return result.summary.replace(/^Document\b/u, "Doc");
 }
 
 const failedRunLine = (task: FactoryTaskSummary) =>
@@ -118,7 +119,7 @@ export function cardMeta(
   if (task.progress) return { kind: "progress", ...task.progress };
   const failed = failedRunLine(task);
   if (failed) return { kind: "text", text: failed };
-  if (task.result) return { kind: "text", text: shortResultLine(task.result.summary) };
+  if (task.result) return { kind: "text", text: shortResultLine(task.result) };
   if (task.source.kind !== "local") return { kind: "text", text: task.source.label };
   return null;
 }
@@ -129,13 +130,13 @@ export function listResultText(task: FactoryTaskSummary): string {
   const failed = failedRunLine(task);
   if (failed) return failed;
   if (task.result) {
-    if (task.result.state === "accepted") {
-      const pullRequest = /^PR #\d+/u.exec(task.result.summary);
+    const pullRequest = task.result.pullRequest ?? null;
+    if (pullRequest?.state === "merged") return `PR #${pullRequest.number} merged`;
+    if (task.result.state === "accepted")
       return pullRequest
-        ? `${pullRequest[0]} · accepted`
+        ? `PR #${pullRequest.number} open · accepted`
         : `Accepted · rev ${task.result.revision}`;
-    }
-    return task.result.summary;
+    return pullRequest ? `PR #${pullRequest.number} · ${task.result.summary}` : task.result.summary;
   }
   return "";
 }

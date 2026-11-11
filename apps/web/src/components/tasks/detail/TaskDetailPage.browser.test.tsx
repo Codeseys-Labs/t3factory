@@ -111,8 +111,14 @@ vi.mock(import("../shared/taskActions"), () => ({
     accept: true,
     requestChanges: true,
     reopen: true,
+    publish: state.permissions.publishTaskResult ?? true,
+    merge: state.permissions.mergeTaskResult ?? true,
+    check: true,
     resolvePlan: state.permissions.resolveTaskPlanProposal ?? true,
   }),
+}));
+vi.mock(import("../shared/taskPullRequest"), () => ({
+  useTaskPullRequestChecks: () => "passing",
 }));
 vi.mock(import("./taskDetailCommands"), () => ({
   useTaskDetailCommands: (() => state.commands) as never,
@@ -323,6 +329,8 @@ const STATES: {
   banner: string;
   subtasks: (string | RegExp)[];
   rail: string[];
+  // Only an accepted code result with its pull request open offers Merge.
+  merge?: string;
 }[] = [
   {
     frame: "C1 backlog",
@@ -389,6 +397,7 @@ const STATES: {
     banner: "Accepted · rev 1",
     subtasks: ["Add sub-task"],
     rail: ["Done", "Blocks", "Move the list API to tasks"],
+    merge: "Merge PR #108",
   },
   {
     frame: "C8 failed",
@@ -429,7 +438,12 @@ it.each(STATES)("$frame shows its banner, sub-tasks and rail", async (frame) => 
   const rail = page.getByRole("complementary", { name: "Properties" });
   for (const text of frame.rail)
     await expect.element(rail.getByText(text, { exact: true }).first()).toBeVisible();
-  expect(page.getByRole("button", { name: /^Merge/ }).elements()).toHaveLength(0);
+  expect(
+    page
+      .getByRole("button", { name: /^Merge/ })
+      .elements()
+      .map((element) => element.textContent),
+  ).toEqual(frame.merge ? [frame.merge] : []);
 });
 
 it("C8 shows the failed run's excerpt in Activity", async () => {
@@ -607,6 +621,54 @@ it("selects the tab named in the URL and writes the chosen tab back", async () =
   await vi.waitFor(() => expect(router.state.location.search).toEqual({}));
   await userEvent.click(page.getByRole("tab", { name: "Result" }));
   await vi.waitFor(() => expect(router.state.location.search).toEqual({ tab: "result" }));
+});
+
+it.each([
+  {
+    state: "published and in review (C6)",
+    displayId: "T-36",
+    pullRequest: "open" as const,
+    title: "PR #112 · Audio ring demo",
+    meta: "+184 −20 · 6 files · checks pass",
+  },
+  {
+    state: "accepted, not published",
+    displayId: "T-38.1",
+    pullRequest: null,
+    title: "Contract and migration",
+    meta: "+212 −48 · 7 files",
+  },
+  {
+    state: "merged",
+    displayId: "T-35",
+    pullRequest: "merged" as const,
+    title: "PR #99 · Gate tooling fixes",
+    meta: "+64 −12 · 3 files · merged",
+  },
+])("the Result tab shows a code result $state", async (row) => {
+  const task = fixture(row.displayId);
+  const result = {
+    ...task.result!,
+    pullRequest:
+      row.pullRequest === null ? null : { ...task.result!.pullRequest!, state: row.pullRequest },
+  };
+  const { screen } = await renderDetail(taskPath(row.displayId, "?tab=result"), (mocks) => {
+    mocks.put(detailOf({ ...task, result }));
+    state.results.set(
+      task.ref.taskId,
+      AsyncResult.success({
+        result,
+        text: null,
+        files: [{ path: "src/tasks/contract.ts", additions: 12, deletions: 3 }],
+        filesOmitted: 0,
+      } satisfies FactoryTaskResultReadResult),
+    );
+  });
+  await using _screen = screen;
+  const tab = page.getByRole("tabpanel");
+  await expect.element(tab.getByText(row.title, { exact: true })).toBeVisible();
+  await expect.element(tab.getByText(row.meta, { exact: true })).toBeVisible();
+  await expect.element(tab.getByText("src/tasks/contract.ts")).toBeVisible();
 });
 
 it.each(["T-99", "not-a-task"])("shows %s as a task that does not exist", async (displayId) => {

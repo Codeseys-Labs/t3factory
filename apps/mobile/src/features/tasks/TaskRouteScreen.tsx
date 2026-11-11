@@ -44,6 +44,8 @@ const DESKTOP_ACTIONS: readonly FactoryTaskBannerAction["kind"][] = [
   "reassign",
   "reopen",
   "check",
+  "publish",
+  "merge",
 ];
 
 const BANNER_CARD_TONES: Record<"neutral" | "attention" | "danger" | "working" | "done", TaskTone> =

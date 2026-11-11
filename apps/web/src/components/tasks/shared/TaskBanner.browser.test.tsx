@@ -63,8 +63,14 @@ vi.mock(import("./taskActions"), () => ({
     accept: true,
     requestChanges: true,
     reopen: true,
+    publish: true,
+    merge: true,
+    check: true,
     resolvePlan: true,
   }),
+}));
+vi.mock(import("./taskPullRequest"), () => ({
+  useTaskPullRequestChecks: () => "passing",
 }));
 vi.mock(import("../taskDialogs"), () => ({
   openTaskSetup: ((...args: unknown[]) => state.openTaskSetup(...args)) as never,
@@ -90,6 +96,30 @@ const planTask: FactoryTaskSummary = {
   liveRuns: [],
   progress: null,
   attention: [{ reason: "plan", taskId: "task-38", displayId: "T-38", detail: "" }],
+};
+const accepted = fixture("T-38.1");
+const withDelivery = (
+  pullRequest: "open" | "merged" | null,
+  delivery: NonNullable<FactoryTaskSummary["result"]>["delivery"] = null,
+): FactoryTaskSummary => ({
+  ...accepted,
+  result: {
+    ...accepted.result!,
+    pullRequest:
+      pullRequest === null ? null : { ...accepted.result!.pullRequest!, state: pullRequest },
+    delivery,
+  },
+});
+const unconfirmed: FactoryTaskSummary = {
+  ...withDelivery("open", { action: "merge", state: "unconfirmed", detail: null }),
+  attention: [
+    {
+      reason: "unconfirmed",
+      taskId: accepted.ref.taskId,
+      displayId: accepted.displayId,
+      detail: "Merge of PR #108 sent · outcome unknown",
+    },
+  ],
 };
 const proposal: FactoryTaskPlanProposal = {
   id: "proposal-38",
@@ -118,10 +148,17 @@ function setup() {
   state.openTaskSetup = vi.fn();
   state.navigate = vi.fn();
   state.actions = Object.fromEntries(
-    ["retry", "stop", "accept", "requestChanges", "reopen", "resolvePlan"].map((name) => [
-      name,
-      vi.fn(() => Promise.resolve({})),
-    ]),
+    [
+      "retry",
+      "stop",
+      "accept",
+      "requestChanges",
+      "reopen",
+      "resolvePlan",
+      "publish",
+      "merge",
+      "check",
+    ].map((name) => [name, vi.fn(() => Promise.resolve({}))]),
   );
   return { ...state, onEditPlan: vi.fn() };
 }
@@ -206,11 +243,66 @@ const BANNERS: {
     ],
   },
   {
-    frame: "C7 done",
+    frame: "C7 done with its pull request open",
     task: fixture("T-38.1"),
     title: "Accepted · rev 1",
-    detail: "PR #108 is open · +212 −48 · checks pass",
+    detail: "PR #108 is open · +212 −48 · 7 files · checks pass",
+    actions: [
+      {
+        label: "Merge PR #108",
+        called: (mocks, task) => expect(mocks.actions.merge).toHaveBeenCalledWith(task, 1),
+      },
+    ],
+  },
+  {
+    frame: "C7 accepted, not published",
+    task: withDelivery(null),
+    title: "Accepted · rev 1",
+    detail: "+212 −48 · 7 files",
+    actions: [
+      {
+        label: "Publish",
+        called: (mocks, task) => expect(mocks.actions.publish).toHaveBeenCalledWith(task, 1),
+      },
+    ],
+  },
+  {
+    frame: "C7 publish refused",
+    task: withDelivery(null, { action: "publish", state: "failed", detail: "push failed" }),
+    title: "Accepted · rev 1",
+    detail: "Publish failed: push failed",
+    actions: [
+      {
+        label: "Publish",
+        called: (mocks, task) => expect(mocks.actions.publish).toHaveBeenCalledWith(task, 1),
+      },
+    ],
+  },
+  {
+    frame: "C7 merging",
+    task: withDelivery("open", { action: "merge", state: "sending", detail: null }),
+    title: "Accepted · rev 1",
+    detail: "Merging PR #108…",
     actions: [],
+  },
+  {
+    frame: "C7 merged",
+    task: fixture("T-35"),
+    title: "Accepted · PR #99 merged",
+    detail: "+64 −12 · 3 files",
+    actions: [],
+  },
+  {
+    frame: "Unconfirmed merge",
+    task: unconfirmed,
+    title: "Unconfirmed",
+    detail: "Merge of PR #108 sent · outcome unknown",
+    actions: [
+      {
+        label: "Check",
+        called: (mocks, task) => expect(mocks.actions.check).toHaveBeenCalledWith(task),
+      },
+    ],
   },
   {
     frame: "C8 failed",

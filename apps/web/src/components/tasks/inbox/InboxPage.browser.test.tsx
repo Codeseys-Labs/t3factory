@@ -121,6 +121,9 @@ vi.mock(import("../shared/taskActions"), () => ({
     accept: state.permission,
     requestChanges: state.permission,
     reopen: state.permission,
+    publish: state.permission,
+    merge: state.permission,
+    check: state.permission,
     resolvePlan: state.permission,
   }),
 }));

@@ -42,8 +42,14 @@ on the host is recorded by Check against the publication's pinned head and base 
 
 ## Traps
 
-- Task runs need Windows and Codex (or the dev Replay provider):
-  `NativeExecutionPlan.validateNativeExecutionCapabilities` refuses everything else.
+- Task admission checks the adapter's `ownedWriters` capability and the host's containment support.
+  Windows uses non-breakaway Job Objects; Linux requires pre-exec cgroup v2 membership, a dedicated
+  session and an observed empty kernel population counter after stopping. Missing observations stay
+  held. Process-group discovery cannot prove ownership of an early double-fork, so macOS and Linux
+  without delegation remain refused. Cursor's in-process SDK, Muse and external OpenCode servers
+  lack attempt-owned writers; managed OpenCode 2 uses a dedicated server for each Factory session.
+  Linux claims left unresolved by a server crash stay held: losing the owner registry cannot prove
+  an empty cgroup. Hard cost limits and denial of external actions remain unsupported.
 - A work run's thread refuses messages (`FactoryExecutionLifecycle.guardCommand`), so "Message agent"
   works only for planning runs; changes go through Request changes, which starts a new attempt.
 - Editing a plan bumps its revision. The engine then refuses approval answers for runs admitted under

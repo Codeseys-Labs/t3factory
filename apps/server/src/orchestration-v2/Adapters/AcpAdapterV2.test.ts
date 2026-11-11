@@ -1,3 +1,4 @@
+import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 import {
   extractCopilotSubagentUpdate,
   makeCopilotSubagentRouting,
@@ -419,6 +420,23 @@ function assertReinjectedInstructions(
 }
 
 describe("AcpAdapterV2", () => {
+  it.live("routes the shared ACP CLI runtime through the attempt owner", () => {
+    let owned = 0;
+    return Effect.gen(function* () {
+      const run = yield* makeInstructionCompactionHarness({});
+      yield* run("Owned ACP fixture");
+      assert.equal(owned, 1);
+    }).pipe(
+      Effect.provideService(OwnedProcess, {
+        spawn: (command, native) => {
+          owned++;
+          return native.spawn(command);
+        },
+      }),
+      Effect.provide(layerTest),
+      Effect.scoped,
+    );
+  });
   it.live.each(["details", "none"] as const)(
     "fails the turn on an ACP v2 idle error with %s, settles its open tool, and accepts the next prompt",
     (details) =>

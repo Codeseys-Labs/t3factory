@@ -7,15 +7,16 @@ import {
   type ThreadId,
   type AuthSessionId,
 } from "@t3tools/contracts";
-import type { WindowsOwnedProcess } from "../process/WindowsOwnedProcess.ts";
+import type { OwnedProcessGroup } from "../process/OwnedProcess.ts";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import { OwnedProcess } from "@t3tools/shared/ownedProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as FactoryExecutionStore from "../persistence/FactoryExecutionStore.ts";
-import { makeWindowsOwnedProcess } from "../process/WindowsOwnedProcess.ts";
+import { makeOwnedProcess } from "../process/OwnedProcess.ts";
 import * as Crypto from "effect/Crypto";
 import * as Schema from "effect/Schema";
 const isFactoryExecutionError = Schema.is(FactoryExecutionError);
@@ -36,8 +37,8 @@ type Identity = {
 };
 
 export class FactoryOwnedProcessFactory extends Context.Reference<{
-  readonly make: () => Effect.Effect<WindowsOwnedProcess>;
-}>("t3/FactoryOwnedProcessFactory", { defaultValue: () => ({ make: makeWindowsOwnedProcess }) }) {}
+  readonly make: () => Effect.Effect<OwnedProcessGroup>;
+}>("t3/FactoryOwnedProcessFactory", { defaultValue: () => ({ make: makeOwnedProcess }) }) {}
 
 export class FactoryNativeAuthority extends Context.Reference<RunAttemptId | undefined>(
   "t3/FactoryNativeAuthority",
@@ -79,11 +80,12 @@ const make = Effect.gen(function* () {
   const store = yield* FactoryExecutionStore.FactoryExecutionStore;
   const crypto = yield* Crypto.Crypto;
   const processFactory = yield* FactoryOwnedProcessFactory;
+  const platform = yield* HostProcess.Platform;
   const owners = new Map<
     RunAttemptId,
     {
-      readonly process: WindowsOwnedProcess;
-      captureProcess?: WindowsOwnedProcess;
+      readonly process: OwnedProcessGroup;
+      captureProcess?: OwnedProcessGroup;
       readonly claims: Map<
         Phase,
         { claimantId: string; joined: boolean; settled: boolean; done: Deferred.Deferred<void> }
@@ -104,7 +106,7 @@ const make = Effect.gen(function* () {
     return managed;
   });
   // A failed ownership observation is unknown, not quiescent: reservation stays held.
-  const quiesced = (process: WindowsOwnedProcess) =>
+  const quiesced = (process: OwnedProcessGroup) =>
     process.quiesce().pipe(Effect.orElseSucceed(() => false));
   const reconcile = Effect.fn("FactoryExecutionLifecycle.reconcile")(function* (
     input: Identity,
@@ -120,18 +122,24 @@ const make = Effect.gen(function* () {
     const owner = owners.get(input.runAttemptId);
     if (owner === undefined) {
       if (!release) return false;
-      // Claimants exist only in the owning process: with no owner, outstanding
-      // claimed/unknown rows are provably dead. Expire them or settleAttempt's
-      // all-settled gate wedges the attempt forever after a restart.
-      yield* store.expireOrphanClaims({ runAttemptId: input.runAttemptId });
+      // Windows jobs die with their observer; Linux cgroups can outlive the server.
+      if (platform === "win32")
+        yield* store.expireOrphanClaims({ runAttemptId: input.runAttemptId });
       const retained = yield* store.readCapture(input.runAttemptId);
-      yield* store.settleAttempt({
-        runAttemptId: input.runAttemptId,
-        observation: retained === null ? "no-start" : "quiescent",
-        detail:
-          "Reconcile only durable positive phase/capture observations or zero outstanding claims; never infer from missing PID or owner registry.",
-      });
-      return true;
+      return yield* store
+        .settleAttempt({
+          runAttemptId: input.runAttemptId,
+          observation: retained === null ? "no-start" : "quiescent",
+          detail:
+            "Reconcile only durable positive phase/capture observations or zero outstanding claims; never infer from missing PID or owner registry.",
+        })
+        .pipe(
+          Effect.as(true),
+          Effect.catchTags({
+            FactoryExecutionError: (error) =>
+              error.reason === "not-quiescent" ? Effect.succeed(false) : Effect.fail(error),
+          }),
+        );
     }
     const processQuiet = yield* quiesced(owner.process);
     const captureQuiet =
@@ -158,7 +166,7 @@ const make = Effect.gen(function* () {
         phase,
         claimantId: claim.claimantId,
         observation: "quiescent",
-        detail: "Claimant joined and all non-breakaway Windows jobs observed ACTIVE_PROCESS_ZERO.",
+        detail: "Claimant joined and every owned process container independently observed empty.",
       });
       claim.settled = true;
     }

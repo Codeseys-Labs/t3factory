@@ -28,6 +28,7 @@ import {
 } from "@t3tools/contracts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { AcpProviderCapabilitiesV2 } from "@t3tools/provider-acp/server/adapter";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -134,6 +135,7 @@ const adapters = Layer.effect(
     Layer.mock(ProviderAdapter.ProviderAdapterV2)({
       instanceId,
       driver: ProviderDriverKind.make("acpRegistry"),
+      getCapabilities: () => Effect.succeed(AcpProviderCapabilitiesV2),
       openSession: () => Effect.die("A started run is never executed in these tests"),
     }),
   ),

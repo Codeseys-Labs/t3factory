@@ -1,3 +1,4 @@
+import { OwnedProcess, spawnOwnedProcess } from "@t3tools/shared/ownedProcess";
 // Pi frames are LF-delimited with trailing CR stripped; readline also splits U+2028/U+2029 and corrupts them.
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
@@ -173,21 +174,21 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const platform = yield* HostProcess.Platform;
   const scope = yield* Effect.scope;
+  const factoryOwned = (yield* OwnedProcess) !== undefined;
 
   const spawnCommand = yield* resolveSpawnCommand(options.command, [...options.args], {
     env: options.env,
   }).pipe(Effect.mapError((cause) => new PiRpcError({ operation: "spawn", cause })));
-  const child = yield* spawner
-    .spawn(
-      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-        ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-        env: options.env,
-        extendEnv: false,
-        shell: spawnCommand.shell,
-        detached: platform !== "win32",
-      }),
-    )
-    .pipe(Effect.mapError((cause) => new PiRpcError({ operation: "spawn", cause })));
+  const child = yield* spawnOwnedProcess(
+    spawner,
+    ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+      env: options.env,
+      extendEnv: false,
+      shell: spawnCommand.shell,
+      detached: platform !== "win32",
+    }),
+  ).pipe(Effect.mapError((cause) => new PiRpcError({ operation: "spawn", cause })));
 
   let childExited = false;
   let diagnosingStdoutClose = false;
@@ -225,8 +226,11 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
     yield* taskkill.exitCode;
   }).pipe(Effect.scoped, Effect.ignore);
 
-  const terminateProcess =
-    platform === "win32" ? terminateWindowsTree : terminatePiProcess(killProcessGroup, hasExited);
+  const terminateProcess = factoryOwned
+    ? child.kill()
+    : platform === "win32"
+      ? terminateWindowsTree
+      : terminatePiProcess(killProcessGroup, hasExited);
 
   // Register teardown immediately after spawn so interrupted setup cannot leak a detached process.
   yield* Scope.addFinalizer(scope, terminateProcess.pipe(Effect.ignore, Effect.uninterruptible));

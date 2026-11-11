@@ -1,3 +1,4 @@
+import { OwnedProcess, spawnOwnedProcess } from "@t3tools/shared/ownedProcess";
 import * as NodeURL from "node:url";
 
 import type { ChatAttachment, ProviderApprovalDecision } from "@t3tools/contracts";
@@ -427,7 +428,8 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
   )(
     function* (input) {
       const spawnCommand = yield* resolveCommand(input.binaryPath, input.args, input.environment);
-      const child = yield* spawner.spawn(
+      const child = yield* spawnOwnedProcess(
+        spawner,
         ChildProcess.make(spawnCommand.command, spawnCommand.args, {
           detached: hostPlatform !== "win32",
           shell: spawnCommand.shell,
@@ -508,13 +510,16 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       ));
     const timeoutMs = input.timeoutMs ?? DEFAULT_OPENCODE_SERVER_TIMEOUT_MS;
     const args = ["serve", `--hostname=${hostname}`, `--port=${port}`];
-    const launch = yield* agentScope.wrap({
-      command: input.binaryPath,
-      args,
-      name: "opencode",
-      env: input.environment,
-      shared: true,
-    });
+    const launch =
+      (yield* OwnedProcess) !== undefined
+        ? { command: input.binaryPath, args }
+        : yield* agentScope.wrap({
+            command: input.binaryPath,
+            args,
+            name: "opencode",
+            env: input.environment,
+            shared: true,
+          });
     const spawnCommand = yield* resolveCommand(launch.command, launch.args, input.environment);
     const serverPassword = resolveOpenCodeServerPassword({
       external: false,
@@ -525,32 +530,31 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
     // Scopes close in reverse order. Forking this before the group kill is
     // registered forgets the ledger entry only once the group is stopped.
     const ledgerScope = yield* Scope.fork(runtimeScope);
-    const child = yield* spawner
-      .spawn(
-        ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-          detached: hostPlatform !== "win32",
-          shell: spawnCommand.shell,
-          env: {
-            ...input.environment,
-            ...(serverPassword !== undefined ? { OPENCODE_SERVER_PASSWORD: serverPassword } : {}),
-            // The value is set explicitly (rather than relying on inheritance) because
-            // `extendEnv` is false whenever `input.environment` is provided.
-            OPENCODE_CONFIG_CONTENT: resolveOpenCodeConfigContent(input.environment),
-          },
-          extendEnv: input.environment === undefined,
-        }),
-      )
-      .pipe(
-        Effect.provideService(Scope.Scope, runtimeScope),
-        Effect.mapError(
-          (cause) =>
-            new OpenCodeRuntimeError({
-              operation: "startOpenCodeServerProcess",
-              detail: `Failed to spawn OpenCode server process: ${openCodeRuntimeErrorDetail(cause)}`,
-              cause,
-            }),
-        ),
-      );
+    const child = yield* spawnOwnedProcess(
+      spawner,
+      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+        detached: hostPlatform !== "win32",
+        shell: spawnCommand.shell,
+        env: {
+          ...input.environment,
+          ...(serverPassword !== undefined ? { OPENCODE_SERVER_PASSWORD: serverPassword } : {}),
+          // The value is set explicitly (rather than relying on inheritance) because
+          // `extendEnv` is false whenever `input.environment` is provided.
+          OPENCODE_CONFIG_CONTENT: resolveOpenCodeConfigContent(input.environment),
+        },
+        extendEnv: input.environment === undefined,
+      }),
+    ).pipe(
+      Effect.provideService(Scope.Scope, runtimeScope),
+      Effect.mapError(
+        (cause) =>
+          new OpenCodeRuntimeError({
+            operation: "startOpenCodeServerProcess",
+            detail: `Failed to spawn OpenCode server process: ${openCodeRuntimeErrorDetail(cause)}`,
+            cause,
+          }),
+      ),
+    );
 
     const killOpenCodeProcessGroup = (signal: NodeJS.Signals) =>
       hostPlatform === "win32"

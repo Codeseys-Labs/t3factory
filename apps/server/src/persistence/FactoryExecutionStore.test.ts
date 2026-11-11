@@ -25,6 +25,8 @@ import {
 } from "@t3tools/contracts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { AcpProviderCapabilitiesV2 } from "@t3tools/provider-acp/server/adapter";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -197,6 +199,19 @@ it.effect(
     Effect.gen(function* () {
       yield* seed;
       const store = yield* Store.FactoryExecutionStore;
+      for (const capability of ["hard-cost-limit", "external-actions-denied"] as const) {
+        const refused = yield* decide({
+          type: "grant",
+          input: {
+            commandId: CommandId.make(`unsupported:${capability}`),
+            ref,
+            expectedRevision: 1,
+            expectedGrantVersion: 0,
+            policy: { ...policy, requiredCapabilities: [capability] },
+          },
+        });
+        assert.equal(refused.error, "invalid-input");
+      }
       assert.equal((yield* grant).error, null);
       assert.equal((yield* store.readExecution({ ref, revision: 1 })).tasks[0]!.version, 0);
       const prepared = yield* bindingFor();
@@ -504,6 +519,7 @@ it.effect(
           Layer.mock(ProviderAdapter.ProviderAdapterV2)({
             instanceId,
             driver: ProviderDriverKind.make("acpRegistry"),
+            getCapabilities: () => Effect.succeed(AcpProviderCapabilitiesV2),
             openSession: () => Effect.die("Preparation must not execute during admission"),
           }),
         ),
@@ -522,6 +538,7 @@ it.effect(
         creationSource: "server",
         now: DateTime.makeUnsafe(at),
       }).pipe(
+        Effect.provideService(HostProcess.Platform, "win32"),
         Effect.provide(IdAllocator.layer),
         Effect.provideService(ProviderAdapterRegistryV2, {
           get: () => Effect.succeed(adapter),

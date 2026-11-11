@@ -20,6 +20,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { vi } from "vite-plus/test";
 
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import { ProviderEventLoggers } from "@t3tools/provider-core/server/ProviderEventLoggers";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
@@ -139,6 +140,70 @@ const resumedMcpQueryInput = {
     },
   },
 } satisfies ClaudeAgentSdkQueryOpenInput;
+
+it.live("routes Claude SDK stdin, stdout, stderr and exit through the attempt owner", () => {
+  let owned = 0;
+  return Effect.gen(function* () {
+    let output = "";
+    let stderr = "";
+    const exited = Promise.withResolvers<void>();
+    const querySpy = vi.spyOn(ClaudeSdk, "query").mockImplementation(({ options }) => {
+      const child = options!.spawnClaudeCodeProcess!({
+        command: process.execPath,
+        args: [
+          "-e",
+          "process.stdin.on('data',c=>process.stdout.write(c));process.stdin.on('end',()=>process.stderr.write('owned-stderr'))",
+        ],
+        env: process.env,
+        signal: new AbortController().signal,
+      });
+      child.stdout.on("data", (chunk) => {
+        output += chunk.toString();
+      });
+      child.on("error", exited.reject);
+      child.once("exit", (code) => {
+        if (code === 0) exited.resolve();
+        else exited.reject(new Error(`exit ${code}`));
+      });
+      child.stdin.end("owned-input");
+      return {
+        setMcpServers: async () => {
+          await exited.promise;
+          return { added: [], removed: [], errors: {} };
+        },
+        close: () => {},
+        [Symbol.asyncDispose]: async () => {},
+      } as unknown as ClaudeSdk.Query;
+    });
+    yield* Effect.addFinalizer(() => Effect.sync(() => querySpy.mockRestore()));
+    const runner = yield* ClaudeAgentSdkQueryRunner;
+    const session = yield* runner.open({
+      ...resumedMcpQueryInput,
+      options: {
+        ...resumedMcpQueryInput.options,
+        stderr: (text) => {
+          stderr += text;
+        },
+        spawnClaudeCodeProcess: () => {
+          throw new Error("Attempt owner must replace the SDK spawn callback.");
+        },
+      },
+    });
+    assert.equal(owned, 1);
+    assert.equal(output, "owned-input");
+    assert.equal(stderr, "owned-stderr");
+    yield* session.close;
+  }).pipe(
+    Effect.provideService(OwnedProcess, {
+      spawn: (command, native) => {
+        owned++;
+        return native.spawn(command);
+      },
+    }),
+    Effect.scoped,
+    Effect.provide(realQueryRunner),
+  );
+});
 
 it.effect("reopens a stalled MCP registration before delivering the resumed prompt", () =>
   Effect.scoped(

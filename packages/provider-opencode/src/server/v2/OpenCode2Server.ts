@@ -1,3 +1,4 @@
+import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 // One OpenCode 2 process serves all directories; share it across instance threads.
 import type { OpenCodeClient } from "@opencode/client/effect";
 import * as Context from "effect/Context";
@@ -23,6 +24,7 @@ export interface OpenCode2Connection extends OpenCode2Client.OpenCode2Api {
 export class OpenCode2Server extends Context.Service<
   OpenCode2Server,
   {
+    readonly ownedWriters?: boolean;
     readonly withConnection: <A, E, R>(
       use: (connection: OpenCode2Connection) => Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E | OpenCodeRuntime.OpenCodeRuntimeError, R>;
@@ -117,6 +119,8 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
   readonly environment: NodeJS.ProcessEnv;
 }) {
   const opencode = yield* OpenCode2Client.OpenCode2Client;
+  const runtime = yield* OpenCodeRuntime.OpenCodeRuntime;
+  const crypto = yield* Crypto.Crypto;
   const connectTo = Effect.fn("OpenCode2Server.connectTo")(function* (
     url: string,
     password: Redacted.Redacted,
@@ -147,7 +151,7 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
     });
   }
 
-  const password = yield* generatePassword;
+  const password = yield* generatePassword.pipe(Effect.provideService(Crypto.Crypto, crypto));
   const owner = yield* OpenCodeServerOwner.make({
     binaryPath: input.binaryPath,
     directory: input.directory,
@@ -155,8 +159,34 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
     verify: (url) => connectTo(url, password, false).pipe(Effect.flatMap(remember)),
   });
   return OpenCode2Server.of({
-    withConnection: Effect.fn("OpenCode2Server.withConnection")(function (use) {
-      return owner.withServer((server) =>
+    ownedWriters: true,
+    withConnection: Effect.fn("OpenCode2Server.withConnection")(function* (use) {
+      if ((yield* OwnedProcess) !== undefined) {
+        return yield* Effect.scoped(
+          Effect.gen(function* () {
+            const dedicatedPassword = yield* generatePassword.pipe(
+              Effect.provideService(Crypto.Crypto, crypto),
+            );
+            let dedicated: OpenCode2Connection | undefined;
+            yield* runtime.startOpenCodeServerProcess({
+              binaryPath: input.binaryPath,
+              directory: input.directory,
+              environment: serverEnvironment(input.environment, dedicatedPassword),
+              verify: (url) =>
+                connectTo(url, dedicatedPassword, false).pipe(
+                  Effect.map((connection) => {
+                    dedicated = connection;
+                    return connection.version;
+                  }),
+                ),
+            });
+            if (dedicated === undefined)
+              return yield* Effect.die("Owned OpenCode server was not verified.");
+            return yield* use(dedicated);
+          }),
+        );
+      }
+      return yield* owner.withServer((server) =>
         latest?.url === server.url
           ? use(latest)
           : Effect.die(new Error("OpenCode 2 server was lent before verification.")),

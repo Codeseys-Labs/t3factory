@@ -461,6 +461,7 @@ export interface AcpAdapterV2Options {
 }
 
 export const AcpProviderCapabilitiesV2 = {
+  ownedWriters: true,
   sessions: {
     supportsMultipleProviderThreadsPerSession: false,
     supportsModelSwitchInSession: false,
@@ -1371,7 +1372,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
     instanceId: options.instanceId,
     driver,
     getCapabilities: Effect.fn("AcpAdapter.getCapabilities")(function () {
-      return Effect.succeed(flavor.capabilities);
+      return Effect.succeed({ ...flavor.capabilities, ownedWriters: true });
     }),
     planSelectionTransition: Effect.fn("AcpAdapter.planSelectionTransition")(function (input) {
       return Effect.succeed(acpSelectionTransition(input));

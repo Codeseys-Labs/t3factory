@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -207,6 +208,21 @@ describe("OpenCode2Server spawned server", () => {
       assert.strictEqual(first.version, "2.0.18");
       assert.strictEqual(first.external, false);
       assert.strictEqual(second.client, first.client);
+      let owned = 0;
+      const dedicated = yield* server
+        .withConnection((connection) => Effect.succeed(connection))
+        .pipe(
+          Effect.provideService(OwnedProcess, {
+            spawn: (command, native) => {
+              owned++;
+              return native.spawn(command);
+            },
+          }),
+        );
+      assert.equal(owned, 1);
+      assert.notEqual(dedicated.url, first.url);
+      const normal = yield* server.withConnection((connection) => Effect.succeed(connection));
+      assert.strictEqual(normal.client, first.client);
     }).pipe(
       Effect.scoped,
       Effect.provide(

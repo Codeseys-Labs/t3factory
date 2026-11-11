@@ -1,3 +1,4 @@
+import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -520,6 +521,32 @@ const startTurn = Effect.fnUntraced(function* (
 });
 
 describe("PiAdapterV2", () => {
+  it.effect("routes the Pi CLI through the attempt owner", () => {
+    let owned = 0;
+    return Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      const { runtime } = yield* openRuntime(fake);
+      yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      assert.equal(owned, 1);
+    }).pipe(
+      Effect.provideService(AgentScope, {
+        ...AgentScope.defaultValue(),
+        wrap: () => Effect.die("An owned CLI cannot be moved to a separate systemd scope."),
+      }),
+      Effect.provideService(OwnedProcess, {
+        spawn: (command, native) => {
+          owned++;
+          return native.spawn(command);
+        },
+      }),
+      Effect.scoped,
+      Effect.provide(layerTest),
+    );
+  });
   it.effect("keeps native image bytes and the saved path in the prompt", () =>
     Effect.gen(function* () {
       const host = yield* ProviderHost.ProviderHost;

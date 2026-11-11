@@ -9,6 +9,7 @@ import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 
 import {
   makeAcpClientTerminals,
@@ -25,6 +26,27 @@ const withTerminals = <A, E>(use: (terminals: AcpClientTerminals) => Effect.Effe
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped);
 
 describe("AcpClientTerminals", () => {
+  it.live("routes server-created terminal writers through the attempt owner", () => {
+    let owned = 0;
+    return withTerminals((terminals) =>
+      Effect.gen(function* () {
+        const terminal = yield* terminals.create({
+          sessionId: "owned",
+          command: process.execPath,
+          args: ["-e", "console.log('owned')"],
+        });
+        yield* terminals.waitForExit({ sessionId: "owned", ...terminal });
+        expect(owned).toBe(1);
+      }),
+    ).pipe(
+      Effect.provideService(OwnedProcess, {
+        spawn: (command, native) => {
+          owned++;
+          return native.spawn(command);
+        },
+      }),
+    );
+  });
   it.live("runs a command, buffers output, and reports the exit status", () =>
     withTerminals((terminals) =>
       Effect.gen(function* () {

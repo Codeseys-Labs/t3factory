@@ -1,5 +1,6 @@
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { AgentScope } from "@t3tools/shared/AgentScope";
+import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 import { readToolOutputImage } from "@t3tools/shared/toolOutput";
 import * as Predicate from "effect/Predicate";
@@ -88,6 +89,7 @@ const SETTLE_PROBE_MAX_ATTEMPTS = 3;
 const SETTLE_PROBE_RETRY_DELAY = Duration.millis(100);
 
 const PiProviderCapabilitiesV2 = {
+  ownedWriters: true,
   runtimePolicy: { enforcement: "client-boundary" },
   sessions: {
     supportsMultipleProviderThreadsPerSession: false,
@@ -468,13 +470,16 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         extensionPath,
         runtimeMode: input.runtimePolicy.runtimeMode,
       });
-      const scopedLaunch = yield* agentScope.wrap({
-        command: options.settings.binaryPath || "pi",
-        args: launch.args,
-        name: "pi",
-        threadId: input.threadId,
-        env: launch.env,
-      });
+      const scopedLaunch =
+        (yield* OwnedProcess) !== undefined
+          ? { command: options.settings.binaryPath || "pi", args: launch.args }
+          : yield* agentScope.wrap({
+              command: options.settings.binaryPath || "pi",
+              args: launch.args,
+              name: "pi",
+              threadId: input.threadId,
+              env: launch.env,
+            });
       // Finalizers run in reverse order: reap detached work after terminating Pi.
       const scopeUnit = scopedLaunch.unit;
       const stopScope =

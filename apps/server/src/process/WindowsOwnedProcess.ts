@@ -8,6 +8,7 @@ import * as Scope from "effect/Scope";
 import * as ChildProcess from "effect/process/ChildProcess";
 import type * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import type { OwnedProcessSpawner } from "@t3tools/shared/ownedProcess";
+import type { OwnedProcessGroup } from "./OwnedProcess.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
 const jobHost = String.raw`
@@ -131,15 +132,9 @@ interface JobControl {
   readonly stop: () => void;
   exit?: Effect.Effect<ChildProcessSpawner.ExitCode, PlatformError.PlatformError>;
 }
-export interface WindowsOwnedProcess {
-  readonly spawner: OwnedProcessSpawner;
-  readonly quiesce: () => Effect.Effect<boolean, PlatformError.PlatformError>;
-  readonly awaitRootExits: Effect.Effect<void, PlatformError.PlatformError>;
-}
-
 export const makeWindowsOwnedProcess = Effect.fn("WindowsOwnedProcess.make")(function* (options?: {
   readonly onObservation?: (event: string) => void;
-}): Effect.fn.Return<WindowsOwnedProcess> {
+}): Effect.fn.Return<OwnedProcessGroup> {
   const jobs = new Set<JobControl>();
   let sealed = false;
   let pending = 0;
@@ -322,7 +317,10 @@ exit 125
           );
           yield* Effect.addFinalizer(() => close.pipe(Effect.orDie));
           yield* Effect.tryPromise({ try: () => contained, catch: platformError });
-          return handle;
+          return {
+            ...handle,
+            kill: () => Effect.sync(job.stop).pipe(Effect.andThen(handle.exitCode), Effect.asVoid),
+          };
         }),
       ).pipe(
         Effect.ensuring(

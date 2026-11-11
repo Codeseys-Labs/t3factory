@@ -1,5 +1,12 @@
 import type { FactoryTaskPlanProposal, FactoryTaskSummary } from "@t3tools/contracts";
-import { ArchiveRestoreIcon, CircleXIcon, EllipsisIcon, LinkIcon, ListXIcon } from "lucide-react";
+import {
+  ArchiveRestoreIcon,
+  CircleXIcon,
+  EllipsisIcon,
+  LinkIcon,
+  ListXIcon,
+  RotateCcwIcon,
+} from "lucide-react";
 
 import { writeTextToClipboard } from "../../../hooks/useCopyToClipboard";
 import { Button } from "../../ui/button";
@@ -7,7 +14,7 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../../ui/
 import { toastManager } from "../../ui/toast";
 import { useTaskActions, useTaskPermissions } from "../shared";
 
-/** The page menu: cancel or restore the task, dismiss a waiting plan, copy the page's link. */
+/** The page menu: cancel or restore the task, reopen an accepted one, dismiss a waiting plan, copy the link. */
 export function TaskPageMenu({
   task,
   proposal,
@@ -58,6 +65,12 @@ export function TaskPageMenu({
             Cancel task
           </MenuItem>
         )}
+        {task.result?.state === "accepted" ? (
+          <MenuItem disabled={!permissions.reopen} onClick={() => void actions.reopen(task)}>
+            <RotateCcwIcon aria-hidden />
+            Reopen
+          </MenuItem>
+        ) : null}
         {proposal ? (
           <MenuItem
             disabled={!permissions.resolvePlan}

@@ -144,11 +144,11 @@ make your first commit before pushing.
 
 ## Factory
 
-Open **Factory** in the sidebar or command palette. Web and desktop open **Work**, a mixed
-collection of retained admitted issues and feed work, authored briefs, and sealed research
-protocols. **Issues**, **Briefs**, **Sources**, **Research**, **Workflows**, and **Orchestrator**
-remain available for intake and specialized review. **Sessions** and **New thread** still open
-ordinary conversations; you do not need an orchestrator to use them.
+Factory's pages are linked at the bottom of **Automations** and stay in the command palette. Web and
+desktop open **Work**, a mixed collection of retained admitted issues and feed work, authored
+briefs, and sealed research protocols. **Issues**, **Briefs**, **Sources**, **Research**,
+**Workflows**, and **Orchestrator** remain available for intake and specialized review. For tasks
+you hand to agents, see [Tasks](./tasks.md).
 
 ### Choose the scope
 

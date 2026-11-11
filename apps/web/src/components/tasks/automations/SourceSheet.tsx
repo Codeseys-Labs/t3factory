@@ -216,6 +216,7 @@ export function SourceSheet({
       <SelectField
         label="Project"
         value={values.projectId}
+        disabled={draft.item !== undefined}
         items={projects.map((project) => ({ value: project.id, label: project.title }))}
         onChange={(value) => draft.set("projectId", value)}
       />

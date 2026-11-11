@@ -885,6 +885,97 @@ it.effect("lists only the tasks that wait on a person or have a run that has not
   ),
 );
 
+it.effect.each(
+  (["retry", "requestChanges"] as const).flatMap((operation) =>
+    (["person", "canceled", "done", "blocked"] as const).map((condition) => ({
+      operation,
+      condition,
+    })),
+  ),
+)("$operation refuses a $condition task", ({ operation, condition }) =>
+  scenario(
+    Effect.gen(function* () {
+      const { tasks, create, subtask, summary, start, finish, until } = yield* harness;
+      const plans = yield* Plans.FactoryPlanService;
+
+      const parent = yield* create(`${operation}:${condition}`);
+      const task = yield* subtask("Work", parent);
+      const blocker = yield* subtask("Prerequisite", parent);
+      const running = yield* start(task);
+      yield* finish(running.run!, operation === "retry" ? "failed" : "sealed", "Answer");
+      yield* until(task, (current) =>
+        operation === "retry" ? current.liveRuns.length === 0 : current.status === "in-review",
+      );
+      if (condition === "blocked") {
+        const ref = { environmentId, projectId, rootId: task.ref.rootId };
+        yield* plans.apply(
+          {
+            commandId: command(`block:${operation}`),
+            ref,
+            expectedRevision: (yield* plans.read({ ref })).revision,
+            operations: [
+              {
+                type: "edge.add",
+                id: "blocker",
+                fromTaskId: task.ref.taskId,
+                toTaskId: blocker.ref.taskId,
+                requirement: "",
+              },
+            ],
+          },
+          human,
+        );
+      } else {
+        const current = yield* summary(task);
+        if (condition === "done" && operation === "requestChanges") {
+          yield* tasks.accept(
+            {
+              commandId: command(`done:${operation}`),
+              ref: task.ref,
+              revision: current.result!.revision,
+            },
+            human,
+          );
+        } else {
+          yield* tasks.update(
+            {
+              commandId: command(`change:${operation}:${condition}`),
+              ref: task.ref,
+              expectedVersion: current.version,
+              ...(condition === "person"
+                ? { assignment: { mode: "person" as const } }
+                : { lane: condition }),
+            },
+            human,
+          );
+        }
+      }
+      const current = yield* summary(task);
+      const before = yield* tasks.read({ task: { ref: task.ref } });
+      const activity = yield* tasks.activity({ ref: task.ref });
+      const input = { commandId: command(`refuse:${operation}:${condition}`), ref: task.ref };
+      const error = yield* (
+        operation === "retry"
+          ? tasks.retry({ ...input, expectedVersion: current.version }, human)
+          : tasks.requestChanges(
+              { ...input, revision: current.result!.revision, note: "Try again" },
+              human,
+            )
+      ).pipe(Effect.flip);
+      assert.equal(
+        error.reason,
+        condition === "person"
+          ? "assignee-unresolved"
+          : condition === "blocked"
+            ? "blocked"
+            : "invalid-transition",
+      );
+      assert.deepEqual(yield* tasks.read({ task: { ref: task.ref } }), before);
+      assert.deepEqual(yield* tasks.activity({ ref: task.ref }), activity);
+    }),
+  ),
+);
+
 it.effect("follows a run from start through failure, retry, review, acceptance and reopening", () =>
   scenario(
     Effect.gen(function* () {

@@ -1203,6 +1203,17 @@ const make = Effect.gen(function* () {
     },
   );
 
+  const requireRunnable = Effect.fn("FactoryTaskService.requireRunnable")(function* (
+    root: Tasks.RootView,
+    task: Tasks.TaskView,
+  ) {
+    if (task.row.assignment.mode === "person") return yield* refuse("assignee-unresolved");
+    if (task.derived.ownStatus === "done" || task.derived.ownStatus === "canceled")
+      return yield* refuse("invalid-transition");
+    if (pointers(root, task.blockedBy).some((blocker) => unfinished(blocker.status)))
+      return yield* refuse("blocked");
+  });
+
   const start: FactoryTaskService["Service"]["start"] = Effect.fn("FactoryTaskService.start")(
     function* (raw, actor) {
       yield* requireHuman(actor);
@@ -1217,13 +1228,11 @@ const make = Effect.gen(function* () {
             reason: "version-conflict",
             currentVersion: task.row.version,
           });
-        if (task.row.assignment.mode === "person") return yield* refuse("assignee-unresolved");
+        yield* requireRunnable(root, task);
         if (task.runs.some((entry) => isLiveRunState(entry.state)))
           return yield* refuse("run-active");
         if (task.derived.ownStatus !== "backlog" && task.derived.ownStatus !== "ready")
           return yield* refuse("invalid-transition");
-        if (pointers(root, task.blockedBy).some((blocker) => unfinished(blocker.status)))
-          return yield* refuse("blocked");
       }
       return yield* run({
         commandId: input.commandId,
@@ -1243,7 +1252,7 @@ const make = Effect.gen(function* () {
       const input = yield* decodeRetry(raw).pipe(Effect.mapError(invalid));
       const command = yield* begin("retry", input.commandId, actor, input);
       if (command.replayed) return yield* replay(input.ref);
-      const { task } = yield* requireTask(input.ref);
+      const { root, task } = yield* requireTask(input.ref);
       const work = task.runs.filter((entry) => entry.purpose === "work");
       const resumed = yield* store.launched(derived(input.commandId, "admit"));
       const previous = resumed ? work.at(-2) : work.at(-1);
@@ -1254,6 +1263,7 @@ const make = Effect.gen(function* () {
             currentVersion: task.row.version,
           });
         if (previous === undefined) return yield* refuse("no-run");
+        yield* requireRunnable(root, task);
         if (task.runs.some((entry) => isLiveRunState(entry.state)))
           return yield* refuse("run-active");
         if (previous.state !== "failed" && previous.state !== "stopped")
@@ -1378,9 +1388,10 @@ const make = Effect.gen(function* () {
     const input = yield* decodeRequestChanges(raw).pipe(Effect.mapError(invalid));
     const command = yield* begin("requestChanges", input.commandId, actor, input);
     if (command.replayed) return yield* replay(input.ref);
-    const { task } = yield* requireTask(input.ref);
+    const { root, task } = yield* requireTask(input.ref);
     const { row } = task;
     const resumed = yield* store.launched(derived(input.commandId, "admit"));
+    if (!resumed) yield* requireRunnable(root, task);
     const latest = resumed
       ? task.results.findLast((result) => result.revision === input.revision)
       : yield* reviewed(task, input.revision);

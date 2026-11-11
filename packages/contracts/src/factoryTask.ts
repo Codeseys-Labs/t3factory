@@ -500,6 +500,7 @@ export const FactoryTaskActivityEntry = Schema.Struct({
     kind: Schema.Literals(["person", "agent", "rule", "system"]),
     // `You`, an agent label such as `Codex · Sol`, or a rule's name.
     label: ShortText,
+    modelSelection: Schema.optional(ModelSelection),
   }),
   event: FactoryTaskActivityEvent,
 });

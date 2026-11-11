@@ -173,6 +173,23 @@ describe("task drop rules", () => {
 });
 
 describe("task presentation", () => {
+  it("uses catalog labels for unprofiled activity actors and keeps unknown labels", () => {
+    const entry = {
+      id: "actor",
+      at: fixtures.at,
+      actor: {
+        kind: "agent" as const,
+        label: "codex · gpt-6.1-sol",
+        modelSelection: {
+          instanceId: task("T-41").run!.setup.modelSelection.instanceId,
+          model: "gpt-6.1-sol",
+        },
+      },
+      event: { type: "plan-proposed" as const, count: 2 },
+    };
+    expect(presentFactoryTaskActivity(entry, fixtures.catalog)).toBe("Codex · Sol proposed a plan");
+    expect(presentFactoryTaskActivity(entry, [])).toBe("codex · gpt-6.1-sol proposed a plan");
+  });
   it("links a parent to its running descendant and reserves Stop for its own run", () => {
     const parent = task("T-38");
     const banner = presentFactoryTaskBanner({

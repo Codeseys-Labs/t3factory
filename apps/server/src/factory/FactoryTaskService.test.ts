@@ -1550,6 +1550,12 @@ it.effect.each([false, true])(
           ["document", "Prerequisite view"],
         );
         const document = yield* tasks.readResult({ ref: task.ref });
+        assert.deepEqual(
+          (yield* tasks.activity({ ref: task.ref })).entries.find(
+            (entry) => entry.event.type === "result-ready",
+          )?.actor,
+          { kind: "agent", label: "devReplay · flash", modelSelection: model("flash") },
+        );
         assert.equal(document.text, text);
         assert.deepEqual(document.files, []);
         assert.equal(

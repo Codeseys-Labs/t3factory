@@ -903,6 +903,7 @@ const make = Effect.gen(function* () {
     return {
       kind: "agent",
       label: named[0]?.name ?? setupKey(setup).replace("/", " · "),
+      ...(named[0] === undefined ? { modelSelection: setup.modelSelection } : {}),
     } satisfies TaskActor;
   });
 

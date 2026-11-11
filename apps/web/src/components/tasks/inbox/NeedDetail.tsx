@@ -1,5 +1,8 @@
 import type { FactoryTaskNeed } from "@t3tools/client-runtime/state/factory-task-view";
-import { presentFactoryTaskActivity } from "@t3tools/client-runtime/state/factory-task-view";
+import {
+  presentFactoryTaskActivity,
+  presentFactoryTaskActor,
+} from "@t3tools/client-runtime/state/factory-task-view";
 import type { FactoryTaskActivityEntry, FactoryTaskSummary } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
@@ -363,6 +366,7 @@ function RecentActivity({ task }: { task: FactoryTaskSummary }) {
             key={entry.id}
             entry={entry}
             text={presentFactoryTaskActivity(entry, catalog)}
+            author={presentFactoryTaskActor(entry.actor, catalog)}
           />
         ))
       )}
@@ -373,16 +377,18 @@ function RecentActivity({ task }: { task: FactoryTaskSummary }) {
 function RecentEntry({
   entry,
   text,
+  author,
 }: {
   entry: Parameters<typeof presentFactoryTaskActivity>[0];
   text: string;
+  author: string;
 }) {
   const relative = useRelativeTimeState(entry.at);
   return (
     <ActivityItem
       kind="event"
       text={text}
-      author={entry.actor.label}
+      author={author}
       time={
         relative.status !== "relative"
           ? ""

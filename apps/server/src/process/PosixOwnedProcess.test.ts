@@ -94,7 +94,14 @@ it.effect.each([
       // The wrapper must not load the command's environment before it joins the cgroup.
       const options = {
         extendEnv: false,
-        env: { LD_PRELOAD: "/workspace/escape.so", TOKEN: "a'b\nc", "NOT-A-NAME": "x" },
+        env: {
+          LD_PRELOAD: "/workspace/escape.so",
+          TOKEN: "a'b\n\nc",
+          "NOT-A-NAME": "x",
+          // Names the wrapper's own shell might use must not change other values.
+          nl: "replacement",
+          assignment: "kept",
+        },
       };
       yield* owner.spawner.spawn(
         shell
@@ -111,8 +118,17 @@ it.effect.each([
       assert.include(command.args.join(" "), "cgroup.procs");
       assert.notInclude(command.args.join(" "), "escape.so");
       if (shell) assert.deepEqual(command.args.slice(-2), ["-c", source]);
+      const end = /\[ "\$line" != '(t3-env-end-[0-9a-f]+)' \]/.exec(command.args.join(" "))?.[1];
+      assert.isString(end);
       assert.deepEqual(fake.gates, [
-        `resume\nLD_PRELOAD='/workspace/escape.so'\nTOKEN='a'\\''b'"$nl"'c'\n\n`,
+        [
+          "resume",
+          "command export LD_PRELOAD='/workspace/escape.so' 2>/dev/null",
+          "command export TOKEN='a'\\''b\n\nc' 2>/dev/null",
+          "command export nl='replacement' 2>/dev/null",
+          "command export assignment='kept' 2>/dev/null",
+          `${end}\n`,
+        ].join("\n"),
       ]);
       yield* owner.awaitRootExits;
       assert.deepEqual(fake.operations, []);
@@ -260,11 +276,13 @@ it.live("joins a Linux root and its detached writer through the cgroup", () =>
     const owner = yield* makePosixOwnedProcess();
     const native = yield* ChildProcessSpawner.ChildProcessSpawner;
     const ready = yield* Deferred.make<void>();
-    const probe = "a'b\nc $HOME";
+    const probe = "a'b\n\nc $HOME";
     const lines: string[] = [];
     const script = `console.log(JSON.stringify(process.env.T3_PROBE));require('node:child_process').spawn(process.execPath,['-e',"console.log('writer-ready');setInterval(()=>{},1000)"],{detached:true,stdio:['ignore','inherit','inherit']}).unref()`;
     const child = yield* owner.spawner.spawn(
-      ChildProcess.make(process.execPath, ["-e", script], { env: { T3_PROBE: probe } }),
+      ChildProcess.make(process.execPath, ["-e", script], {
+        env: { nl: "replacement", T3_PROBE: probe },
+      }),
       native,
     );
     const output = yield* child.stdout.pipe(

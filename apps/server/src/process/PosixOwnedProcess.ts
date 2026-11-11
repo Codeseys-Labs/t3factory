@@ -1,3 +1,5 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeCrypto from "node:crypto";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -23,12 +25,13 @@ export const PosixCgroupController = Context.Reference<AcpLinuxCgroupController>
 );
 
 // The wrapper starts with an empty environment; it exports these only after joining the cgroup.
-const shellEnvironmentAssignments = (environment: Record<string, string | undefined>) =>
+// `command` keeps a readonly name (bash's UID) from exiting the shell; that name is skipped.
+const shellEnvironmentExports = (environment: Record<string, string | undefined>) =>
   Object.entries(environment)
     .flatMap(([name, value]) =>
       value === undefined || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)
         ? []
-        : [`${name}='${value.replaceAll("'", "'\\''").replaceAll("\n", `'"$nl"'`)}'\n`],
+        : [`command export ${name}='${value.replaceAll("'", "'\\''")}' 2>/dev/null\n`],
     )
     .join("");
 
@@ -126,17 +129,21 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
               while (command.options.additionalFds?.[`fd${gateFd}`] !== undefined) gateFd++;
               let readyFd = gateFd + 1;
               while (command.options.additionalFds?.[`fd${readyFd}`] !== undefined) readyFd++;
+              // Values keep their newlines, so a random line, not an empty one, ends the exports.
+              const environmentEnd = `t3-env-end-${NodeCrypto.randomUUID().replaceAll("-", "")}`;
               const wrapped = wrapCommandForLinuxCgroup(lease, target, invocation.args, {
                 beforeExec: [
                   `printf 'contained\\n' >&${readyFd} || exit 125`,
                   `exec ${readyFd}>&-`,
                   `IFS= read -r action <&${gateFd} || exit 125`,
                   '[ "$action" = resume ] || exit 125',
-                  "nl='\n'",
-                  // `command` keeps a readonly name (bash's UID) from exiting the shell; it is skipped.
-                  `while IFS= read -r assignment <&${gateFd} || exit 125; [ -n "$assignment" ]; do`,
-                  '  eval "command export $assignment" 2>/dev/null || :',
+                  "script=",
+                  `while IFS= read -r line <&${gateFd} || exit 125; [ "$line" != '${environmentEnd}' ]; do`,
+                  '  script="$script$line',
+                  '"',
                   "done",
+                  // One eval after reading: an exported name cannot alter the wrapper's own variables.
+                  'eval "$script"',
                   `exec ${gateFd}<&-`,
                 ],
               });
@@ -197,7 +204,7 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
               job.contained = true;
               const gate = sealed
                 ? "stop\n"
-                : `resume\n${shellEnvironmentAssignments(commandEnvironment)}\n`;
+                : `resume\n${shellEnvironmentExports(commandEnvironment)}${environmentEnd}\n`;
               yield* Stream.make(new TextEncoder().encode(gate)).pipe(
                 Stream.run(acquired.value.getInputFd(gateFd)),
               );

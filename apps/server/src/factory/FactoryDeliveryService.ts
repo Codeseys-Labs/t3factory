@@ -1615,9 +1615,15 @@ const makeService = Effect.gen(function* () {
     const truncated =
       looked._tag === "Success" && looked.success.length >= PUBLICATION_LOOKUP_LIMIT;
     if (!truncated && matches.length === 1) return yield* confirm(intent, matches[0]!, "unknown");
-    // A branch made for this one publish, listed in every state, proves absence. Publishing again
-    // looks for an open pull request on it before creating one, so nothing is duplicated.
-    if (headBranch !== undefined && looked._tag === "Success" && !truncated && matches.length === 0)
+    // A branch made for this one publish, listed in every state with nothing on it, proves absence.
+    // Publishing again looks for an open pull request on it before creating one, so nothing is
+    // duplicated. A pull request that fails the match (the head moved) is not absence.
+    if (
+      headBranch !== undefined &&
+      looked._tag === "Success" &&
+      !truncated &&
+      looked.success.length === 0
+    )
       return Option.getOrElse(
         yield* store.settle(intent.id, {
           status: "failed",
@@ -1634,7 +1640,9 @@ const makeService = Effect.gen(function* () {
           ? "pull request listing may be truncated; publication remains unverified"
           : matches.length > 1
             ? "multiple pull requests match this publication; attribution is ambiguous"
-            : "no matching pull request found; publication remains unverified";
+            : headBranch !== undefined && looked.success.length > 0
+              ? `a pull request on ${headBranch} is at a different commit or base than this publication; publication remains unconfirmed`
+              : "no matching pull request found; publication remains unverified";
     const refreshed = yield* store.settle(intent.id, {
       status: intent.status,
       failure: reason.slice(0, FAILURE_MAX_CHARS),

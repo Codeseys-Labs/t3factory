@@ -45,8 +45,8 @@ const accessAtom = Atom.family((environmentId: EnvironmentId) =>
     const presentation = get(environmentPresentations.presentationAtom(environmentId));
     const phase = presentation?.connection.phase;
     if (phase === "unsupported") return "unsupported";
-    // Before the first connection settles, the machine is not known to be offline.
-    if (phase === undefined || phase === "available" || phase === "connecting") return "loading";
+    // A starting connection is not known to be offline. "available" is a switched-off connection.
+    if (phase === undefined || phase === "connecting") return "loading";
     if (phase !== "connected" || !presentation) return "offline";
     if (!presentation.serverConfig) return "loading";
     const session = get(environmentSession.sessionStateAtom(environmentId));

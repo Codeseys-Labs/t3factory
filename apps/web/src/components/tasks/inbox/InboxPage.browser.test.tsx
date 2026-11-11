@@ -34,7 +34,8 @@ const state = vi.hoisted(() => ({
   openSetup: null as unknown as Spy,
   permission: true,
   proposal: null as FactoryTaskPlanProposal | null,
-  activityPages: [] as unknown[],
+  activity: (_input: { order?: string; limit?: number }): unknown =>
+    AsyncResult.success({ entries: [], nextCursor: null }),
 }));
 
 vi.mock(import("@tanstack/react-router"), async (original) => {
@@ -84,8 +85,8 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
     factoryTasks: {
       readTask: ({ input }: { input: { task: { ref: { taskId: string } } } }) =>
         Atom.make(AsyncResult.success({ task: taskOf(input.task.ref) })),
-      readTaskActivity: ({ input }: { input: { cursor?: string } }) =>
-        Atom.make(state.activityPages[Number(input.cursor ?? 0)]),
+      readTaskActivity: ({ input }: { input: { order?: string; limit?: number } }) =>
+        Atom.make(state.activity(input)),
     },
     useFactoryTaskDetail: ((ref: { taskId: string }) =>
       AsyncResult.success({ task: taskOf(ref) })) as never,
@@ -177,7 +178,7 @@ function setup() {
       vi.fn(() => Promise.resolve({ _tag: "Success" })),
     ]),
   );
-  state.activityPages = [AsyncResult.success({ entries: [], nextCursor: null })];
+  state.activity = () => AsyncResult.success({ entries: [], nextCursor: null });
   const tasks = FACTORY_TASK_FIXTURES.tasks;
   const needs = groupFactoryTaskNeeds(
     tasks.map((task) => resolveFactoryTaskLiveState(task, FACTORY_TASK_FIXTURES.threadFacts)),
@@ -202,6 +203,7 @@ function setup() {
     ],
     scope: { targets: [], projects: [], single: null, label: "All projects" },
     reload: vi.fn(),
+    reloadAsks: vi.fn(),
     loadMore: vi.fn(),
   };
   return state;
@@ -550,19 +552,20 @@ it.each(["loading", "offline", "forbidden", "failed", "unsupported"] as const)(
   },
 );
 
-it("offers to load an incomplete ask list and disables mutations without permission", async () => {
+it("reloads only the asks of an incomplete ask list and disables mutations without permission", async () => {
   setup();
   state.data.incomplete = true;
   state.search = { tab: "triage" };
   state.permission = false;
   await using screen = await render(<InboxPage />);
-  await userEvent.click(screen.getByRole("button", { name: "Load more", exact: true }));
-  expect(state.data.reload).toHaveBeenCalledOnce();
+  await userEvent.click(screen.getByRole("button", { name: "Reload", exact: true }));
+  expect(state.data.reloadAsks).toHaveBeenCalledOnce();
+  expect(state.data.reload).not.toHaveBeenCalled();
   await expect.element(screen.getByRole("button", { name: "Accept", exact: true })).toBeDisabled();
   expect(state.resolve).not.toHaveBeenCalled();
 });
 
-it("reads through oldest-first activity pages and shows only the three newest entries", async () => {
+it("reads the three newest activity entries in one newest-first read", async () => {
   setup();
   const entry = (id: string, at: string) => ({
     id,
@@ -570,20 +573,20 @@ it("reads through oldest-first activity pages and shows only the three newest en
     actor: { kind: "person", label: "You" },
     event: { type: "comment", body: id },
   });
-  state.activityPages = [
-    AsyncResult.success({
-      entries: [entry("oldest", "2026-11-08T17:00:00.000Z")],
-      nextCursor: "1",
-    }),
-    AsyncResult.success({
-      entries: [
-        entry("second", "2026-11-09T17:00:00.000Z"),
-        entry("third", "2026-11-09T18:00:00.000Z"),
-        entry("newest", "2026-11-09T19:00:00.000Z"),
-      ],
-      nextCursor: null,
-    }),
-  ];
+  state.activity = (input) =>
+    input.order === "newest" && input.limit === 3
+      ? AsyncResult.success({
+          entries: [
+            entry("newest", "2026-11-09T19:00:00.000Z"),
+            entry("third", "2026-11-09T18:00:00.000Z"),
+            entry("second", "2026-11-09T17:00:00.000Z"),
+          ],
+          nextCursor: "older",
+        })
+      : AsyncResult.success({
+          entries: [entry("oldest", "2026-11-08T17:00:00.000Z")],
+          nextCursor: null,
+        });
   await using screen = await render(<InboxPage />);
   const recent = screen.getByRole("region", { name: "Recent activity" });
   await expect.element(recent.getByText("newest", { exact: true })).toBeVisible();

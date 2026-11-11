@@ -295,6 +295,17 @@ export const FactoryTaskCountResult = Schema.Struct({
 });
 export type FactoryTaskCountResult = typeof FactoryTaskCountResult.Type;
 
+/** Each assignee that holds at least one task, canceled and sub-tasks included. */
+export const FactoryTaskAssigneeListInput = Schema.Struct({
+  projectIds: TaskFilterFields.projectIds,
+});
+export type FactoryTaskAssigneeListInput = typeof FactoryTaskAssigneeListInput.Type;
+export const FactoryTaskAssigneeListResult = Schema.Struct({
+  assignees: Schema.Array(FactoryTaskAssignee).check(Schema.isMaxLength(128)),
+  fetchedAt: IsoDateTime,
+});
+export type FactoryTaskAssigneeListResult = typeof FactoryTaskAssigneeListResult.Type;
+
 export const FactoryTaskLocator = Schema.Union([
   Schema.Struct({ ref: FactoryTaskRef }),
   Schema.Struct({ displayId: FactoryTaskDisplayId }),

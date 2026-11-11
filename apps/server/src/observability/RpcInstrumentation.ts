@@ -68,6 +68,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.factoryAcceptKnowledgeArtifact]: "factory",
   [WS_METHODS.factoryListTasks]: "factory",
   [WS_METHODS.factoryCountTasks]: "factory",
+  [WS_METHODS.factoryListTaskAssignees]: "factory",
   [WS_METHODS.factoryReadTask]: "factory",
   [WS_METHODS.factoryCreateTask]: "factory",
   [WS_METHODS.factoryUpdateTask]: "factory",

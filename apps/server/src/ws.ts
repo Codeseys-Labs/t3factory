@@ -2736,6 +2736,7 @@ export const layerWsRpc = (
         [WS_METHODS.factoryAcceptKnowledgeArtifact]: (input) => factoryKnowledge.accept(input),
         [WS_METHODS.factoryListTasks]: (input) => factoryTasks.list(input),
         [WS_METHODS.factoryCountTasks]: (input) => factoryTasks.count(input),
+        [WS_METHODS.factoryListTaskAssignees]: (input) => factoryTasks.listAssignees(input),
         [WS_METHODS.factoryReadTask]: (input) => factoryTasks.read(input),
         [WS_METHODS.factoryCreateTask]: (input) =>
           factoryTasks.create(input, { kind: "human", sessionId: currentSessionId }),

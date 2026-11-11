@@ -122,6 +122,15 @@ export function createFactoryTaskEnvironmentAtoms<R, E>(
         refreshTrigger: listTrigger,
       }),
     ),
+    listTaskAssignees: guard(
+      createEnvironmentRpcQueryAtomFamily(runtime, {
+        label: "factory-tasks:assignees",
+        tag: WS_METHODS.factoryListTaskAssignees,
+        staleTimeMs: Number.POSITIVE_INFINITY,
+        idleTtlMs: 0,
+        refreshTrigger: listTrigger,
+      }),
+    ),
     readTask: guard(
       createEnvironmentRpcQueryAtomFamily(runtime, {
         label: "factory-tasks:detail",

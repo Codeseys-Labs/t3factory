@@ -206,14 +206,17 @@ describe("TaskQuestionPanel", () => {
     });
   });
 
-  it("stays on the task when the thread cannot take the answer", async () => {
+  it.each([
+    { result: undefined, note: "This question can't be answered from here." },
+    { result: { _tag: "Failure" }, note: "Your answer wasn't sent. Try again." },
+  ])("stays on the task and says why when the answer is not taken", async ({ result, note }) => {
     const r = requests();
-    r.answer.mockResolvedValueOnce(undefined as never);
+    r.answer.mockResolvedValueOnce(result as never);
     const { screen, onDone } = await mountQuestion(r);
     await click(screen.button("Keep cursor paging"));
     await click(screen.button("Send answer"));
     expect(onDone).not.toHaveBeenCalled();
-    expect(screen.text()).toContain("This question can't be answered from here.");
+    expect(screen.text()).toContain(note);
   });
 
   it("does not send without permission to respond", async () => {
@@ -264,6 +267,18 @@ describe("TaskApprovalPanel", () => {
     expect(r.alwaysAllow).toHaveBeenCalledExactlyOnceWith("approval-backtest");
     expect(r.deny).toHaveBeenCalledExactlyOnceWith("approval-backtest");
     expect(onDone).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    { result: undefined, note: "This request can't be answered from here." },
+    { result: { _tag: "Failure" }, note: "Your response wasn't sent. Try again." },
+  ])("stays on the task and says why when the decision is not taken", async ({ result, note }) => {
+    const r = requests();
+    r.approveOnce.mockResolvedValueOnce(result as never);
+    const { screen, onDone } = await mountApproval(r);
+    await click(screen.button("Approve once"));
+    expect(onDone).not.toHaveBeenCalled();
+    expect(screen.text()).toContain(note);
   });
 
   it("offers only the decisions the provider lists", async () => {

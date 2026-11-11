@@ -29,8 +29,11 @@ import { AcpProviderCapabilitiesV2 } from "@t3tools/provider-acp/server/adapter"
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Result from "effect/Result";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Store from "./FactoryExecutionStore.ts";
@@ -376,13 +379,23 @@ it.effect(
           ["workspace", "no-start"],
         ],
       );
+      const first = yield* store.settlements.pipe(
+        Stream.runHead,
+        Effect.forkScoped({ startImmediately: true }),
+      );
+      yield* store.settleAttempt({
+        runAttemptId: RunAttemptId.make("attempt:unobserved"),
+        observation: "unknown",
+        detail: "Not observed yet.",
+      });
       yield* store.settleAttempt({
         runAttemptId: workspace.runAttemptId,
         observation: "no-start",
         detail: "Claimant process exited without settling; expired by recovery.",
       });
       assert.isTrue((yield* store.getBinding(workspace.runAttemptId)).quiescent);
-    }).pipe(Effect.provide(layer)),
+      assert.deepEqual(yield* Fiber.join(first), Option.some(workspace.runAttemptId));
+    }).pipe(Effect.scoped, Effect.provide(layer)),
 );
 
 it.effect(

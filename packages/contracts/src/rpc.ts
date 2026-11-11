@@ -135,6 +135,8 @@ import {
   FactoryTaskCommentResult,
   FactoryTaskCountInput,
   FactoryTaskCountResult,
+  FactoryTaskAssigneeListInput,
+  FactoryTaskAssigneeListResult,
   FactoryTaskCreateInput,
   FactoryTaskDetail,
   FactoryTaskError,
@@ -643,6 +645,7 @@ export const WS_METHODS = {
   factoryAcceptKnowledgeArtifact: "factory.acceptKnowledgeArtifact",
   factoryListTasks: "factory.listTasks",
   factoryCountTasks: "factory.countTasks",
+  factoryListTaskAssignees: "factory.listTaskAssignees",
   factoryReadTask: "factory.readTask",
   factoryCreateTask: "factory.createTask",
   factoryUpdateTask: "factory.updateTask",
@@ -2474,6 +2477,11 @@ const WsFactoryCountTasksRpc = Rpc.make(WS_METHODS.factoryCountTasks, {
   success: FactoryTaskCountResult,
   error: factoryTaskError,
 });
+const WsFactoryListTaskAssigneesRpc = Rpc.make(WS_METHODS.factoryListTaskAssignees, {
+  payload: FactoryTaskAssigneeListInput,
+  success: FactoryTaskAssigneeListResult,
+  error: factoryTaskError,
+});
 const WsFactoryReadTaskRpc = Rpc.make(WS_METHODS.factoryReadTask, {
   payload: FactoryTaskReadInput,
   success: FactoryTaskDetail,
@@ -2785,6 +2793,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsFactoryAcceptKnowledgeArtifactRpc,
   WsFactoryListTasksRpc,
   WsFactoryCountTasksRpc,
+  WsFactoryListTaskAssigneesRpc,
   WsFactoryReadTaskRpc,
   WsFactoryCreateTaskRpc,
   WsFactoryUpdateTaskRpc,

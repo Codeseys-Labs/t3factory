@@ -6,6 +6,7 @@ import {
   FactoryTaskByThreadInput,
   FactoryTaskCheckInput,
   FactoryTaskCommentInput,
+  FactoryTaskAssigneeListInput,
   FactoryTaskCountInput,
   FactoryTaskCreateInput,
   FactoryTaskDeliverInput,
@@ -34,6 +35,7 @@ import {
   type FactoryTaskByThreadResult,
   type FactoryTaskChange,
   type FactoryTaskCommentResult,
+  type FactoryTaskAssigneeListResult,
   type FactoryTaskCountResult,
   type FactoryTaskDetail,
   type FactoryTaskListResult,
@@ -93,6 +95,9 @@ export class FactoryTaskService extends Context.Service<
     readonly count: (
       input: FactoryTaskCountInput,
     ) => Effect.Effect<FactoryTaskCountResult, FactoryTaskError>;
+    readonly listAssignees: (
+      input: FactoryTaskAssigneeListInput,
+    ) => Effect.Effect<FactoryTaskAssigneeListResult, FactoryTaskError>;
     readonly read: (
       input: FactoryTaskReadInput,
     ) => Effect.Effect<FactoryTaskDetail, FactoryTaskError>;
@@ -221,6 +226,7 @@ const asTaskError = (cause: unknown) =>
 
 const decodeList = Schema.decodeEffect(FactoryTaskListInput);
 const decodeCount = Schema.decodeEffect(FactoryTaskCountInput);
+const decodeAssigneeList = Schema.decodeEffect(FactoryTaskAssigneeListInput);
 const decodeRead = Schema.decodeEffect(FactoryTaskReadInput);
 const decodeCreate = Schema.decodeEffect(FactoryTaskCreateInput);
 const decodeUpdate = Schema.decodeEffect(FactoryTaskUpdateInput);
@@ -411,6 +417,8 @@ const make = Effect.gen(function* () {
   const deliveryStore = yield* DeliveryStore.FactoryDeliveryStore;
   const environmentId = yield* (yield* ServerEnvironmentIdentity).getEnvironmentId;
 
+  // Request changes still starting a run in this process, by task.
+  const requestingChanges = new Set<string>();
   const transact = <A, R>(effect: Effect.Effect<A, FactoryTaskError, R>) =>
     sql.withTransaction(effect).pipe(Effect.mapError(asTaskError));
   const now = Effect.map(DateTime.now, DateTime.formatIso);
@@ -657,6 +665,23 @@ const make = Effect.gen(function* () {
     return sha;
   });
 
+  const requireIdleSiblings = Effect.fn("FactoryTaskService.requireIdleSiblings")(function* (
+    row: Tasks.TaskRow,
+    revision: number,
+  ) {
+    if (
+      (yield* store.liveAttempts({
+        rootId: row.rootId,
+        revision,
+        exceptTaskId: row.taskId,
+      })).length > 0
+    )
+      return yield* new FactoryTaskError({
+        reason: "run-active",
+        detail: "Another sub-task of this task is running. Try again when it finishes.",
+      });
+  });
+
   /**
    * Where the task's next run starts in the engine. The engine runs a task once per plan
    * revision, so another round takes a new revision, which stops authorizing every sibling run
@@ -675,18 +700,7 @@ const make = Effect.gen(function* () {
       prior.latestStatus !== "sealed" &&
       (FAILED_NATIVE.has(prior.nativeStatus ?? "") || prior.latestStatus === "failed");
     const round = prior !== null && !retryable;
-    if (
-      round &&
-      (yield* store.liveAttempts({
-        rootId: row.rootId,
-        revision: head.revision,
-        exceptTaskId: row.taskId,
-      })).length > 0
-    )
-      return yield* new FactoryTaskError({
-        reason: "run-active",
-        detail: "Another sub-task of this task is running. Try again when it finishes.",
-      });
+    if (round) yield* requireIdleSiblings(row, head.revision);
     return { head, prior, round };
   });
 
@@ -709,17 +723,22 @@ const make = Effect.gen(function* () {
     let { head, prior } = next;
     if (next.round) {
       const title = head.tasks.find((task) => task.id === row.taskId)?.title ?? row.title;
-      head = (yield* plans
-        .apply(
-          {
-            commandId: derived(input.commandId, "round"),
-            ref,
-            expectedRevision: head.revision,
-            operations: [{ type: "task.update", id: row.taskId, title }],
-          },
-          input.actor,
-        )
-        .pipe(Effect.mapError(planError))).plan;
+      head = (yield* transact(
+        Effect.gen(function* () {
+          yield* requireIdleSiblings(row, head.revision);
+          return yield* plans
+            .apply(
+              {
+                commandId: derived(input.commandId, "round"),
+                ref,
+                expectedRevision: head.revision,
+                operations: [{ type: "task.update", id: row.taskId, title }],
+              },
+              input.actor,
+            )
+            .pipe(Effect.mapError(planError));
+        }),
+      )).plan;
       prior = null;
     }
     const worktree = input.setup.workspace === "worktree";
@@ -900,6 +919,26 @@ const make = Effect.gen(function* () {
       return { environmentId, byStatus: yield* store.count(filter), fetchedAt: yield* now };
     },
   );
+
+  const listAssignees: FactoryTaskService["Service"]["listAssignees"] = Effect.fn(
+    "FactoryTaskService.listAssignees",
+  )(function* (raw) {
+    const { projectIds } = yield* decodeAssigneeList(raw).pipe(Effect.mapError(invalid));
+    const samples = yield* store.assigneeSamples({
+      filter: { scope: "all", ...(projectIds === undefined ? {} : { projectIds }) },
+      limit: 128,
+    });
+    const roots = yield* store.loadRoots([...new Set(samples.map((sample) => sample.rootId))]);
+    const assignees = new Map<string, FactoryTaskSummary["assignee"]>();
+    for (const sample of samples) {
+      const root = roots.get(sample.rootId);
+      const view = root?.tasks.get(sample.taskId);
+      if (root === undefined || view === undefined) continue;
+      const { assignee } = summarize(root, view);
+      if (!assignees.has(assignee.key)) assignees.set(assignee.key, assignee);
+    }
+    return { assignees: [...assignees.values()], fetchedAt: yield* now };
+  });
 
   const read: FactoryTaskService["Service"]["read"] = Effect.fn("FactoryTaskService.read")(
     function* (raw) {
@@ -1466,63 +1505,73 @@ const make = Effect.gen(function* () {
     if (command.replayed) return yield* replay(input.ref);
     const { root, task } = yield* requireTask(input.ref);
     const { row } = task;
-    const resumed = yield* store.launched(derived(input.commandId, "admit"));
-    if (!resumed) yield* requireRunnable(root, task);
-    const latest = resumed
-      ? task.results.findLast((result) => result.revision === input.revision)
-      : yield* reviewed(task, input.revision);
-    if (latest === undefined) return yield* refuse("no-result");
-    const author =
-      task.runs.find((entry) => entry.threadId === latest.threadId) ??
-      task.runs.findLast((entry) => entry.purpose === "work");
-    if (author === undefined) return yield* refuse("no-run");
-    // Refused before the note is kept, so a request that cannot run leaves nothing behind.
-    if (!resumed) yield* nextRound(row);
-    const at = yield* now;
-    const activityKey = `changes-requested:${input.commandId}`;
-    // A sealed attempt cannot continue, so the note travels in the next attempt's input.
-    yield* transact(
-      Effect.gen(function* () {
-        yield* store.updateBoard(row, {
-          inputNote: `Changes requested on the previous result:\n${input.note}`,
-          bumpVersion: false,
-          at,
-        });
-        yield* store.appendActivity({
-          key: row,
-          at,
-          actor: PERSON,
-          event: { type: "changes-requested", revision: latest.revision, note: input.note },
-          dedupeKey: activityKey,
-        });
-      }),
-    );
-    return yield* run({
-      commandId: input.commandId,
-      task,
-      setup: author.setup,
-      profileId: author.profileId,
-      actor,
-      // Code continues from the result under review; a document starts from the task again.
-      baseCommit: latest.kind === "code" ? latest.commit : null,
-      record: command.record,
-    }).pipe(
-      // A run that was never admitted leaves no trace for a later one; an Accept that won says so.
-      Effect.catch((error) =>
+    // A failed request clears the pending note, so two in flight on one task could clear the other's.
+    const pendingKey = `${row.rootId}/${row.taskId}`;
+    if (requestingChanges.has(pendingKey))
+      return yield* new FactoryTaskError({
+        reason: "run-active",
+        detail: "Changes are already being requested on this task. Try again in a moment.",
+      });
+    requestingChanges.add(pendingKey);
+    return yield* Effect.gen(function* () {
+      const resumed = yield* store.launched(derived(input.commandId, "admit"));
+      if (!resumed) yield* requireRunnable(root, task);
+      const latest = resumed
+        ? task.results.findLast((result) => result.revision === input.revision)
+        : yield* reviewed(task, input.revision);
+      if (latest === undefined) return yield* refuse("no-result");
+      const author =
+        task.runs.find((entry) => entry.threadId === latest.threadId) ??
+        task.runs.findLast((entry) => entry.purpose === "work");
+      if (author === undefined) return yield* refuse("no-run");
+      // Refused before the note is kept, so a request that cannot run leaves nothing behind.
+      if (!resumed) yield* nextRound(row);
+      const at = yield* now;
+      const activityKey = `changes-requested:${input.commandId}`;
+      // A sealed attempt cannot continue, so the note travels in the next attempt's input.
+      yield* transact(
         Effect.gen(function* () {
-          if (yield* store.launched(derived(input.commandId, "admit"))) return yield* error;
-          yield* transact(
-            Effect.gen(function* () {
-              yield* store.updateBoard(row, { inputNote: null, bumpVersion: false, at });
-              yield* store.retractActivity(activityKey);
-            }),
-          );
-          if ((yield* store.acceptedRevision(row)) !== null)
-            return yield* refuse("invalid-transition");
-          return yield* error;
+          yield* store.updateBoard(row, {
+            inputNote: `Changes requested on the previous result:\n${input.note}`,
+            bumpVersion: false,
+            at,
+          });
+          yield* store.appendActivity({
+            key: row,
+            at,
+            actor: PERSON,
+            event: { type: "changes-requested", revision: latest.revision, note: input.note },
+            dedupeKey: activityKey,
+          });
         }),
-      ),
-    );
+      );
+      return yield* run({
+        commandId: input.commandId,
+        task,
+        setup: author.setup,
+        profileId: author.profileId,
+        actor,
+        // Code continues from the result under review; a document starts from the task again.
+        baseCommit: latest.kind === "code" ? latest.commit : null,
+        record: command.record,
+      }).pipe(
+        // A run that was never admitted leaves no trace for a later one; an Accept that won says so.
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            if (yield* store.launched(derived(input.commandId, "admit"))) return yield* error;
+            yield* transact(
+              Effect.gen(function* () {
+                yield* store.updateBoard(row, { inputNote: null, bumpVersion: false, at });
+                yield* store.retractActivity(activityKey);
+              }),
+            );
+            if ((yield* store.acceptedRevision(row)) !== null)
+              return yield* refuse("invalid-transition");
+            return yield* error;
+          }),
+        ),
+      );
+    }).pipe(Effect.ensuring(Effect.sync(() => requestingChanges.delete(pendingKey))));
   });
 
   const reopen: FactoryTaskService["Service"]["reopen"] = Effect.fn("FactoryTaskService.reopen")(
@@ -1578,6 +1627,20 @@ const make = Effect.gen(function* () {
     const { task } = yield* requireTask(input.ref);
     const { row } = task;
     const result = yield* deliverable(task, input.revision);
+    let baseRef =
+      task.runs.find((run) => run.purpose === "work" && run.threadId === result.threadId)
+        ?.baseRef ?? null;
+    let revision = result.revision;
+    while (baseRef !== null) {
+      const continued = task.results.findLast(
+        (entry) => entry.revision < revision && entry.kind === "code" && entry.commit === baseRef,
+      );
+      if (continued === undefined) break;
+      baseRef =
+        task.runs.find((run) => run.purpose === "work" && run.threadId === continued.threadId)
+          ?.baseRef ?? null;
+      revision = continued.revision;
+    }
     const description =
       kind === "publish-pr"
         ? ((yield* plans.read({ ref: planRef(row) }).pipe(Effect.mapError(planError))).tasks.find(
@@ -1593,8 +1656,7 @@ const make = Effect.gen(function* () {
         projectId: row.projectId,
         threadId: result.threadId,
         headSha: result.commit,
-        baseRef:
-          task.runs.find((run) => run.purpose === "work" && run.baseRef !== null)?.baseRef ?? null,
+        baseRef,
         publish: {
           title: row.title,
           body: [description.trim(), `Task ${row.displayId} · result rev ${result.revision}`]
@@ -2023,6 +2085,7 @@ const make = Effect.gen(function* () {
   return FactoryTaskService.of({
     list,
     count,
+    listAssignees,
     read,
     create,
     update,

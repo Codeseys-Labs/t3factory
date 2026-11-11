@@ -2,20 +2,24 @@ import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
-  type EnvironmentId,
+  EnvironmentId,
+  type FactoryTaskAssignee,
   type FactoryTaskAssigneePreviewInput,
   type FactoryTaskDisplayId,
+  type FactoryTaskActivityInput,
   type FactoryTaskRef,
   type FactoryTaskSummary,
   type FactoryIntakeArrivalListInput,
   type FactoryIntakeSourceListInput,
   type FactoryIntakeRulePreviewInput,
+  ProjectId,
   type ProviderApprovalDecision,
   type RuntimeRequestId,
   type ThreadId,
 } from "@t3tools/contracts";
 import type { AtomCommand, AtomCommandOptions } from "@t3tools/client-runtime/state/runtime";
 import type { PendingThreadRequests } from "@t3tools/client-runtime/state/thread-requests";
+import * as Schema from "effect/Schema";
 import { Atom } from "effect/reactivity";
 import { useContext } from "react";
 import { createFactoryTaskEnvironmentAtoms } from "@t3tools/client-runtime/state/factory-tasks";
@@ -63,6 +67,49 @@ const lists = createFactoryTaskListAtoms({
   changesAtom: (environmentId) => factoryTasks.subscribeTaskChanges({ environmentId, input: {} }),
 });
 
+const decodeAssigneeTargets = Schema.decodeSync(
+  Schema.fromJsonString(
+    Schema.Array(
+      Schema.Struct({
+        environmentId: EnvironmentId,
+        projectIds: Schema.NullOr(Schema.Array(ProjectId)),
+      }),
+    ),
+  ),
+);
+const assigneesAtom = Atom.family((key: string) =>
+  Atom.make((get) =>
+    decodeAssigneeTargets(key).flatMap(({ environmentId, projectIds }) => {
+      if (get(accessAtom(environmentId)) !== "current") return [];
+      const result = get(
+        factoryTasks.listTaskAssignees({
+          environmentId,
+          input: projectIds === null ? {} : { projectIds },
+        }),
+      );
+      return result._tag === "Success"
+        ? result.value.assignees.map((assignee: FactoryTaskAssignee) => ({
+            environmentId,
+            assignee,
+          }))
+        : [];
+    }),
+  ).pipe(Atom.setIdleTTL(0)),
+);
+/** Every assignee holding a task on each target machine, however many tasks there are. */
+export function useFactoryTaskAssignees(targets: readonly FactoryTaskListTarget[]) {
+  return useAtomValue(
+    assigneesAtom(
+      JSON.stringify(
+        targets.map((target) => ({
+          environmentId: target.environmentId,
+          projectIds: target.input.projectIds ?? null,
+        })),
+      ),
+    ),
+  );
+}
+
 export function useFactoryTasks(targets: readonly FactoryTaskListTarget[]) {
   const registry = useContext(RegistryContext);
   const result = useAtomValue(lists.listAtom(targets));
@@ -83,12 +130,12 @@ export function useFactoryTaskDetail(ref: FactoryTaskRef) {
     factoryTasks.readTask({ environmentId: ref.environmentId, input: { task: { ref } } }),
   );
 }
-export function useFactoryTaskActivity(ref: FactoryTaskRef, cursor?: string) {
+export function useFactoryTaskActivity(
+  ref: FactoryTaskRef,
+  page: Omit<FactoryTaskActivityInput, "ref"> = {},
+) {
   return useAtomValue(
-    factoryTasks.readTaskActivity({
-      environmentId: ref.environmentId,
-      input: { ref, ...(cursor === undefined ? {} : { cursor }) },
-    }),
+    factoryTasks.readTaskActivity({ environmentId: ref.environmentId, input: { ref, ...page } }),
   );
 }
 export function useFactoryTaskResult(ref: FactoryTaskRef, revision?: number) {

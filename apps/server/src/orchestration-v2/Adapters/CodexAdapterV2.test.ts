@@ -4,6 +4,8 @@ import {
   type ProviderTextDeltaUpdate,
 } from "./ProviderTextDeltaCoalescer.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { AgentScope } from "@t3tools/shared/AgentScope";
+import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 import {
   CommandId,
   CheckpointId,
@@ -69,6 +71,35 @@ import type * as ProviderContinuationRequests from "@t3tools/provider-core/serve
 import * as CodexAdapterV2 from "./CodexAdapterV2.ts";
 import { withCodexReplayChildMetadata } from "./CodexAdapterV2.testkit.ts";
 import * as CodexAdapterV2Testkit from "./CodexAdapterV2.testkit.ts";
+
+it.effect.each([false, true])("keeps Codex inside its attempt owner (owned %s)", (owned) =>
+  Effect.gen(function* () {
+    let wraps = 0;
+    const command = yield* CodexAdapterV2.makeCodexAppServerSpawnCommand({
+      command: process.execPath,
+      args: ["app-server"],
+    }).pipe(
+      Effect.provideService(
+        OwnedProcess,
+        owned ? { spawn: (cmd, native) => native.spawn(cmd) } : undefined,
+      ),
+      Effect.provideService(AgentScope, {
+        wrap: (input) =>
+          Effect.sync(() => {
+            wraps++;
+            return { command: process.execPath, args: ["systemd-wrapper", ...input.args] };
+          }),
+        stop: () => Effect.void,
+        clear: () => Effect.void,
+        oomKilled: () => Effect.succeed(false),
+      }),
+    );
+    assert.equal(wraps, owned ? 0 : 1);
+    assert.equal(command._tag, "StandardCommand");
+    if (command._tag === "StandardCommand")
+      assert.deepEqual(command.args, owned ? ["app-server"] : ["systemd-wrapper", "app-server"]);
+  }),
+);
 
 const replayTranscriptJson = Schema.fromJsonString(CodexReplay.CodexAppServerReplayTranscript);
 const encodeReplayTranscriptJson = Schema.encodeEffect(replayTranscriptJson);

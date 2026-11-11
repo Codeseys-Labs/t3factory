@@ -156,10 +156,10 @@ const make = Effect.gen(function* () {
     if (actor.kind !== "human") return yield* new FactoryExecutionError({ reason: "forbidden" });
     const input = yield* decodeIssueGrant(raw).pipe(Effect.mapError(invalid));
     yield* assertEnvironment(input.ref);
-    for (const spec of input.policy.tasks)
-      yield* validateNativeExecutionCapabilities(spec, input.policy.requiredCapabilities).pipe(
-        Effect.provideService(ProviderAdapterRegistryV2, adapters),
-      );
+    yield* validateNativeExecutionCapabilities(
+      input.policy.tasks,
+      input.policy.requiredCapabilities,
+    ).pipe(Effect.provideService(ProviderAdapterRegistryV2, adapters));
     return yield* commit(
       { type: "grant", input },
       actor,

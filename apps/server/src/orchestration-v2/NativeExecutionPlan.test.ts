@@ -104,10 +104,9 @@ it.effect("refuses missing adapter ownership and admits Linux only with proven d
         ),
       );
       let removed = 0;
-      const result = yield* validateNativeExecutionCapabilities(
-        { modelSelection: { instanceId, model: "fixture" } },
-        [],
-      ).pipe(
+      const spec = { modelSelection: { instanceId, model: "fixture" } };
+      // Two tasks in one grant share a single containment probe.
+      const result = yield* validateNativeExecutionCapabilities([spec, spec], []).pipe(
         Effect.provideService(
           ChildProcessSpawner.ChildProcessSpawner,
           ChildProcessSpawner.make(() =>
@@ -182,7 +181,7 @@ it.effect("admits by owned-writer capability and refuses unsupported guarantees"
         required: ReadonlyArray<"owned-writers" | "hard-cost-limit" | "external-actions-denied">,
       ) =>
         validateNativeExecutionCapabilities(
-          { modelSelection: { instanceId, model: "fixture" } },
+          [{ modelSelection: { instanceId, model: "fixture" } }],
           required,
         ).pipe(
           Effect.provideService(HostProcess.Platform, "win32"),

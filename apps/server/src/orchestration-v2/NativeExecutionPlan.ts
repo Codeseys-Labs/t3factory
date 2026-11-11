@@ -106,9 +106,10 @@ export const planNativeExecution = Effect.fn("NativeExecutionPlan.plan")(functio
   const ids = yield* IdAllocator.IdAllocatorV2;
   const adapters = yield* ProviderAdapterRegistryV2;
   const adapter = yield* adapters.get(input.modelSelection.instanceId);
-  yield* validateNativeExecutionCapabilities({ modelSelection: input.modelSelection }, [
-    "owned-writers",
-  ]);
+  yield* validateNativeExecutionCapabilities(
+    [{ modelSelection: input.modelSelection }],
+    ["owned-writers"],
+  );
   const runId = ids.derive.run({ threadId: input.threadId, ordinal: 1 });
   const runAttemptId = ids.derive.runAttempt({ runId, attemptOrdinal: 1 });
   const rootNodeId = ids.derive.rootNode({ runId });
@@ -299,31 +300,39 @@ export const planNativeExecution = Effect.fn("NativeExecutionPlan.plan")(functio
 export const validateNativeExecutionCapabilities = Effect.fn(
   "NativeExecutionPlan.validateCapabilities",
 )(function* (
-  spec: Pick<FactoryExecutionTaskSpec, "modelSelection">,
+  specs: ReadonlyArray<Pick<FactoryExecutionTaskSpec, "modelSelection">>,
   requiredCapabilities: FactoryExecutionPolicy["requiredCapabilities"],
 ) {
-  const adapter = yield* (yield* ProviderAdapterRegistryV2)
-    .get(spec.modelSelection.instanceId)
-    .pipe(
-      Effect.mapError(
-        (cause) => new FactoryExecutionError({ reason: "unsupported-capability", cause }),
-      ),
-    );
-  const capabilities = yield* adapter
-    .getCapabilities()
-    .pipe(
-      Effect.mapError(
-        (cause) => new FactoryExecutionError({ reason: "unsupported-capability", cause }),
-      ),
-    );
-  const capabilityReason =
-    capabilities.ownedWriters !== true
-      ? "This agent does not route all of its writers through attempt-owned processes."
-      : requiredCapabilities.some((capability) => capability !== "owned-writers")
-        ? "Hard cost limits and denial of external actions are not enforced by this runtime."
-        : yield* ownedWriterPlatformRefusal();
-  if (capabilityReason !== undefined) {
-    return yield* new FactoryExecutionError({ reason: "unsupported-capability", capabilityReason });
+  // The Linux probe spawns a contained child; one call probes the host at most once.
+  const platformRefusal = yield* Effect.cached(ownedWriterPlatformRefusal());
+  const registry = yield* ProviderAdapterRegistryV2;
+  for (const spec of specs) {
+    const adapter = yield* registry
+      .get(spec.modelSelection.instanceId)
+      .pipe(
+        Effect.mapError(
+          (cause) => new FactoryExecutionError({ reason: "unsupported-capability", cause }),
+        ),
+      );
+    const capabilities = yield* adapter
+      .getCapabilities()
+      .pipe(
+        Effect.mapError(
+          (cause) => new FactoryExecutionError({ reason: "unsupported-capability", cause }),
+        ),
+      );
+    const capabilityReason =
+      capabilities.ownedWriters !== true
+        ? "This agent does not route all of its writers through attempt-owned processes."
+        : requiredCapabilities.some((capability) => capability !== "owned-writers")
+          ? "Hard cost limits and denial of external actions are not enforced by this runtime."
+          : yield* platformRefusal;
+    if (capabilityReason !== undefined) {
+      return yield* new FactoryExecutionError({
+        reason: "unsupported-capability",
+        capabilityReason,
+      });
+    }
   }
 });
 

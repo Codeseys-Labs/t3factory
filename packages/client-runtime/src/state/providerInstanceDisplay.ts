@@ -29,9 +29,10 @@ export function resolveProviderInstanceDisplayName(
 export function providerInstanceInitials(label: string): string {
   // Punctuation separates words so "Codex (hub)" reads CH, not C(. An apostrophe
   // inside a word stays ("Theo's Codex" is TC); a quoting one does not
-  // ("Codex 'hub'" is CH).
+  // ("Codex 'hub'" is CH). Explicit ranges, not \p{P}: Hermes left "(" in place, so
+  // the phone read "Replay (dev)" as R(.
   const words = label
-    .replace(/[^\P{P}'’]+/gu, " ")
+    .replace(/[!-&(-/:-@[-`{-~\u00a1-\u00bf\u2010-\u2018\u201a-\u205e\u3000-\u303f]+/g, " ")
     .split(/\s+/u)
     .map((word) => word.replace(/^['’]+|['’]+$/gu, ""))
     .filter(Boolean);

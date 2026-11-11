@@ -24,7 +24,7 @@ import type { TaskLabels } from "./useTasksData";
 
 export interface TasksListBodyProps {
   readonly items: readonly TasksListItem[];
-  readonly notices: readonly string[];
+  readonly notices: readonly { readonly key: string; readonly text: string }[];
   readonly state: TasksListState;
   readonly refreshing: boolean;
   readonly onRefresh: () => void;
@@ -116,8 +116,8 @@ export function TasksListBody(props: TasksListBodyProps) {
         props.notices.length > 0 ? (
           <View className="gap-1 pb-1 pt-2">
             {props.notices.map((notice) => (
-              <Text key={notice} textRole="footnote" className="px-1 text-foreground-muted">
-                {notice}
+              <Text key={notice.key} textRole="footnote" className="px-1 text-foreground-muted">
+                {notice.text}
               </Text>
             ))}
           </View>

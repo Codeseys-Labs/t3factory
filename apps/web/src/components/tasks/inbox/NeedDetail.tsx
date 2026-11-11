@@ -359,7 +359,13 @@ function RecentEntry({
       kind="event"
       text={text}
       author={entry.actor.label}
-      time={relative.status === "relative" ? `${relative.value} ${relative.suffix}`.trim() : ""}
+      time={
+        relative.status !== "relative"
+          ? ""
+          : relative.suffix
+            ? `${relative.value} ${relative.suffix}`
+            : relative.value
+      }
     />
   );
 }

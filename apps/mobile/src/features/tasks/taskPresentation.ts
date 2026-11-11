@@ -293,10 +293,11 @@ const GROUP_TITLES = { "in-progress": "In progress", "in-review": "In review" } 
 export function tasksListNotices(
   state: TasksListState,
   labelOf: (environmentId: EnvironmentId) => string,
-): readonly string[] {
-  return state.notices.map(
-    (notice) => `${labelOf(notice.environmentId)} ${TASKS_OWNER_NOTICE[notice.status]}`,
-  );
+): readonly { readonly key: EnvironmentId; readonly text: string }[] {
+  return state.notices.map((notice) => ({
+    key: notice.environmentId,
+    text: `${labelOf(notice.environmentId)} ${TASKS_OWNER_NOTICE[notice.status]}`,
+  }));
 }
 
 /** G1: Needs you, then In progress, then In review. */

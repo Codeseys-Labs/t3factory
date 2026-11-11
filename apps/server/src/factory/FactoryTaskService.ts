@@ -6,6 +6,7 @@ import {
   FactoryTaskByThreadInput,
   FactoryTaskCheckInput,
   FactoryTaskCommentInput,
+  FactoryTaskAssigneeListInput,
   FactoryTaskCountInput,
   FactoryTaskCreateInput,
   FactoryTaskDeliverInput,
@@ -34,6 +35,7 @@ import {
   type FactoryTaskByThreadResult,
   type FactoryTaskChange,
   type FactoryTaskCommentResult,
+  type FactoryTaskAssigneeListResult,
   type FactoryTaskCountResult,
   type FactoryTaskDetail,
   type FactoryTaskListResult,
@@ -93,6 +95,9 @@ export class FactoryTaskService extends Context.Service<
     readonly count: (
       input: FactoryTaskCountInput,
     ) => Effect.Effect<FactoryTaskCountResult, FactoryTaskError>;
+    readonly listAssignees: (
+      input: FactoryTaskAssigneeListInput,
+    ) => Effect.Effect<FactoryTaskAssigneeListResult, FactoryTaskError>;
     readonly read: (
       input: FactoryTaskReadInput,
     ) => Effect.Effect<FactoryTaskDetail, FactoryTaskError>;
@@ -221,6 +226,7 @@ const asTaskError = (cause: unknown) =>
 
 const decodeList = Schema.decodeEffect(FactoryTaskListInput);
 const decodeCount = Schema.decodeEffect(FactoryTaskCountInput);
+const decodeAssigneeList = Schema.decodeEffect(FactoryTaskAssigneeListInput);
 const decodeRead = Schema.decodeEffect(FactoryTaskReadInput);
 const decodeCreate = Schema.decodeEffect(FactoryTaskCreateInput);
 const decodeUpdate = Schema.decodeEffect(FactoryTaskUpdateInput);
@@ -898,6 +904,26 @@ const make = Effect.gen(function* () {
       return { environmentId, byStatus: yield* store.count(filter), fetchedAt: yield* now };
     },
   );
+
+  const listAssignees: FactoryTaskService["Service"]["listAssignees"] = Effect.fn(
+    "FactoryTaskService.listAssignees",
+  )(function* (raw) {
+    const { projectIds } = yield* decodeAssigneeList(raw).pipe(Effect.mapError(invalid));
+    const samples = yield* store.assigneeSamples({
+      filter: { scope: "all", ...(projectIds === undefined ? {} : { projectIds }) },
+      limit: 128,
+    });
+    const roots = yield* store.loadRoots([...new Set(samples.map((sample) => sample.rootId))]);
+    const assignees = new Map<string, FactoryTaskSummary["assignee"]>();
+    for (const sample of samples) {
+      const root = roots.get(sample.rootId);
+      const view = root?.tasks.get(sample.taskId);
+      if (root === undefined || view === undefined) continue;
+      const { assignee } = summarize(root, view);
+      if (!assignees.has(assignee.key)) assignees.set(assignee.key, assignee);
+    }
+    return { assignees: [...assignees.values()], fetchedAt: yield* now };
+  });
 
   const read: FactoryTaskService["Service"]["read"] = Effect.fn("FactoryTaskService.read")(
     function* (raw) {
@@ -2031,6 +2057,7 @@ const make = Effect.gen(function* () {
   return FactoryTaskService.of({
     list,
     count,
+    listAssignees,
     read,
     create,
     update,

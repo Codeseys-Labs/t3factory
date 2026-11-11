@@ -10,10 +10,10 @@ import {
 } from "@t3tools/contracts";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { CommandIcon, PlusIcon, ZapIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { shortcutLabelForCommand } from "../../../keybindings";
-import { useFactoryTasks } from "../../../state/factoryTasks";
+import { useFactoryTaskAssignees, useFactoryTasks } from "../../../state/factoryTasks";
 import { primaryServerKeybindingsAtom } from "../../../state/server";
 import { Button } from "../../ui/button";
 import { Toggle, ToggleGroup } from "../../ui/toggle-group";
@@ -72,14 +72,7 @@ export function TasksPage() {
   const statuses = boardStatuses(filters);
   const roots = useFactoryTasks(withFilters(scope.targets, filters, "roots"));
   const [filterOpen, setFilterOpen] = useState(false);
-  const assigneeTasks = useFactoryTasks(
-    filterOpen ? withFilters(scope.targets, { statuses: FactoryTaskStatus.literals }, "all") : [],
-  );
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Loads the scoped task cursor pages so assignee choices include sub-tasks and survive view filters.
-  useEffect(() => {
-    for (const owner of assigneeTasks.more)
-      if (owner.available) assigneeTasks.loadMore(owner.environmentId);
-  }, [assigneeTasks]);
+  const assigneeChoices = useFactoryTaskAssignees(filterOpen ? scope.targets : []);
   const [stripOpen, setStripOpen] = useState({ board: true, list: false });
 
   const projectNames = new Map(
@@ -139,7 +132,7 @@ export function TasksPage() {
   const countLabel = roots.owners.some((owner) => owner.counts !== null)
     ? `${shown}${roots.countsComplete ? "" : "+"} ${shown === 1 ? "task" : "tasks"}`
     : null;
-  const assignees = assigneeOptions(assigneeTasks.items.map((entry) => entry.task));
+  const assignees = assigneeOptions(assigneeChoices);
   const peekKey = view.peek ? factoryTaskKey(view.peek) : null;
   const layout = view.layout;
 
@@ -277,15 +270,13 @@ function NoMatches() {
   );
 }
 
-function assigneeOptions(tasks: readonly FactoryTaskSummary[]): readonly AssigneeOption[] {
+function assigneeOptions(
+  choices: ReturnType<typeof useFactoryTaskAssignees>,
+): readonly AssigneeOption[] {
   const options = new Map<string, AssigneeOption>();
-  for (const task of tasks)
-    if (!options.has(task.assignee.key))
-      options.set(task.assignee.key, {
-        key: task.assignee.key,
-        assignee: task.assignee,
-        environmentId: task.ref.environmentId,
-      });
+  for (const { assignee, environmentId } of choices)
+    if (!options.has(assignee.key))
+      options.set(assignee.key, { key: assignee.key, assignee, environmentId });
   return [...options.values()];
 }
 

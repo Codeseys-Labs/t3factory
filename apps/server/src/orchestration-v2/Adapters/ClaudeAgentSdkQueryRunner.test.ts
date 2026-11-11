@@ -17,6 +17,10 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
+import * as Sink from "effect/Sink";
+import * as Stream from "effect/Stream";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import { makeClaudeOwnedSpawner } from "../../process/ClaudeOwnedProcess.ts";
 import * as TestClock from "effect/testing/TestClock";
 import { vi } from "vite-plus/test";
 
@@ -141,6 +145,68 @@ const resumedMcpQueryInput = {
     },
   },
 } satisfies ClaudeAgentSdkQueryOpenInput;
+
+it.effect("emits Claude exit when descendants keep stdout and stderr open", () =>
+  Effect.gen(function* () {
+    const rootExit = yield* Deferred.make<ChildProcessSpawner.ExitCode>();
+    const outputRead = yield* Deferred.make<void>();
+    const stderrRead = yield* Deferred.make<void>();
+    let exited = false;
+    const lingering = yield* Deferred.make<void>();
+    let cleanup = 0;
+    let output = "";
+    let stderr = "";
+    const bytes = (text: string, read: Deferred.Deferred<void>) =>
+      Stream.make(new TextEncoder().encode(text)).pipe(
+        Stream.tap(() => Deferred.succeed(read, undefined)),
+        Stream.concat(Stream.fromEffectDrain(Deferred.await(lingering))),
+      );
+    const native = ChildProcessSpawner.make(() =>
+      Effect.succeed(
+        ChildProcessSpawner.makeHandle({
+          pid: ChildProcessSpawner.ProcessId(100),
+          exitCode: Deferred.await(rootExit),
+          isRunning: Effect.succeed(false),
+          kill: () =>
+            Effect.sync(() => {
+              cleanup++;
+            }),
+          unref: Effect.succeed(Effect.void),
+          stdin: Sink.drain,
+          stdout: bytes("available-output", outputRead),
+          stderr: bytes("available-stderr", stderrRead),
+          all: Stream.empty,
+          getInputFd: () => Sink.drain,
+          getOutputFd: () => Stream.empty,
+        }),
+      ),
+    );
+    const spawn = yield* makeClaudeOwnedSpawner().pipe(
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, native),
+    );
+    const child = spawn(
+      { command: "claude", args: [], env: {}, signal: yield* Effect.abortSignal },
+      (text) => {
+        stderr += text;
+      },
+    );
+    child.stdout.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+    child.once("exit", () => {
+      exited = true;
+    });
+    yield* Deferred.await(outputRead);
+    yield* Deferred.await(stderrRead);
+    yield* Deferred.succeed(rootExit, ChildProcessSpawner.ExitCode(0));
+    yield* TestClock.adjust("1 second");
+    assert.isTrue(exited);
+    assert.equal(child.exitCode, 0);
+    assert.equal(cleanup, 1);
+    assert.equal(output, "available-output");
+    assert.equal(stderr, "available-stderr");
+  }).pipe(Effect.scoped),
+);
 
 it.live.each([false, true])(
   "routes Claude SDK stdin, stdout, stderr and exit through the attempt owner (killed %s)",

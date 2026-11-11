@@ -84,8 +84,19 @@ export const makeClaudeOwnedSpawner = Effect.fn("ClaudeOwnedProcess.makeSpawner"
           Effect.forkIn(scope),
         );
         const code = yield* awaitConfirmedExit(handle);
-        yield* Fiber.join(output);
-        yield* Fiber.join(stderr);
+        // Descendants may retain the pipes after root exit, even if cleanup cannot stop them.
+        yield* handle
+          .kill({ killSignal: "SIGKILL" })
+          .pipe(
+            Effect.ignore,
+            Effect.andThen(
+              Effect.all([Fiber.join(output), Fiber.join(stderr)], { concurrency: "unbounded" }),
+            ),
+            Effect.timeoutOption("500 millis"),
+            Effect.ignore,
+          );
+        yield* Fiber.interrupt(output);
+        yield* Fiber.interrupt(stderr);
         if (Option.isSome(code)) exitCode = Number(code.value);
         // Effect does not expose which signal ended it; the owner stops roots with SIGKILL.
         else signalCode ??= "SIGKILL";

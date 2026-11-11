@@ -30,28 +30,33 @@ const layerTransactions = Layer.effect(
     const sql = yield* SqlClient.SqlClient;
     const withTransaction = sql.withTransaction;
     // Keep publication ordered with commits, including transactions opened outside the event sink.
+    // Read-only transactions write nothing to publish and must not queue behind writers.
     const commits = yield* Semaphore.make(1);
+    const ordered = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const parent = yield* Effect.serviceOption(CommitCallbacks);
+          const callbacks: Array<Effect.Effect<void>> = [];
+          const transaction = withTransaction(
+            restore(effect).pipe(Effect.provideService(CommitCallbacks, callbacks)),
+          ).pipe(
+            Effect.tap(() =>
+              Option.isSome(parent)
+                ? Effect.sync(() => {
+                    parent.value.push(...callbacks);
+                  })
+                : Effect.forEach(callbacks, (callback) => callback, { discard: true }),
+            ),
+          );
+          if (Option.isSome(parent)) return yield* transaction;
+          yield* restore(commits.take(1));
+          return yield* transaction.pipe(Effect.ensuring(commits.release(1)));
+        }),
+      );
     return Object.assign(sql, {
       withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-        Effect.uninterruptibleMask((restore) =>
-          Effect.gen(function* () {
-            const parent = yield* Effect.serviceOption(CommitCallbacks);
-            const callbacks: Array<Effect.Effect<void>> = [];
-            const transaction = withTransaction(
-              restore(effect).pipe(Effect.provideService(CommitCallbacks, callbacks)),
-            ).pipe(
-              Effect.tap(() =>
-                Option.isSome(parent)
-                  ? Effect.sync(() => {
-                      parent.value.push(...callbacks);
-                    })
-                  : Effect.forEach(callbacks, (callback) => callback, { discard: true }),
-              ),
-            );
-            if (Option.isSome(parent)) return yield* transaction;
-            yield* restore(commits.take(1));
-            return yield* transaction.pipe(Effect.ensuring(commits.release(1)));
-          }),
+        Effect.flatMap(NodeSqliteClient.isReadOnly, (readOnly) =>
+          readOnly ? withTransaction(effect) : ordered(effect),
         ),
     });
   }),

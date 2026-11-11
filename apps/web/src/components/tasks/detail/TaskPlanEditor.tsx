@@ -95,7 +95,7 @@ export function TaskPlanEditor({
                       render={<button type="button" />}
                     />
                   }
-                  parent={{ displayId: task.displayId, assignee: task.assignee }}
+                  parent={{ ref: task.ref, displayId: task.displayId, assignee: task.assignee }}
                 />
                 <AfterPicker
                   item={item}

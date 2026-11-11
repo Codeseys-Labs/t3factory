@@ -43,6 +43,8 @@ items become tasks and who gets them, and agent profiles that name a harness and
 rules can pick them. New items arrive in **Inbox → Triage** with the rule's suggestion; you accept,
 snooze, decline or mark them duplicate. A rule can suggest a type and assignee; it cannot start an
 agent. **Try once** runs a new rule on its next match and waits for your verdict before it turns on.
+Snoozed items come back on their own when their time comes; until then they wait in Triage's snoozed
+view, where **Unsnooze** brings one back early.
 
 The older Factory pages (Issues, Feed sources, Briefs, Research, Scheduled workflows and Orchestrator)
 are linked at the bottom of Automations.

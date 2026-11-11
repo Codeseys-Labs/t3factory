@@ -1699,6 +1699,14 @@ it.effect(
       const store = yield* DeliveryStore.FactoryDeliveryStore;
       assert.equal(Option.getOrThrow(yield* store.get(retried.id)).status, "unknown");
       assert.equal(createCalls(state), 2);
+      // Someone pushed another commit to the branch after the lost answer: a pull request exists,
+      // so absence is not proven and the publication stays unconfirmed.
+      state.publications = [
+        publishedChangeRequest({ headRefName: taskBranch, headSha: "f".repeat(40) }),
+      ];
+      const moved = yield* service.reconcile({ projectId, intentId: retried.id });
+      assert.equal(moved.status, "unknown");
+      assert.include(moved.failure, "different commit");
       state.publications = [publishedChangeRequest({ headRefName: taskBranch })];
       const found = yield* service.reconcile({ projectId, intentId: retried.id });
       assert.deepEqual([found.status, found.remote], ["confirmed", pullRequest]);
@@ -1709,6 +1717,7 @@ it.effect(
           [taskBranch, "open"],
           [taskBranch, "all"],
           [taskBranch, "open"],
+          [taskBranch, "all"],
           [taskBranch, "all"],
         ],
       );

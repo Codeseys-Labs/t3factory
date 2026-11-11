@@ -24,7 +24,7 @@ export function TaskPageMenu({
 }) {
   const permissions = useTaskPermissions(task.ref.environmentId);
   const actions = useTaskActions();
-  const ownRunLive = task.liveRuns.some((run) => run.taskId === task.ref.taskId);
+  const runLive = task.liveRuns.length > 0;
   const copyLink = async () => {
     const url = new URL(window.location.href);
     url.search = "";
@@ -58,7 +58,7 @@ export function TaskPageMenu({
         ) : (
           <MenuItem
             variant="destructive"
-            disabled={!permissions.update || ownRunLive}
+            disabled={!permissions.update || runLive}
             onClick={() => void actions.cancel(task)}
           >
             <CircleXIcon aria-hidden />

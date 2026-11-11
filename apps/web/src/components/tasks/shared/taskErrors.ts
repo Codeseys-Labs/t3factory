@@ -35,7 +35,7 @@ const TASK: Omit<Record<TaskReason, string>, keyof typeof SHARED> = {
   "invalid-transition": "The task cannot move there from its current status.",
   "run-active": "Stop the run first.",
   blocked: "This task waits on another task.",
-  "no-run": "Start the task first.",
+  "no-run": "This action needs a work run on this task.",
   "no-result": "Wait for a result first.",
   "result-conflict": "A newer result arrived. Review it first.",
   "assignee-unresolved": "Pick who does this task first.",

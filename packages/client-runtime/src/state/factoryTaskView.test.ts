@@ -173,6 +173,23 @@ describe("task drop rules", () => {
 });
 
 describe("task presentation", () => {
+  it("links a parent to its running descendant and reserves Stop for its own run", () => {
+    const parent = task("T-38");
+    const banner = presentFactoryTaskBanner({
+      task: parent,
+      attention: [],
+      assigneeLabel: "Agent",
+    });
+    expect(banner.primary).toEqual({
+      kind: "open-task",
+      label: "Open T-38.2",
+      taskId: "task-38.2",
+    });
+    const own = task("T-41");
+    expect(
+      presentFactoryTaskBanner({ task: own, attention: [], assigneeLabel: "Agent" }).primary,
+    ).toEqual({ kind: "stop", label: "Stop" });
+  });
   it.each([
     ["C1", "T-43", "backlog", "start", null],
     ["C2", "T-38.3", "blocked", "open-task", null],

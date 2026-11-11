@@ -553,6 +553,16 @@ it("saves a comment for the people on the task", async () => {
   );
 });
 
+it("keeps Cancel unavailable while a descendant has a live run", async () => {
+  const { screen } = await renderDetail(taskPath("T-38"));
+  await using _screen = screen;
+  await userEvent.click(page.getByRole("button", { name: "Task actions" }));
+  await expect
+    .element(page.getByRole("menuitem", { name: "Cancel task" }))
+    .toHaveAttribute("aria-disabled", "true");
+  expect(state.actions.cancel).not.toHaveBeenCalled();
+});
+
 it("messages only a live planning run's agent", async () => {
   const planning: FactoryTaskRun = { ...fixture("T-38").run!, state: "running", endedAt: null };
   const planningTask: FactoryTaskSummary = {

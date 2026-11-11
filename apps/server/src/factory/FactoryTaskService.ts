@@ -1138,7 +1138,7 @@ const make = Effect.gen(function* () {
           to: input.lane,
           status: task.derived.status,
           accepted: row.acceptedRevision !== null,
-          runLive: task.runs.some((entry) => isLiveRunState(entry.state)),
+          runLive: task.derived.liveRuns.length > 0,
           resultWaiting: latestResult !== null && latestResult.state !== "accepted",
         });
         if (!move.allowed) return yield* refuse(move.reason);

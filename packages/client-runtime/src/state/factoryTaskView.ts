@@ -506,7 +506,9 @@ export function presentFactoryTaskBanner(input: {
       action("request-changes", "Request changes"),
     );
   }
-  if (task.status === "in-progress")
+  if (task.status === "in-progress") {
+    const ownLive = task.liveRuns.some((run) => run.taskId === task.ref.taskId);
+    const descendant = task.liveRuns.find((run) => run.taskId !== task.ref.taskId);
     return banner(
       "working",
       "working",
@@ -517,12 +519,17 @@ export function presentFactoryTaskBanner(input: {
             ? "Stopped"
             : "In progress"),
       input.runDetail ?? assigneeLabel,
-      task.liveRuns.length
-        ? action("stop", "Stop")
-        : task.run?.state === "stopped"
-          ? action("retry", "Retry")
-          : null,
+      ownLive
+        ? task.run?.purpose === "work"
+          ? action("stop", "Stop")
+          : null
+        : descendant
+          ? action("open-task", `Open ${descendant.displayId}`, descendant.taskId)
+          : task.run?.state === "stopped"
+            ? action("retry", "Retry")
+            : null,
     );
+  }
   const blocker = task.blockedBy[0];
   if (blocker)
     return banner(

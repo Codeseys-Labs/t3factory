@@ -2017,6 +2017,21 @@ it.effect("a planning run and a waiting proposal show on the task and on its par
         (yield* summary(parent)).liveRuns.map((run) => run.displayId),
         ["T-1.1"],
       );
+      const currentParent = yield* summary(parent);
+      assert.equal(
+        (yield* tasks
+          .update(
+            {
+              commandId: command("cancel-live-parent"),
+              ref: parent.ref,
+              expectedVersion: currentParent.version,
+              lane: "canceled",
+            },
+            human,
+          )
+          .pipe(Effect.flip)).reason,
+        "run-active",
+      );
       assert.equal(
         (yield* tasks.findByThread({ threadId: planning.threadId })).task?.displayId,
         "T-1.1",

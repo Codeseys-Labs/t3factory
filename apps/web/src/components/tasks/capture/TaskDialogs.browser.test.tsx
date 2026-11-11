@@ -183,9 +183,9 @@ async function pickAssignee(from: RegExp, option: RegExp) {
 
 it("adds to the backlog with the project, type and assignee chosen", async () => {
   setup({ createTask: [ok(created())] });
-  using toast = vi.spyOn(toastManager, "add");
   openNewTask({ environmentId, projectId: website.id });
   await using _screen = await render(<TaskDialogsHost />);
+  using toast = vi.spyOn(toastManager, "add");
   await composer().fill("Fix the list\nIt overflows at 1280");
   await pickAssignee(/^Unassigned/, /Implementer/);
   await userEvent.click(page.getByRole("combobox", { name: "Type" }));
@@ -212,9 +212,9 @@ it("adds to the backlog with the project, type and assignee chosen", async () =>
 
 it("offers no link when the task is added from the Tasks page", async () => {
   setup({ createTask: [ok(created())] });
-  using toast = vi.spyOn(toastManager, "add");
   openNewTask({ environmentId, projectId: website.id });
   await using _screen = await render(<TaskDialogsHost />, { router: "/tasks" });
+  using toast = vi.spyOn(toastManager, "add");
   await composer().fill("Light theme");
   await userEvent.click(page.getByRole("button", { name: /Add to backlog/ }));
   await expect.element(composer()).not.toBeInTheDocument();
@@ -264,9 +264,9 @@ it("cannot start while unassigned, and the shortcut adds to the backlog", async 
 
 it("keeps the task in the backlog and shows the sentence when the start is refused", async () => {
   setup({ createTask: [ok(created())], startTask: [refused("provider-unavailable")] });
-  using toast = vi.spyOn(toastManager, "add");
   openNewTask({ environmentId, projectId: t3code.id });
   await using _screen = await render(<TaskDialogsHost />);
+  using toast = vi.spyOn(toastManager, "add");
   await composer().fill("Benchmark index paths");
   await pickAssignee(/^Unassigned/, /Implementer/);
   await userEvent.click(page.getByRole("button", { name: /^Start now/ }));
@@ -460,9 +460,9 @@ it.each(["changed assignment", "new sub-task"] as const)(
 it("asks for a plan without creating anything", async () => {
   const task = taskOf("T-43");
   setup({ requestTaskBreakdown: [ok(task)] });
-  using toast = vi.spyOn(toastManager, "add");
   openTaskSetup(task.ref, "break-down");
   await using _screen = await render(<TaskDialogsHost />);
+  using toast = vi.spyOn(toastManager, "add");
   await expect.element(page.getByText("Break down T-43")).toBeVisible();
   await expect
     .element(page.getByRole("textbox", { name: "Workspace" }))

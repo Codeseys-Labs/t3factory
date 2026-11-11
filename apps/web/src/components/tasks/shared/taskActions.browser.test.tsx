@@ -69,8 +69,8 @@ const inputOf = (call: unknown) => (call as { input: Record<string, unknown> }).
 
 it("shows a refusal's sentence", async () => {
   setup({ update: [refused("run-active")] });
-  using toast = vi.spyOn(toastManager, "add");
   await using screen = await render(<Harness />);
+  using toast = vi.spyOn(toastManager, "add");
   await userEvent.click(screen.getByRole("button", { name: "Done" }));
   await vi.waitFor(() =>
     expect(toast).toHaveBeenCalledWith({ type: "error", title: "Stop the run first." }),
@@ -80,8 +80,8 @@ it("shows a refusal's sentence", async () => {
 
 it("retries an update once with the current version", async () => {
   setup({ update: [conflict(), ok()] });
-  using toast = vi.spyOn(toastManager, "add");
   await using screen = await render(<Harness />);
+  using toast = vi.spyOn(toastManager, "add");
   await userEvent.click(screen.getByRole("button", { name: "Done" }));
   await vi.waitFor(() => expect(state.update).toHaveLength(2));
   const [first, second] = state.update.map(inputOf);
@@ -93,8 +93,8 @@ it("retries an update once with the current version", async () => {
 
 it("retries an update no more than once", async () => {
   setup({ update: [conflict(), conflict()] });
-  using toast = vi.spyOn(toastManager, "add");
   await using screen = await render(<Harness />);
+  using toast = vi.spyOn(toastManager, "add");
   await userEvent.click(screen.getByRole("button", { name: "Done" }));
   await vi.waitFor(() =>
     expect(toast).toHaveBeenCalledWith({
@@ -107,8 +107,8 @@ it("retries an update no more than once", async () => {
 
 it("does not retry accept on a version conflict", async () => {
   setup({ accept: [conflict()] });
-  using toast = vi.spyOn(toastManager, "add");
   await using screen = await render(<Harness />);
+  using toast = vi.spyOn(toastManager, "add");
   await userEvent.click(screen.getByRole("button", { name: "Accept" }));
   await vi.waitFor(() => expect(toast).toHaveBeenCalledOnce());
   expect(state.accept).toHaveLength(1);

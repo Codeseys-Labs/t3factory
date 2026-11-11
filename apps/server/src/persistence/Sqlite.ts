@@ -18,6 +18,10 @@ class CommitCallbacks extends Context.Service<CommitCallbacks, Array<Effect.Effe
   "t3/persistence/Sqlite/CommitCallbacks",
 ) {}
 
+/**
+ * Runs `effect` once the outermost transaction commits, or now outside one. Callbacks run under
+ * the commit lock, so they must not open a write transaction.
+ */
 export const afterCommit = Effect.fn("Sqlite.afterCommit")(function* (effect: Effect.Effect<void>) {
   const callbacks = yield* Effect.serviceOption(CommitCallbacks);
   if (Option.isSome(callbacks)) callbacks.value.push(effect);

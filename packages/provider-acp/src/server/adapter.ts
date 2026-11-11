@@ -1372,7 +1372,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
     instanceId: options.instanceId,
     driver,
     getCapabilities: Effect.fn("AcpAdapter.getCapabilities")(function () {
-      return Effect.succeed({ ...flavor.capabilities, ownedWriters: true });
+      return Effect.succeed(flavor.capabilities);
     }),
     planSelectionTransition: Effect.fn("AcpAdapter.planSelectionTransition")(function (input) {
       return Effect.succeed(acpSelectionTransition(input));

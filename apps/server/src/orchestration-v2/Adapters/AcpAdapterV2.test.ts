@@ -2756,12 +2756,13 @@ describe("AcpAdapterV2", () => {
         instanceId,
         flavor: {
           driver: ACP_TEST_DRIVER,
-          capabilities: AcpProviderCapabilitiesV2,
+          capabilities: { ...AcpProviderCapabilitiesV2, ownedWriters: false },
           makeRuntime,
         },
         selfInvocation,
         clientTerminals: {},
       });
+      assert.isFalse((yield* adapter.getCapabilities()).ownedWriters);
       const sourceThreadId = ThreadId.make("thread-acp-native-fork-source");
       const targetThreadId = ThreadId.make("thread-acp-native-fork-target");
       yield* (yield* McpProviderSessions.McpProviderSessions).set({

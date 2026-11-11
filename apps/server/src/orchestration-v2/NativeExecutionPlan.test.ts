@@ -41,6 +41,18 @@ it.effect(
           }),
         ),
       );
+      // A registry that replaces the instance mid-plan must not change what was validated.
+      const replacement = yield* ProviderAdapter.ProviderAdapterV2.pipe(
+        Effect.provide(
+          Layer.mock(ProviderAdapter.ProviderAdapterV2)({
+            instanceId,
+            driver: ProviderDriverKind.make("cursor"),
+            getCapabilities: () =>
+              Effect.succeed({ ...CodexProviderCapabilitiesV2, ownedWriters: false }),
+          }),
+        ),
+      );
+      let lookups = 0;
       const plan = yield* planNativeExecution({
         commandId: CommandId.make("admit-root"),
         threadId: ThreadId.make("native-root"),
@@ -58,10 +70,12 @@ it.effect(
         Effect.provideService(HostProcess.Platform, "win32"),
         Effect.provide(IdAllocator.layer),
         Effect.provideService(ProviderAdapterRegistryV2, {
-          get: () => Effect.succeed(adapter),
+          get: () => Effect.sync(() => (lookups++ === 0 ? adapter : replacement)),
           list: () => Effect.succeed([instanceId]),
         }),
       );
+      assert.equal(lookups, 1);
+      assert.equal(plan.driver, adapter.driver);
       for (const event of plan.events) assert.isTrue(isDomainEvent(event));
       const created = plan.events.find((event) => event.type === "thread.created");
       if (created?.type !== "thread.created")

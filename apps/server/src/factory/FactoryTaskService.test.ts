@@ -150,6 +150,7 @@ class DeliveryProbe extends Context.Service<
   DeliveryProbe,
   {
     readonly grants: Array<string>;
+    readonly baseRefs: Array<string | null>;
     readonly checks: Array<string>;
     found: Omit<DeliveryStore.FactoryDeliverySettlement, "updatedAt">;
   }
@@ -170,6 +171,7 @@ const deliveries = Layer.effect(
       grantCommit: (input) =>
         Effect.gen(function* () {
           probe.grants.push(input.kind);
+          probe.baseRefs.push(input.baseRef);
           if (
             input.kind === "merge-pr" &&
             Option.getOrUndefined(yield* store.getLive(input.originKey, "publish-pr"))?.status !==
@@ -232,6 +234,7 @@ const deliveries = Layer.effect(
         DeliveryProbe,
         Effect.sync(() => ({
           grants: [],
+          baseRefs: [],
           checks: [],
           found: { status: "unknown" as const, failure: null },
         })),
@@ -1306,6 +1309,8 @@ it.effect("follows a run from start through failure, retry, review, acceptance a
 
       yield* finish(firstRun, "failed");
       const failed = yield* until(task, (current) => current.run?.state === "failed");
+      const failedBase = "d".repeat(40);
+      yield* sql`UPDATE factory_execution_bindings SET binding_json = json_set(binding_json, '$.spec.workspaceStrategy.baseRef', ${failedBase}) WHERE thread_id = ${firstRun.threadId}`;
       // A failed run never moves the task; it asks for a person instead.
       assert.equal(failed.status, "in-progress");
       assert.deepEqual(
@@ -1331,6 +1336,10 @@ it.effect("follows a run from start through failure, retry, review, acceptance a
         ["in-progress", "running", 2, 0],
       );
       assert.deepEqual(secondRun.setup, firstRun.setup);
+      assert.deepEqual(
+        yield* sql`SELECT json_extract(binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef FROM factory_execution_bindings WHERE thread_id = ${secondRun.threadId}`,
+        [{ baseRef: projectHead }],
+      );
 
       yield* finish(secondRun, "sealed", "Reconnect now replays the last run state.");
       const review = yield* until(task, (current) => current.status === "in-review");
@@ -1387,6 +1396,12 @@ it.effect("follows a run from start through failure, retry, review, acceptance a
           .pipe(Effect.flip)).reason,
         "invalid-transition",
       );
+
+      yield* tasks.publish(
+        { commandId: command("publish-retry"), ref: task.ref, revision: 1 },
+        human,
+      );
+      assert.deepEqual((yield* DeliveryProbe).baseRefs, [projectHead]);
 
       const reopened = (yield* tasks.reopen({ commandId: command("reopen"), ref: task.ref }, human))
         .task;
@@ -1920,6 +1935,11 @@ it.effect(
             .pipe(Effect.flip)).reason,
           "result-conflict",
         );
+        yield* tasks.publish(
+          { commandId: command("publish-changes"), ref: task.ref, revision: 2 },
+          human,
+        );
+        assert.deepEqual((yield* DeliveryProbe).baseRefs, [projectHead]);
         assert.equal((yield* tasks.readResult({ ref: task.ref, revision: 1 })).result.revision, 1);
       }),
     ),

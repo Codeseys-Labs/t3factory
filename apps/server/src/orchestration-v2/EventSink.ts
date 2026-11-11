@@ -42,6 +42,7 @@ import * as ProjectStore from "./ProjectStore.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import * as FactoryPlans from "../persistence/FactoryPlanStore.ts";
 import * as FactoryExecutions from "../persistence/FactoryExecutionStore.ts";
+import * as Sqlite from "../persistence/Sqlite.ts";
 
 const isFactoryPlanError = Schema.is(FactoryPlanError);
 const isFactoryExecutionError = Schema.is(FactoryExecutionError);
@@ -299,14 +300,10 @@ const layerBase: Layer.Layer<
         // Cancellation may roll back the transaction's work. Once it commits,
         // every subscriber must hear about it before this writer can exit.
         // Otherwise a failed child run can leave its parent's task running.
-        return sql
-          .withTransaction(Effect.tap(restore(transaction), () => takeLane))
-          .pipe(
-            Effect.tap(publish),
-            Effect.ensuring(
-              Effect.suspend(() => (holdsLane ? publishLane.release(1) : Effect.void)),
-            ),
-          );
+        return sql.withTransaction(Effect.tap(restore(transaction), () => takeLane)).pipe(
+          Effect.tap((result) => Sqlite.afterCommit(publish(result))),
+          Effect.ensuring(Effect.suspend(() => (holdsLane ? publishLane.release(1) : Effect.void))),
+        );
       });
 
     // A user can answer after terminal normalization reads the pending request.

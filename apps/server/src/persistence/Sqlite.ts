@@ -3,6 +3,9 @@ import * as Layer from "effect/Layer";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as Context from "effect/Context";
+import * as Option from "effect/Option";
+import * as Semaphore from "effect/Semaphore";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 import { runMigrations } from "./Migrations.ts";
@@ -10,6 +13,58 @@ import { initializeV2Database } from "./initializeV2Database.ts";
 import * as ServerConfig from "../config.ts";
 
 const WAL_SIZE_LIMIT_BYTES = 32 * 1024 * 1024;
+
+class CommitCallbacks extends Context.Service<CommitCallbacks, Array<Effect.Effect<void>>>()(
+  "t3/persistence/Sqlite/CommitCallbacks",
+) {}
+
+/**
+ * Runs `effect` once the outermost transaction commits, or now outside one. Callbacks run under
+ * the commit lock, so they must not open a write transaction.
+ */
+export const afterCommit = Effect.fn("Sqlite.afterCommit")(function* (effect: Effect.Effect<void>) {
+  const callbacks = yield* Effect.serviceOption(CommitCallbacks);
+  if (Option.isSome(callbacks)) callbacks.value.push(effect);
+  else yield* effect;
+});
+
+const layerTransactions = Layer.effect(
+  SqlClient.SqlClient,
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const withTransaction = sql.withTransaction;
+    // Keep publication ordered with commits, including transactions opened outside the event sink.
+    // Read-only transactions write nothing to publish and must not queue behind writers.
+    const commits = yield* Semaphore.make(1);
+    const ordered = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const parent = yield* Effect.serviceOption(CommitCallbacks);
+          const callbacks: Array<Effect.Effect<void>> = [];
+          const transaction = withTransaction(
+            restore(effect).pipe(Effect.provideService(CommitCallbacks, callbacks)),
+          ).pipe(
+            Effect.tap(() =>
+              Option.isSome(parent)
+                ? Effect.sync(() => {
+                    parent.value.push(...callbacks);
+                  })
+                : Effect.forEach(callbacks, (callback) => callback, { discard: true }),
+            ),
+          );
+          if (Option.isSome(parent)) return yield* transaction;
+          yield* restore(commits.take(1));
+          return yield* transaction.pipe(Effect.ensuring(commits.release(1)));
+        }),
+      );
+    return Object.assign(sql, {
+      withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        Effect.flatMap(NodeSqliteClient.isReadOnly, (readOnly) =>
+          readOnly ? withTransaction(effect) : ordered(effect),
+        ),
+    });
+  }),
+);
 
 const layerSetup = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -51,22 +106,26 @@ export const layerFromPath = Effect.fn("makeSqlitePersistenceLive")(function* (d
 
   return Layer.provideMerge(
     layerSetup,
-    NodeSqliteClient.layer({
-      filename: dbPath,
-      readerWorker: true,
-      // Run checkpoint fsyncs off the event loop so slow disk flushes cannot stall clients.
-      checkpointWorker: true,
-      spanAttributes: {
-        "db.name": path.basename(dbPath),
-        "service.name": "t3code-server",
-      },
-    }),
+    layerTransactions.pipe(
+      Layer.provide(
+        NodeSqliteClient.layer({
+          filename: dbPath,
+          readerWorker: true,
+          // Run checkpoint fsyncs off the event loop so slow disk flushes cannot stall clients.
+          checkpointWorker: true,
+          spanAttributes: {
+            "db.name": path.basename(dbPath),
+            "service.name": "t3code-server",
+          },
+        }),
+      ),
+    ),
   );
 }, Layer.unwrap);
 
 export const layerMemory = Layer.provideMerge(
   layerSetup,
-  NodeSqliteClient.layer({ filename: ":memory:" }),
+  layerTransactions.pipe(Layer.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
 );
 
 export const layerConfig = Layer.unwrap(

@@ -510,9 +510,10 @@ export const FactoryTaskActivityInput = Schema.Struct({
   ref: FactoryTaskRef,
   cursor: Schema.optional(Cursor),
   limit: Schema.optional(Limit),
+  order: Schema.optional(Schema.Literals(["oldest", "newest"])),
 });
 export type FactoryTaskActivityInput = typeof FactoryTaskActivityInput.Type;
-/** Oldest first. */
+/** Oldest first unless the input requests newest first. */
 export const FactoryTaskActivityResult = Schema.Struct({
   entries: Schema.Array(FactoryTaskActivityEntry).check(Schema.isMaxLength(50)),
   nextCursor: Schema.NullOr(Cursor),

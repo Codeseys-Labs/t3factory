@@ -61,6 +61,9 @@ import { IssueTrackerProviderRegistry } from "./IssueTrackerProviderRegistry.ts"
 
 const FAILURE_MAX_CHARS = 1000;
 const PUBLICATION_LOOKUP_LIMIT = 100;
+const REMOTE_READ_TIMEOUT_MS = 30_000;
+// A push that times out may still have landed; the next Publish finds the branch at this commit.
+const PUSH_TIMEOUT_MS = 300_000;
 
 // Only these GitHub rejections prove no write occurred; all other failures stay unknown.
 // Other hosts cannot publish until their definite rejections are classified here.
@@ -1212,7 +1215,7 @@ const makeService = Effect.gen(function* () {
         operation: "FactoryDeliveryService.readPublicationBranch",
         cwd,
         args: ["ls-remote", "--heads", "--", "origin", branchRef],
-        timeoutMs: null,
+        timeoutMs: REMOTE_READ_TIMEOUT_MS,
         maxOutputBytes: 4096,
       }),
     );
@@ -1236,7 +1239,7 @@ const makeService = Effect.gen(function* () {
             "origin",
             `${intent.headSha}:${branchRef}`,
           ],
-          timeoutMs: null,
+          timeoutMs: PUSH_TIMEOUT_MS,
         }),
       );
       if (pushed._tag === "Failure") return yield* fail(describe("push failed", pushed.failure));

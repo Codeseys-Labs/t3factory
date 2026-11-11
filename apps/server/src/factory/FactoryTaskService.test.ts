@@ -855,6 +855,29 @@ it.effect("keeps title and description in the plan and everything on the board b
         ],
       );
       assert.equal(secondPage.nextCursor, null);
+      const newest = yield* tasks.activity({ ref: task.ref, limit: 2, order: "newest" });
+      assert.deepEqual(
+        newest.entries.map((entry) => entry.id),
+        [...secondPage.entries]
+          .reverse()
+          .slice(0, 2)
+          .map((entry) => entry.id),
+      );
+      const older = yield* tasks.activity({
+        ref: task.ref,
+        limit: 2,
+        order: "newest",
+        cursor: newest.nextCursor!,
+      });
+      assert.deepEqual(
+        older.entries.map((entry) => entry.id),
+        [secondPage.entries[0]!, firstPage.entries[2]!].map((entry) => entry.id),
+      );
+      assert.equal(
+        (yield* tasks.activity({ ref: task.ref, cursor: newest.nextCursor! }).pipe(Effect.flip))
+          .reason,
+        "invalid-cursor",
+      );
       assert.isTrue(firstPage.entries.every((entry) => entry.actor.label === "You"));
       assert.equal(
         (yield* tasks.activity({ ref: other.ref, cursor: firstPage.nextCursor! }).pipe(Effect.flip))
@@ -1124,7 +1147,9 @@ it.effect.each(
       const running = yield* start(task);
       yield* finish(running.run!, operation === "retry" ? "failed" : "sealed", "Answer");
       yield* until(task, (current) =>
-        operation === "retry" ? current.run?.endedAt != null : current.status === "in-review",
+        operation === "retry"
+          ? current.liveRuns.length === 0 && current.run?.endedAt != null
+          : current.status === "in-review",
       );
       if (condition === "blocked") {
         const ref = { environmentId, projectId, rootId: task.ref.rootId };
@@ -1838,6 +1863,34 @@ it.effect(
         yield* finish(first, "sealed");
         const review = yield* until(task, (current) => current.status === "in-review");
 
+        // An Accept that lands after a Request changes passed its checks wins: the run is not
+        // admitted, and the note does not wait for the next run.
+        const plansGate = yield* PlanGate;
+        const reached = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        plansGate.next = Deferred.succeed(reached, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+        );
+        const late = yield* Effect.forkChild(
+          tasks
+            .requestChanges(
+              { commandId: command("late"), ref: task.ref, revision: 1, note: "Too late" },
+              human,
+            )
+            .pipe(Effect.flip),
+        );
+        yield* Deferred.await(reached);
+        yield* tasks.accept({ commandId: command("first"), ref: task.ref, revision: 1 }, human);
+        yield* Deferred.succeed(release, undefined);
+        assert.equal((yield* Fiber.join(late)).reason, "invalid-transition");
+        const done = (yield* tasks.read({ task: { ref: task.ref } })).task;
+        assert.deepEqual([done.status, done.run?.ordinal], ["done", 1]);
+        assert.deepEqual(
+          yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${task.ref.taskId}`,
+          [{ note: null }],
+        );
+        yield* tasks.reopen({ commandId: command("undo-first"), ref: task.ref }, human);
+
         // A Request changes that lands while an Accept reads the result wins: the run it started
         // is not covered by an acceptance of the result before it.
         const requested = yield* Deferred.make<FactoryTaskMutationResult, FactoryTaskError>();
@@ -2110,6 +2163,53 @@ it.effect(
           "done",
         );
         assert.deepEqual((yield* summary(parent)).progress, { done: 1, total: 2 });
+      }),
+    ),
+);
+
+it.effect(
+  "a sibling that starts after Request changes' check wins, and the request leaves nothing behind",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, subtask, start, finish, until } = yield* harness;
+        const parent = yield* create("Unified task model");
+        const contract = yield* subtask("Contract and migration", parent);
+        const notes = yield* subtask("Release notes", parent);
+        yield* finish((yield* start(contract, setupOf("opus", "root"))).run!, "sealed", "Drafted.");
+        yield* until(contract, (current) => current.status === "in-review");
+
+        // Hold Request changes after its own check, at the plan read that starts its launch.
+        const gate = yield* PlanGate;
+        const reached = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        gate.next = Effect.sync(() => {
+          gate.next = Deferred.succeed(reached, undefined).pipe(
+            Effect.andThen(Deferred.await(release)),
+          );
+        });
+        const overtaken = yield* Effect.forkChild(
+          tasks
+            .requestChanges(
+              { commandId: command("overtaken"), ref: contract.ref, revision: 1, note: "Later" },
+              human,
+            )
+            .pipe(Effect.flip),
+        );
+        yield* Deferred.await(reached);
+        yield* start(notes, setupOf("flash", "root"));
+        yield* Deferred.succeed(release, undefined);
+        assert.equal((yield* Fiber.join(overtaken)).reason, "run-active");
+        assert.deepEqual(
+          yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${contract.ref.taskId}`,
+          [{ note: null }],
+        );
+        assert.deepEqual(
+          (yield* tasks.activity({ ref: contract.ref })).entries
+            .filter((entry) => entry.event.type === "changes-requested")
+            .map((entry) => entry.event),
+          [],
+        );
       }),
     ),
 );

@@ -1479,6 +1479,7 @@ const make = Effect.gen(function* () {
     // Refused before the note is kept, so a request that cannot run leaves nothing behind.
     if (!resumed) yield* nextRound(row);
     const at = yield* now;
+    const activityKey = `changes-requested:${input.commandId}`;
     // A sealed attempt cannot continue, so the note travels in the next attempt's input.
     yield* transact(
       Effect.gen(function* () {
@@ -1492,7 +1493,7 @@ const make = Effect.gen(function* () {
           at,
           actor: PERSON,
           event: { type: "changes-requested", revision: latest.revision, note: input.note },
-          dedupeKey: `changes-requested:${input.commandId}`,
+          dedupeKey: activityKey,
         });
       }),
     );
@@ -1505,7 +1506,23 @@ const make = Effect.gen(function* () {
       // Code continues from the result under review; a document starts from the task again.
       baseCommit: latest.kind === "code" ? latest.commit : null,
       record: command.record,
-    });
+    }).pipe(
+      // A run that was never admitted leaves no trace for a later one; an Accept that won says so.
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          if (yield* store.launched(derived(input.commandId, "admit"))) return yield* error;
+          yield* transact(
+            Effect.gen(function* () {
+              yield* store.updateBoard(row, { inputNote: null, bumpVersion: false, at });
+              yield* store.retractActivity(activityKey);
+            }),
+          );
+          if ((yield* store.acceptedRevision(row)) !== null)
+            return yield* refuse("invalid-transition");
+          return yield* error;
+        }),
+      ),
+    );
   });
 
   const reopen: FactoryTaskService["Service"]["reopen"] = Effect.fn("FactoryTaskService.reopen")(
@@ -1796,12 +1813,18 @@ const make = Effect.gen(function* () {
     const input = yield* decodeActivity(raw).pipe(Effect.mapError(invalid));
     const { task } = yield* requireTask(input.ref);
     const limit = input.limit ?? 50;
-    const scope = executionDigest(["factory-task-activity/1", task.row.rootId, task.row.taskId]);
+    const newest = input.order === "newest";
+    const scope = executionDigest([
+      newest ? "factory-task-activity/newest/1" : "factory-task-activity/1",
+      task.row.rootId,
+      task.row.taskId,
+    ]);
     const position = input.cursor === undefined ? null : yield* decodeCursor(input.cursor, scope);
     const rows = yield* store.pageActivity({
       key: task.row,
-      afterSeq: position?.seq ?? 0,
+      afterSeq: position?.seq ?? (newest ? Number.MAX_SAFE_INTEGER : 0),
       limit: limit + 1,
+      ...(newest ? { order: "newest" } : {}),
     });
     const selected = rows.slice(0, limit);
     const last = selected.at(-1);

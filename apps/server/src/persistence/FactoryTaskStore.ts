@@ -209,10 +209,13 @@ export class FactoryTaskStore extends Context.Service<
       readonly event: FactoryTaskActivityEvent;
       readonly dedupeKey?: string;
     }) => Effect.Effect<FactoryTaskActivityEntry | null, FactoryTaskError>;
+    /** Removes an entry a command appended before it was refused; nothing when absent. */
+    readonly retractActivity: (dedupeKey: string) => Effect.Effect<void, FactoryTaskError>;
     readonly pageActivity: (input: {
       readonly key: TaskKey;
       readonly afterSeq: number;
       readonly limit: number;
+      readonly order?: "oldest" | "newest";
     }) => Effect.Effect<
       ReadonlyArray<{ readonly seq: number; readonly entry: FactoryTaskActivityEntry }>,
       FactoryTaskError
@@ -1096,13 +1099,16 @@ const make = Effect.gen(function* () {
     }, Effect.mapError(failure)),
     updateBoard,
     appendActivity,
+    retractActivity: Effect.fn("FactoryTaskStore.retractActivity")(function* (dedupeKey) {
+      yield* sql`DELETE FROM factory_task_activity WHERE dedupe_key = ${dedupeKey}`;
+    }, Effect.mapError(failure)),
     pageActivity: Effect.fn("FactoryTaskStore.pageActivity")(function* (input) {
       const rows = yield* sql<{
         seq: number;
         at: string;
         actor: string;
         event: string;
-      }>`SELECT seq, at, actor_json AS actor, event_json AS event FROM factory_task_activity WHERE root_id = ${input.key.rootId} AND task_id = ${input.key.taskId} AND seq > ${input.afterSeq} ORDER BY seq LIMIT ${input.limit}`;
+      }>`SELECT seq, at, actor_json AS actor, event_json AS event FROM factory_task_activity WHERE root_id = ${input.key.rootId} AND task_id = ${input.key.taskId} AND ${input.order === "newest" ? sql`seq < ${input.afterSeq}` : sql`seq > ${input.afterSeq}`} ORDER BY seq ${sql.literal(input.order === "newest" ? "DESC" : "ASC")} LIMIT ${input.limit}`;
       return yield* Effect.forEach(rows, activityEntry);
     }, Effect.mapError(failure)),
     readActivity: Effect.fn("FactoryTaskStore.readActivity")(function* (seq) {

@@ -3,6 +3,7 @@ import {
   factoryTaskKey,
 } from "@t3tools/client-runtime/state/factory-task-view";
 import type { FactoryTaskSummary, ScopedProjectRef } from "@t3tools/contracts";
+import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useNavigate } from "@tanstack/react-router";
 import { InboxIcon, PanelsTopLeftIcon, SquarePenIcon, ZapIcon } from "lucide-react";
 
@@ -46,7 +47,7 @@ function newTaskPaletteAction(single: ScopedProjectRef | null): CommandPaletteAc
 export function useCommandPaletteTaskItems(query: string, enabled: boolean) {
   const scope = useTaskScope();
   const navigate = useNavigate();
-  const text = query.trim().slice(0, 256);
+  const [text] = useDebouncedValue(query.trim().slice(0, 256), { wait: 200 });
   const list = useFactoryTasks(
     enabled && !text.startsWith(">")
       ? scope.targets.map((target) => ({

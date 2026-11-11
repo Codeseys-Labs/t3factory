@@ -60,6 +60,7 @@ vi.mock(import("./taskActions"), () => ({
     start: true,
     stop: true,
     retry: true,
+    breakDown: true,
     accept: true,
     requestChanges: true,
     reopen: true,

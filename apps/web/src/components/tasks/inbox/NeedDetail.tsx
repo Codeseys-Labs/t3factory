@@ -103,7 +103,7 @@ function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSu
           <div className="flex gap-2">
             <Button
               size="sm"
-              disabled={!permissions.start}
+              disabled={!permissions.breakDown}
               onClick={() => openTaskSetup(task.ref, "break-down")}
             >
               Break down

@@ -157,7 +157,7 @@ export function TaskBanner({
       case "retry":
         return kit(() => runAction(() => actions.retry(task)), permissions.retry);
       case "break-down":
-        return kit(() => openTaskSetup(task.ref, "break-down"), permissions.start);
+        return kit(() => openTaskSetup(task.ref, "break-down"), permissions.breakDown);
       case "stop":
         return kit(() => runAction(() => actions.stop(task)), permissions.stop, "danger");
       case "accept":

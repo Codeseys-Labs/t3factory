@@ -69,7 +69,7 @@ function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
     need.reason === "failed" && task?.run?.purpose === "planning"
       ? {
           label: "Break down",
-          disabled: !permissions.start,
+          disabled: !permissions.breakDown,
           onClick: () => openTaskSetup(task.ref, "break-down"),
         }
       : need.reason === "failed"

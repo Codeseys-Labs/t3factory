@@ -1765,6 +1765,34 @@ it.effect(
         yield* finish(first, "sealed");
         const review = yield* until(task, (current) => current.status === "in-review");
 
+        // An Accept that lands after a Request changes passed its checks wins: the run is not
+        // admitted, and the note does not wait for the next run.
+        const plansGate = yield* PlanGate;
+        const reached = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        plansGate.next = Deferred.succeed(reached, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+        );
+        const late = yield* Effect.forkChild(
+          tasks
+            .requestChanges(
+              { commandId: command("late"), ref: task.ref, revision: 1, note: "Too late" },
+              human,
+            )
+            .pipe(Effect.flip),
+        );
+        yield* Deferred.await(reached);
+        yield* tasks.accept({ commandId: command("first"), ref: task.ref, revision: 1 }, human);
+        yield* Deferred.succeed(release, undefined);
+        assert.equal((yield* Fiber.join(late)).reason, "invalid-transition");
+        const done = (yield* tasks.read({ task: { ref: task.ref } })).task;
+        assert.deepEqual([done.status, done.run?.ordinal], ["done", 1]);
+        assert.deepEqual(
+          yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${task.ref.taskId}`,
+          [{ note: null }],
+        );
+        yield* tasks.reopen({ commandId: command("undo-first"), ref: task.ref }, human);
+
         // A Request changes that lands while an Accept reads the result wins: the run it started
         // is not covered by an acceptance of the result before it.
         const requested = yield* Deferred.make<FactoryTaskMutationResult, FactoryTaskError>();

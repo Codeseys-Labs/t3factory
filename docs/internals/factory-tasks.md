@@ -50,6 +50,10 @@ on the host is recorded by Check against the publication's pinned head and base 
   the old revision, so a sibling run waiting on approval must be stopped and started again. The
   engine runs a task once per revision, so Request changes on a task with a result takes a new
   revision too; it is refused with `run-active` while a sibling runs.
+- Accept and run admission must see each other. Accept mirrors admitted runs in the transaction
+  that records it, and the engine's admission refuses a task whose `accepted_revision` is set
+  (`FactoryExecutionStore.prepareAdmission`), so a Request changes racing an Accept never leaves a
+  Done task with a running run, whichever commits first.
 - A live stream subscription atom stays `waiting` until the stream ends and may not emit before the
   first change. Read only its failure; treating `waiting` as loading kept every task list loading.
 - Hermes does not apply `\P{…}` inside a negated character class. Shared client code that runs on the

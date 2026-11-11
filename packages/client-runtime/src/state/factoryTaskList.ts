@@ -166,9 +166,11 @@ export function createFactoryTaskListAtoms<LE, CE>(input: {
           capped: false,
         };
       const pages: FactoryTaskListResult[] = [];
-      const streamStatus = input.changesAtom
-        ? factoryTaskQueryStatus(get(input.changesAtom(target.environmentId)))
-        : "current";
+      // A live stream stays `waiting` until it ends and may not emit before the first change, so
+      // only its failure says anything about this owner.
+      const changes = input.changesAtom ? get(input.changesAtom(target.environmentId)) : null;
+      const streamStatus =
+        changes?._tag === "Failure" ? factoryTaskQueryStatus(changes) : ("current" as const);
       if (streamStatus === "forbidden" || streamStatus === "unsupported")
         return {
           environmentId: target.environmentId,

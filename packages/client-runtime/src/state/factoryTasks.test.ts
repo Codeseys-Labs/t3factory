@@ -282,8 +282,9 @@ it("keeps separate cursor chains, caps pages and removes protected cached rows o
     const access = Atom.family((_id: EnvironmentId) =>
       Atom.make<FactoryTaskOwnerStatus>("current"),
     );
+    // A live subscription: it emitted once and stays waiting until it ends.
     const changes = Atom.family((_id: EnvironmentId) =>
-      Atom.make<AsyncResult.AsyncResult<unknown, Error>>(AsyncResult.success(0)),
+      Atom.make<AsyncResult.AsyncResult<unknown, Error>>(AsyncResult.success(0, { waiting: true })),
     );
     const requested: string[] = [];
     const pages = Atom.family((key: string) => {
@@ -334,6 +335,13 @@ it("keeps separate cursor chains, caps pages and removes protected cached rows o
     expect(result.byStatus.backlog).toBe(1000);
     expect(result.more[0]?.capped).toBe(true);
     expect(requested.filter((key) => key.includes('"second"'))).toHaveLength(1);
+    expect(result.owners.map((owner) => [owner.status, owner.countsStatus])).toEqual([
+      ["current", "current"],
+      ["current", "current"],
+    ]);
+    expect(result.countsComplete).toBe(true);
+    registry.set(changes(environmentId), AsyncResult.initial());
+    expect(registry.get(atom).owners[0]?.status).toBe("current");
     registry.set(
       changes(environmentId),
       AsyncResult.failure(Cause.fail(new Error("Stream disconnected"))),

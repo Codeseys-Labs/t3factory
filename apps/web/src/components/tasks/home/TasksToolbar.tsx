@@ -58,6 +58,7 @@ export function TasksToolbar({
   onToggleFilter,
   onClearFilters,
   onGroupingChange,
+  onFilterOpenChange,
 }: {
   filters: FactoryTaskCountInput;
   grouping: TaskGrouping;
@@ -66,13 +67,14 @@ export function TasksToolbar({
   onToggleFilter: (field: TaskFilterField, value: string) => void;
   onClearFilters: () => void;
   onGroupingChange: (grouping: TaskGrouping) => void;
+  onFilterOpenChange: (open: boolean) => void;
 }) {
   const active = activeFilterCount(filters);
   const checked = (field: TaskFilterField, value: string) =>
     (filters[field] as readonly string[] | undefined)?.includes(value) ?? false;
   return (
     <div className="flex h-12 shrink-0 items-center gap-2 px-6">
-      <Menu>
+      <Menu onOpenChange={onFilterOpenChange}>
         <MenuTrigger render={<Button variant="outline" size="xs" />}>
           <FilterIcon aria-hidden />
           Filter

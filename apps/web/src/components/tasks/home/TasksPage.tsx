@@ -71,8 +71,9 @@ export function TasksPage() {
   const filters = serverFilters(view.filters);
   const statuses = boardStatuses(filters);
   const roots = useFactoryTasks(withFilters(scope.targets, filters, "roots"));
+  const [filterOpen, setFilterOpen] = useState(false);
   const assigneeTasks = useFactoryTasks(
-    withFilters(scope.targets, { statuses: FactoryTaskStatus.literals }, "all"),
+    filterOpen ? withFilters(scope.targets, { statuses: FactoryTaskStatus.literals }, "all") : [],
   );
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Loads the scoped task cursor pages so assignee choices include sub-tasks and survive view filters.
   useEffect(() => {
@@ -173,6 +174,7 @@ export function TasksPage() {
         filters={filters}
         grouping={view.grouping}
         assignees={assignees}
+        onFilterOpenChange={setFilterOpen}
         countLabel={countLabel}
         onToggleFilter={(field, value) =>
           setView({ filters: toggleTaskFilter(filters, field, value) })

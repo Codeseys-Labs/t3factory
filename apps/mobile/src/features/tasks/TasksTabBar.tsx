@@ -21,6 +21,7 @@ const TABS: readonly {
 export function TasksTabBar(props: {
   readonly selected: TasksTab;
   readonly needsCount: number;
+  readonly needsIncomplete: boolean;
   readonly onSelect: (tab: TasksTab) => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -33,12 +34,18 @@ export function TasksTabBar(props: {
       {TABS.map((tab) => {
         const selected = tab.id === props.selected;
         const count = tab.id === "inbox" ? props.needsCount : 0;
+        const incomplete = tab.id === "inbox" && props.needsIncomplete;
+        const countLabel = `${count}${incomplete ? "+" : ""}`;
         return (
           <Pressable
             key={tab.id}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
-            accessibilityLabel={count > 0 ? `${tab.label}, ${count} need you` : tab.label}
+            accessibilityLabel={
+              count > 0 || incomplete
+                ? `${tab.label}, ${incomplete ? "at least " : ""}${count} need you`
+                : tab.label
+            }
             onPress={() => props.onSelect(tab.id)}
             className="min-h-14 flex-1 items-center justify-center gap-1 py-2 active:opacity-70"
           >
@@ -48,9 +55,11 @@ export function TasksTabBar(props: {
                 size={22}
                 tintColorClassName={selected ? "accent-icon" : "accent-icon-muted"}
               />
-              {count > 0 ? (
+              {count > 0 || incomplete ? (
                 <View className="-mr-5 ml-0.5 min-w-4 items-center rounded-full bg-adaptive-amber-500-a25-400-a25 px-1">
-                  <Text className="text-3xs font-t3-bold text-adaptive-amber-700-300">{count}</Text>
+                  <Text className="text-3xs font-t3-bold text-adaptive-amber-700-300">
+                    {countLabel}
+                  </Text>
                 </View>
               ) : null}
             </View>

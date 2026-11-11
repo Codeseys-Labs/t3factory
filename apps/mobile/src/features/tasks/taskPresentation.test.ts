@@ -158,6 +158,15 @@ describe("resolveTasksListState", () => {
       kind: "ready",
       notices: [{ environmentId: b, status: "offline" }],
     });
+    expect(
+      resolveTasksListState({
+        owners: [
+          { environmentId: a, status: "offline" },
+          { environmentId: a, status: "offline" },
+        ],
+        rowCount: 2,
+      }).notices,
+    ).toEqual([{ environmentId: a, status: "offline" }]);
   });
 });
 

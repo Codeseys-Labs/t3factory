@@ -340,6 +340,21 @@ it("keeps separate cursor chains, caps pages and removes protected cached rows o
       ["current", "current"],
     ]);
     expect(result.countsComplete).toBe(true);
+    const firstPage = pages(JSON.stringify([environmentId, null]));
+    const firstResult = registry.get(firstPage);
+    registry.set(firstPage, AsyncResult.waiting(firstResult));
+    const refreshing = registry.get(atom);
+    expect(refreshing.items).toHaveLength(FACTORY_TASK_PAGE_CAP + 1);
+    expect(refreshing.owners[0]?.pages).toHaveLength(FACTORY_TASK_PAGE_CAP);
+    expect(refreshing.owners[0]?.status).toBe("loading");
+    const laterPage = pages(JSON.stringify([environmentId, `${environmentId}:1`]));
+    const laterResult = registry.get(laterPage);
+    registry.set(laterPage, AsyncResult.waiting(laterResult));
+    registry.set(firstPage, firstResult);
+    expect(registry.get(atom).items).toHaveLength(FACTORY_TASK_PAGE_CAP + 1);
+    expect(registry.get(atom).owners[0]?.status).toBe("loading");
+    registry.set(laterPage, laterResult);
+    expect(registry.get(atom).owners[0]?.status).toBe("current");
     registry.set(changes(environmentId), AsyncResult.initial());
     expect(registry.get(atom).owners[0]?.status).toBe("current");
     registry.set(

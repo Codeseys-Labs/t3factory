@@ -1,7 +1,10 @@
 import type { EnvironmentId, FactoryTaskSummary } from "@t3tools/contracts";
 import { planFactoryTaskOwners } from "@t3tools/client-runtime/state/factory-task-list";
-import { presentFactoryTaskAssignee } from "@t3tools/client-runtime/state/factory-task-view";
-import { useMemo } from "react";
+import {
+  factoryTaskKey,
+  presentFactoryTaskAssignee,
+} from "@t3tools/client-runtime/state/factory-task-view";
+import { useMemo, useState } from "react";
 
 import { useNowMinuteMs } from "../../lib/clock";
 import { useProjects } from "../../state/entities";
@@ -12,9 +15,6 @@ import {
   useFactoryTasks,
 } from "../../state/factoryTasks";
 import { buildTasksSections, resolveTasksListState } from "./taskPresentation";
-
-/** Needs come from tasks that are not finished; done and canceled tasks never ask for anything. */
-const OPEN_STATUSES = ["backlog", "ready", "in-progress", "in-review"] as const;
 
 export interface TaskLabels {
   readonly projectLabel: string;
@@ -30,20 +30,40 @@ export function useTasksData() {
     environmentIds: environments.map((environment) => environment.environmentId),
     projects: null,
   });
-  const list = useFactoryTasks(
+  const attention = useFactoryTasks(
     owners.map(({ environmentId }) => ({
       environmentId,
-      input: { statuses: [...OPEN_STATUSES], scope: "all" },
+      input: { scope: "all", attention: true },
     })),
     { loadAll: true },
   );
-  const tasks = useMemo(() => list.items.map((item) => item.task), [list.items]);
+  const work = useFactoryTasks(
+    owners.map(({ environmentId }) => ({
+      environmentId,
+      input: { scope: "all", statuses: ["in-progress", "in-review"] },
+    })),
+    { loadAll: true },
+  );
+  const tasks = useMemo(() => {
+    const byKey = new Map<string, FactoryTaskSummary>();
+    for (const { task } of [...attention.items, ...work.items]) {
+      const key = factoryTaskKey(task.ref);
+      const previous = byKey.get(key);
+      if (
+        !previous ||
+        task.updatedAt > previous.updatedAt ||
+        (task.updatedAt === previous.updatedAt && task.version > previous.version)
+      )
+        byKey.set(key, task);
+    }
+    return [...byKey.values()];
+  }, [attention.items, work.items]);
   const entries = useFactoryTaskEntries(tasks);
   const catalogs = useFactoryTaskCatalogs(owners.map((owner) => owner.environmentId));
   const now = useNowMinuteMs();
   const sections = buildTasksSections(entries, now);
   const state = resolveTasksListState({
-    owners: list.owners.map((owner) => ({
+    owners: [...attention.owners, ...work.owners].map((owner) => ({
       environmentId: owner.environmentId,
       status: owner.status,
     })),
@@ -69,19 +89,29 @@ export function useTasksData() {
   };
 
   const inboxState = resolveTasksListState({
-    owners: list.owners.map((owner) => ({
+    owners: attention.owners.map((owner) => ({
       environmentId: owner.environmentId,
       status: owner.status,
     })),
     rowCount: sections.needs.length,
   });
 
+  const [refreshRequested, setRefreshRequested] = useState(false);
+  const loading = [...attention.owners, ...work.owners].some((owner) => owner.status === "loading");
+  if (refreshRequested && !loading) setRefreshRequested(false);
+
   return {
     sections,
     state,
     inboxState,
-    refreshing: list.owners.some((owner) => owner.status === "loading" && owner.pages.length > 0),
-    refresh: list.refresh,
+    incomplete: attention.incomplete || work.incomplete,
+    needsIncomplete: attention.incomplete,
+    refreshing: refreshRequested && loading,
+    refresh: () => {
+      setRefreshRequested(true);
+      attention.refresh();
+      work.refresh();
+    },
     environmentLabel,
     labelsFor,
     catalogs,

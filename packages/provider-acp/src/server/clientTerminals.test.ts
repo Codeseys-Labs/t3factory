@@ -9,6 +9,7 @@ import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 
 import {
   makeAcpClientTerminals,
@@ -25,8 +26,9 @@ const withTerminals = <A, E>(use: (terminals: AcpClientTerminals) => Effect.Effe
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped);
 
 describe("AcpClientTerminals", () => {
-  it.live("runs a command, buffers output, and reports the exit status", () =>
-    withTerminals((terminals) =>
+  it.live("runs an owned command, buffers output, and reports the exit status", () => {
+    let owned = 0;
+    return withTerminals((terminals) =>
       Effect.gen(function* () {
         const created = yield* terminals.create({
           sessionId: "session",
@@ -47,9 +49,17 @@ describe("AcpClientTerminals", () => {
         expect(output.output).toContain("hello from acp");
         expect(output.truncated).toBe(false);
         expect(output.exitStatus?.exitCode).toBe(3);
+        expect(owned).toBe(1);
       }),
-    ),
-  );
+    ).pipe(
+      Effect.provideService(OwnedProcess, {
+        spawn: (command, native) => {
+          owned++;
+          return native.spawn(command);
+        },
+      }),
+    );
+  });
 
   it.live("resolves terminal environment from the requesting ACP session", () =>
     Effect.gen(function* () {

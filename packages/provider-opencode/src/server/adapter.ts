@@ -923,7 +923,10 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
     instanceId: options.instanceId,
     driver: OPENCODE_PROVIDER,
     getCapabilities: Effect.fn("OpencodeAdapter.getCapabilities")(function () {
-      return Effect.succeed(OpenCodeProviderCapabilitiesV2);
+      return Effect.succeed({
+        ...OpenCodeProviderCapabilitiesV2,
+        ownedWriters: options.settings.serverUrl.trim().length === 0,
+      });
     }),
     planSelectionTransition: Effect.fn("OpencodeAdapter.planSelectionTransition")(function () {
       return Effect.succeed(turnScopedSelectionTransition());

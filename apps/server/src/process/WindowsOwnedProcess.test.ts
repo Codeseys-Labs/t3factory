@@ -78,11 +78,16 @@ it.live(
           }),
       );
       const descendant = `const s=require('node:net').connect(${JSON.stringify(pipePath)},()=>s.write('child\\n'));s.setEncoding('utf8');s.on('data',()=>{require('node:fs').appendFileSync(${JSON.stringify(outputPath)},${JSON.stringify(retainedBytes)});s.write('write-after-root\\n');});`;
-      const root = `const n=require('node:net');const c=require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{detached:true,stdio:['ignore','ignore','inherit']});c.unref();const s=n.connect(${JSON.stringify(pipePath)},()=>{s.write('root\\n',()=>process.exit(0));});`;
+      const root = `const n=require('node:net');const c=require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{detached:true,stdio:['ignore','ignore','inherit']});c.unref();const s=n.connect(${JSON.stringify(pipePath)},()=>{s.write('root\\n',()=>process.exit(7));});`;
       const observations: string[] = [];
+      let resolveHelperExit!: () => void;
+      const helperExit = new Promise<void>((resolve) => {
+        resolveHelperExit = resolve;
+      });
       const owner = yield* makeWindowsOwnedProcess({
         onObservation: (event) => {
           observations.push(event);
+          if (event.startsWith("helper-exit:")) resolveHelperExit();
           process.stderr.write(`[owned-observation] ${event}\n`);
         },
       });
@@ -100,13 +105,13 @@ it.live(
       const milestone = (name: string, signal: Promise<void>) =>
         Effect.promise(() => signal).pipe(
           Effect.raceFirst(
-            handle.exitCode.pipe(
-              Effect.flatMap((code) =>
+            Effect.promise(() => helperExit).pipe(
+              Effect.flatMap(() =>
                 Effect.gen(function* () {
                   const error = yield* Fiber.join(stderr);
                   return yield* Effect.die(
                     new Error(
-                      `Owned helper exited before ${name}: code=${code}; stages=${JSON.stringify(observations)}; stderr=${Array.from(error).join("")}`,
+                      `Owned helper exited before ${name}: stages=${JSON.stringify(observations)}; stderr=${Array.from(error).join("")}`,
                     ),
                   );
                 }),
@@ -121,9 +126,11 @@ it.live(
       yield* milestone("retained-filesystem-write", write);
       const actualBytes = yield* Effect.promise(() => NodeFSP.readFile(outputPath));
       assert.deepEqual([...actualBytes], [...Buffer.from(retainedBytes, "utf8")]);
-      assert.isTrue(yield* handle.isRunning);
+      // The handle is the root: it reports the root's exit while the writer keeps the job open.
+      assert.isFalse(yield* handle.isRunning);
+      assert.equal(yield* handle.exitCode, 7);
+      assert.notInclude(observations, "empty");
       assert.isTrue(yield* owner.quiesce());
-      assert.equal(yield* handle.exitCode, 0);
       yield* Fiber.join(stderr);
       yield* Fiber.join(stdout);
       const afterStop = yield* owner.spawner

@@ -461,6 +461,7 @@ export interface AcpAdapterV2Options {
 }
 
 export const AcpProviderCapabilitiesV2 = {
+  ownedWriters: true,
   sessions: {
     supportsMultipleProviderThreadsPerSession: false,
     supportsModelSwitchInSession: false,

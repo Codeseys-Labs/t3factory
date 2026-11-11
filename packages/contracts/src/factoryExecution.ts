@@ -293,10 +293,11 @@ export class FactoryExecutionError extends Schema.TaggedError<FactoryExecutionEr
       "not-quiescent",
       "persistence-failure",
     ]),
+    capabilityReason: Schema.optionalKey(Schema.String),
     cause: Schema.optionalKey(Schema.Defect()),
   },
 ) {
   override get message(): string {
-    return `Execution operation failed: ${this.reason}.`;
+    return this.capabilityReason ?? `Execution operation failed: ${this.reason}.`;
   }
 }

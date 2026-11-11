@@ -1,3 +1,4 @@
+import { spawnOwnedProcess } from "@t3tools/shared/ownedProcess";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -225,25 +226,24 @@ export const makeAcpClientTerminals = Effect.fn("makeAcpClientTerminals")(functi
               : { ...options.environment, ...sessionEnvironment, ...requestEnvironment };
           const terminalScope = yield* Scope.make();
           const child = yield* restore(
-            spawner
-              .spawn(
-                acpTerminalCommand({
-                  request,
-                  shellCommands: options.shellCommands,
-                  defaultCwd: options.defaultCwd,
-                  environment,
-                  forceKillAfter,
-                }),
-              )
-              .pipe(
-                Effect.provideService(Scope.Scope, terminalScope),
-                Effect.mapError((cause) =>
-                  terminalRequestError(
-                    `Could not start terminal command '${request.command}'.`,
-                    cause,
-                  ),
+            spawnOwnedProcess(
+              spawner,
+              acpTerminalCommand({
+                request,
+                shellCommands: options.shellCommands,
+                defaultCwd: options.defaultCwd,
+                environment,
+                forceKillAfter,
+              }),
+            ).pipe(
+              Effect.provideService(Scope.Scope, terminalScope),
+              Effect.mapError((cause) =>
+                terminalRequestError(
+                  `Could not start terminal command '${request.command}'.`,
+                  cause,
                 ),
               ),
+            ),
           ).pipe(
             Effect.onExit((exit) =>
               Exit.isFailure(exit) ? Scope.close(terminalScope, Exit.void) : Effect.void,

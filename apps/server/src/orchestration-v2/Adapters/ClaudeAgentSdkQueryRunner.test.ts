@@ -16,10 +16,16 @@ import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as PlatformError from "effect/PlatformError";
+import * as Sink from "effect/Sink";
+import * as Stream from "effect/Stream";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import { makeClaudeOwnedSpawner } from "../../process/ClaudeOwnedProcess.ts";
 import * as TestClock from "effect/testing/TestClock";
 import { vi } from "vite-plus/test";
 
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import { ProviderEventLoggers } from "@t3tools/provider-core/server/ProviderEventLoggers";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
@@ -139,6 +145,169 @@ const resumedMcpQueryInput = {
     },
   },
 } satisfies ClaudeAgentSdkQueryOpenInput;
+
+it.effect("emits Claude exit when descendants keep stdout and stderr open", () =>
+  Effect.gen(function* () {
+    const rootExit = yield* Deferred.make<ChildProcessSpawner.ExitCode>();
+    const outputRead = yield* Deferred.make<void>();
+    const stderrRead = yield* Deferred.make<void>();
+    let exited = false;
+    const lingering = yield* Deferred.make<void>();
+    let cleanup = 0;
+    let output = "";
+    let stderr = "";
+    const bytes = (text: string, read: Deferred.Deferred<void>) =>
+      Stream.make(new TextEncoder().encode(text)).pipe(
+        Stream.tap(() => Deferred.succeed(read, undefined)),
+        Stream.concat(Stream.fromEffectDrain(Deferred.await(lingering))),
+      );
+    const native = ChildProcessSpawner.make(() =>
+      Effect.succeed(
+        ChildProcessSpawner.makeHandle({
+          pid: ChildProcessSpawner.ProcessId(100),
+          exitCode: Deferred.await(rootExit),
+          isRunning: Effect.succeed(false),
+          kill: () =>
+            Effect.sync(() => {
+              cleanup++;
+            }),
+          unref: Effect.succeed(Effect.void),
+          stdin: Sink.drain,
+          stdout: bytes("available-output", outputRead),
+          stderr: bytes("available-stderr", stderrRead),
+          all: Stream.empty,
+          getInputFd: () => Sink.drain,
+          getOutputFd: () => Stream.empty,
+        }),
+      ),
+    );
+    const spawn = yield* makeClaudeOwnedSpawner().pipe(
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, native),
+    );
+    const child = spawn(
+      { command: "claude", args: [], env: {}, signal: yield* Effect.abortSignal },
+      (text) => {
+        stderr += text;
+      },
+    );
+    child.stdout.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+    child.once("exit", () => {
+      exited = true;
+    });
+    yield* Deferred.await(outputRead);
+    yield* Deferred.await(stderrRead);
+    yield* Deferred.succeed(rootExit, ChildProcessSpawner.ExitCode(0));
+    yield* TestClock.adjust("1 second");
+    assert.isTrue(exited);
+    assert.equal(child.exitCode, 0);
+    assert.equal(cleanup, 1);
+    assert.equal(output, "available-output");
+    assert.equal(stderr, "available-stderr");
+  }).pipe(Effect.scoped),
+);
+
+// A stopped Windows job reports a numeric root exit (1); an exit 0 that races the stop is kept.
+it.live.each([
+  { stop: "none", expected: [0, null] },
+  { stop: "signal", expected: [null, "SIGKILL"] },
+  { stop: "code", expected: [null, "SIGKILL"] },
+  { stop: "race", expected: [0, null] },
+] as const)(
+  "routes Claude SDK stdin, stdout, stderr and exit through the attempt owner (stop $stop)",
+  ({ stop, expected }) => {
+    const killed = stop !== "none";
+    let owned = 0;
+    return Effect.gen(function* () {
+      let output = "";
+      let stderr = "";
+      const exited = Promise.withResolvers<void>();
+      const querySpy = vi.spyOn(ClaudeSdk, "query").mockImplementation(({ options }) => {
+        const child = options!.spawnClaudeCodeProcess!({
+          command: process.execPath,
+          args: [
+            "-e",
+            `process.stderr.write('owned-stderr');process.stdin.on('data',c=>process.stdout.write(c));${killed ? "setInterval(()=>{},1000)" : ""}`,
+          ],
+          env: process.env,
+          signal: new AbortController().signal,
+        });
+        child.stdout.on("data", (chunk) => {
+          output += chunk.toString();
+          if (killed) child.kill("SIGKILL");
+        });
+        child.on("error", exited.reject);
+        child.once("exit", (code, signal) => {
+          if (code === expected[0] && signal === expected[1]) exited.resolve();
+          else exited.reject(new Error(`exit ${code} ${signal}`));
+        });
+        child.stdin.end("owned-input");
+        return {
+          setMcpServers: async () => {
+            await exited.promise;
+            return { added: [], removed: [], errors: {} };
+          },
+          close: () => {},
+          [Symbol.asyncDispose]: async () => {},
+        } as unknown as ClaudeSdk.Query;
+      });
+      yield* Effect.addFinalizer(() => Effect.sync(() => querySpy.mockRestore()));
+      const runner = yield* ClaudeAgentSdkQueryRunner;
+      const session = yield* runner.open({
+        ...resumedMcpQueryInput,
+        options: {
+          ...resumedMcpQueryInput.options,
+          stderr: (text) => {
+            stderr += text;
+          },
+          spawnClaudeCodeProcess: () => {
+            throw new Error("Attempt owner must replace the SDK spawn callback.");
+          },
+        },
+      });
+      assert.equal(owned, 1);
+      assert.equal(output, "owned-input");
+      assert.equal(stderr, "owned-stderr");
+      yield* Effect.promise(() => exited.promise);
+      yield* session.close;
+    }).pipe(
+      Effect.provideService(OwnedProcess, {
+        spawn: (command, native) => {
+          owned++;
+          // Node reports a POSIX signal exit as an exitCode failure; Windows reports a code instead.
+          return native.spawn(command).pipe(
+            Effect.map((handle) =>
+              stop === "none"
+                ? handle
+                : {
+                    ...handle,
+                    exitCode:
+                      stop === "signal"
+                        ? handle.exitCode.pipe(
+                            Effect.andThen(
+                              Effect.fail(
+                                PlatformError.systemError({
+                                  module: "ChildProcess",
+                                  method: "exitCode",
+                                  _tag: "Unknown",
+                                }),
+                              ),
+                            ),
+                          )
+                        : Effect.exit(handle.exitCode).pipe(
+                            Effect.as(ChildProcessSpawner.ExitCode(stop === "code" ? 1 : 0)),
+                          ),
+                  },
+            ),
+          );
+        },
+      }),
+      Effect.scoped,
+      Effect.provide(realQueryRunner),
+    );
+  },
+);
 
 it.effect("reopens a stalled MCP registration before delivering the resumed prompt", () =>
   Effect.scoped(

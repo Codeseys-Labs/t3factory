@@ -1,3 +1,6 @@
+import * as Scope from "effect/Scope";
+import { OwnedProcess } from "@t3tools/shared/ownedProcess";
+import { makeClaudeOwnedSpawner } from "../../process/ClaudeOwnedProcess.ts";
 import * as DocumentText from "../../provider/DocumentText.ts";
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
 import { claudeTaskOutputRoot, tailClaudeTaskOutput } from "./ClaudeTaskOutputTail.ts";
@@ -359,6 +362,7 @@ export function spawnClaudeProcessGroup(
 }
 
 export const ClaudeProviderCapabilitiesV2 = {
+  ownedWriters: true,
   sessions: {
     supportsMultipleProviderThreadsPerSession: false,
     supportsModelSwitchInSession: true,
@@ -972,8 +976,19 @@ export const layerQueryRunner: Layer.Layer<
             },
           };
           // The SDK can prepend a scope wrapper to native binaries; script entries run through node.
+          const ownedScope = (yield* OwnedProcess) === undefined ? undefined : yield* Scope.make();
+          const closeOwned =
+            ownedScope === undefined ? Effect.void : Scope.close(ownedScope, Exit.void);
+          const ownedSpawn =
+            ownedScope === undefined
+              ? undefined
+              : yield* makeClaudeOwnedSpawner().pipe(
+                  Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+                  Effect.provideService(Scope.Scope, ownedScope),
+                );
           const binaryPath = queryOptions.pathToClaudeCodeExecutable;
           const launch =
+            ownedSpawn !== undefined ||
             binaryPath === undefined ||
             CLAUDE_SCRIPT_EXTENSIONS.some((ext) => binaryPath.endsWith(ext))
               ? undefined
@@ -996,6 +1011,9 @@ export const layerQueryRunner: Layer.Layer<
           const stopScope =
             unit === undefined ? undefined : () => void runFork(agentScope.stop(unit));
           const spawnProcess =
+            (ownedSpawn === undefined
+              ? undefined
+              : (spawnOptions: ClaudeSpawnOptions) => ownedSpawn(spawnOptions, options.stderr)) ??
             options.spawnClaudeCodeProcess ??
             ((spawnOptions: ClaudeSpawnOptions) => {
               if (platform !== "win32") return spawnClaudeProcessGroup(spawnOptions, stopScope);
@@ -1115,7 +1133,7 @@ export const layerQueryRunner: Layer.Layer<
                 ),
               ),
             ),
-          );
+          ).pipe(Effect.onError(() => closeOwned));
 
           return {
             messages: Stream.fromAsyncIterable(claudeQueryMessages(queryRuntime), (cause) =>
@@ -1237,6 +1255,7 @@ export const layerQueryRunner: Layer.Layer<
             ),
             close: Queue.shutdown(promptQueue).pipe(
               Effect.andThen(closeClaudeQuery(queryRuntime)),
+              Effect.ensuring(closeOwned),
               Effect.tap(() =>
                 logProtocolEvent({
                   direction: "outgoing",

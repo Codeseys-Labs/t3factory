@@ -1,4 +1,4 @@
-import { spawnOwnedProcess } from "@t3tools/shared/ownedProcess";
+import { OwnedProcess, spawnOwnedProcess } from "@t3tools/shared/ownedProcess";
 import { pipe } from "effect/Function";
 import * as DocumentText from "../../provider/DocumentText.ts";
 import { revertCodexThread } from "../../provider/CodexThreadRevert.ts";
@@ -235,6 +235,7 @@ const CODEX_CLIENT_CAPABILITIES = {
 } as const;
 
 export const CodexProviderCapabilitiesV2 = {
+  ownedWriters: true,
   sessions: {
     supportsMultipleProviderThreadsPerSession: true,
     supportsModelSwitchInSession: true,
@@ -1382,14 +1383,17 @@ export const makeCodexAppServerSpawnCommand = Effect.fn(
   readonly extendEnv?: boolean | undefined;
   readonly threadId?: string | undefined;
 }) {
-  const launch = yield* (yield* AgentScope).wrap({
-    command: input.command,
-    args: input.args,
-    name: "codex",
-    threadId: input.threadId,
-    env: input.env,
-    shared: true,
-  });
+  const launch =
+    (yield* OwnedProcess) !== undefined
+      ? input
+      : yield* (yield* AgentScope).wrap({
+          command: input.command,
+          args: input.args,
+          name: "codex",
+          threadId: input.threadId,
+          env: input.env,
+          shared: true,
+        });
   const spawnCommand = yield* resolveSpawnCommand(launch.command, launch.args, {
     ...(input.env === undefined ? {} : { env: input.env }),
     ...(input.extendEnv === undefined ? {} : { extendEnv: input.extendEnv }),

@@ -103,6 +103,15 @@ describe("taskErrorMessage", () => {
       text: "Reopen the task first.",
     },
     {
+      error: new FactoryTaskError({
+        reason: "unsupported-capability",
+        detail:
+          "Task runs require a writable delegated cgroup v2 with cgroup.kill on this Linux machine.",
+      }),
+      task: null,
+      text: "Task runs require a writable delegated cgroup v2 with cgroup.kill on this Linux machine.",
+    },
+    {
       error: new EnvironmentAuthorizationError({
         requiredScope: "orchestration:operate",
         message: "denied",

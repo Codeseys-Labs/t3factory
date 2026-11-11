@@ -77,7 +77,12 @@ export function taskErrorMessage(
     if (error.reason === "blocked" && task && task.blockedBy.length > 0)
       return `This task waits on ${task.blockedBy.map((blocker) => blocker.displayId).join(", ")}.`;
     // The server words these itself, since only it knows which check failed.
-    if ((error.reason === "delivery-refused" || error.reason === "run-active") && error.detail)
+    if (
+      (error.reason === "delivery-refused" ||
+        error.reason === "run-active" ||
+        error.reason === "unsupported-capability") &&
+      error.detail
+    )
       return error.detail;
     if (error.reason === "invalid-transition" && task) {
       if (task.status === "in-review") return "Accept the result first.";

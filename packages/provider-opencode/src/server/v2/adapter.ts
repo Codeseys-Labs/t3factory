@@ -4035,7 +4035,10 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     instanceId,
     driver,
     getCapabilities: Effect.fn("OpencodeAdapter.getCapabilities")(function () {
-      return Effect.succeed(OpenCode2ProviderCapabilities);
+      return Effect.succeed({
+        ...OpenCode2ProviderCapabilities,
+        ownedWriters: server.ownedWriters === true,
+      });
     }),
     planSelectionTransition: Effect.fn("OpencodeAdapter.planSelectionTransition")(function () {
       return Effect.succeed(turnScopedSelectionTransition());

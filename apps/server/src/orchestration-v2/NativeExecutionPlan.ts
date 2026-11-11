@@ -28,10 +28,11 @@ import type {
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { ProviderAdapterRegistryV2 } from "./ProviderAdapterRegistry.ts";
 import type { PendingOrchestrationEffectV2 } from "./EffectOutbox.ts";
 import type { ThreadLaunchWorkspaceStrategy } from "./ThreadLaunchService.ts";
-import * as HostProcess from "@t3tools/shared/HostProcess";
+import { ownedWriterPlatformRefusal } from "../process/OwnedProcess.ts";
 
 export interface NativeExecutionPlanInput {
   readonly commandId: CommandId;
@@ -100,18 +101,13 @@ export function nativePendingAttempt(input: {
   };
 }
 
-function supportsOwnedDriver(driver: ProviderDriverKind, instanceId: ProviderInstanceId): boolean {
-  return driver === "codex" || (driver === "acpRegistry" && instanceId === "devReplay");
-}
-
 export const planNativeExecution = Effect.fn("NativeExecutionPlan.plan")(function* (
   input: NativeExecutionPlanInput,
 ) {
   const ids = yield* IdAllocator.IdAllocatorV2;
   const adapters = yield* ProviderAdapterRegistryV2;
   const adapter = yield* adapters.get(input.modelSelection.instanceId);
-  if (!supportsOwnedDriver(adapter.driver, input.modelSelection.instanceId))
-    return yield* new FactoryExecutionError({ reason: "unsupported-capability" });
+  yield* validateNativeExecutionAdapters([adapter], ["owned-writers"]);
   const runId = ids.derive.run({ threadId: input.threadId, ordinal: 1 });
   const runAttemptId = ids.derive.runAttempt({ runId, attemptOrdinal: 1 });
   const rootNodeId = ids.derive.rootNode({ runId });
@@ -302,25 +298,53 @@ export const planNativeExecution = Effect.fn("NativeExecutionPlan.plan")(functio
 export const validateNativeExecutionCapabilities = Effect.fn(
   "NativeExecutionPlan.validateCapabilities",
 )(function* (
-  spec: FactoryExecutionTaskSpec,
+  specs: ReadonlyArray<Pick<FactoryExecutionTaskSpec, "modelSelection">>,
   requiredCapabilities: FactoryExecutionPolicy["requiredCapabilities"],
 ) {
-  const adapter = yield* (yield* ProviderAdapterRegistryV2)
-    .get(spec.modelSelection.instanceId)
-    .pipe(
-      Effect.mapError(
-        (cause) => new FactoryExecutionError({ reason: "unsupported-capability", cause }),
+  const registry = yield* ProviderAdapterRegistryV2;
+  const adapters = yield* Effect.forEach(specs, (spec) =>
+    registry
+      .get(spec.modelSelection.instanceId)
+      .pipe(
+        Effect.mapError(
+          (cause) => new FactoryExecutionError({ reason: "unsupported-capability", cause }),
+        ),
       ),
-    );
-  const platform = yield* HostProcess.Platform;
-  if (
-    platform !== "win32" ||
-    !supportsOwnedDriver(adapter.driver, spec.modelSelection.instanceId) ||
-    requiredCapabilities.some((capability) => capability !== "owned-writers")
-  ) {
-    return yield* new FactoryExecutionError({ reason: "unsupported-capability" });
-  }
+  );
+  return yield* validateNativeExecutionAdapters(adapters, requiredCapabilities);
 });
+
+// Takes resolved adapters so a plan validates the same instance it records.
+const validateNativeExecutionAdapters = Effect.fn("NativeExecutionPlan.validateAdapters")(
+  function* (
+    adapters: ReadonlyArray<ProviderAdapter.ProviderAdapterV2["Service"]>,
+    requiredCapabilities: FactoryExecutionPolicy["requiredCapabilities"],
+  ) {
+    // The Linux probe spawns a contained child; one call probes the host at most once.
+    const platformRefusal = yield* Effect.cached(ownedWriterPlatformRefusal());
+    for (const adapter of adapters) {
+      const capabilities = yield* adapter
+        .getCapabilities()
+        .pipe(
+          Effect.mapError(
+            (cause) => new FactoryExecutionError({ reason: "unsupported-capability", cause }),
+          ),
+        );
+      const capabilityReason =
+        capabilities.ownedWriters !== true
+          ? "This agent does not route all of its writers through attempt-owned processes."
+          : requiredCapabilities.some((capability) => capability !== "owned-writers")
+            ? "Hard cost limits and denial of external actions are not enforced by this runtime."
+            : yield* platformRefusal;
+      if (capabilityReason !== undefined) {
+        return yield* new FactoryExecutionError({
+          reason: "unsupported-capability",
+          capabilityReason,
+        });
+      }
+    }
+  },
+);
 
 export function planNativeStop(input: {
   readonly binding: FactoryExecutionBinding;

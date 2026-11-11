@@ -22,6 +22,8 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Store from "../persistence/FactoryExecutionStore.ts";
 import * as Lifecycle from "./FactoryExecutionLifecycle.ts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 
 const owner: FactoryExecutionBinding = {
   selection: {
@@ -411,7 +413,8 @@ it.effect(
       let captured = false;
       yield* h.lifecycle.runPhase(
         { ...owner, phase: "capture" },
-        Effect.sync(() => {
+        Effect.gen(function* () {
+          assert.isDefined(yield* OwnedProcess);
           assert.isFalse(h.released());
           captured = true;
           h.observations.push("retained-capture");
@@ -443,17 +446,22 @@ it.effect(
     }),
 );
 
-it.effect("expires orphaned claims from a dead process and settles the attempt on recovery", () =>
-  Effect.gen(function* () {
-    const h = yield* harness;
-    h.seedOrphan("workspace");
-    h.seedOrphan("native-thread");
-    h.seedOrphan(`response:${response.requestId}`);
-    yield* h.lifecycle.recover(owner);
-    assert.isTrue(h.observations.includes("stop"));
-    assert.isTrue(h.observations.includes("expire:workspace"));
-    assert.isTrue(h.observations.includes("expire:native-thread"));
-    assert.isTrue(h.observations.includes(`expire:response:${response.requestId}`));
-    assert.isTrue(h.released());
-  }),
+it.effect.each(["win32", "linux"] as const)(
+  "recovers orphan claims with platform ownership on %s",
+  (platform) =>
+    Effect.gen(function* () {
+      const h = yield* harness;
+      h.seedOrphan("workspace");
+      h.seedOrphan("native-thread");
+      h.seedOrphan(`response:${response.requestId}`);
+      yield* h.lifecycle.recover(owner);
+      assert.isTrue(h.observations.includes("stop"));
+      assert.equal(h.observations.includes("expire:workspace"), platform === "win32");
+      assert.equal(h.observations.includes("expire:native-thread"), platform === "win32");
+      assert.equal(
+        h.observations.includes(`expire:response:${response.requestId}`),
+        platform === "win32",
+      );
+      assert.equal(h.released(), platform === "win32");
+    }).pipe(Effect.provideService(HostProcess.Platform, platform)),
 );

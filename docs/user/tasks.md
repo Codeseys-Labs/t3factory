@@ -70,8 +70,14 @@ and web.
 
 ## Things to know
 
-- Today a task run needs a Windows machine and Codex. Other agents, and machines running macOS or
-  Linux, can hold and plan tasks, but starting a run says the agent can't run tasks there yet.
+- Task runs support Codex, Claude Code, Grok, Pi, Antigravity and registered ACP agents (including
+  OMP), plus locally managed OpenCode servers, on Windows and on Linux with delegated cgroup v2.
+  Cursor's in-process SDK, Muse, external OpenCode servers and macOS cannot yet prove that all agent
+  writers have stopped, so they can plan tasks but cannot start runs. Linux without delegated
+  cgroup v2 also refuses starts.
+- Stopping a run stops every process the agent started. It is not a sandbox: an agent that
+  deliberately moves a process out of the run, or asks another service to start one, can keep
+  working after the run ends.
 - A sub-task that waits on another task stays Ready when its blocker finishes. Start it yourself.
 - Editing a plan while its sub-tasks run can leave a waiting approval unanswerable. Stop that run and
   start it again.

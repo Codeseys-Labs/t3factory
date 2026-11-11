@@ -6,8 +6,9 @@ import * as Exit from "effect/Exit";
 import * as PlatformError from "effect/PlatformError";
 import * as Scope from "effect/Scope";
 import * as ChildProcess from "effect/process/ChildProcess";
-import type * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import type { OwnedProcessSpawner } from "@t3tools/shared/ownedProcess";
+import type { OwnedProcessGroup } from "./OwnedProcess.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
 const jobHost = String.raw`
@@ -82,14 +83,14 @@ public static class T3OwnedJob {
           Check(TerminateJobObject(job,125));
           // Emit the protocol lines before self-terminating: a sealed race otherwise
           // leaves rootExit/empty to the socket-close rejection path.
-          lock(writer) { writer.WriteLine("root-exited"); writer.WriteLine("empty"); }
+          lock(writer) { writer.WriteLine("root-exited:125"); writer.WriteLine("empty"); }
           TerminateProcess(GetCurrentProcess(),125);
           return 125;
         }
         Check(ResumeThread(p.Thread)!=0xffffffff);
         var stop=new Thread(()=> { try { reader.ReadLine(); } catch {} TerminateJobObject(job,1); });
         stop.IsBackground=true;stop.Start();
-        var rootWait=new Thread(()=> { Check(WaitForSingleObject(p.Process,0xffffffff)==0); lock(writer) { writer.WriteLine("root-exited"); } });
+        var rootWait=new Thread(()=> { Check(WaitForSingleObject(p.Process,0xffffffff)==0); uint rootCode;Check(GetExitCodeProcess(p.Process,out rootCode)); lock(writer) { writer.WriteLine("root-exited:"+rootCode); } });
         rootWait.IsBackground=true;rootWait.Start();
         while(true) {
           uint message;IntPtr key,overlap;
@@ -127,19 +128,13 @@ const platformError = (cause: unknown) =>
 
 interface JobControl {
   readonly empty: Promise<void>;
-  readonly rootExit: Promise<void>;
+  readonly rootExit: Promise<number>;
   readonly stop: () => void;
   exit?: Effect.Effect<ChildProcessSpawner.ExitCode, PlatformError.PlatformError>;
 }
-export interface WindowsOwnedProcess {
-  readonly spawner: OwnedProcessSpawner;
-  readonly quiesce: () => Effect.Effect<boolean, PlatformError.PlatformError>;
-  readonly awaitRootExits: Effect.Effect<void, PlatformError.PlatformError>;
-}
-
 export const makeWindowsOwnedProcess = Effect.fn("WindowsOwnedProcess.make")(function* (options?: {
   readonly onObservation?: (event: string) => void;
-}): Effect.fn.Return<WindowsOwnedProcess> {
+}): Effect.fn.Return<OwnedProcessGroup> {
   const jobs = new Set<JobControl>();
   let sealed = false;
   let pending = 0;
@@ -160,13 +155,14 @@ export const makeWindowsOwnedProcess = Effect.fn("WindowsOwnedProcess.make")(fun
           let socket: NodeNet.Socket | undefined;
           let observedEmpty = false;
           let containedSeen = false;
-          let resolveRootExit!: () => void;
+          let rootCode: number | undefined;
+          let resolveRootExit!: (code: number) => void;
           let rejectRootExit!: (cause: unknown) => void;
           let resolveEmpty!: () => void;
           let rejectEmpty!: (cause: unknown) => void;
           let resolveContained!: () => void;
           let rejectContained!: (cause: unknown) => void;
-          const rootExit = new Promise<void>((resolve, reject) => {
+          const rootExit = new Promise<number>((resolve, reject) => {
             resolveRootExit = resolve;
             rejectRootExit = reject;
           });
@@ -212,7 +208,10 @@ export const makeWindowsOwnedProcess = Effect.fn("WindowsOwnedProcess.make")(fun
                   connection.write(sealed ? "stop\n" : "resume\n");
                   resolveContained();
                 }
-                if (line === "root-exited") resolveRootExit();
+                if (line.startsWith("root-exited:")) {
+                  rootCode = Number(line.slice("root-exited:".length));
+                  resolveRootExit(rootCode);
+                }
                 if (line === "empty" && containedSeen) {
                   observedEmpty = true;
                   resolveEmpty();
@@ -322,7 +321,18 @@ exit 125
           );
           yield* Effect.addFinalizer(() => close.pipe(Effect.orDie));
           yield* Effect.tryPromise({ try: () => contained, catch: platformError });
-          return handle;
+          // The handle is the root, as on Linux; the helper exits only once the whole job is empty.
+          return {
+            ...handle,
+            exitCode: Effect.tryPromise({ try: () => rootExit, catch: platformError }).pipe(
+              Effect.map(ChildProcessSpawner.ExitCode),
+              Effect.catch(() => handle.exitCode),
+            ),
+            isRunning: Effect.suspend(() =>
+              rootCode === undefined ? handle.isRunning : Effect.succeed(false),
+            ),
+            kill: () => Effect.sync(job.stop).pipe(Effect.andThen(handle.exitCode), Effect.asVoid),
+          };
         }),
       ).pipe(
         Effect.ensuring(

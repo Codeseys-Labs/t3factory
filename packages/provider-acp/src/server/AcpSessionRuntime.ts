@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import { spawnOwnedProcess } from "@t3tools/shared/ownedProcess";
+import { OwnedProcess, spawnOwnedProcess } from "@t3tools/shared/ownedProcess";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -252,6 +252,9 @@ export function wrapCommandForLinuxCgroup(
   lease: AcpLinuxCgroupLease,
   command: string,
   args: ReadonlyArray<string>,
+  options?: {
+    readonly beforeExec?: ReadonlyArray<string>;
+  },
 ): { readonly command: string; readonly args: ReadonlyArray<string> } {
   return {
     command: "/bin/sh",
@@ -270,6 +273,7 @@ export function wrapCommandForLinuxCgroup(
         "trap 'exit 125' 0",
         // Bash can skip EXIT traps on failed exec; reject invalid targets with path and exit 125.
         '[ -f "$1" ] && [ -x "$1" ] || { printf "%s: %s: not an executable file\\n" "$0" "$1" >&2; exit 125; }',
+        ...(options?.beforeExec ?? []),
         'exec "$@"',
       ].join("\n"),
       "t3-acp-cgroup-wrapper",
@@ -1368,8 +1372,11 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
           ...(options.spawn.env ? { env: options.spawn.env } : {}),
           extendEnv: options.spawn.extendEnv ?? true,
         });
+  const factoryOwned = (yield* OwnedProcess) !== undefined;
   const linuxCgroupLease =
-    options.ownDescendantProcessGroups === true && options.processGroupPlatform === "linux"
+    !factoryOwned &&
+    options.ownDescendantProcessGroups === true &&
+    options.processGroupPlatform === "linux"
       ? yield* Effect.sync(() => {
           try {
             if (options.linuxCgroupController === null) return undefined;
@@ -1406,7 +1413,7 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
         });
   const agentScope = yield* AgentScope;
   const scopedLaunch =
-    linuxCgroupLease !== undefined || spawnCommand.shell
+    factoryOwned || linuxCgroupLease !== undefined || spawnCommand.shell
       ? undefined
       : yield* agentScope.wrap({
           command: spawnCommand.command,
@@ -1459,10 +1466,12 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
     ),
   );
 
-  // Detached children can keep stdout open, delaying protocol termination.
-  if (scopeUnit !== undefined) {
+  // Detached children can keep stdout open, delaying protocol termination. An owned handle's
+  // exit follows the root, and its kill stops everything the attempt started.
+  if (scopeUnit !== undefined || factoryOwned) {
+    const stopDetached = factoryOwned ? child.kill().pipe(Effect.ignore) : stopScope;
     yield* child.exitCode.pipe(
-      Effect.matchEffect({ onFailure: () => stopScope, onSuccess: () => stopScope }),
+      Effect.matchEffect({ onFailure: () => stopDetached, onSuccess: () => stopDetached }),
       Effect.forkIn(runtimeScope),
     );
   }
@@ -1472,7 +1481,7 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
   const posixOwnershipChildQueues = new Map<number, Array<number>>();
   const posixOwnershipRoot: AcpPosixOwnershipRoot = { value: undefined };
   const posixController =
-    options.ownDescendantProcessGroups === true
+    !factoryOwned && options.ownDescendantProcessGroups === true
       ? yield* Effect.try({
           try: () => {
             if (options.posixProcessTreeController !== undefined) {
@@ -1565,6 +1574,16 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
     },
   );
   const terminateOwnedProcessGroupImpl = Effect.gen(function* () {
+    if (factoryOwned)
+      return yield* child.kill().pipe(
+        Effect.mapError(
+          (cause) =>
+            new AcpProcessGroupTerminationError({
+              detail: "Owned ACP process stop failed.",
+              cause,
+            }),
+        ),
+      );
     if (options.ownDetachedProcessGroup !== true) return;
     if (options.processGroupPlatform === undefined) {
       return yield* new AcpProcessGroupTerminationError({
@@ -1602,7 +1621,7 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
   const terminateProcessGroup = yield* Effect.cached(
     Effect.uninterruptible(terminateOwnedProcessGroupImpl),
   );
-  if (options.ownDetachedProcessGroup === true) {
+  if (!factoryOwned && options.ownDetachedProcessGroup === true) {
     const hostPlatform = yield* HostProcess.Platform;
     const forceTerminateOwnedProcessGroup =
       hostPlatform === "win32"

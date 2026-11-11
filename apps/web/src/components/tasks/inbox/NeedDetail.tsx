@@ -1,0 +1,365 @@
+import type { FactoryTaskNeed } from "@t3tools/client-runtime/state/factory-task-view";
+import { presentFactoryTaskActivity } from "@t3tools/client-runtime/state/factory-task-view";
+import type { FactoryTaskActivityEntry, FactoryTaskSummary } from "@t3tools/contracts";
+import { Link } from "@tanstack/react-router";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
+import { useContext, useState } from "react";
+
+import { useRelativeTimeState } from "../../../hooks/useRelativeTimeState";
+import {
+  factoryTasks,
+  useFactoryTaskDetail,
+  useFactoryTaskPlan,
+  useFactoryTaskResult,
+} from "../../../state/factoryTasks";
+import { Button } from "../../ui/button";
+import { Textarea } from "../../ui/textarea";
+import { ActivityItem, assigneeText, ResultCard } from "../kit";
+import {
+  TaskAsk,
+  TaskAssigneeChip,
+  useTaskActions,
+  useTaskAssigneeChip,
+  useTaskCatalog,
+  useTaskPermissions,
+} from "../shared";
+import { openTaskSetup } from "../taskDialogs";
+import { splitResultSummary } from "../shared/TaskBanner";
+
+export function NeedDetail({ need }: { need: FactoryTaskNeed }) {
+  const detail = useFactoryTaskDetail(need.ref);
+  const registry = useContext(RegistryContext);
+  if (detail._tag === "Initial") return <p role="status">Loading task…</p>;
+  if (detail._tag === "Failure")
+    return (
+      <div role="alert" className="space-y-3">
+        <p>Couldn't load this task.</p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() =>
+            registry.refresh(
+              factoryTasks.readTask({
+                environmentId: need.ref.environmentId,
+                input: { task: { ref: need.ref } },
+              }),
+            )
+          }
+        >
+          Reload task
+        </Button>
+      </div>
+    );
+  const { task } = detail.value;
+  return (
+    <>
+      <p className="text-muted-foreground text-xs">{task.displayId}</p>
+      <h2 className="mt-3 font-semibold text-xl">{task.title}</h2>
+      <div className="mt-4 mb-6 flex items-center justify-between gap-3">
+        <TaskAssigneeChip assignee={task.assignee} environmentId={task.ref.environmentId} />
+        <OpenTask task={task} />
+      </div>
+      <NeedAction need={need} task={task} />
+      <RecentActivity task={task} />
+    </>
+  );
+}
+
+function OpenTask({ task }: { task: FactoryTaskSummary }) {
+  return (
+    <Link
+      to="/tasks/$environmentId/$displayId"
+      params={{ environmentId: task.ref.environmentId, displayId: task.displayId }}
+      className="text-muted-foreground text-xs hover:text-foreground"
+    >
+      Open task
+    </Link>
+  );
+}
+
+function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSummary }) {
+  const chip = useTaskAssigneeChip(task.assignee, task.ref.environmentId);
+  const permissions = useTaskPermissions(task.ref.environmentId);
+  if ((need.reason === "approve" || need.reason === "question") && need.threadId)
+    return (
+      <TaskAsk
+        environmentId={task.ref.environmentId}
+        threadId={need.threadId}
+        from={assigneeText(chip)}
+      />
+    );
+  if (need.reason === "failed")
+    return (
+      <section
+        aria-label="Failed run"
+        className="space-y-4 rounded-lg border border-destructive/32 bg-error-surface p-4"
+      >
+        <p className="whitespace-pre-wrap break-words text-sm">{task.run?.note || need.detail}</p>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            disabled={!permissions.retry}
+            onClick={() => openTaskSetup(task.ref, "retry")}
+          >
+            Retry
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!permissions.retry}
+            onClick={() => openTaskSetup(task.ref, "retry")}
+          >
+            Reassign
+          </Button>
+        </div>
+      </section>
+    );
+  if (need.reason === "review" || need.reason === "changed")
+    return <ReviewResult key={task.result?.revision} task={task} />;
+  if (need.reason === "plan") return <ReviewPlan task={task} />;
+  return <p className="text-muted-foreground text-sm">{need.detail}</p>;
+}
+
+function ReviewResult({ task }: { task: FactoryTaskSummary }) {
+  const read = useFactoryTaskResult(task.ref);
+  const registry = useContext(RegistryContext);
+  const actions = useTaskActions();
+  const permissions = useTaskPermissions(task.ref.environmentId);
+  const [busy, setBusy] = useState(false);
+  const [changing, setChanging] = useState(false);
+  const [note, setNote] = useState("");
+  if (read._tag === "Initial") return <p role="status">Loading result…</p>;
+  if (read._tag === "Failure")
+    return (
+      <div role="alert" className="space-y-3">
+        <p>Couldn't load the result.</p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() =>
+            registry.refresh(
+              factoryTasks.readTaskResult({
+                environmentId: task.ref.environmentId,
+                input: { ref: task.ref },
+              }),
+            )
+          }
+        >
+          Reload result
+        </Button>
+      </div>
+    );
+  const result = read.value.result;
+  if (result.state === "accepted")
+    return <p className="text-sm">Accepted · rev {result.acceptedRevision ?? result.revision}</p>;
+  const summary = splitResultSummary(result.summary);
+  const run = async (operation: () => Promise<unknown>) => {
+    setBusy(true);
+    await operation();
+    setBusy(false);
+  };
+  return (
+    <div className="space-y-3">
+      <div className="[&>div]:flex-wrap">
+        <ResultCard
+          kind={
+            result.kind === "document"
+              ? "document"
+              : /^PR #\d+/u.test(result.summary)
+                ? "pull-request"
+                : "code"
+          }
+          title={summary.title ?? (result.kind === "document" ? "Document" : "Code changes")}
+          meta={summary.detail}
+          review="pending"
+          revisionLabel={`rev ${result.revision}`}
+          pending={busy}
+          {...(permissions.accept
+            ? { onAccept: () => void run(() => actions.accept(task, result.revision)) }
+            : {})}
+          {...(permissions.requestChanges ? { onRequestChanges: () => setChanging(true) } : {})}
+        />
+      </div>
+      {read.value.text ? (
+        <p className="whitespace-pre-wrap break-words text-sm">{read.value.text}</p>
+      ) : null}
+      {changing ? (
+        <form
+          className="space-y-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (note.trim() && !busy)
+              void run(async () => {
+                const sent = await actions.requestChanges(task, result.revision, note.trim());
+                if (sent !== null) setChanging(false);
+              });
+          }}
+        >
+          <Textarea
+            aria-label="What should change"
+            value={note}
+            onChange={(event) => setNote(event.currentTarget.value)}
+            placeholder="What should change?"
+          />
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              type="submit"
+              disabled={busy || !note.trim() || !permissions.requestChanges}
+            >
+              Send
+            </Button>
+            <Button size="sm" variant="outline" type="button" onClick={() => setChanging(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
+function ReviewPlan({ task }: { task: FactoryTaskSummary }) {
+  const read = useFactoryTaskPlan(task.ref);
+  const registry = useContext(RegistryContext);
+  const actions = useTaskActions();
+  const permissions = useTaskPermissions(task.ref.environmentId);
+  const [busy, setBusy] = useState(false);
+  if (read._tag === "Initial") return <p role="status">Loading plan…</p>;
+  if (read._tag === "Failure")
+    return (
+      <div role="alert" className="space-y-3">
+        <p>Couldn't load the plan.</p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() =>
+            registry.refresh(
+              factoryTasks.readTaskPlanProposal({
+                environmentId: task.ref.environmentId,
+                input: { ref: task.ref },
+              }),
+            )
+          }
+        >
+          Reload plan
+        </Button>
+      </div>
+    );
+  const plan = read.value.proposal;
+  if (!plan || plan.status !== "proposed")
+    return <p role="status">The plan changed. Open the task to see it.</p>;
+  return (
+    <section aria-label="Plan ready" className="space-y-3 rounded-lg border bg-card p-4">
+      <h3 className="font-medium text-sm">Plan ready: {plan.items.length} sub-tasks</h3>
+      <ol className="list-decimal space-y-2 ps-5 text-sm">
+        {plan.items.map((item) => (
+          <li key={item.key}>
+            <p>{item.title}</p>
+            {item.description ? (
+              <p className="text-muted-foreground text-xs">{item.description}</p>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+      <Button
+        size="sm"
+        disabled={busy || !permissions.resolvePlan}
+        onClick={() => {
+          setBusy(true);
+          void actions.resolvePlan(task, plan, "approve").then(() => setBusy(false));
+        }}
+      >
+        Approve plan
+      </Button>
+    </section>
+  );
+}
+
+function RecentActivity({ task }: { task: FactoryTaskSummary }) {
+  const registry = useContext(RegistryContext);
+  const read = useAtomValue(
+    Atom.make((get) => {
+      const entries = new Map<string, FactoryTaskActivityEntry>();
+      const cursors: (string | undefined)[] = [];
+      let cursor: string | undefined;
+      for (;;) {
+        cursors.push(cursor);
+        const page = get(
+          factoryTasks.readTaskActivity({
+            environmentId: task.ref.environmentId,
+            input: { ref: task.ref, ...(cursor ? { cursor } : {}) },
+          }),
+        );
+        if (page._tag !== "Success") return { entries: [], cursors, state: page._tag };
+        for (const entry of page.value.entries) entries.set(entry.id, entry);
+        const next = page.value.nextCursor;
+        if (next === null)
+          return {
+            entries: [...entries.values()].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 3),
+            cursors,
+            state: "Success",
+          };
+        if (cursors.includes(next)) return { entries: [], cursors, state: "Failure" };
+        cursor = next;
+      }
+    }),
+  );
+  const catalog = useTaskCatalog(task.ref.environmentId);
+  return (
+    <section aria-label="Recent activity" className="mt-8 space-y-3">
+      <h3 className="font-medium text-sm">Recent activity</h3>
+      {read.state === "Failure" ? (
+        <div role="alert" className="flex items-center gap-2 text-muted-foreground text-xs">
+          Couldn't load recent activity.
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => {
+              for (const cursor of read.cursors)
+                registry.refresh(
+                  factoryTasks.readTaskActivity({
+                    environmentId: task.ref.environmentId,
+                    input: { ref: task.ref, ...(cursor ? { cursor } : {}) },
+                  }),
+                );
+            }}
+          >
+            Reload
+          </Button>
+        </div>
+      ) : read.state === "Initial" ? (
+        <p role="status" className="text-muted-foreground text-xs">
+          Loading activity…
+        </p>
+      ) : (
+        read.entries.map((entry) => (
+          <RecentEntry
+            key={entry.id}
+            entry={entry}
+            text={presentFactoryTaskActivity(entry, catalog)}
+          />
+        ))
+      )}
+    </section>
+  );
+}
+
+function RecentEntry({
+  entry,
+  text,
+}: {
+  entry: Parameters<typeof presentFactoryTaskActivity>[0];
+  text: string;
+}) {
+  const relative = useRelativeTimeState(entry.at);
+  return (
+    <ActivityItem
+      kind="event"
+      text={text}
+      author={entry.actor.label}
+      time={relative.status === "relative" ? `${relative.value} ${relative.suffix}`.trim() : ""}
+    />
+  );
+}

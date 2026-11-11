@@ -14,6 +14,7 @@ import {
 } from "@t3tools/contracts";
 import {
   createFactoryTaskListAtoms,
+  factoryTaskConnectionStatus,
   factoryTaskQueryStatus,
   type FactoryTaskListTarget,
   type FactoryTaskOwnerStatus,
@@ -40,11 +41,8 @@ import { useAtomCommand } from "./use-atom-command";
 const accessAtom = Atom.family((environmentId: EnvironmentId) =>
   Atom.make((get): FactoryTaskOwnerStatus => {
     const presentation = get(environmentPresentations.presentationAtom(environmentId));
-    const phase = presentation?.connection.phase;
-    if (phase === "unsupported") return "unsupported";
-    // A starting connection is not known to be offline. "available" is a switched-off connection.
-    if (phase === undefined || phase === "connecting") return "loading";
-    if (phase !== "connected" || !presentation) return "offline";
+    const connection = factoryTaskConnectionStatus(presentation?.connection.phase);
+    if (connection !== null || !presentation) return connection ?? "loading";
     if (!presentation.serverConfig) return "loading";
     const session = get(environmentSession.sessionStateAtom(environmentId));
     if (session._tag === "Initial") return "loading";

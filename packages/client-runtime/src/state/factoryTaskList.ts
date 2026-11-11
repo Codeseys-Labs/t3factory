@@ -14,6 +14,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Result from "effect/Result";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
+import type { EnvironmentConnectionPhase } from "../connection/presentation.ts";
 import { factoryTaskKey } from "./factoryTaskView.ts";
 
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
@@ -27,6 +28,30 @@ export type FactoryTaskOwnerStatus =
   | "unsupported"
   | "forbidden"
   | "failed";
+
+/**
+ * What a machine's connection says about reading its tasks, before the session is consulted.
+ * `null` means connected: read access then depends on the session. A connection that is
+ * starting is loading; `available` is one the person switched off, so it reads offline.
+ */
+export function factoryTaskConnectionStatus(
+  phase: EnvironmentConnectionPhase | undefined,
+): Extract<FactoryTaskOwnerStatus, "loading" | "offline" | "unsupported"> | null {
+  switch (phase) {
+    case "connected":
+      return null;
+    case "unsupported":
+      return "unsupported";
+    case undefined:
+    case "connecting":
+      return "loading";
+    case "available":
+    case "offline":
+    case "reconnecting":
+    case "error":
+      return "offline";
+  }
+}
 export interface FactoryTaskOwner {
   readonly environmentId: EnvironmentId;
   readonly status: FactoryTaskOwnerStatus;

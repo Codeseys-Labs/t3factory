@@ -38,6 +38,7 @@ import { createFactoryIntakeEnvironmentAtoms } from "./factoryIntake.ts";
 import {
   createFactoryTaskListAtoms,
   FACTORY_TASK_PAGE_CAP,
+  factoryTaskConnectionStatus,
   type FactoryTaskOwnerStatus,
 } from "./factoryTaskList.ts";
 import { FACTORY_TASK_FIXTURES as fixtures } from "./factoryTaskFixtures.ts";
@@ -323,6 +324,19 @@ it.effect(
       expect(writes).toBe(0);
     }),
 );
+
+it.each([
+  [undefined, "loading"],
+  ["connecting", "loading"],
+  ["available", "offline"],
+  ["offline", "offline"],
+  ["reconnecting", "offline"],
+  ["error", "offline"],
+  ["unsupported", "unsupported"],
+  ["connected", null],
+] as const)("reads a %s connection as %s for task lists", (phase, expected) => {
+  expect(factoryTaskConnectionStatus(phase)).toBe(expected);
+});
 
 it("keeps separate cursor chains, caps pages and removes protected cached rows on revocation", () => {
   const registry = AtomRegistry.make();

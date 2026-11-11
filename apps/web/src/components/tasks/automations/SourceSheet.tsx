@@ -187,7 +187,7 @@ export function SourceSheet({
               consequence={
                 readers.length === 0
                   ? "Tasks and Inbox items it already brought in stay."
-                  : `Tasks and Inbox items it already brought in stay. ${readers.length === 1 ? "This rule reads" : "These rules read"} from it and will match nothing: ${readers.join(", ")}.`
+                  : `Tasks and Inbox items it already brought in stay. ${readers.length === 1 ? "This rule will" : "These rules will"} also be deleted: ${readers.join(", ")}.`
               }
               disabled={!remove.permission || pending}
               onConfirm={() => void run(remove)}

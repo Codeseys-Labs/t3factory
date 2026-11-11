@@ -41,6 +41,7 @@ const DESKTOP_ACTIONS: readonly FactoryTaskBannerAction["kind"][] = [
   "request-changes",
   "retry",
   "reassign",
+  "break-down",
   "reopen",
   "check",
   "publish",

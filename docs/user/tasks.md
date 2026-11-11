@@ -55,7 +55,8 @@ and web.
 
 ## Things to know
 
-- Not every agent can run task work yet. If the one you pick can't, starting says so; pick another.
+- Today a task run needs a Windows machine and Codex. Other agents, and machines running macOS or
+  Linux, can hold and plan tasks, but starting a run says the agent can't run tasks there yet.
 - A sub-task that waits on another task stays Ready when its blocker finishes. Start it yourself.
 - Editing a plan while its sub-tasks run can leave a waiting approval unanswerable. Stop that run and
   start it again.

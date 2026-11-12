@@ -31,6 +31,7 @@ import { TaskPeek } from "./TaskPeek";
 import { type AssigneeOption, TasksToolbar } from "./TasksToolbar";
 import {
   activeFilterCount,
+  agentAssignee,
   boardStatuses,
   countShownTasks,
   toggleTaskFilter,
@@ -274,9 +275,14 @@ function assigneeOptions(
   choices: ReturnType<typeof useFactoryTaskAssignees>,
 ): readonly AssigneeOption[] {
   const options = new Map<string, AssigneeOption>();
+  // The server sends one task's assignee per key; the choice names the agent, not that task's route.
   for (const { assignee, environmentId } of choices)
     if (!options.has(assignee.key))
-      options.set(assignee.key, { key: assignee.key, assignee, environmentId });
+      options.set(assignee.key, {
+        key: assignee.key,
+        assignee: agentAssignee(assignee),
+        environmentId,
+      });
   return [...options.values()];
 }
 

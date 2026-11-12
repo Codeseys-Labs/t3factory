@@ -519,7 +519,7 @@ const make = Effect.gen(function* () {
       TaskKey & { readonly updatedAt: string }
     >`SELECT t.root_id AS rootId, t.task_id AS taskId, MAX(t.updated_at) AS updatedAt FROM factory_tasks t WHERE ${sql.and(
       filterClauses(input.filter, null),
-    )} GROUP BY t.assignee_key ORDER BY updatedAt DESC LIMIT ${input.limit}`;
+    )} GROUP BY t.assignee_key ORDER BY updatedAt DESC, t.assignee_key LIMIT ${input.limit}`;
   }, Effect.mapError(failure));
 
   const profiles = Effect.fn("FactoryTaskStore.listProfiles")(function* () {

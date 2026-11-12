@@ -447,9 +447,11 @@ it.each(["board", "list"] as const)(
   "offers every machine's assignees through filters in %s, not only those of loaded tasks",
   async (layout) => {
     const parent = fixture("T-43");
+    // The server sends one task's assignee per key; here that task reached the agent through Auto.
+    const sample = { ...fixture("T-34").assignee, assignment: { mode: "auto" as const } };
     setup({
       tasks: [parent],
-      assignees: [{ environmentId: parent.ref.environmentId, assignee: fixture("T-34").assignee }],
+      assignees: [{ environmentId: parent.ref.environmentId, assignee: sample }],
       search: { layout, filters: { types: ["bug"] } },
     });
     await using _screen = await render(<TasksPage />);

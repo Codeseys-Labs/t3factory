@@ -295,7 +295,11 @@ export const FactoryTaskCountResult = Schema.Struct({
 });
 export type FactoryTaskCountResult = typeof FactoryTaskCountResult.Type;
 
-/** Each assignee that holds at least one task, canceled and sub-tasks included. */
+/**
+ * Each assignee that holds at least one task, canceled and sub-tasks included, most recently used
+ * first. An entry is one of its tasks' assignee: the key and what it resolves to hold for all of
+ * them, the assignment (Auto or direct) only for that task.
+ */
 export const FactoryTaskAssigneeListInput = Schema.Struct({
   projectIds: TaskFilterFields.projectIds,
 });

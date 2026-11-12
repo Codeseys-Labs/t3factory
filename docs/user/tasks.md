@@ -12,6 +12,9 @@ title; the rest is the description. Pick the project and who does it:
 - An **agent profile** or a pinned harness and model runs exactly that.
 - **You** or **Unassigned** keep the task for a person.
 
+A run uses the mode its agent profile sets, or the one you pick when you start it. Otherwise it takes
+the project's **Default permissions** from Settings, which is Full access unless you changed it.
+
 **Add to backlog** saves it. **Start now** saves it and starts an agent at once. A sub-task added under
 a task follows its parent's assignee on Auto.
 

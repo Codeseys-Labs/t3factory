@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, ModelSelection, ProjectId } from "@t3tools/contracts";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 
 import { useEnvironmentSettings } from "../../../hooks/useSettings";
 import {
@@ -21,4 +22,10 @@ export function useTaskModelChoices(environmentId: EnvironmentId, projectId: Pro
     normalize: (selection: ModelSelection) =>
       resolveEffectiveDefaultModelSelection(settings, providers, selection),
   };
+}
+
+/** The project's Default permissions setting: the mode of a run nobody chose one for. */
+export function useTaskDefaultRuntimeMode(environmentId: EnvironmentId, projectId: ProjectId) {
+  return resolveProjectSettings(useEnvironmentSettings(environmentId), projectId).settings
+    .defaultRuntimeMode;
 }

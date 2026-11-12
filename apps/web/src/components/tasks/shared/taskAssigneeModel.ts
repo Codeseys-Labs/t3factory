@@ -8,6 +8,7 @@ import type {
   FactoryTaskAssignment,
   FactoryTaskRef,
   FactoryTaskType,
+  RuntimeMode,
 } from "@t3tools/contracts";
 
 import type { AssigneeChipProps, AssigneePickerValue } from "../kit";
@@ -98,15 +99,16 @@ export function pickerValue(assignment: FactoryTaskAssignment): AssigneePickerVa
     : { kind: assignment.mode };
 }
 
-/** Pinning from the picker always asks first, in the default interaction, in a new worktree. */
+/** Pinning from the picker takes the project's default permissions, in a new worktree. */
 export function pinnedAssignment(
   modelSelection: FactoryAgentSetup["modelSelection"],
+  runtimeMode: RuntimeMode,
 ): FactoryTaskAssignment {
   return {
     mode: "pinned",
     setup: {
       modelSelection,
-      runtimeMode: "approval-required",
+      runtimeMode,
       interactionMode: "default",
       workspace: "worktree",
     },

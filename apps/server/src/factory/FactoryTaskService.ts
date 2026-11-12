@@ -47,9 +47,9 @@ import {
   type FactoryTaskStatus,
   type FactoryTaskSummary,
   type FactoryTaskType,
-  type ModelSelection,
   type ProjectId,
   type RunId,
+  type ServerSettings as Settings,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -400,6 +400,24 @@ const firstLine = (text: string) =>
     .map((line) => line.replace(/^#+\s*/, "").trim())
     .find((line) => line !== "")
     ?.slice(0, 200) ?? "Document";
+
+/** What settings give a task nobody chose a model or permissions for. */
+const taskDefaultsOf = (value: Settings) => ({
+  model: value.defaultModelSelection,
+  runtimeModes: {
+    environment: value.defaultRuntimeMode,
+    // Sorted so an unchanged setting mirrors to the same text.
+    projects: Object.fromEntries(
+      Object.entries(value.projectSettingsOverrides)
+        .flatMap(([projectId, overrides]) =>
+          overrides.defaultRuntimeMode === undefined
+            ? []
+            : [[projectId, overrides.defaultRuntimeMode] as const],
+        )
+        .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)),
+    ),
+  },
+});
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -1992,8 +2010,9 @@ const make = Effect.gen(function* () {
     }),
   );
   const mirrorEnvironmentDefault = Effect.fn("FactoryTaskService.mirrorEnvironmentDefault")(
-    function* (model: ModelSelection | null) {
-      if (yield* transact(store.setEnvironmentDefault(model))) yield* refreshEverything;
+    function* (value: Settings) {
+      if (yield* transact(store.setEnvironmentDefaults(taskDefaultsOf(value))))
+        yield* refreshEverything;
     },
   );
 
@@ -2027,14 +2046,11 @@ const make = Effect.gen(function* () {
       ),
     );
 
+  // Unreadable settings keep the last mirror: a failed read must not hand tasks other permissions.
   yield* quietly(
-    Effect.gen(function* () {
-      const current = yield* settings.getSettings.pipe(
-        Effect.map((value) => value.defaultModelSelection),
-        Effect.orElseSucceed(() => null),
-      );
-      yield* transact(store.setEnvironmentDefault(current));
-    }),
+    settings.getSettings.pipe(
+      Effect.flatMap((value) => transact(store.setEnvironmentDefaults(taskDefaultsOf(value)))),
+    ),
   );
   // Read here, not in the fiber: nothing committed after this layer is built may be missed.
   let resumeFrom: number | null = yield* events.latestApplicationSequence.pipe(Effect.orDie);
@@ -2078,7 +2094,7 @@ const make = Effect.gen(function* () {
     Effect.forkScoped,
   );
   yield* settings.streamChanges.pipe(
-    Stream.runForEach((next) => quietly(mirrorEnvironmentDefault(next.defaultModelSelection))),
+    Stream.runForEach((next) => quietly(mirrorEnvironmentDefault(next))),
     Effect.forkScoped,
   );
 

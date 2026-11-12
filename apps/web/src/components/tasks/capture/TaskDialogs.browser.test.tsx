@@ -132,6 +132,7 @@ vi.mock(import("../shared/taskModelChoices"), () => ({
     modelOptionsByInstance: new Map(),
     normalize: (selection: unknown) => selection,
   })) as never,
+  useTaskDefaultRuntimeMode: () => "full-access" as const,
 }));
 vi.mock(import("../../chat/ProviderModelPicker"), () => ({
   ProviderModelPicker: (() => null) as never,

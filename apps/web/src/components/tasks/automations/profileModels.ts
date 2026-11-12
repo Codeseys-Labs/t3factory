@@ -35,6 +35,11 @@ interface ProfileHarness {
 // The option ids providers use for how hard a model thinks.
 const EFFORT_OPTION_IDS: readonly string[] = ["effort", "reasoningEffort", "reasoning", "variant"];
 
+/** The environment's Default permissions setting, which a new profile starts with. */
+export function useProfileDefaultMode(environmentId: EnvironmentId): RuntimeMode {
+  return useEnvironmentSettings(environmentId, (settings) => settings.defaultRuntimeMode);
+}
+
 /** The harnesses, models and efforts the stock model picker offers on one environment. */
 export function useProfileHarnesses(
   environmentId: EnvironmentId,

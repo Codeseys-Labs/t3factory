@@ -1,4 +1,5 @@
 import {
+  DEFAULT_RUNTIME_MODE,
   FactoryAgentProfile,
   FactoryAgentSetup,
   FactoryExecutionBinding,
@@ -10,6 +11,7 @@ import {
   FactoryTaskSource,
   FactoryTaskType,
   ModelSelection,
+  RuntimeMode,
   type CommandId,
   type FactoryPlanSnapshot,
   type FactoryTaskAssignee,
@@ -52,6 +54,12 @@ export const LOCAL_TASK_SOURCE: FactoryTaskSource = {
 
 export type TaskActor = FactoryTaskActivityEntry["actor"];
 const SYSTEM_ACTOR: TaskActor = { kind: "system", label: "T3 Factory" };
+
+/** Default permissions as settings hold them: the environment's, and each project's override. */
+export interface TaskDefaultModes {
+  readonly environment: RuntimeMode;
+  readonly projects: Readonly<Record<string, RuntimeMode>>;
+}
 
 export interface TaskKey {
   readonly rootId: string;
@@ -310,6 +318,7 @@ export class FactoryTaskStore extends Context.Service<
         readonly profiles: ReadonlyArray<FactoryAgentProfile>;
         readonly projectDefault: ModelSelection | null;
         readonly environmentDefault: ModelSelection | null;
+        readonly defaultRuntimeMode: RuntimeMode;
       },
       FactoryTaskError
     >;
@@ -320,9 +329,11 @@ export class FactoryTaskStore extends Context.Service<
     /** Fails `name-taken` when another profile holds the name. */
     readonly putProfile: (profile: FactoryAgentProfile) => Effect.Effect<void, FactoryTaskError>;
     readonly deleteProfile: (id: string) => Effect.Effect<void, FactoryTaskError>;
-    readonly setEnvironmentDefault: (
-      model: ModelSelection | null,
-    ) => Effect.Effect<boolean, FactoryTaskError>;
+    /** Mirrors the settings tasks fall back to. True when a task could now resolve differently. */
+    readonly setEnvironmentDefaults: (defaults: {
+      readonly model: ModelSelection | null;
+      readonly runtimeModes: TaskDefaultModes;
+    }) => Effect.Effect<boolean, FactoryTaskError>;
   }
 >()("t3/persistence/FactoryTaskStore") {}
 
@@ -334,6 +345,10 @@ const AssignmentJson = Schema.fromJsonString(FactoryTaskAssignment);
 const SourceJson = Schema.fromJsonString(FactoryTaskSource);
 const SetupJson = Schema.fromJsonString(FactoryAgentSetup);
 const ModelJson = Schema.fromJsonString(ModelSelection);
+const ModesJson = Schema.fromJsonString(
+  Schema.Struct({ environment: RuntimeMode, projects: Schema.Record(Schema.String, RuntimeMode) }),
+);
+const UNSET_MODES: TaskDefaultModes = { environment: DEFAULT_RUNTIME_MODE, projects: {} };
 const ActorJson = Schema.fromJsonString(FactoryTaskActivityEntry.fields.actor);
 const EventJson = Schema.fromJsonString(FactoryTaskActivityEvent);
 const HandlesJson = Schema.fromJsonString(Schema.Array(FactoryTaskType));
@@ -350,6 +365,8 @@ const decodeSetup = Schema.decodeUnknownEffect(SetupJson);
 const encodeSetup = Schema.encodeEffect(SetupJson);
 const decodeModel = Schema.decodeUnknownEffect(ModelJson);
 const encodeModel = Schema.encodeEffect(ModelJson);
+const decodeModes = Schema.decodeUnknownEffect(ModesJson);
+const encodeModes = Schema.encodeEffect(ModesJson);
 const decodeActor = Schema.decodeUnknownEffect(ActorJson);
 const encodeActor = Schema.encodeEffect(ActorJson);
 const decodeEvent = Schema.decodeUnknownEffect(EventJson);
@@ -543,10 +560,17 @@ const make = Effect.gen(function* () {
       projectDefaults.set(row.projectId, yield* modelOrNull(row.model));
     const environmentRows = yield* sql<{
       model: string | null;
-    }>`SELECT environment_model_json AS model FROM factory_task_defaults WHERE id = 1`;
+      runtimeModes: string | null;
+    }>`SELECT environment_model_json AS model, runtime_modes_json AS runtimeModes FROM factory_task_defaults WHERE id = 1`;
+    const stored = environmentRows[0]?.runtimeModes ?? null;
+    const modes =
+      stored === null
+        ? UNSET_MODES
+        : yield* decodeModes(stored).pipe(Effect.orElseSucceed(() => UNSET_MODES));
     return {
       projectDefaults,
       environmentDefault: yield* modelOrNull(environmentRows[0]?.model),
+      runtimeModeOf: (projectId: string) => modes.projects[projectId] ?? modes.environment,
       profiles: yield* profiles(),
     };
   }, Effect.mapError(failure));
@@ -614,6 +638,7 @@ const make = Effect.gen(function* () {
     const {
       projectDefaults,
       environmentDefault,
+      runtimeModeOf,
       profiles: agentProfiles,
     } = yield* defaults([...new Set(records.map((record) => record.projectId))]);
 
@@ -727,6 +752,7 @@ const make = Effect.gen(function* () {
             profiles: agentProfiles,
             projectDefault: projectDefaults.get(row.projectId) ?? null,
             environmentDefault,
+            defaultRuntimeMode: runtimeModeOf(row.projectId),
           }),
           runs: runsByTask.get(record.taskId) ?? [],
           results: resultsByTask.get(record.taskId) ?? [],
@@ -1251,6 +1277,7 @@ const make = Effect.gen(function* () {
         profiles: found.profiles,
         projectDefault: found.projectDefaults.get(projectId) ?? null,
         environmentDefault: found.environmentDefault,
+        defaultRuntimeMode: found.runtimeModeOf(projectId),
       };
     }),
     listProfiles: profiles(),
@@ -1265,14 +1292,20 @@ const make = Effect.gen(function* () {
     deleteProfile: Effect.fn("FactoryTaskStore.deleteProfile")(function* (id) {
       yield* sql`DELETE FROM factory_agent_profiles WHERE profile_id = ${id}`;
     }, Effect.mapError(failure)),
-    setEnvironmentDefault: Effect.fn("FactoryTaskStore.setEnvironmentDefault")(function* (model) {
-      const next = model === null ? null : yield* encodeModel(model);
+    setEnvironmentDefaults: Effect.fn("FactoryTaskStore.setEnvironmentDefaults")(function* (next) {
+      const model = next.model === null ? null : yield* encodeModel(next.model);
+      const runtimeModes = yield* encodeModes(next.runtimeModes);
       const rows = yield* sql<{
         model: string | null;
-      }>`SELECT environment_model_json AS model FROM factory_task_defaults WHERE id = 1`;
-      if (rows.length === 1 && rows[0]!.model === next) return false;
-      yield* sql`INSERT INTO factory_task_defaults(id, environment_model_json) VALUES (1, ${next}) ON CONFLICT(id) DO UPDATE SET environment_model_json = excluded.environment_model_json`;
-      return rows.length === 1 || next !== null;
+        runtimeModes: string | null;
+      }>`SELECT environment_model_json AS model, runtime_modes_json AS runtimeModes FROM factory_task_defaults WHERE id = 1`;
+      const before = rows[0];
+      const same =
+        (before?.model ?? null) === model &&
+        (before?.runtimeModes ?? (yield* encodeModes(UNSET_MODES))) === runtimeModes;
+      if (same && before !== undefined && before.runtimeModes !== null) return false;
+      yield* sql`INSERT INTO factory_task_defaults(id, environment_model_json, runtime_modes_json) VALUES (1, ${model}, ${runtimeModes}) ON CONFLICT(id) DO UPDATE SET environment_model_json = excluded.environment_model_json, runtime_modes_json = excluded.runtime_modes_json`;
+      return !same;
     }, Effect.mapError(failure)),
   });
 });

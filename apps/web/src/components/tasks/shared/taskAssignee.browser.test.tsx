@@ -44,6 +44,7 @@ vi.mock(import("./taskModelChoices"), () => ({
     modelOptionsByInstance: new Map(),
     normalize: (selection: unknown) => selection,
   })) as never,
+  useTaskDefaultRuntimeMode: () => "auto-accept-edits" as const,
 }));
 vi.mock(import("../../chat/ProviderModelPicker"), () => ({
   ProviderModelPicker: ((props: {
@@ -107,7 +108,7 @@ it.each([
   expect(onChange).toHaveBeenCalledExactlyOnceWith(expected);
 });
 
-it("pins the model chosen in the model picker, supervised in a new worktree", async () => {
+it("pins the chosen model with the project's default permissions, in a new worktree", async () => {
   const { onChange } = setup();
   await using _screen = await openPicker(onChange);
   await userEvent.click(page.getByRole("option", { name: /Pin a harness and model/ }));
@@ -116,7 +117,7 @@ it("pins the model chosen in the model picker, supervised in a new worktree", as
     mode: "pinned",
     setup: {
       modelSelection: { instanceId: "claudeAgent", model: "claude-opus" },
-      runtimeMode: "approval-required",
+      runtimeMode: "auto-accept-edits",
       interactionMode: "default",
       workspace: "worktree",
     },

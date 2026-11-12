@@ -1273,7 +1273,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
               cwd,
               args: ["fetch", "origin"],
               // Git for Windows runs this through its sh, which drops backslashes.
-              env: { LC_ALL: "C", GIT_SSH_COMMAND: fakeSsh.replaceAll("\\", "/") },
+              env: { LC_ALL: "C", GIT_SSH_COMMAND: `'${fakeSsh.replaceAll("\\", "/")}'` },
             })
             .pipe(Effect.flip);
 
@@ -1305,7 +1305,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
             operation: "GitVcsDriver.test.osPermission",
             cwd,
             args: ["fetch", "origin"],
-            env: { LC_ALL: "C", GIT_SSH_COMMAND: fakeSsh.replaceAll("\\", "/") },
+            env: { LC_ALL: "C", GIT_SSH_COMMAND: `'${fakeSsh.replaceAll("\\", "/")}'` },
           })
           .pipe(Effect.flip);
 

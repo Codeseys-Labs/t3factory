@@ -56,6 +56,7 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -2009,17 +2010,17 @@ const make = Effect.gen(function* () {
       yield* changes.announce({ rootIds: [], profiles: true });
     }),
   );
-  // Settings that failed to decode answer with defaults; those are not the person's choice, so
-  // the last mirror stays. A failed read keeps it too.
-  const mirrorDefaults = Effect.fn("FactoryTaskService.mirrorDefaults")(function* (
-    value: Settings,
-  ) {
-    if (!(yield* settings.settingsFileTrusted ?? Effect.succeed(true))) return false;
-    return yield* transact(store.setEnvironmentDefaults(taskDefaultsOf(value)));
+  // Settings that fail to decode answer with defaults, which are not the person's choice: the last
+  // mirror stays, as it does when the read fails. Each change reads the file's current state, since
+  // a queued value may come from a broken file that has been fixed since.
+  const mirrorDefaults = Effect.fn("FactoryTaskService.mirrorDefaults")(function* () {
+    const current = yield* settings.decodedSettings ?? Effect.asSome(settings.getSettings);
+    if (Option.isNone(current)) return false;
+    return yield* transact(store.setEnvironmentDefaults(taskDefaultsOf(current.value)));
   });
   const mirrorEnvironmentDefault = Effect.fn("FactoryTaskService.mirrorEnvironmentDefault")(
-    function* (value: Settings) {
-      if (yield* mirrorDefaults(value)) yield* refreshEverything;
+    function* () {
+      if (yield* mirrorDefaults()) yield* refreshEverything;
     },
   );
 
@@ -2053,7 +2054,7 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  yield* quietly(settings.getSettings.pipe(Effect.flatMap(mirrorDefaults)));
+  yield* quietly(mirrorDefaults());
   // Read here, not in the fiber: nothing committed after this layer is built may be missed.
   let resumeFrom: number | null = yield* events.latestApplicationSequence.pipe(Effect.orDie);
   const follow = Effect.gen(function* () {
@@ -2096,7 +2097,7 @@ const make = Effect.gen(function* () {
     Effect.forkScoped,
   );
   yield* settings.streamChanges.pipe(
-    Stream.runForEach((next) => quietly(mirrorEnvironmentDefault(next))),
+    Stream.runForEach(() => quietly(mirrorEnvironmentDefault())),
     Effect.forkScoped,
   );
 

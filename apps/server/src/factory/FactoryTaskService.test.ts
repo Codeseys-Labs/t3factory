@@ -308,7 +308,7 @@ const settingsLayer = (settings: TestSettings, fileTrusted: boolean) =>
         ServerSettings.ServerSettingsService,
         Effect.map(ServerSettings.ServerSettingsService, (service) => ({
           ...service,
-          settingsFileTrusted: Effect.succeed(false),
+          decodedSettings: Effect.succeedNone,
         })),
       ).pipe(Layer.provide(ServerSettings.layerTest(settings)));
 const layerWith = (settings: TestSettings = {}, fileTrusted = true) => {

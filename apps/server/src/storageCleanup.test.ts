@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+// @effect-diagnostics nodeBuiltinImport:off - expected paths are built outside the Effect services.
 import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
 import * as Context from "effect/Context";

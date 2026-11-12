@@ -1,4 +1,5 @@
 import * as NodeEvents from "node:events";
+// @effect-diagnostics nodeBuiltinImport:off - the service under test joins paths with node:path.
 import * as NodePath from "node:path";
 
 import { INCOGNITO_BROWSER_PROFILE_ID } from "@t3tools/contracts";

@@ -1,4 +1,6 @@
 import * as NodeEvents from "node:events";
+// @effect-diagnostics nodeBuiltinImport:off - the service under test joins paths with node:path.
+import * as NodePath from "node:path";
 
 import { INCOGNITO_BROWSER_PROFILE_ID } from "@t3tools/contracts";
 import { chromium, type Browser, type BrowserContext, type BrowserType } from "playwright-core";
@@ -54,6 +56,7 @@ const options = () => ({
   executable: vi.fn(async () => "/test/chromium"),
   env: {},
 });
+const profilePath = (name: string) => NodePath.join("/test/profiles", name);
 
 beforeEach(() => {
   launches.launch.mockReset();
@@ -99,10 +102,10 @@ describe("ServerBrowserContexts", () => {
     expect(await pool.contextFor("work/team")).toBe(persistent);
     expect(await pool.contextFor("work/team", "agent")).not.toBe(persistent);
     expect(launches.persistent).toHaveBeenCalledExactlyOnceWith(
-      "/test/profiles/work%2Fteam",
+      profilePath("work%2Fteam"),
       expect.objectContaining({ chromiumSandbox: true, executablePath: "/test/chromium" }),
     );
-    expect(launches.mkdir).toHaveBeenCalledWith("/test/profiles/work%2Fteam", { recursive: true });
+    expect(launches.mkdir).toHaveBeenCalledWith(profilePath("work%2Fteam"), { recursive: true });
     await pool.close();
     expect(human.close).toHaveBeenCalledTimes(1);
   });
@@ -121,7 +124,7 @@ describe("ServerBrowserContexts", () => {
     });
     await pool.clearProfile("work/team");
     expect(onContextClose).toHaveBeenCalledExactlyOnceWith(persistent);
-    expect(launches.rm).toHaveBeenCalledExactlyOnceWith("/test/profiles/work%2Fteam", {
+    expect(launches.rm).toHaveBeenCalledExactlyOnceWith(profilePath("work%2Fteam"), {
       recursive: true,
       force: true,
     });
@@ -130,7 +133,7 @@ describe("ServerBrowserContexts", () => {
     launches.persistent.mockResolvedValue(makeContext() as unknown as BrowserContext);
     expect(await pool.contextFor("work/team")).not.toBe(persistent);
     await pool.clearProfile("never-opened");
-    expect(launches.rm).toHaveBeenLastCalledWith("/test/profiles/never-opened", {
+    expect(launches.rm).toHaveBeenLastCalledWith(profilePath("never-opened"), {
       recursive: true,
       force: true,
     });

@@ -2054,6 +2054,7 @@ const make = Effect.gen(function* () {
       ),
     );
 
+  const settingsChanges = yield* settings.subscribeChanges;
   yield* quietly(mirrorDefaults());
   // Read here, not in the fiber: nothing committed after this layer is built may be missed.
   let resumeFrom: number | null = yield* events.latestApplicationSequence.pipe(Effect.orDie);
@@ -2096,7 +2097,7 @@ const make = Effect.gen(function* () {
     }),
     Effect.forkScoped,
   );
-  yield* settings.streamChanges.pipe(
+  yield* settingsChanges.pipe(
     Stream.runForEach(() => quietly(mirrorEnvironmentDefault())),
     Effect.forkScoped,
   );

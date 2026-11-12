@@ -19,41 +19,62 @@ import { TaskCommentBox } from "./TaskCommentBox";
 
 /** The task's history, oldest first, read newest first so the latest entries are always shown. */
 export function TaskActivity({ detail }: { detail: FactoryTaskDetail }) {
+  const { taskId } = detail.task.ref;
+  // Held here, not in the pages: a new entry gives every page a new cursor and remounts them.
+  const [opened, setOpened] = useState({ taskId, earlier: 0 });
+  const earlier = opened.taskId === taskId ? opened.earlier : 0;
   return (
     <div className="flex flex-col gap-3">
-      <ActivityPages detail={detail} cursor={undefined} later={[]} />
+      <ActivityPages
+        detail={detail}
+        cursor={undefined}
+        later={[]}
+        earlier={earlier}
+        onShowEarlier={() => setOpened({ taskId, earlier: earlier + 1 })}
+      />
       <TaskCommentBox task={detail.task} />
     </div>
   );
 }
 
 /**
- * Reads one page older than `later`. Show earlier hands everything read so far to the next older
- * page, so the list renders at once and nothing waits on an effect.
+ * Reads one page older than `later`, then as many older pages as `earlier` counts. Each page hands
+ * everything read so far to the next, so the list renders at once and nothing waits on an effect.
  */
 function ActivityPages({
   detail,
   cursor,
   later,
+  earlier,
+  onShowEarlier,
 }: {
   detail: FactoryTaskDetail;
   cursor: string | undefined;
   later: readonly FactoryTaskActivityEntry[];
+  earlier: number;
+  onShowEarlier: () => void;
 }) {
   const page = { order: "newest" as const, ...(cursor === undefined ? {} : { cursor }) };
   const result = useFactoryTaskActivity(detail.task.ref, page);
   const retry = useRefreshFactoryTaskActivity(detail.task.ref, page);
-  const [earlier, setEarlier] = useState(false);
   if (result._tag === "Success") {
     const entries = [...result.value.entries].reverse().concat(later);
     const next = result.value.nextCursor;
-    if (earlier && next !== null)
-      return <ActivityPages detail={detail} cursor={next} later={entries} />;
+    if (earlier > 0 && next !== null)
+      return (
+        <ActivityPages
+          detail={detail}
+          cursor={next}
+          later={entries}
+          earlier={earlier - 1}
+          onShowEarlier={onShowEarlier}
+        />
+      );
     return (
       <ActivityList
         detail={detail}
         entries={entries}
-        onShowEarlier={next === null ? undefined : () => setEarlier(true)}
+        onShowEarlier={next === null ? undefined : onShowEarlier}
       />
     );
   }

@@ -230,7 +230,13 @@ export function TaskAssigneePicker({
           isComposerOwned={false}
           onInstanceModelChange={(instanceId, model) => {
             setPinning(false);
-            onChange(pinnedAssignment(choices.normalize({ instanceId, model }), defaultMode));
+            const modelSelection = choices.normalize({ instanceId, model });
+            // A new model keeps what the pin already chose; only a first pin takes the default.
+            onChange(
+              pinnedSetup
+                ? { mode: "pinned", setup: { ...pinnedSetup, modelSelection } }
+                : pinnedAssignment(modelSelection, defaultMode),
+            );
           }}
         />
       ) : null}

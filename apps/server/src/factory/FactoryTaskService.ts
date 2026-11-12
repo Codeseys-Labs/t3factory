@@ -2009,10 +2009,17 @@ const make = Effect.gen(function* () {
       yield* changes.announce({ rootIds: [], profiles: true });
     }),
   );
+  // Settings that failed to decode answer with defaults; those are not the person's choice, so
+  // the last mirror stays. A failed read keeps it too.
+  const mirrorDefaults = Effect.fn("FactoryTaskService.mirrorDefaults")(function* (
+    value: Settings,
+  ) {
+    if (!(yield* settings.settingsFileTrusted ?? Effect.succeed(true))) return false;
+    return yield* transact(store.setEnvironmentDefaults(taskDefaultsOf(value)));
+  });
   const mirrorEnvironmentDefault = Effect.fn("FactoryTaskService.mirrorEnvironmentDefault")(
     function* (value: Settings) {
-      if (yield* transact(store.setEnvironmentDefaults(taskDefaultsOf(value))))
-        yield* refreshEverything;
+      if (yield* mirrorDefaults(value)) yield* refreshEverything;
     },
   );
 
@@ -2046,12 +2053,7 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  // Unreadable settings keep the last mirror: a failed read must not hand tasks other permissions.
-  yield* quietly(
-    settings.getSettings.pipe(
-      Effect.flatMap((value) => transact(store.setEnvironmentDefaults(taskDefaultsOf(value)))),
-    ),
-  );
+  yield* quietly(settings.getSettings.pipe(Effect.flatMap(mirrorDefaults)));
   // Read here, not in the fiber: nothing committed after this layer is built may be missed.
   let resumeFrom: number | null = yield* events.latestApplicationSequence.pipe(Effect.orDie);
   const follow = Effect.gen(function* () {

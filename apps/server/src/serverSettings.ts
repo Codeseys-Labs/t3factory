@@ -193,6 +193,12 @@ export class ServerSettingsService extends Context.Service<
 
     readonly getSettings: Effect.Effect<ServerSettings, ServerSettingsError>;
 
+    /**
+     * False while settings.json failed to decode and `getSettings` answers with defaults. Absent on
+     * an implementation that decodes no file.
+     */
+    readonly settingsFileTrusted?: Effect.Effect<boolean, ServerSettingsError>;
+
     readonly updateSettings: (
       patch: ServerSettingsPatch,
     ) => Effect.Effect<ServerSettings, ServerSettingsError>;
@@ -1183,6 +1189,9 @@ const make = Effect.gen(function* () {
     start,
     ready: Deferred.await(startedDeferred),
     getSettings: getMaterializedSettings,
+    settingsFileTrusted: Cache.get(settingsCache, cacheKey).pipe(
+      Effect.map((loaded) => Option.isNone(loaded.parseFailure)),
+    ),
     updateSettings: (patch) =>
       updateAndPersistSettings((current) =>
         Effect.succeed(applyServerSettingsPatch(current, patch)),

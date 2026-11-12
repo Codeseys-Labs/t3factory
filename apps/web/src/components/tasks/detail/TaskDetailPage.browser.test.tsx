@@ -269,6 +269,8 @@ function setup(path: string) {
   state.connection = { phase: "connected" };
   state.details = new Map();
   state.activity = new Map();
+  state.activityReaders = new Set();
+  state.activityVersion = 0;
   state.results = new Map();
   state.proposal = null;
   state.permissions = {};

@@ -300,7 +300,18 @@ const dependencies = Layer.mergeAll(eventStores, ProjectionStore.layer).pipe(
   Layer.provideMerge(Sqlite.layerMemory),
 );
 type TestSettings = NonNullable<Parameters<typeof ServerSettings.layerTest>[0]>;
-const layerWith = (settings: TestSettings = {}) => {
+/** `fileTrusted: false` is a settings.json that failed to decode: the service answers, untrusted. */
+const settingsLayer = (settings: TestSettings, fileTrusted: boolean) =>
+  fileTrusted
+    ? ServerSettings.layerTest(settings)
+    : Layer.effect(
+        ServerSettings.ServerSettingsService,
+        Effect.map(ServerSettings.ServerSettingsService, (service) => ({
+          ...service,
+          settingsFileTrusted: Effect.succeed(false),
+        })),
+      ).pipe(Layer.provide(ServerSettings.layerTest(settings)));
+const layerWith = (settings: TestSettings = {}, fileTrusted = true) => {
   const base = Layer.mergeAll(
     dependencies,
     EventSink.layer.pipe(Layer.provide(dependencies)),
@@ -312,7 +323,7 @@ const layerWith = (settings: TestSettings = {}) => {
     Layer.succeed(ServerEnvironmentIdentity, { getEnvironmentId: Effect.succeed(environmentId) }),
     Layer.succeed(HostProcess.Platform, "win32"),
     AuthSessions.layer.pipe(Layer.provide(dependencies)),
-    ServerSettings.layerTest(settings),
+    settingsLayer(settings, fileTrusted),
     Layer.mock(Work.FactoryWorkService)({
       read: ({ ref }) =>
         ref.id === issueRef.id
@@ -461,7 +472,8 @@ type Provided =
 const scenario = <A, E>(
   body: Effect.Effect<A, E, Provided | Scope.Scope>,
   settings: TestSettings = {},
-) => body.pipe(Effect.scoped, Effect.provide(layerWith(settings)));
+  fileTrusted = true,
+) => body.pipe(Effect.scoped, Effect.provide(layerWith(settings, fileTrusted)));
 
 it.effect(
   "a saved schedule creates tasks after the author's login expires, with creation-only authority",
@@ -2437,6 +2449,20 @@ it.effect(
         projectSettingsOverrides: { [otherProjectId]: { defaultRuntimeMode: "approval-required" } },
       },
     ),
+);
+
+it.effect("mirrors nothing from a settings file that failed to decode", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { create } = yield* harness;
+      // What the service answers in place of the file is not the person's choice, so Auto finds
+      // no default model here and no default permissions are taken from it.
+      const task = yield* create("Weekly dependency review", { assignment: { mode: "auto" } });
+      assert.deepEqual([task.assignee.key, task.assignee.resolved], ["unassigned", null]);
+    }),
+    { defaultModelSelection: model("environment"), defaultRuntimeMode: "approval-required" },
+    false,
+  ),
 );
 
 it.effect(

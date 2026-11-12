@@ -269,6 +269,8 @@ function TaskSetupForm({
 
   const pick = (next: FactoryTaskAssignment) => {
     setAssignment(next);
+    // Another assignee brings its own mode and workspace; a pin's new model does not.
+    if (next.mode === "pinned" && assignment.mode === "pinned") return;
     setMode(null);
     setWorkspace(null);
   };

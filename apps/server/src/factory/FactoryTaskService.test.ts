@@ -299,7 +299,19 @@ const eventStores = EventStore.layerFromOrchestrationEventStore.pipe(
 const dependencies = Layer.mergeAll(eventStores, ProjectionStore.layer).pipe(
   Layer.provideMerge(Sqlite.layerMemory),
 );
-const layerWith = (environmentDefault: ModelSelection | null = null) => {
+type TestSettings = NonNullable<Parameters<typeof ServerSettings.layerTest>[0]>;
+/** `fileTrusted: false` is a settings.json that failed to decode: the service answers, untrusted. */
+const settingsLayer = (settings: TestSettings, fileTrusted: boolean) =>
+  fileTrusted
+    ? ServerSettings.layerTest(settings)
+    : Layer.effect(
+        ServerSettings.ServerSettingsService,
+        Effect.map(ServerSettings.ServerSettingsService, (service) => ({
+          ...service,
+          decodedSettings: Effect.succeedNone,
+        })),
+      ).pipe(Layer.provide(ServerSettings.layerTest(settings)));
+const layerWith = (settings: TestSettings = {}, fileTrusted = true) => {
   const base = Layer.mergeAll(
     dependencies,
     EventSink.layer.pipe(Layer.provide(dependencies)),
@@ -311,7 +323,7 @@ const layerWith = (environmentDefault: ModelSelection | null = null) => {
     Layer.succeed(ServerEnvironmentIdentity, { getEnvironmentId: Effect.succeed(environmentId) }),
     Layer.succeed(HostProcess.Platform, "win32"),
     AuthSessions.layer.pipe(Layer.provide(dependencies)),
-    ServerSettings.layerTest({ defaultModelSelection: environmentDefault }),
+    settingsLayer(settings, fileTrusted),
     Layer.mock(Work.FactoryWorkService)({
       read: ({ ref }) =>
         ref.id === issueRef.id
@@ -459,8 +471,9 @@ type Provided =
     : never;
 const scenario = <A, E>(
   body: Effect.Effect<A, E, Provided | Scope.Scope>,
-  environmentDefault: ModelSelection | null = null,
-) => body.pipe(Effect.scoped, Effect.provide(layerWith(environmentDefault)));
+  settings: TestSettings = {},
+  fileTrusted = true,
+) => body.pipe(Effect.scoped, Effect.provide(layerWith(settings, fileTrusted)));
 
 it.effect(
   "a saved schedule creates tasks after the author's login expires, with creation-only authority",
@@ -2345,18 +2358,22 @@ it.effect(
 
         const environment = yield* create("Weekly dependency review", { assignment: auto });
         assert.deepEqual(resolved(environment), ["environment-default", "devReplay/environment"]);
-        // Supervised, in a new worktree.
-        assert.deepEqual(environment.assignee.resolved?.setup, setupOf("environment"));
+        // The project's Default permissions, in a new worktree.
+        assert.deepEqual(environment.assignee.resolved?.setup, {
+          ...setupOf("environment"),
+          runtimeMode: "auto-accept-edits",
+        });
 
         yield* sql`UPDATE projection_projects SET default_model_selection_json = ${canonicalExecutionJson(model("project"))} WHERE project_id = ${projectId}`;
         const project = yield* create("Benchmark index paths", { assignment: auto });
         assert.deepEqual(resolved(project), ["project-default", "devReplay/project"]);
-        assert.deepEqual(
-          resolved(
-            yield* create("Scholar page sync", { assignment: auto, projectId: otherProjectId }),
-          ),
-          ["environment-default", "devReplay/environment"],
-        );
+        const elsewhere = yield* create("Scholar page sync", {
+          assignment: auto,
+          projectId: otherProjectId,
+        });
+        assert.deepEqual(resolved(elsewhere), ["environment-default", "devReplay/environment"]);
+        // A project's own Default permissions win over the environment's.
+        assert.equal(elsewhere.assignee.resolved?.setup.runtimeMode, "approval-required");
 
         const implementer = (yield* profiles.save(
           {
@@ -2426,8 +2443,26 @@ it.effect(
           { assignment: { mode: "person" }, key: "person", resolved: null },
         );
       }),
-      model("environment"),
+      {
+        defaultModelSelection: model("environment"),
+        defaultRuntimeMode: "auto-accept-edits",
+        projectSettingsOverrides: { [otherProjectId]: { defaultRuntimeMode: "approval-required" } },
+      },
     ),
+);
+
+it.effect("mirrors nothing from a settings file that failed to decode", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { create } = yield* harness;
+      // What the service answers in place of the file is not the person's choice, so Auto finds
+      // no default model here and no default permissions are taken from it.
+      const task = yield* create("Weekly dependency review", { assignment: { mode: "auto" } });
+      assert.deepEqual([task.assignee.key, task.assignee.resolved], ["unassigned", null]);
+    }),
+    { defaultModelSelection: model("environment"), defaultRuntimeMode: "approval-required" },
+    false,
+  ),
 );
 
 it.effect(

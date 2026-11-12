@@ -44,6 +44,7 @@ vi.mock(import("./taskModelChoices"), () => ({
     modelOptionsByInstance: new Map(),
     normalize: (selection: unknown) => selection,
   })) as never,
+  useTaskDefaultRuntimeMode: () => "auto-accept-edits" as const,
 }));
 vi.mock(import("../../chat/ProviderModelPicker"), () => ({
   ProviderModelPicker: ((props: {
@@ -75,13 +76,14 @@ function setup(preview: FactoryTaskAssignee | null = null) {
 async function openPicker(
   onChange: (assignment: FactoryTaskAssignment) => void,
   parent?: TaskAssigneeParent,
+  value: FactoryTaskAssignment = { mode: "unassigned" },
 ) {
   const screen = await render(
     <TaskAssigneePicker
       environmentId={FACTORY_TASK_FIXTURES.environmentId}
       projectId={ProjectId.make("t3code-factory")}
       type="task"
-      value={{ mode: "unassigned" }}
+      value={value}
       onChange={onChange}
       trigger={<button type="button">Assignee</button>}
       allowUnassigned
@@ -107,21 +109,38 @@ it.each([
   expect(onChange).toHaveBeenCalledExactlyOnceWith(expected);
 });
 
-it("pins the model chosen in the model picker, supervised in a new worktree", async () => {
-  const { onChange } = setup();
-  await using _screen = await openPicker(onChange);
-  await userEvent.click(page.getByRole("option", { name: /Pin a harness and model/ }));
-  await userEvent.click(page.getByRole("button", { name: "Choose Claude Opus" }));
-  expect(onChange).toHaveBeenCalledExactlyOnceWith({
-    mode: "pinned",
+const opus = { instanceId: ProviderInstanceId.make("claudeAgent"), model: "claude-opus" };
+const supervisedInCheckout = {
+  ...profile("implementer").setup,
+  runtimeMode: "approval-required",
+  workspace: "root",
+} as const;
+it.each([
+  {
+    name: "a first pin takes the project's default permissions, in a new worktree",
+    value: { mode: "unassigned" },
     setup: {
-      modelSelection: { instanceId: "claudeAgent", model: "claude-opus" },
-      runtimeMode: "approval-required",
+      modelSelection: opus,
+      runtimeMode: "auto-accept-edits",
       interactionMode: "default",
       workspace: "worktree",
     },
-  });
-});
+  },
+  {
+    name: "a pin's new model keeps the permissions and workspace it already chose",
+    value: { mode: "pinned", setup: supervisedInCheckout },
+    setup: { ...supervisedInCheckout, modelSelection: opus },
+  },
+] satisfies { name: string; value: FactoryTaskAssignment; setup: unknown }[])(
+  "$name",
+  async ({ value, setup: pinned }) => {
+    const { onChange } = setup();
+    await using _screen = await openPicker(onChange, undefined, value);
+    await userEvent.click(page.getByRole("option", { name: /Pin a harness and model/ }));
+    await userEvent.click(page.getByRole("button", { name: "Choose Claude Opus" }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({ mode: "pinned", setup: pinned });
+  },
+);
 
 it("resolves a pinned parent through the server with its full context", async () => {
   const setupOfArchitect = profile("architect").setup;

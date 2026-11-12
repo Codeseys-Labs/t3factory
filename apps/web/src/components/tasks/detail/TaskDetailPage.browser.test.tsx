@@ -24,14 +24,18 @@ import { AsyncResult } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
-import { render } from "../../../../test/render";
+import { act, render } from "../../../../test/render";
 import { validateTaskDetailSearch } from "../taskRoutes";
+import { TaskActivity } from "./TaskActivity";
 import { TaskDetailPage } from "./TaskDetailPage";
 
 type Spy = ReturnType<typeof vi.fn<(...args: unknown[]) => unknown>>;
 const state = vi.hoisted(() => ({
   details: new Map<string, unknown>(),
   activity: new Map<string, unknown>(),
+  // A read that changed: every mounted activity reader renders again, as its atom would make it.
+  activityReaders: new Set<() => void>(),
+  activityVersion: 0,
   results: new Map<string, unknown>(),
   proposal: null as unknown,
   permissions: {} as Record<string, boolean>,
@@ -43,6 +47,7 @@ const state = vi.hoisted(() => ({
 
 vi.mock(import("../../../state/factoryTasks"), async () => {
   const { AsyncResult, Atom } = await import("effect/reactivity");
+  const { useSyncExternalStore } = await import("react");
   const { FACTORY_TASK_FIXTURES: fixtures } =
     await import("@t3tools/client-runtime/state/factory-task-fixtures");
   const { resolveFactoryTaskLiveState } =
@@ -77,6 +82,13 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
       state.details.get(displayId) ??
       AsyncResult.failure(Cause.fail(new FactoryTaskError({ reason: "missing-task" }))),
     useFactoryTaskActivity: (ref: { taskId: string }, page?: unknown) => {
+      useSyncExternalStore(
+        (reader) => {
+          state.activityReaders.add(reader);
+          return () => state.activityReaders.delete(reader);
+        },
+        () => state.activityVersion,
+      );
       const value = state.activity.get(ref.taskId);
       if (typeof value === "function") return value(page);
       return (
@@ -257,6 +269,8 @@ function setup(path: string) {
   state.connection = { phase: "connected" };
   state.details = new Map();
   state.activity = new Map();
+  state.activityReaders = new Set();
+  state.activityVersion = 0;
   state.results = new Map();
   state.proposal = null;
   state.permissions = {};
@@ -532,6 +546,54 @@ it("keeps loaded activity and offers a retry when an earlier page fails", async 
     .toBeVisible();
   await expect.element(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await expect.element(page.getByText("Newest note")).toBeVisible();
+});
+
+it("keeps earlier Activity pages open when a new entry shifts every page", async () => {
+  setup(taskPath("T-29"));
+  const detail = detailOf(fixture("T-29"));
+  // One note a page, newest first. A new entry gives every page a new cursor.
+  const notes = ["Note 5", "Note 4", "Note 3", "Note 2", "Note 1"];
+  let generation = "a";
+  let inFlight: string | null = null;
+  state.activity.set("task-29", (input?: { cursor?: string }) => {
+    if (input?.cursor !== undefined && input.cursor === inFlight) return AsyncResult.initial(true);
+    const index = input?.cursor === undefined ? 0 : Number(input.cursor.split(":")[1]);
+    const body = notes[index]!;
+    return AsyncResult.success({
+      entries: [entry(body, { type: "comment", body })],
+      nextCursor: index + 1 < notes.length ? `${generation}:${index + 1}` : null,
+      fetchedAt: at,
+    });
+  });
+  await using _screen = await render(<TaskActivity detail={detail} />);
+  const shown = () =>
+    page
+      .getByText(/^Note \d$/)
+      .elements()
+      .map((element) => element.textContent);
+  for (const earlier of ["Note 4", "Note 3", "Note 2"]) {
+    await userEvent.click(page.getByRole("button", { name: "Show earlier" }));
+    await expect.element(page.getByText(earlier)).toBeVisible();
+  }
+  expect(shown()).toEqual(["Note 2", "Note 3", "Note 4", "Note 5"]);
+
+  const publish = (change: () => void) =>
+    act(() => {
+      change();
+      state.activityVersion += 1;
+      for (const reader of state.activityReaders) reader();
+    });
+  await publish(() => {
+    notes.unshift("Note 6");
+    generation = "b";
+    inFlight = "b:1";
+  });
+  await expect.element(page.getByText("Note 6")).toBeVisible();
+  await publish(() => {
+    inFlight = null;
+  });
+  await expect.element(page.getByText("Note 3")).toBeVisible();
+  expect(shown()).toEqual(["Note 3", "Note 4", "Note 5", "Note 6"]);
 });
 
 it("saves only the edited title", async () => {

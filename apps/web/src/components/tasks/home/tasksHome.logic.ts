@@ -171,21 +171,23 @@ export function boardLanes(
   return lanes;
 }
 
-/**
- * Who a lane or section stands for. Its tasks share an assignee key, but an Auto task in it names
- * what Auto resolved to, so the lane shows the agent itself.
- */
+/** An Auto assignee as the agent it resolved to, so a lane or a filter choice names the agent. */
+export function agentAssignee(assignee: FactoryTaskAssignee): FactoryTaskAssignee {
+  if (assignee.assignment.mode !== "auto" || !assignee.resolved) return assignee;
+  return {
+    ...assignee,
+    assignment: assignee.resolved.profile
+      ? { mode: "profile", profileId: assignee.resolved.profile.id }
+      : { mode: "pinned", setup: assignee.resolved.setup },
+  };
+}
+
+/** Who a lane or section stands for. Its tasks share an assignee key. */
 export function laneAssignee(tasks: readonly FactoryTaskSummary[]): FactoryTaskAssignee | null {
   const direct = tasks.find((task) => task.assignee.assignment.mode !== "auto");
   if (direct) return direct.assignee;
   const auto = tasks[0]?.assignee;
-  if (!auto?.resolved) return auto ?? null;
-  return {
-    ...auto,
-    assignment: auto.resolved.profile
-      ? { mode: "profile", profileId: auto.resolved.profile.id }
-      : { mode: "pinned", setup: auto.resolved.setup },
-  };
+  return auto ? agentAssignee(auto) : null;
 }
 
 interface TaskListRow {

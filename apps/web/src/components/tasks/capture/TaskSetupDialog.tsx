@@ -43,6 +43,7 @@ import { assigneeText } from "../kit";
 import { TaskAssigneePicker, useTaskSetup } from "../shared/taskAssignee";
 import { useTaskCatalog } from "../shared/taskCatalog";
 import { autoDetailLine, type TaskAssigneeParent } from "../shared/taskAssigneeModel";
+import { useTaskDefaultRuntimeMode } from "../shared/taskModelChoices";
 import { useTaskDialogStore } from "../taskDialogs";
 import { useCaptureCommands } from "./captureCommands";
 import { useMachineLabel } from "./captureData";
@@ -218,6 +219,7 @@ function TaskSetupForm({
   const copy = INTENT_COPY[intent];
 
   const lastRun = intent === "retry" ? (task.run?.setup ?? null) : null;
+  const defaultMode = useTaskDefaultRuntimeMode(environmentId, projectId);
   const [assignment, setAssignment] = useState(() => initialAssignment(task));
   const [mode, setMode] = useState<RuntimeMode | null>(lastRun?.runtimeMode ?? null);
   const [workspace, setWorkspace] = useState<FactoryTaskWorkspace | null>(
@@ -254,7 +256,7 @@ function TaskSetupForm({
         workspace: planning ? "root" : (workspace ?? base.workspace),
       }
     : null;
-  const shownMode = setup?.runtimeMode ?? mode ?? "approval-required";
+  const shownMode = setup?.runtimeMode ?? mode ?? defaultMode;
   const shownWorkspace = setup?.workspace ?? workspace ?? "worktree";
   const blockers = planning ? [] : task.blockedBy.map((blocker) => blocker.displayId);
   const changedAssignment = !sameAssignment(assignment, task.assignee.assignment);
@@ -267,6 +269,8 @@ function TaskSetupForm({
 
   const pick = (next: FactoryTaskAssignment) => {
     setAssignment(next);
+    // Another assignee brings its own mode and workspace; a pin's new model does not.
+    if (next.mode === "pinned" && assignment.mode === "pinned") return;
     setMode(null);
     setWorkspace(null);
   };

@@ -120,6 +120,7 @@ vi.mock(import("../shared/taskCatalog"), () => ({
   useTaskCatalog: () => FACTORY_TASK_FIXTURES.catalog,
 }));
 vi.mock(import("./profileModels"), () => ({
+  useProfileDefaultMode: () => "full-access" as const,
   useProfileHarnesses: () => [
     {
       instanceId: ProviderInstanceId.make("codex"),

@@ -33,7 +33,7 @@ import {
   taskAssigneeChipProps,
 } from "./taskAssigneeModel";
 import { useTaskCatalog } from "./taskCatalog";
-import { useTaskModelChoices } from "./taskModelChoices";
+import { useTaskDefaultRuntimeMode, useTaskModelChoices } from "./taskModelChoices";
 
 type Result<A> = AsyncResult.AsyncResult<A, unknown>;
 const NO_PREVIEW: Atom.Atom<Result<FactoryTaskAssignee>> = Atom.make(AsyncResult.initial(false));
@@ -168,6 +168,7 @@ export function TaskAssigneePicker({
   const profilesResult = useFactoryAgentProfiles(environmentId);
   const autoDetail = useAutoDetail({ environmentId, projectId, type, parent, autoResolution });
   const choices = useTaskModelChoices(environmentId, projectId);
+  const defaultMode = useTaskDefaultRuntimeMode(environmentId, projectId);
   const [pinning, setPinning] = useState(false);
   const profiles =
     profilesResult._tag === "Success"
@@ -229,7 +230,13 @@ export function TaskAssigneePicker({
           isComposerOwned={false}
           onInstanceModelChange={(instanceId, model) => {
             setPinning(false);
-            onChange(pinnedAssignment(choices.normalize({ instanceId, model })));
+            const modelSelection = choices.normalize({ instanceId, model });
+            // A new model keeps what the pin already chose; only a first pin takes the default.
+            onChange(
+              pinnedSetup
+                ? { mode: "pinned", setup: { ...pinnedSetup, modelSelection } }
+                : pinnedAssignment(modelSelection, defaultMode),
+            );
           }}
         />
       ) : null}

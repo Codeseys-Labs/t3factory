@@ -22,7 +22,7 @@ import { Checkbox } from "../../ui/checkbox";
 import { Input } from "../../ui/input";
 import { TASK_TYPE_LABELS } from "../kit";
 import { plural, readRefusal, refusalText, TASK_TYPES } from "./automationText";
-import { useProfileHarnesses } from "./profileModels";
+import { useProfileDefaultMode, useProfileHarnesses } from "./profileModels";
 import {
   AutomationSheet,
   DeleteAction,
@@ -89,12 +89,13 @@ export function ProfileSheet({
   sources: readonly FactoryIntakeSource[];
   close: () => void;
 }) {
+  const defaultMode = useProfileDefaultMode(environmentId);
   const draft = useVersionedDraft(profile, profileFields, {
     name: "",
     instanceId: "",
     model: "",
     options: [],
-    runtimeMode: "approval-required",
+    runtimeMode: defaultMode,
     workspace: "worktree",
     handles: [],
   });

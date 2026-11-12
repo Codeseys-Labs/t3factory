@@ -132,9 +132,21 @@ vi.mock(import("../shared/taskModelChoices"), () => ({
     modelOptionsByInstance: new Map(),
     normalize: (selection: unknown) => selection,
   })) as never,
+  useTaskDefaultRuntimeMode: () => "full-access" as const,
 }));
 vi.mock(import("../../chat/ProviderModelPicker"), () => ({
-  ProviderModelPicker: (() => null) as never,
+  ProviderModelPicker: ((props: {
+    onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() =>
+        props.onInstanceModelChange(ProviderInstanceId.make("claudeAgent"), "claude-opus")
+      }
+    >
+      Choose Claude Opus
+    </button>
+  )) as never,
 }));
 
 const MOD = isMacPlatform(navigator.platform) ? "Meta" : "Control";
@@ -359,6 +371,36 @@ it("saves a changed assignee before starting, with the mode and workspace chosen
   });
   expect(state.calls.map((call) => call.name)).toEqual(["updateTask", "startTask"]);
   await expect.element(page.getByText("Start T-43")).not.toBeInTheDocument();
+});
+
+it("keeps the mode picked in the start sheet when only the pinned model changes", async () => {
+  const pinned = { ...profile("implementer").setup, runtimeMode: "full-access" as const };
+  const task: FactoryTaskSummary = {
+    ...taskOf("T-43"),
+    assignee: {
+      assignment: { mode: "pinned", setup: pinned },
+      key: "codex/gpt-6.1-sol",
+      resolved: { profile: null, setup: pinned, via: "assignment" },
+    },
+  };
+  const saved = { ...task, version: 1 };
+  setup({ updateTask: [ok(saved)], startTask: [ok(saved)] });
+  state.tasks = state.tasks.map((entry) => (entry.ref.taskId === task.ref.taskId ? task : entry));
+  openTaskSetup(task.ref, "start");
+  await using _screen = await render(<TaskDialogsHost />);
+  await expect.element(page.getByText("Start T-43")).toBeVisible();
+  await userEvent.click(page.getByRole("combobox", { name: "Mode" }));
+  await userEvent.click(page.getByRole("option", { name: "Supervised" }));
+  await pickAssignee(/Codex/, /Pin a harness and model/);
+  await userEvent.click(page.getByRole("button", { name: "Choose Claude Opus" }));
+  await userEvent.click(page.getByRole("button", { name: "Start", exact: true }));
+  await vi.waitFor(() => expect(callsOf("startTask")).toHaveLength(1));
+  expect(callsOf("startTask")[0]).toMatchObject({
+    setup: {
+      modelSelection: { instanceId: "claudeAgent", model: "claude-opus" },
+      runtimeMode: "approval-required",
+    },
+  });
 });
 
 it("runs a task again with the setup of its last run", async () => {

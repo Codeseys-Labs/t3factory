@@ -47,15 +47,16 @@ import {
   type FactoryTaskStatus,
   type FactoryTaskSummary,
   type FactoryTaskType,
-  type ModelSelection,
   type ProjectId,
   type RunId,
+  type ServerSettings as Settings,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -400,6 +401,24 @@ const firstLine = (text: string) =>
     .map((line) => line.replace(/^#+\s*/, "").trim())
     .find((line) => line !== "")
     ?.slice(0, 200) ?? "Document";
+
+/** What settings give a task nobody chose a model or permissions for. */
+const taskDefaultsOf = (value: Settings) => ({
+  model: value.defaultModelSelection,
+  runtimeModes: {
+    environment: value.defaultRuntimeMode,
+    // Sorted so an unchanged setting mirrors to the same text.
+    projects: Object.fromEntries(
+      Object.entries(value.projectSettingsOverrides)
+        .flatMap(([projectId, overrides]) =>
+          overrides.defaultRuntimeMode === undefined
+            ? []
+            : [[projectId, overrides.defaultRuntimeMode] as const],
+        )
+        .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)),
+    ),
+  },
+});
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -1991,9 +2010,17 @@ const make = Effect.gen(function* () {
       yield* changes.announce({ rootIds: [], profiles: true });
     }),
   );
+  // Settings that fail to decode answer with defaults, which are not the person's choice: the last
+  // mirror stays, as it does when the read fails. Each change reads the file's current state, since
+  // a queued value may come from a broken file that has been fixed since.
+  const mirrorDefaults = Effect.fn("FactoryTaskService.mirrorDefaults")(function* () {
+    const current = yield* settings.decodedSettings ?? Effect.asSome(settings.getSettings);
+    if (Option.isNone(current)) return false;
+    return yield* transact(store.setEnvironmentDefaults(taskDefaultsOf(current.value)));
+  });
   const mirrorEnvironmentDefault = Effect.fn("FactoryTaskService.mirrorEnvironmentDefault")(
-    function* (model: ModelSelection | null) {
-      if (yield* transact(store.setEnvironmentDefault(model))) yield* refreshEverything;
+    function* () {
+      if (yield* mirrorDefaults()) yield* refreshEverything;
     },
   );
 
@@ -2027,15 +2054,8 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  yield* quietly(
-    Effect.gen(function* () {
-      const current = yield* settings.getSettings.pipe(
-        Effect.map((value) => value.defaultModelSelection),
-        Effect.orElseSucceed(() => null),
-      );
-      yield* transact(store.setEnvironmentDefault(current));
-    }),
-  );
+  const settingsChanges = yield* settings.subscribeChanges;
+  yield* quietly(mirrorDefaults());
   // Read here, not in the fiber: nothing committed after this layer is built may be missed.
   let resumeFrom: number | null = yield* events.latestApplicationSequence.pipe(Effect.orDie);
   const follow = Effect.gen(function* () {
@@ -2077,8 +2097,8 @@ const make = Effect.gen(function* () {
     }),
     Effect.forkScoped,
   );
-  yield* settings.streamChanges.pipe(
-    Stream.runForEach((next) => quietly(mirrorEnvironmentDefault(next.defaultModelSelection))),
+  yield* settingsChanges.pipe(
+    Stream.runForEach(() => quietly(mirrorEnvironmentDefault())),
     Effect.forkScoped,
   );
 

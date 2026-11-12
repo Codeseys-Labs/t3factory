@@ -193,6 +193,12 @@ export class ServerSettingsService extends Context.Service<
 
     readonly getSettings: Effect.Effect<ServerSettings, ServerSettingsError>;
 
+    /**
+     * What settings.json holds, or none while it fails to decode and `getSettings` answers with
+     * defaults. Absent on an implementation that decodes no file.
+     */
+    readonly decodedSettings?: Effect.Effect<Option.Option<ServerSettings>, ServerSettingsError>;
+
     readonly updateSettings: (
       patch: ServerSettingsPatch,
     ) => Effect.Effect<ServerSettings, ServerSettingsError>;
@@ -861,20 +867,19 @@ const make = Effect.gen(function* () {
     secretWriteGeneration++;
     materialized = null;
   });
-  const getMaterializedSettings = getSettingsFromCache.pipe(
-    Effect.flatMap((source) => {
-      if (materialized?.source === source) return Effect.succeed(materialized.value);
-      const generation = secretWriteGeneration;
-      return materializeSettingsSecrets(source).pipe(
-        Effect.map(resolveTextGenerationProvider),
-        Effect.tap((value) =>
-          Effect.sync(() => {
-            if (generation === secretWriteGeneration) materialized = { source, value };
-          }),
-        ),
-      );
-    }),
-  );
+  const materializeSource = (source: ServerSettings) => {
+    if (materialized?.source === source) return Effect.succeed(materialized.value);
+    const generation = secretWriteGeneration;
+    return materializeSettingsSecrets(source).pipe(
+      Effect.map(resolveTextGenerationProvider),
+      Effect.tap((value) =>
+        Effect.sync(() => {
+          if (generation === secretWriteGeneration) materialized = { source, value };
+        }),
+      ),
+    );
+  };
+  const getMaterializedSettings = getSettingsFromCache.pipe(Effect.flatMap(materializeSource));
 
   const materializeChanges = (changes: Stream.Stream<ServerSettings>) =>
     changes.pipe(
@@ -1183,6 +1188,13 @@ const make = Effect.gen(function* () {
     start,
     ready: Deferred.await(startedDeferred),
     getSettings: getMaterializedSettings,
+    decodedSettings: Cache.get(settingsCache, cacheKey).pipe(
+      Effect.flatMap((loaded) =>
+        Option.isSome(loaded.parseFailure)
+          ? Effect.succeedNone
+          : Effect.asSome(materializeSource(loaded.settings)),
+      ),
+    ),
     updateSettings: (patch) =>
       updateAndPersistSettings((current) =>
         Effect.succeed(applyServerSettingsPatch(current, patch)),

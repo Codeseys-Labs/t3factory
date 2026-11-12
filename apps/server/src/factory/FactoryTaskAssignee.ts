@@ -5,6 +5,7 @@ import type {
   FactoryTaskAssignment,
   FactoryTaskType,
   ModelSelection,
+  RuntimeMode,
 } from "@t3tools/contracts";
 
 interface AssigneeContext {
@@ -15,6 +16,8 @@ interface AssigneeContext {
   readonly profiles: ReadonlyArray<FactoryAgentProfile>;
   readonly projectDefault: ModelSelection | null;
   readonly environmentDefault: ModelSelection | null;
+  /** The project's Default permissions setting, for a run nobody chose a mode for. */
+  readonly defaultRuntimeMode: RuntimeMode;
 }
 
 const UNASSIGNED = { key: "unassigned", resolved: null } as const;
@@ -22,9 +25,12 @@ const UNASSIGNED = { key: "unassigned", resolved: null } as const;
 export const setupKey = (setup: FactoryAgentSetup): string =>
   `${setup.modelSelection.instanceId}/${setup.modelSelection.model}`;
 
-const defaultSetup = (modelSelection: ModelSelection): FactoryAgentSetup => ({
+const defaultSetup = (
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+): FactoryAgentSetup => ({
   modelSelection,
-  runtimeMode: "approval-required",
+  runtimeMode,
   interactionMode: "default",
   workspace: "worktree",
 });
@@ -80,7 +86,7 @@ export function resolveAssignee(
     [context.environmentDefault, "environment-default"],
   ] as const) {
     if (modelSelection === null) continue;
-    const setup = defaultSetup(modelSelection);
+    const setup = defaultSetup(modelSelection, context.defaultRuntimeMode);
     return { assignment, key: setupKey(setup), resolved: { profile: null, setup, via } };
   }
   return { assignment, ...UNASSIGNED };

@@ -935,8 +935,8 @@ export const layerWithOptions = (
         },
       );
 
-      // Waiters can be interrupted; shutdown joins every close still inside its bound.
-      const pendingScopeCloses = new Set<Fiber.Fiber<Exit.Exit<void>>>();
+      // Each close gets one wall-clock bound from its start; release and shutdown both join it.
+      const pendingScopeCloses = new Set<Fiber.Fiber<Option.Option<Exit.Exit<void>>>>();
       // Scope close can wedge on a misbehaving adapter finalizer (e.g. a
       // provider process that never yields its message stream).
       const awaitScopeClose = Effect.fn("ProviderSessionManager.awaitScopeClose")(function* (
@@ -948,7 +948,6 @@ export const layerWithOptions = (
           Effect.provideService(Clock.Clock, wallClock),
         );
         if (Option.isNone(closeExit)) {
-          pendingScopeCloses.delete(closeFiber);
           yield* Effect.logWarning("orchestration-v2.provider-session-scope-close-timeout", {
             ...annotations,
             timeoutMs: RELEASE_SCOPE_CLOSE_TIMEOUT_MS,
@@ -978,9 +977,12 @@ export const layerWithOptions = (
           Effect.exit,
           Effect.forkDetach({ startImmediately: true }),
         );
-        pendingScopeCloses.add(closeFiber);
-        closeFiber.addObserver(() => pendingScopeCloses.delete(closeFiber));
-        return yield* awaitScopeClose(closeFiber, annotations);
+        const boundedClose = yield* awaitScopeClose(closeFiber, annotations).pipe(
+          Effect.forkDetach({ startImmediately: true }),
+        );
+        pendingScopeCloses.add(boundedClose);
+        boundedClose.addObserver(() => pendingScopeCloses.delete(boundedClose));
+        return yield* Fiber.join(boundedClose);
       });
 
       const releaseEntry = (input: {
@@ -2087,9 +2089,7 @@ export const layerWithOptions = (
             ),
           ),
         );
-        const earlierCloses = [...pendingScopeCloses].map((closeFiber) =>
-          awaitScopeClose(closeFiber, { reason: "server_shutdown" }),
-        );
+        const earlierCloses = [...pendingScopeCloses].map((fiber) => Fiber.join(fiber));
         yield* Effect.all([...releases, ...earlierCloses], {
           concurrency: "unbounded",
           discard: true,

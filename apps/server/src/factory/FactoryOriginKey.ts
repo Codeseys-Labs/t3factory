@@ -13,6 +13,24 @@ export const issueOriginKey = (
   number: number,
 ): FactoryOriginKey => FactoryOriginKey.make(`${provider}:${component(canonicalKey)}#${number}`);
 
+/** The issue an `issueOriginKey` names, or null for any other key. */
+export const parseIssueOriginKey = (
+  key: string,
+): { readonly provider: string; readonly canonicalKey: string; readonly number: number } | null => {
+  const match = /^([a-z][a-z0-9-]*):([^|#]+)#(\d+)$/.exec(key);
+  if (match === null) return null;
+  try {
+    return {
+      provider: match[1]!,
+      canonicalKey: decodeURIComponent(match[2]!),
+      number: Number(match[3]),
+    };
+  } catch {
+    // Keys copied from retained Work are not all ours; a malformed escape names no issue.
+    return null;
+  }
+};
+
 export const feedItemOriginKey = (
   canonicalKey: string,
   locator: string,

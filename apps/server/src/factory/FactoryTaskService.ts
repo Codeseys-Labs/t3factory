@@ -21,6 +21,7 @@ import {
   FactoryTaskStopInput,
   FactoryTaskUpdateInput,
   type ApplicationStoredEvent,
+  FACTORY_DELIVERY_TITLE_MAX_CHARS,
   FactoryDeliveryError,
   type FactoryAgentSetup,
   type FactoryExecutionError,
@@ -77,7 +78,11 @@ import * as Plans from "./FactoryPlanService.ts";
 import type { FactoryIntakeScheduleAuthority } from "./FactoryIntakeSchedule.ts";
 import { resolveAssignee, setupKey } from "./FactoryTaskAssignee.ts";
 import * as Changes from "./FactoryTaskChanges.ts";
-import { parseTaskResultOriginKey, taskResultOriginKey } from "./FactoryOriginKey.ts";
+import {
+  parseIssueOriginKey,
+  parseTaskResultOriginKey,
+  taskResultOriginKey,
+} from "./FactoryOriginKey.ts";
 import { checkLaneMove, isLiveRunState } from "./FactoryTaskDerivation.ts";
 import * as Work from "./FactoryWorkService.ts";
 
@@ -278,6 +283,8 @@ const GRANT_EXPIRES_AT = "9999-12-31T23:59:59.999Z";
 // The engine keeps a code checkpoint only behind a check. This one changes nothing.
 const CHECKPOINT_CHECK = { command: "git", args: ["rev-parse", "--verify", "HEAD"] };
 const SHA = /^[a-f0-9]{40,64}$/;
+// Leaves the pull request body (FACTORY_DELIVERY_BODY_MAX_CHARS) room for the closing line and footer.
+const REPORT_MAX_CHARS = 60_000;
 
 const planError = (error: FactoryPlanError) => {
   const reasons: Record<FactoryPlanError["reason"], FactoryTaskError["reason"]> = {
@@ -576,6 +583,29 @@ const make = Effect.gen(function* () {
       return yield* refuse("missing-profile");
   });
 
+  /** What a run ended by telling the person: its last assistant message. */
+  const finalAnswer = Effect.fn("FactoryTaskService.finalAnswer")(function* (input: {
+    readonly threadId: ThreadId;
+    readonly runId: RunId;
+    /** The engine's retained text, for a thread whose messages are gone. */
+    readonly retained: string;
+  }) {
+    const messages = yield* projections
+      .getThreadRecords(input.threadId, ["messages"], {
+        messageRoles: ["assistant"],
+        messageRunIds: [input.runId],
+      })
+      .pipe(Effect.mapError(asTaskError));
+    return (
+      messages.messages.findLast((message) => message.text.trim() !== "")?.text ??
+      input.retained
+        .trim()
+        .split(/\r?\n\s*\r?\n/)
+        .at(-1) ??
+      ""
+    );
+  });
+
   const describeResult = Effect.fn("FactoryTaskService.describeResult")(function* (
     pending: Tasks.PendingResult,
   ) {
@@ -618,25 +648,17 @@ const make = Effect.gen(function* () {
       }
     }
     // A run that changed no file answered in words: its result is the text.
-    const text = yield* executions
+    const retained = yield* executions
       .readOutput({ selection: pending.output.selection, resultId: pending.output.resultId })
       .pipe(
         Effect.map((output) => output.text),
         Effect.orElseSucceed(() => ""),
       );
-    const messages = yield* projections
-      .getThreadRecords(pending.threadId, ["messages"], {
-        messageRoles: ["assistant"],
-        messageRunIds: [pending.output.runId],
-      })
-      .pipe(Effect.mapError(asTaskError));
-    const answer =
-      messages.messages.findLast((message) => message.text.trim() !== "")?.text ??
-      text
-        .trim()
-        .split(/\r?\n\s*\r?\n/)
-        .at(-1) ??
-      "";
+    const answer = yield* finalAnswer({
+      threadId: pending.threadId,
+      runId: pending.output.runId,
+      retained,
+    });
     return { kind: "document" as const, summary: firstLine(answer), files: [], filesOmitted: 0 };
   });
 
@@ -1634,6 +1656,69 @@ const make = Effect.gen(function* () {
     return { ...result, commit: result.commit };
   });
 
+  /**
+   * What Publish opens: the result's own commit subject and the agent's report on it. The task
+   * description stays out; it was written for the agent and may hold notes not meant for the host.
+   */
+  const publication = Effect.fn("FactoryTaskService.publication")(function* (
+    row: Tasks.TaskRow,
+    result: Tasks.TaskResultRow & { readonly commit: string },
+    baseRef: string | null,
+  ) {
+    const cwd = yield* store.projectWorkspace(row.projectId);
+    const subjects =
+      cwd === null || baseRef === null
+        ? []
+        : yield* processes
+            .run({
+              command: "git",
+              args: ["log", "--format=%s", "--max-count=2", `${baseRef}..${result.commit}`],
+              cwd,
+              maxOutputBytes: 64 * 1024,
+              outputMode: "truncate",
+            })
+            .pipe(
+              Effect.map((log) =>
+                log.code === 0 ? log.stdout.split("\n").filter((line) => line.trim() !== "") : [],
+              ),
+              Effect.orElseSucceed((): ReadonlyArray<string> => []),
+            );
+    const output = yield* executions
+      .readOutput({
+        selection: { ref: planRef(row), revision: result.planRevision, taskId: row.taskId },
+        resultId: result.resultId,
+      })
+      .pipe(Effect.mapError(executionError));
+    const report = (yield* finalAnswer({
+      threadId: result.threadId,
+      runId: output.output.runId,
+      retained: output.text,
+    })).trim();
+    const issue =
+      row.source.kind === "issue" && row.source.key !== null
+        ? parseIssueOriginKey(row.source.key)
+        : null;
+    const issuePath = issue?.canonicalKey.slice(issue.canonicalKey.indexOf("/") + 1);
+    return {
+      title:
+        subjects.length === 1
+          ? subjects[0]!.trim().slice(0, FACTORY_DELIVERY_TITLE_MAX_CHARS)
+          : row.title,
+      body: [
+        report.length > REPORT_MAX_CHARS ? `${report.slice(0, REPORT_MAX_CHARS)}\n\n…` : report,
+        // `owner/repo#N` closes the issue whichever repository the pull request is in.
+        issue !== null &&
+        (issue.provider === "github" || issue.provider === "gitlab") &&
+        issue.canonicalKey.includes("/")
+          ? `Closes ${issuePath}#${issue.number}`
+          : "",
+        `---\n_Task ${row.displayId} · result rev ${result.revision} · ${result.summary}_`,
+      ]
+        .filter((part) => part !== "")
+        .join("\n\n"),
+    };
+  });
+
   const deliver = Effect.fn("FactoryTaskService.deliver")(function* (
     kind: "publish-pr" | "merge-pr",
     raw: FactoryTaskDeliverInput,
@@ -1660,12 +1745,7 @@ const make = Effect.gen(function* () {
           ?.baseRef ?? null;
       revision = continued.revision;
     }
-    const description =
-      kind === "publish-pr"
-        ? ((yield* plans.read({ ref: planRef(row) }).pipe(Effect.mapError(planError))).tasks.find(
-            (entry) => entry.id === row.taskId,
-          )?.context ?? "")
-        : "";
+    const headBranch = deliveryBranch(input.ref, row.displayId, row.title, result.revision);
     yield* delivery
       .grantCommit({
         kind,
@@ -1676,13 +1756,10 @@ const make = Effect.gen(function* () {
         threadId: result.threadId,
         headSha: result.commit,
         baseRef,
-        publish: {
-          title: row.title,
-          body: [description.trim(), `Task ${row.displayId} · result rev ${result.revision}`]
-            .filter((part) => part !== "")
-            .join("\n\n"),
-          headBranch: deliveryBranch(input.ref, row.displayId, row.title, result.revision),
-        },
+        publish:
+          kind === "publish-pr"
+            ? { ...(yield* publication(row, result, baseRef)), headBranch }
+            : { title: row.title, body: "", headBranch },
         // Inside the grant transaction: a reopen between the click and the grant wins.
         recheck: store.acceptedRevision(row).pipe(
           Effect.mapError(

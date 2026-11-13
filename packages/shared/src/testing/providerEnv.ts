@@ -2,7 +2,16 @@
 // ANTHROPIC_BASE_URL) and the agent's own T3 state. Tests that read the ambient environment
 // then pass or fail by who runs them. Tests that need one of these variables set it
 // themselves. Set T3CODE_TEST_KEEP_PROVIDER_ENV=1 to keep them, for example for a live run.
-const PROVIDER_ENV_PREFIXES = ["ANTHROPIC_", "CLAUDE_", "CODEX_", "OPENAI_", "T3CODE_"];
+const PROVIDER_ENV_PREFIXES = [
+  "ANTHROPIC_",
+  "CLAUDE_",
+  "CODEX_",
+  "OPENAI_",
+  "T3CODE_",
+  "T3_ACP_MCP_",
+];
+
+const AGENT_SESSION_ENV = new Set(["CLAUDECODE", "ENABLE_TOOL_SEARCH", "ELECTRON_RUN_AS_NODE"]);
 
 const KEPT_ENV = new Set([
   // CI sets these so the transfer budget integration test writes its report for the job summary.
@@ -15,7 +24,10 @@ const KEPT_ENV = new Set([
 if (process.env.T3CODE_TEST_KEEP_PROVIDER_ENV !== "1") {
   for (const key of Object.keys(process.env)) {
     if (KEPT_ENV.has(key)) continue;
-    if (PROVIDER_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+    if (
+      AGENT_SESSION_ENV.has(key) ||
+      PROVIDER_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))
+    ) {
       delete process.env[key];
     }
   }

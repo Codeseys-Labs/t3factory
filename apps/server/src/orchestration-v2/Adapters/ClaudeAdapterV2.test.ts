@@ -162,6 +162,13 @@ const CLAUDE_TEST_RUNTIME_POLICY = ProviderAdapter.ProviderAdapterV2RuntimePolic
   cwd: "/workspace",
 });
 
+// Search the text itself: JSON escaping doubles the backslashes in Windows paths.
+function promptText(content: SDKUserMessage["message"]["content"]) {
+  return typeof content === "string"
+    ? content
+    : content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
+}
+
 function makeClaudeTestAppThread(input: {
   readonly threadId: ThreadId;
   readonly providerThread: OrchestrationV2ProviderThread;
@@ -1827,7 +1834,7 @@ describe("ClaudeAdapterV2 attachments", () => {
             yield* deliver;
             const retried = offeredMessages.at(-1)!.message.content;
             assert.notInclude(JSON.stringify(retried), '"type":"document"');
-            assert.include(JSON.stringify(retried), documentPath);
+            assert.include(promptText(retried), documentPath);
             assert.isBelow(Buffer.byteLength(JSON.stringify(offeredMessages)), 32_000_000);
             return;
           }
@@ -1876,7 +1883,7 @@ describe("ClaudeAdapterV2 attachments", () => {
                 typeof sent === "string" ? [] : sent.filter((block) => block.type === "image"),
                 budget === "partial-images" ? 1 : 0,
               );
-              assert.include(JSON.stringify(sent), imagePath);
+              assert.include(promptText(sent), imagePath);
               yield* runtime.steerTurn({
                 threadId,
                 runId: RunId.make("run-claude-attachments"),
@@ -1895,7 +1902,7 @@ describe("ClaudeAdapterV2 attachments", () => {
                   : steered.filter((block) => block.type === "image"),
                 0,
               );
-              assert.include(JSON.stringify(steered), imagePath);
+              assert.include(promptText(steered), imagePath);
               assert.isBelow(
                 Buffer.byteLength(
                   JSON.stringify(offeredMessages.map((message) => message.message)),
@@ -1957,7 +1964,7 @@ describe("ClaudeAdapterV2 attachments", () => {
               0,
               budget,
             );
-            assert.include(JSON.stringify(sent), documentPath);
+            assert.include(promptText(sent), documentPath);
             return;
           }
           if (!resumed) {
@@ -2170,7 +2177,7 @@ describe("ClaudeAdapterV2 attachments", () => {
             );
             if (scenario === "text-only")
               assert.equal(sent, ultrathink ? "Ultrathink:\nContinue." : "Continue.");
-            else assert.include(JSON.stringify(sent), documentPath);
+            else assert.include(promptText(sent), documentPath);
           }
         }).pipe(
           Effect.provide(
@@ -3917,6 +3924,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           cwd = CLAUDE_TEST_RUNTIME_POLICY.cwd,
           environment?: NodeJS.ProcessEnv,
           launchArgs = "",
+          platform: NodeJS.Platform = "linux",
         ) =>
           Effect.scoped(
             Effect.gen(function* () {
@@ -3942,7 +3950,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               const settings = harness.getOpenedOptions()?.settings;
               return typeof settings === "object" ? settings.env?.ENABLE_TOOL_SEARCH : undefined;
             }),
-          );
+          ).pipe(Effect.provideService(HostProcess.Platform, platform));
         assert.equal(yield* openedToolSearch('{"env":{"ENABLE_TOOL_SEARCH":"auto"}}'), "true");
         assert.isUndefined(yield* openedToolSearch('{"env":{"ENABLE_TOOL_SEARCH":"false"}}'));
         assert.isUndefined(yield* openedToolSearch("{}"));
@@ -3978,6 +3986,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         const userAuto = '{"env":{"ENABLE_TOOL_SEARCH":"auto"}}';
         yield* rootLocal("auto");
         assert.equal(yield* openedToolSearch("{}", worktree), "true");
+        // On Windows Claude Code reads the local file from cwd only.
+        assert.isUndefined(yield* openedToolSearch("{}", worktree, undefined, "", "win32"));
         yield* rootLocal("false");
         assert.isUndefined(yield* openedToolSearch(userAuto, worktree));
         assert.isUndefined(yield* openedToolSearch(userAuto, path.join(repo, "packages", "app")));

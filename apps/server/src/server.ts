@@ -22,6 +22,9 @@ import * as FactoryKnowledgeStore from "./persistence/FactoryKnowledgeStore.ts";
 import * as FactoryDeliveryStore from "./persistence/FactoryDeliveryStore.ts";
 import * as FactoryIntakeService from "./factory/FactoryIntakeService.ts";
 import * as FactoryIntakeStore from "./persistence/FactoryIntakeStore.ts";
+import * as FactoryExecutionLifecycle from "./factory/FactoryExecutionLifecycle.ts";
+import * as FactoryExecutionStore from "./persistence/FactoryExecutionStore.ts";
+import * as FactoryWatchdog from "./factory/FactoryWatchdog.ts";
 import * as FeedFetch from "./factory/FeedFetch.ts";
 import * as ProjectCoordinatorService from "./project/ProjectCoordinatorService.ts";
 import * as ProjectCoordinators from "./persistence/ProjectCoordinators.ts";
@@ -768,6 +771,12 @@ const layerFactoryTaskService = FactoryTaskService.layer.pipe(
   ),
   Layer.provide(RuntimeLayer.layerFactoryExecutionServiceProvided),
 );
+// Memoization gives it the effect worker's lifecycle instance, which holds the in-memory owner
+// registry: a second instance would read live claimants as orphans.
+const layerFactoryWatchdog = FactoryWatchdog.layer.pipe(
+  Layer.provide(Layer.merge(FactoryExecutionLifecycle.layer, layerFactoryDeliveryService)),
+  Layer.provide(FactoryExecutionStore.layer),
+);
 
 const layerMakeRoutes = Layer.mergeAll(
   Layer.mergeAll(
@@ -817,6 +826,7 @@ const layerMakeRoutes = Layer.mergeAll(
       FactoryAcceptanceService.layer,
       FactoryKnowledgeService.layer,
       layerFactoryDeliveryService,
+      layerFactoryWatchdog,
       RuntimeLayer.layerFactoryExecutionServiceProvided,
       FactoryPreparationAcceptanceService.layer.pipe(Layer.provide(RuntimeLayer.layerEventSink)),
       ProjectCoordinatorService.layer,

@@ -87,6 +87,14 @@ export class FactoryDeliveryStore extends Context.Service<
       projectId: ProjectId,
       id: string,
     ) => Effect.Effect<Option.Option<FactoryDeliveryIntent>, FactoryDeliveryError>;
+    /** Intents of either table left `unknown`, ordered by id. */
+    readonly listUnconfirmed: (input: {
+      readonly after: string | null;
+      readonly limit: number;
+    }) => Effect.Effect<
+      ReadonlyArray<{ readonly id: string; readonly projectId: ProjectId }>,
+      FactoryDeliveryError
+    >;
     /**
      * The single-use grant. Inside one transaction: replay by request command id, refuse a live
      * intent for the origin and kind, run `recheck`, insert the intent `pending` and run
@@ -164,6 +172,19 @@ const make = Effect.gen(function* () {
       )),
     ];
     return Option.fromNullishOr(rows[0]);
+  }, Effect.mapError(persistenceError));
+  const listUnconfirmed = Effect.fn("FactoryDeliveryStore.listUnconfirmed")(function* (input: {
+    readonly after: string | null;
+    readonly limit: number;
+  }) {
+    const after = input.after ?? "";
+    return yield* sql<{ readonly id: string; readonly projectId: ProjectId }>`
+      SELECT id, project_id AS projectId FROM factory_delivery_intents
+        WHERE status = 'unknown' AND id > ${after}
+      UNION ALL
+      SELECT id, project_id AS projectId FROM factory_artifact_deliveries
+        WHERE status = 'unknown' AND id > ${after}
+      ORDER BY id LIMIT ${input.limit}`;
   }, Effect.mapError(persistenceError));
   const getByCommand = Effect.fn("FactoryDeliveryStore.getByCommand")(function* (
     commandId: string,
@@ -390,6 +411,7 @@ const make = Effect.gen(function* () {
     getLiveArtifact,
     listByThread,
     getInProject,
+    listUnconfirmed,
     grant,
     markSending,
     settle,

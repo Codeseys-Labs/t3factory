@@ -115,6 +115,13 @@ describe("deriveTask", () => {
       live: 1,
     },
     {
+      name: "a running run whose agent session ended is live and raises lost",
+      facts: { runs: [{ ...run(1, "running"), lost: true }] },
+      status: "in-progress",
+      attention: ["lost:Agent session ended · run still open"],
+      live: 1,
+    },
+    {
       name: "a stopped run is in progress and asks for nothing",
       facts: { runs: [run(1, "stopped")] },
       status: "in-progress",
@@ -403,11 +410,31 @@ describe("workRunState", () => {
     nativeStatus: "running",
     outputStatus: null,
     effectsPending: false,
+    sessionEnded: false,
   } as const;
   const cases: ReadonlyArray<
-    readonly [string, Partial<Parameters<typeof workRunState>[0]>, FactoryTaskRunState]
+    readonly [string, Partial<Parameters<typeof workRunState>[0]>, FactoryTaskRunState, boolean?]
   > = [
     ["a run nobody stopped is running", {}, "running"],
+    ["a running run whose agent session ended is lost", { sessionEnded: true }, "running", true],
+    [
+      "a waiting run whose agent session ended is lost",
+      { sessionEnded: true, nativeStatus: "waiting" },
+      "running",
+      true,
+    ],
+    [
+      "a lost run is no longer lost once a person stops it",
+      { sessionEnded: true, stopByPerson: true },
+      "running",
+      false,
+    ],
+    [
+      "a run still starting is not lost",
+      { sessionEnded: true, nativeStatus: "starting" },
+      "running",
+      false,
+    ],
     [
       "a finished run still being captured is running",
       { engineStop: true, nativeStatus: "completed", effectsPending: true },
@@ -450,9 +477,10 @@ describe("workRunState", () => {
       "stopped",
     ],
   ];
-  it.each(cases)("%s", (_name, overrides, state) =>
-    assert.equal(workRunState({ ...base, ...overrides }).state, state),
-  );
+  it.each(cases)("%s", (_name, overrides, state, lost = false) => {
+    const outcome = workRunState({ ...base, ...overrides });
+    assert.deepEqual([outcome.state, outcome.lost === true], [state, lost]);
+  });
 
   it("reads a planning run from its thread", () => {
     assert.equal(planningRunState(null).state, "running");

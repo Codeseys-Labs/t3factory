@@ -133,7 +133,35 @@ function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSu
     return <ReviewResult key={task.result?.revision} task={task} />;
   if (need.reason === "plan") return <ReviewPlan task={task} />;
   if (need.reason === "unconfirmed") return <CheckDelivery need={need} task={task} />;
+  if (need.reason === "lost") return <StopLostRun need={need} task={task} />;
   return <p className="text-muted-foreground text-sm">{need.detail}</p>;
+}
+
+/** A run that still says running with no agent left to end it. Stop settles it for a Retry. */
+function StopLostRun({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSummary }) {
+  const actions = useTaskActions();
+  const permissions = useTaskPermissions(task.ref.environmentId);
+  const [busy, setBusy] = useState(false);
+  return (
+    <section
+      aria-label="Lost run"
+      className="space-y-3 rounded-lg border border-destructive/32 bg-error-surface p-4"
+    >
+      <h3 className="font-medium text-sm">Run {task.run?.ordinal ?? ""} lost its agent</h3>
+      <p className="text-muted-foreground text-sm">{need.detail}</p>
+      <Button
+        size="sm"
+        variant="destructive"
+        disabled={busy || !permissions.stop}
+        onClick={() => {
+          setBusy(true);
+          void actions.stop(task).then(() => setBusy(false));
+        }}
+      >
+        Stop
+      </Button>
+    </section>
+  );
 }
 
 /** A sent Publish or Merge whose outcome is unknown. Check reads the host; it sends nothing. */

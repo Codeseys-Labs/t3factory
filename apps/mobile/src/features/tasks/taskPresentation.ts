@@ -68,6 +68,7 @@ export function elapsedSince(startedAt: string, now: number): string {
 
 const NEED_PILLS: Record<FactoryTaskAttentionReason, Omit<TaskPill, "elapsed">> = {
   failed: { label: "Failed", tone: "danger", icon: "alert" },
+  lost: { label: "Lost", tone: "danger", icon: "alert" },
   approve: { label: "Pending Approval", tone: "attention", icon: "dot" },
   question: { label: "Awaiting Input", tone: "input", icon: "dot" },
   unconfirmed: { label: "Unconfirmed", tone: "attention", icon: "dot" },

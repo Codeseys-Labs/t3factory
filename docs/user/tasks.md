@@ -30,7 +30,9 @@ and not a sub-task whose blocker finished.
 
 **Needs you** lists every task that waits on you: a failed run, an approval, a question, a plan to
 review or a result to review. It sits above the board and fills the **Inbox**, which the sidebar
-counts. You can answer and approve from either place, or from the task page.
+counts. You can answer and approve from either place, or from the task page. A run whose agent
+stopped while the run still says running shows as **Lost**: **Stop** it, then **Retry** the task.
+Stopping happens on the desktop and web.
 
 A task's **Thread** tab shows the agent's conversation. Replies to a working agent go through its
 question and approval cards; to change the result, use **Request changes** with a note, which starts a

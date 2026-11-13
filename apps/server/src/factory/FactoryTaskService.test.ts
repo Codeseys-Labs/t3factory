@@ -1539,11 +1539,11 @@ it.effect("follows a run from start through failure, retry, review, acceptance a
 );
 
 it.effect(
-  "stopping a run shows Stopping until its writers are gone, then the task can be retried",
+  "a run whose agent session ended raises lost; stopping it shows Stopping until its writers are gone, then the task can be retried",
   () =>
     scenario(
       Effect.gen(function* () {
-        const { sql, tasks, create, start, attemptOf, until } = yield* harness;
+        const { sql, tasks, create, start, summary, attemptOf, until } = yield* harness;
         const engine = yield* ExecutionStore.FactoryExecutionStore;
         const task = yield* create("Backtest the momentum signal", { lane: "ready" });
         assert.equal(
@@ -1553,11 +1553,25 @@ it.effect(
           "no-run",
         );
         const run = (yield* start(task)).run!;
+        // The agent died while the server stayed up: its session is recorded as errored and the
+        // thread's run never ended.
+        yield* sql`UPDATE orchestration_v2_projection_runs SET status = 'running', payload_json = json_set(payload_json, '$.status', 'running') WHERE run_id = ${run.runId}`;
+        yield* sql`INSERT INTO orchestration_v2_projection_provider_sessions(provider_session_id,provider,status,updated_at,payload_json) SELECT p.provider_session_id, 'devReplay', 'error', ${at}, ${canonicalExecutionJson({ status: "error" })} FROM orchestration_v2_projection_run_attempts a JOIN orchestration_v2_projection_provider_threads p ON p.provider_thread_id = a.provider_thread_id WHERE a.attempt_id = ${yield* attemptOf(run)}`;
+        const lost = yield* summary(task);
+        assert.deepEqual(
+          [lost.run?.state, lost.attention.map((need) => [need.reason, need.detail])],
+          ["running", [["lost", "Agent session ended · run still open"]]],
+        );
         const stop = { commandId: command("stop"), ref: task.ref };
         const stopping = (yield* tasks.stop(stop, human)).task;
         assert.deepEqual(
-          [stopping.status, stopping.run?.state, stopping.liveRuns[0]?.state],
-          ["in-progress", "stopping", "stopping"],
+          [
+            stopping.status,
+            stopping.run?.state,
+            stopping.liveRuns[0]?.state,
+            stopping.attention.length,
+          ],
+          ["in-progress", "stopping", "stopping", 0],
         );
         assert.isTrue((yield* tasks.stop(stop, human)).replayed);
 

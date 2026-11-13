@@ -18,12 +18,14 @@ In progress, In review and Done follow runs and accepted results
 
 ## Needs you is split by who knows
 
-The server reports what it owns: failed, changed, plan, review and unconfirmed. It never copies thread
-state. Clients add question and approve from each live run's pending requests, with the same logic the
-thread view uses. Both halves are merged in `packages/client-runtime/src/state/factoryTaskView.ts`, so
-web and mobile rank them the same way. The `attention` list filter returns exactly the tasks that can
-need a person, in any status; counting In progress and In review tasks misses a plan waiting on a
-Backlog task.
+The server reports what it owns: failed, lost, changed, plan, review and unconfirmed. It never copies
+thread state. Lost is a run that still says running after the provider session its attempt ran on was
+recorded as stopped or errored, read from the projections and never from processes. Startup recovery
+ends such runs only on boot; until then a person's Stop clears it. Clients add question and approve
+from each live run's pending requests, with the same logic the thread view uses. Both halves are
+merged in `packages/client-runtime/src/state/factoryTaskView.ts`, so web and mobile rank them the
+same way. The `attention` list filter returns exactly the tasks that can need a person, in any
+status; counting In progress and In review tasks misses a plan waiting on a Backlog task.
 
 ## A person starts every run
 

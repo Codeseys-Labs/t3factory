@@ -105,6 +105,7 @@ describe("task attention", () => {
       "unconfirmed",
       "question",
       "approve",
+      "lost",
       "failed",
     ] as const;
     const all = resolveFactoryTaskLiveState(
@@ -121,6 +122,7 @@ describe("task attention", () => {
     );
     expect(all.attention.map((need) => need.reason)).toEqual([
       "failed",
+      "lost",
       "approve",
       "question",
       "unconfirmed",
@@ -128,7 +130,15 @@ describe("task attention", () => {
       "plan",
       "review",
     ]);
-    expect(groupFactoryTaskNeeds([all]).count).toBe(7);
+    const grouped = groupFactoryTaskNeeds([all]);
+    expect(grouped.count).toBe(8);
+    expect(grouped.blocking.map((need) => need.reason)).toEqual([
+      "failed",
+      "lost",
+      "approve",
+      "question",
+      "unconfirmed",
+    ]);
   });
 });
 
@@ -245,21 +255,22 @@ describe("task presentation", () => {
     ["C8", "T-29", "failed", "retry", "reassign"],
     ["C9", "T-41", "working", "stop", null],
     ["C10", "T-39", "approval", "approve", "always-allow"],
+    ["C11", "T-41", "lost", "stop", null],
   ])("resolves %s action semantics", (code, id, expectedState, primary, secondary) => {
     const item = task(id!);
-    const attention =
-      code === "C3"
-        ? [
-            {
-              ref: item.ref,
-              displayId: item.displayId,
-              reason: "plan" as const,
-              detail: "",
-              threadId: null,
-              requestId: null,
-            },
-          ]
-        : state(id!).attention;
+    const injected = code === "C3" ? ("plan" as const) : code === "C11" ? ("lost" as const) : null;
+    const attention = injected
+      ? [
+          {
+            ref: item.ref,
+            displayId: item.displayId,
+            reason: injected,
+            detail: "",
+            threadId: null,
+            requestId: null,
+          },
+        ]
+      : state(id!).attention;
     const banner = presentFactoryTaskBanner({
       task: item,
       attention,

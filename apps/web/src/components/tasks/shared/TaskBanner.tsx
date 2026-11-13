@@ -43,6 +43,7 @@ const BANNER_STATES: Record<string, StatusBannerState> = {
   done: "done",
   "subtask-attention": "needs-you",
   failed: "failed",
+  lost: "failed",
   approval: "needs-you",
   question: "needs-you",
   unconfirmed: "needs-you",

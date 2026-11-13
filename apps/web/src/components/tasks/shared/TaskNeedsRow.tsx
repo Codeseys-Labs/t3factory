@@ -64,7 +64,12 @@ export function TaskNeedsRow(props: RowProps) {
 function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
   const actions = useTaskActions();
   const permissions = useTaskPermissions(need.ref.environmentId);
-  const [retrying, setRetrying] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const act = (operation: (task: FactoryTaskSummary) => Promise<unknown>) => () => {
+    if (task === null) return;
+    setBusy(true);
+    void operation(task).then(() => setBusy(false));
+  };
   const action: KitAction =
     need.reason === "failed" && task?.run?.purpose === "planning" && task.run.state === "failed"
       ? {
@@ -75,14 +80,17 @@ function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
       : need.reason === "failed"
         ? {
             label: "Retry",
-            disabled: task === null || !permissions.retry || retrying,
-            onClick: () => {
-              if (task === null) return;
-              setRetrying(true);
-              void actions.retry(task).then(() => setRetrying(false));
-            },
+            disabled: task === null || !permissions.retry || busy,
+            onClick: act(actions.retry),
           }
-        : { label: need.reason === "question" ? "Answer" : "Review", onClick: onOpen };
+        : need.reason === "lost"
+          ? {
+              label: "Stop",
+              tone: "danger",
+              disabled: task === null || !permissions.stop || busy,
+              onClick: act(actions.stop),
+            }
+          : { label: need.reason === "question" ? "Answer" : "Review", onClick: onOpen };
   return (
     <Row
       need={need}

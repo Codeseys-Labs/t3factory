@@ -2040,7 +2040,11 @@ const make = Effect.gen(function* () {
   });
   const relevant = (stored: ApplicationStoredEvent) =>
     "event" in stored
-      ? stored.event.type === "run.created" || stored.event.type === "run.updated"
+      ? stored.event.type === "run.created" ||
+        stored.event.type === "run.updated" ||
+        // A run can outlive its agent's session; that ending raises `lost`.
+        (stored.event.type === "provider-session.updated" &&
+          (stored.event.payload.status === "stopped" || stored.event.payload.status === "error"))
       : stored.type === "project.factory-plan-revised" ||
         stored.type === "project.factory-execution-updated" ||
         (stored.type === "project.meta-updated" &&

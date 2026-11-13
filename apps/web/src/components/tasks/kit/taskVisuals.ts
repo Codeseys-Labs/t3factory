@@ -22,6 +22,7 @@ import {
   ShieldCheckIcon,
   SquarePenIcon,
   TriangleAlertIcon,
+  UnplugIcon,
 } from "lucide-react";
 
 import type { ThreadStatusPill } from "../../Sidebar.logic";
@@ -86,6 +87,7 @@ export const ATTENTION_VISUALS: Record<
   plan: { label: "Plan", Icon: ListChecksIcon, variant: "warning" },
   changed: { label: "Changed", Icon: HistoryIcon, variant: "warning" },
   unconfirmed: { label: "Unconfirmed", Icon: CircleAlertIcon, variant: "warning" },
+  lost: { label: "Lost", Icon: UnplugIcon, variant: "error" },
   failed: { label: "Failed", Icon: TriangleAlertIcon, variant: "error" },
 };
 

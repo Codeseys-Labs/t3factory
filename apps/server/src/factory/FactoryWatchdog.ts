@@ -39,12 +39,12 @@ const make = Effect.gen(function* () {
   let attemptCursor: RunAttemptId | null = null;
   let deliveryCursor: string | null = null;
 
-  // Startup recovery's call: it settles only on durable positive proof, never on a missing owner.
+  // Settles on durable proof or this server's own joined, quiet claims; never on a missing owner.
   const reconcileHeldAttempts = Effect.fn("FactoryWatchdog.reconcileHeldAttempts")(function* () {
     const held = yield* executionStore.listHeldAttempts({ after: attemptCursor, limit: PER_TICK });
     attemptCursor = resumeAfter(held, (attempt) => attempt.runAttemptId);
     for (const attempt of held)
-      yield* lifecycle.recover(attempt).pipe(
+      yield* lifecycle.retryHeld(attempt).pipe(
         contained("Factory watchdog could not reconcile a held attempt", {
           runAttemptId: attempt.runAttemptId,
         }),

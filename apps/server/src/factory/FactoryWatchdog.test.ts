@@ -17,7 +17,9 @@ import {
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -67,12 +69,19 @@ const binding = (name: string): FactoryExecutionBinding => ({
   quiescent: false,
 });
 
+const admit = (name: string, stopRequested: boolean) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const admitted = binding(name);
+    yield* sql`INSERT INTO factory_execution_bindings(attempt_id, run_id, thread_id, root_id, revision, task_id, grant_version, binding_json, stop_requested) VALUES (${admitted.runAttemptId}, ${admitted.runId}, ${admitted.threadId}, 'plan', 1, ${name}, 1, ${canonicalExecutionJson(admitted)}, ${stopRequested ? 1 : 0})`;
+    return admitted;
+  });
+
 // A stopped attempt whose one claimant, from a process that is gone, left this observation.
 const holdAttempt = (name: string, observation: "unknown" | "quiescent") =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const held = binding(name);
-    yield* sql`INSERT INTO factory_execution_bindings(attempt_id, run_id, thread_id, root_id, revision, task_id, grant_version, binding_json, stop_requested) VALUES (${held.runAttemptId}, ${held.runId}, ${held.threadId}, 'plan', 1, ${name}, 1, ${canonicalExecutionJson(held)}, 1)`;
+    const held = yield* admit(name, true);
     yield* sql`INSERT INTO factory_execution_phases(attempt_id, phase, claimant_id, observation, detail) VALUES (${held.runAttemptId}, 'workspace', 'claimant', ${observation}, '')`;
     return held;
   });
@@ -114,31 +123,64 @@ const deliver = (id: string, settlement: DeliveryStore.FactoryDeliverySettlement
   });
 const unconfirmed = { status: "unknown", failure: "response lost", updatedAt: at } as const;
 
-const storage = Layer.mergeAll(ExecutionStore.layer, DeliveryStore.layer).pipe(
-  Layer.provideMerge(Layer.mergeAll(Sqlite.layerMemory, NodeCrypto.layer)),
+// Grants have their own store tests; here a phase claim lands as it would under a live grant.
+const grantedClaims = Layer.effect(
+  ExecutionStore.FactoryExecutionStore,
+  Effect.gen(function* () {
+    const store = yield* ExecutionStore.FactoryExecutionStore;
+    const sql = yield* SqlClient.SqlClient;
+    return ExecutionStore.FactoryExecutionStore.of({
+      ...store,
+      claimPhase: (claim) =>
+        sql`INSERT INTO factory_execution_phases(attempt_id, phase, claimant_id, observation, detail) VALUES (${claim.runAttemptId}, ${claim.phase}, ${claim.claimantId}, 'claimed', '')`.pipe(
+          Effect.as({ status: "claimed" } as const),
+          Effect.orDie,
+        ),
+    });
+  }),
+);
+// The watchdog shares the lifecycle instance, and so its owner registry, with the test.
+const storage = FactoryExecutionLifecycle.layer.pipe(
+  Layer.provide(grantedClaims),
+  Layer.provideMerge(
+    Layer.mergeAll(ExecutionStore.layer, DeliveryStore.layer).pipe(
+      Layer.provideMerge(Layer.mergeAll(Sqlite.layerMemory, NodeCrypto.layer)),
+    ),
+  ),
 );
 const watchdog = (
   reconcile: FactoryDeliveryService.FactoryDeliveryService["Service"]["reconcile"],
 ) =>
   FactoryWatchdog.layer.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        FactoryExecutionLifecycle.layer,
-        Layer.mock(FactoryDeliveryService.FactoryDeliveryService)({ reconcile }),
-      ),
-    ),
+    Layer.provide(Layer.mock(FactoryDeliveryService.FactoryDeliveryService)({ reconcile })),
   );
 
 it.effect(
-  "retries held attempts every tick, settling only on durable proof and leaving the worker's alone",
-  () =>
-    Effect.gen(function* () {
+  "retries held attempts every tick, settling only on proof and leaving the worker's alone",
+  () => {
+    let quiet = false;
+    return Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
+      const lifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
       yield* holdAttempt("proven-later", "unknown");
       yield* holdAttempt("never-proven", "unknown");
       // Its phases already prove quiescence, but its stop effect is still running.
       const stopping = yield* holdAttempt("stopping", "quiescent");
       yield* sql`INSERT INTO orchestration_v2_effect_outbox (effect_id, command_id, thread_id, effect_type, payload_json, status, attempt_count, available_at, created_at, updated_at) VALUES ('effect:stop', 'command:stop', ${stopping.threadId}, 'factory.execution.stop', '{}', 'running', 1, ${at}, ${at}, ${at})`;
+      // This server owns both: one claimant has joined, the other is still inside its phase.
+      const owned = yield* admit("owned", false);
+      const unjoined = yield* admit("owned-unjoined", false);
+      yield* lifecycle.runPhase({ ...owned, phase: "session" }, Effect.void);
+      const entered = yield* Deferred.make<void>();
+      const writer = yield* lifecycle
+        .runPhase(
+          { ...unjoined, phase: "session" },
+          Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(entered);
+      // Their owned jobs are not yet observed empty, so the worker's stop gives up.
+      for (const attempt of [owned, unjoined]) assert.isFalse(yield* lifecycle.stop(attempt));
       yield* deliver("marker", unconfirmed);
       const settled = Effect.gen(function* () {
         const rows = yield* sql<{
@@ -155,9 +197,14 @@ it.effect(
 
         yield* sql`UPDATE factory_execution_phases SET observation = 'quiescent' WHERE attempt_id = 'attempt:proven-later'`;
         yield* sql`UPDATE orchestration_v2_effect_outbox SET status = 'succeeded' WHERE effect_id = 'effect:stop'`;
+        quiet = true;
         yield* TestClock.adjust("5 minutes");
         yield* Queue.take(attemptsDone);
-        assert.deepEqual(yield* settled, ["attempt:proven-later", "attempt:stopping"]);
+        assert.deepEqual(yield* settled, [
+          "attempt:owned",
+          "attempt:proven-later",
+          "attempt:stopping",
+        ]);
       }).pipe(
         Effect.provide(
           watchdog((input) =>
@@ -165,11 +212,21 @@ it.effect(
           ),
         ),
       );
+      yield* Fiber.interrupt(writer);
     }).pipe(
       Effect.provide(storage),
+      Effect.provideService(FactoryExecutionLifecycle.FactoryOwnedProcessFactory, {
+        make: () =>
+          Effect.succeed({
+            awaitRootExits: Effect.void,
+            spawner: { spawn: () => Effect.die("This test must not spawn a process.") },
+            quiesce: () => Effect.sync(() => quiet),
+          }),
+      }),
       // Linux cgroups can outlive the server, so a missing owner never expires a claim here.
       Effect.provideService(HostProcess.Platform, "linux"),
-    ),
+    );
+  },
 );
 
 it.effect("re-checks unconfirmed deliveries one page per tick and keeps going past failures", () =>

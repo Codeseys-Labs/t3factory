@@ -57,6 +57,7 @@ it.effect(
           Effect.die("Recovery must not answer requests"),
         ),
         recover: Effect.fn("Testkit.recover")(() => Effect.void),
+        retryHeld: Effect.fn("Testkit.retryHeld")(() => Effect.void),
         stop: Effect.fn("Testkit.stop")(() => Effect.succeed(true)),
         quiesce: Effect.fn("Testkit.quiesce")(() => Effect.succeed(true)),
         complete: Effect.fn("Testkit.complete")(() => Effect.succeed(true)),

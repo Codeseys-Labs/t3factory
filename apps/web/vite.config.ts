@@ -9,6 +9,7 @@ import { playwright } from "vite-plus/test/browser-playwright";
 import { defineProject, type TestProjectInlineConfiguration } from "vite-plus/test/config";
 import "vite-plus/test/config";
 import { defineConfig, type Connect, type Plugin } from "vite-plus";
+import * as Effect from "effect/Effect";
 import * as Hash from "effect/Hash";
 import pkg from "./package.json" with { type: "json" };
 import pdfjsPkg from "pdfjs-dist/package.json" with { type: "json" };
@@ -17,6 +18,7 @@ import {
   DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES,
   DEV_PROXIED_PATH_PREFIXES,
 } from "@t3tools/shared/devProxy";
+import * as Net from "@t3tools/shared/Net";
 
 import { loadRepoEnv } from "../../scripts/lib/public-config";
 import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
@@ -95,7 +97,18 @@ const unitTestProject = {
 } satisfies TestProjectInlineConfiguration;
 
 // Hash checkout paths to ports 61000-64999; Vitest's fixed port collides under inherited strictPort.
-const browserTestApiPort = 61_000 + ((Hash.string(import.meta.dirname) >>> 0) % 4_000);
+// strictPort:false skips ports in use, not ones Windows reserves (EACCES), so probe past those.
+const browserTestApiPort = await Effect.runPromise(
+  Effect.gen(function* () {
+    const net = Net.make();
+    const hashed = (Hash.string(import.meta.dirname) >>> 0) % 4_000;
+    for (let step = 0; step < 4_000; step++) {
+      const port = 61_000 + ((hashed + step) % 4_000);
+      if (yield* net.canListenOnHost(port, "localhost")) return port;
+    }
+    return 61_000 + hashed;
+  }),
+);
 
 const browserTestProject = {
   extends: true,

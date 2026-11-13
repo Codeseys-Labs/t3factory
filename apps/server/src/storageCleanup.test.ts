@@ -281,8 +281,7 @@ const cleanupFixture = (
     let fullStatusCalls = 0;
     let indexPathStderr: string | null = null;
     let snapshotReads = 0;
-    let beforeGit: (input: GitVcsDriver.ExecuteGitInput) => Effect.Effect<void> = () =>
-      Effect.void;
+    let beforeGit: (input: GitVcsDriver.ExecuteGitInput) => Effect.Effect<void> = () => Effect.void;
     let terminalListener: ((event: TerminalMetadataStreamEvent) => Effect.Effect<void>) | undefined;
     let events: Stream.Stream<OrchestrationV2DomainEvent> = Stream.empty;
     const activated = yield* Deferred.make<void>();
@@ -1708,12 +1707,17 @@ describe("orphan worktree removal", () => {
     ),
   );
 
+  type OrphanFixture = Effect.Success<ReturnType<typeof orphanRemovalFixture>>;
   const keepCases: ReadonlyArray<{
     readonly name: string;
     readonly reason: string;
     readonly setup: (
-      fixture: Effect.Success<ReturnType<typeof orphanRemovalFixture>>,
-    ) => Effect.Effect<unknown, unknown>;
+      fixture: OrphanFixture,
+    ) => Effect.Effect<
+      unknown,
+      | Effect.Error<ReturnType<OrphanFixture["command"]>>
+      | Effect.Error<ReturnType<OrphanFixture["fs"]["writeFileString"]>>
+    >;
   }> = [
     {
       name: "uncommitted changes",
@@ -1863,9 +1867,9 @@ describe("merged branch cleanup", () => {
   );
 
   it.live.each([
-    ["a thread starts using it", "A thread uses this branch now"],
-    ["it is checked out", "Checked out since check"],
-  ] as const)("keeps a merged branch when %s between check and act", (change, reason) =>
+    { change: "a thread starts using it", reason: "A thread uses this branch now" },
+    { change: "it is checked out", reason: "Checked out since check" },
+  ] as const)("keeps a merged branch when $change between check and act", ({ change, reason }) =>
     runCleanupTest(
       Effect.gen(function* () {
         const fixture = yield* branchCleanupFixture();

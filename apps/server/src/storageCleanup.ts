@@ -1307,7 +1307,10 @@ const make = Effect.gen(function* () {
         FROM orchestration_v2_projection_threads
         WHERE deleted_at IS NULL AND json_extract(payload_json, '$.branch') = ${branch}
         LIMIT 1
-      `.pipe(NodeSqliteClient.readOnly, Effect.map((rows) => rows.length > 0));
+      `.pipe(
+        NodeSqliteClient.readOnly,
+        Effect.map((rows) => rows.length > 0),
+      );
     const repositories = new Set<string>();
     for (const project of yield* projectStore.listShells()) {
       const repositoryCwd = path.resolve(project.workspaceRoot);

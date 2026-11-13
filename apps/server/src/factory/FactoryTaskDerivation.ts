@@ -19,6 +19,8 @@ interface WorkRunFacts {
   readonly nativeStatus: string | null;
   readonly outputStatus: "sealed" | "failed" | "held" | null;
   readonly effectsPending: boolean;
+  /** The provider session the run's attempt ran on is recorded as stopped or errored. */
+  readonly sessionEnded: boolean;
 }
 
 const INTERRUPTED = new Set(["interrupted", "cancelled", "rolled_back"]);
@@ -27,6 +29,8 @@ const ENDED = new Set(["completed", "failed", ...INTERRUPTED]);
 export function workRunState(facts: WorkRunFacts): {
   readonly state: FactoryTaskRunState;
   readonly note: string | null;
+  /** Still running, but no agent is left to end it; only a person's Stop moves it. */
+  readonly lost?: true;
 } {
   const interrupted = facts.stopByPerson || INTERRUPTED.has(facts.nativeStatus ?? "");
   if (facts.quiescent) {
@@ -34,7 +38,11 @@ export function workRunState(facts: WorkRunFacts): {
     return interrupted ? { state: "stopped", note: null } : { state: "failed", note: "Run failed" };
   }
   if (!facts.engineStop && !ENDED.has(facts.nativeStatus ?? ""))
-    return { state: "running", note: null };
+    return facts.sessionEnded &&
+      !facts.stopByPerson &&
+      (facts.nativeStatus === "running" || facts.nativeStatus === "waiting")
+      ? { state: "running", note: null, lost: true }
+      : { state: "running", note: null };
   // The run ended or was told to stop. With no effect left to finish it, it waits on a person.
   if (!facts.effectsPending)
     return { state: "held", note: "Waiting for the run's processes to exit" };
@@ -131,8 +139,8 @@ export interface TaskFacts {
   readonly taskId: string;
   readonly displayId: string;
   readonly lane: FactoryTaskLane;
-  /** Oldest first, work and planning runs together. */
-  readonly runs: ReadonlyArray<FactoryTaskRun>;
+  /** Oldest first, work and planning runs together. `lost` is from `workRunState`. */
+  readonly runs: ReadonlyArray<FactoryTaskRun & { readonly lost?: true }>;
   /** Oldest first. */
   readonly results: ReadonlyArray<TaskResultFact>;
   readonly acceptedRevision: number | null;
@@ -157,6 +165,7 @@ export interface DerivedTask extends SubtaskFacts {
 
 const ATTENTION_ORDER: ReadonlyArray<FactoryTaskAttentionReason> = [
   "failed",
+  "lost",
   "approve",
   "question",
   "unconfirmed",
@@ -209,6 +218,7 @@ export function deriveTask(facts: TaskFacts, subtasks: ReadonlyArray<SubtaskFact
       facts.proposalItems === null
     )
       raise("failed", "Break down failed");
+    if (latestWork?.lost === true) raise("lost", "Agent session ended · run still open");
     if (ownStatus === "in-review" && latest !== null)
       raise(changed ? "changed" : "review", latest.summary);
     if (facts.proposalItems !== null)

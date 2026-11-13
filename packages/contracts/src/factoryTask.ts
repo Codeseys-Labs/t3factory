@@ -156,9 +156,10 @@ export const FactoryTaskLiveRun = Schema.Struct({
 export type FactoryTaskLiveRun = typeof FactoryTaskLiveRun.Type;
 
 /**
- * Why a task waits on a person. The server reports `review`, `plan`, `changed`, `unconfirmed` and
- * `failed`. Clients add `question` and `approve` from the pending requests of the live runs'
- * threads, so both use one vocabulary.
+ * Why a task waits on a person. The server reports `review`, `plan`, `changed`, `unconfirmed`,
+ * `lost` and `failed`. Clients add `question` and `approve` from the pending requests of the live
+ * runs' threads, so both use one vocabulary. `lost` is a run that still says running after its
+ * agent's session ended; stopping it clears it.
  */
 export const FactoryTaskAttentionReason = Schema.Literals([
   "question",
@@ -167,6 +168,7 @@ export const FactoryTaskAttentionReason = Schema.Literals([
   "plan",
   "changed",
   "unconfirmed",
+  "lost",
   "failed",
 ]);
 export type FactoryTaskAttentionReason = typeof FactoryTaskAttentionReason.Type;

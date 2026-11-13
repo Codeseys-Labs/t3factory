@@ -123,6 +123,7 @@ export interface FactoryTaskNeed {
 }
 const attentionOrder: readonly FactoryTaskAttentionReason[] = [
   "failed",
+  "lost",
   "approve",
   "question",
   "unconfirmed",
@@ -225,7 +226,7 @@ export function groupFactoryTaskNeeds(
       factoryTaskKey(a.ref).localeCompare(factoryTaskKey(b.ref)),
   );
   const blocking = rows.filter((entry) =>
-    ["failed", "approve", "question", "unconfirmed"].includes(entry.reason),
+    ["failed", "lost", "approve", "question", "unconfirmed"].includes(entry.reason),
   );
   const review = rows.filter((entry) => ["review", "changed", "plan"].includes(entry.reason));
   return { blocking, review, rows, count: rows.length };
@@ -496,6 +497,15 @@ export function presentFactoryTaskBanner(input: {
       input.runDetail ?? need.detail,
       action("retry", "Retry"),
       action("reassign", "Reassign"),
+    );
+  // Retry is refused while the run is live, so Stop comes first; the Stopped banner offers Retry.
+  if (need?.reason === "lost")
+    return banner(
+      "lost",
+      "danger",
+      `Run ${task.run?.ordinal ?? ""} lost its agent`,
+      need.detail,
+      action("stop", "Stop"),
     );
   if (need?.reason === "approve")
     return banner(

@@ -155,8 +155,9 @@ function TaskLoaded(props: { readonly task: FactoryTaskSummary }) {
         task.liveRuns.find((run) => run.taskId === banner.primary?.taskId) ??
         task.blockedBy.find((blocker) => blocker.taskId === banner.primary?.taskId))
       : undefined;
+  // A working run's Stop is optional; a lost run waits on it.
   const hint =
-    banner.primary && DESKTOP_ACTIONS.includes(banner.primary.kind)
+    banner.primary && (DESKTOP_ACTIONS.includes(banner.primary.kind) || banner.state === "lost")
       ? "Continue this on the desktop."
       : null;
   return (

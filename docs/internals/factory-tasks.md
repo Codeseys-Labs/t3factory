@@ -37,10 +37,9 @@ stays Ready. Accepting a result is not publishing.
 
 Publish and Merge reuse `FactoryDeliveryService` through `grantCommit`: the task supplies the exact
 accepted commit, and acceptance is rechecked inside the grant transaction, so a Reopen between the
-click and the grant wins. That commit is never T3's native checkpoint commit (`t3 checkpoint ref=…`):
-capture keeps the agent's HEAD, or commits leftover changes on it under the task title
-(`codeResultCommit` in [FactoryExecutionCapture](../../apps/server/src/factory/FactoryExecutionCapture.ts)).
-Delivery is per accepted revision. Check only reads the host, so an
+click and the grant wins. That commit is the agent's, never T3's native checkpoint commit
+(`t3 checkpoint ref=…`), which must not reach a pull request. Delivery is per accepted revision.
+Check only reads the host, so an
 Unconfirmed send can never be repeated by accident. The task service follows the delivery store's
 change stream, which needs the RPC side and the effect worker to share one `FactoryDeliveryStore`. A merge made
 on the host is recorded by Check whenever that pull request merged into the publication's base

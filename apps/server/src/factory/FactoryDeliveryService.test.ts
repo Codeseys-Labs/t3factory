@@ -1622,6 +1622,7 @@ const grantTaskResult = (
   commandId: string,
   recheck: Effect.Effect<void, FactoryDeliveryError> = Effect.void,
   headBranch = taskBranch,
+  closes: Delivery.FactoryCommitGrant["publish"]["closes"] = null,
 ) =>
   Effect.flatMap(Delivery.FactoryDeliveryService, (service) =>
     service.grantCommit({
@@ -1633,10 +1634,35 @@ const grantTaskResult = (
       threadId: claimed,
       headSha: first,
       baseRef: taskBase,
-      publish: { title: "Audio ring demo", body: "Task T-36", headBranch },
+      publish: { title: "Audio ring demo", body: "Task T-36", headBranch, closes },
       recheck,
     }),
   );
+
+it.effect.each([
+  { name: "in the same repository", canonicalKey: "github.com/owner/repo", body: "Closes #7" },
+  {
+    name: "in another repository",
+    canonicalKey: "github.com/owner/tracker",
+    body: "Closes owner/tracker#7",
+  },
+  // `owner/repo#7` here would name an issue on the pull request's host, not this one.
+  { name: "on another host", canonicalKey: "github.example.com/owner/repo", body: null },
+])("a task publication closes the issue it came from $name", ({ canonicalKey, body }) => {
+  const { layer } = harness();
+  return Effect.gen(function* () {
+    const publish = yield* grantTaskResult("publish-pr", "publish", Effect.void, taskBranch, {
+      provider: "github",
+      canonicalKey,
+      number: 7,
+    });
+    assert.equal(
+      "body" in publish.payload ? publish.payload.body : null,
+      body === null ? "Task T-36" : `${body}\n\nTask T-36`,
+    );
+  }).pipe(Effect.provide(layer));
+});
+
 const createCalls = (state: { readonly calls: ReadonlyArray<string> }) =>
   state.calls.filter((call) => call.startsWith("create:")).length;
 

@@ -50,8 +50,9 @@ pushes that exact commit to a new branch named after the task and revision
 (`t3/T-36-rev1-3e6f91a2c8b745d0a1f4269e837bc502/audio-ring-demo`) and opens a pull request
 against the repository's default branch. The pull request takes its title from the result's commit
 when there is only one (otherwise the task title) and its description from the agent's final
-message, plus `Closes owner/repo#N` for a task that came from an issue. The task's own description
-is not included. **Merge** merges it, and only while it still points at the commit you accepted.
+message. For a task that came from an issue, it closes that issue on merge when both are on the same
+host. The task's own description is not included. **Merge** merges it, and only while it still
+points at the commit you accepted.
 Both need source-control write access and are always your click. If T3 Code lost
 the host's answer, the task shows **Unconfirmed**; **Check** reads the host and settles it without
 sending again. Publishing and merging happen on the desktop and web; the phone shows the state. If you merged the

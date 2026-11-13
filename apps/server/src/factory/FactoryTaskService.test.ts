@@ -158,6 +158,7 @@ class DeliveryProbe extends Context.Service<
   {
     readonly grants: Array<string>;
     readonly baseRefs: Array<string | null>;
+    readonly closes: Array<Delivery.FactoryCommitGrant["publish"]["closes"]>;
     readonly checks: Array<string>;
     found: Omit<DeliveryStore.FactoryDeliverySettlement, "updatedAt">;
   }
@@ -179,6 +180,8 @@ const deliveries = Layer.effect(
         Effect.gen(function* () {
           probe.grants.push(input.kind);
           probe.baseRefs.push(input.baseRef);
+          const { closes, ...publish } = input.publish;
+          if (input.kind === "publish-pr") probe.closes.push(closes);
           if (
             input.kind === "merge-pr" &&
             Option.getOrUndefined(yield* store.getLive(input.originKey, "publish-pr"))?.status !==
@@ -206,7 +209,7 @@ const deliveries = Layer.effect(
               headSha: input.headSha,
               payload:
                 input.kind === "publish-pr"
-                  ? { ...input.publish, draft: false }
+                  ? { ...publish, draft: false }
                   : { mergeMethod: "merge" },
               payloadDigest: "d".repeat(64),
               grantedBy: environmentId,
@@ -242,6 +245,7 @@ const deliveries = Layer.effect(
         Effect.sync(() => ({
           grants: [],
           baseRefs: [],
+          closes: [],
           checks: [],
           found: { status: "unknown" as const, failure: null },
         })),
@@ -1744,6 +1748,12 @@ it.effect(
         assert.isTrue((yield* deliver("publish", "publish")).replayed);
         assert.equal(yield* reason(deliver("publish", "publish-again")), "delivery-active");
         assert.deepEqual(probe.grants, ["merge-pr", "publish-pr", "publish-pr"]);
+        // Delivery words the closing reference against the repository it publishes to.
+        assert.deepEqual(probe.closes[0], {
+          provider: "github",
+          canonicalKey: "github.com/owner/repo",
+          number: 7,
+        });
         const publishId = yield* intentOf("publish");
         assert.deepEqual(
           yield* sql`SELECT json_extract(payload_json, '$.headBranch') AS branch, json_extract(payload_json, '$.title') AS title, json_extract(payload_json, '$.body') AS body, head_sha AS head FROM factory_delivery_intents WHERE id = ${publishId}`,
@@ -1752,7 +1762,7 @@ it.effect(
               branch: `t3/T-1-rev1-${executionDigest([environmentId, projectId, task.ref.rootId, task.ref.taskId]).slice(0, 32)}/audio-ring-demo`,
               // The result's one commit names the pull request; its report, not the brief, is the body.
               title: "fix(board): cards keep their width",
-              body: "The ring now wraps at its capacity; `vp test run ring.test.ts` passes 4 of 4.\n\nCloses owner/repo#7\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_",
+              body: "The ring now wraps at its capacity; `vp test run ring.test.ts` passes 4 of 4.\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_",
               head: resultCommit,
             },
           ],

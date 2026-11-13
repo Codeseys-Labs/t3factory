@@ -1694,11 +1694,6 @@ const make = Effect.gen(function* () {
       runId: output.output.runId,
       retained: output.text,
     })).trim();
-    const issue =
-      row.source.kind === "issue" && row.source.key !== null
-        ? parseIssueOriginKey(row.source.key)
-        : null;
-    const issuePath = issue?.canonicalKey.slice(issue.canonicalKey.indexOf("/") + 1);
     return {
       title:
         subjects.length === 1
@@ -1706,16 +1701,14 @@ const make = Effect.gen(function* () {
           : row.title,
       body: [
         report.length > REPORT_MAX_CHARS ? `${report.slice(0, REPORT_MAX_CHARS)}\n\n…` : report,
-        // `owner/repo#N` closes the issue whichever repository the pull request is in.
-        issue !== null &&
-        (issue.provider === "github" || issue.provider === "gitlab") &&
-        issue.canonicalKey.includes("/")
-          ? `Closes ${issuePath}#${issue.number}`
-          : "",
         `---\n_Task ${row.displayId} · result rev ${result.revision} · ${result.summary}_`,
       ]
         .filter((part) => part !== "")
         .join("\n\n"),
+      closes:
+        row.source.kind === "issue" && row.source.key !== null
+          ? parseIssueOriginKey(row.source.key)
+          : null,
     };
   });
 
@@ -1759,7 +1752,7 @@ const make = Effect.gen(function* () {
         publish:
           kind === "publish-pr"
             ? { ...(yield* publication(row, result, baseRef)), headBranch }
-            : { title: row.title, body: "", headBranch },
+            : { title: row.title, body: "", headBranch, closes: null },
         // Inside the grant transaction: a reopen between the click and the grant wins.
         recheck: store.acceptedRevision(row).pipe(
           Effect.mapError(

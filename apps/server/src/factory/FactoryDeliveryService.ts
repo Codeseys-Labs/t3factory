@@ -246,6 +246,12 @@ export interface FactoryCommitGrant {
     readonly title: string;
     readonly body: string;
     readonly headBranch: string;
+    /** The issue the result answers, closed on merge when the pull request's host can reach it. */
+    readonly closes: {
+      readonly provider: string;
+      readonly canonicalKey: string;
+      readonly number: number;
+    } | null;
   };
   readonly recheck: Effect.Effect<void, FactoryDeliveryError>;
 }
@@ -906,9 +912,24 @@ const makeService = Effect.gen(function* () {
             "headBranch" in intent.payload &&
             intent.payload.headBranch !== undefined,
         );
+        const { repository } = destination;
+        const issue = input.publish.closes;
+        const issuePath =
+          issue !== null &&
+          issue.provider === repository.provider &&
+          (repository.provider === "github" || repository.provider === "gitlab") &&
+          issue.canonicalKey.toLowerCase().startsWith(`${repository.host.toLowerCase()}/`)
+            ? issue.canonicalKey.slice(repository.host.length + 1)
+            : null;
+        const closing =
+          issue === null || issuePath === null
+            ? null
+            : issue.canonicalKey.toLowerCase() === repository.canonicalKey.toLowerCase()
+              ? `Closes #${issue.number}`
+              : `Closes ${issuePath}#${issue.number}`;
         const payload: FactoryDeliveryPublishPayload = {
           title: input.publish.title,
-          body: input.publish.body,
+          body: closing === null ? input.publish.body : `${closing}\n\n${input.publish.body}`,
           draft: false,
           headBranch:
             (previous && "headBranch" in previous.payload

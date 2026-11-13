@@ -1180,16 +1180,18 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
       {
         checkout: "switchRef",
         run: (driver: GitVcsDriver.GitVcsDriver["Service"], cwd: string) =>
-          driver.switchRef({ cwd, refName: "feature" }),
+          driver.switchRef({ cwd, refName: "feature" }).pipe(Effect.asVoid),
       },
       {
         checkout: "checkout -q",
         run: (driver: GitVcsDriver.GitVcsDriver["Service"], cwd: string) =>
-          driver.execute({
-            operation: "GitVcsDriver.test.checkout",
-            cwd,
-            args: ["checkout", "-q", "feature"],
-          }),
+          driver
+            .execute({
+              operation: "GitVcsDriver.test.checkout",
+              cwd,
+              args: ["checkout", "-q", "feature"],
+            })
+            .pipe(Effect.asVoid),
       },
     ])("does not repeat a $checkout whose post-checkout hook failed reading config", ({ run }) =>
       Effect.gen(function* () {

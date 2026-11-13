@@ -9,6 +9,7 @@ import {
 import { useState } from "react";
 
 import { randomUUID } from "~/lib/utils";
+import ChatMarkdown from "../../ChatMarkdown";
 import { useNowMinute } from "../../../hooks/useNowMinute";
 import { factoryIntake, useFactoryTaskCommand } from "../../../state/factoryTasks";
 import { Button } from "../../ui/button";
@@ -96,9 +97,14 @@ export function ArrivalDetail({
       <div className="mt-3">
         <ProjectChip name={project} />
       </div>
-      <p className="mt-6 whitespace-pre-wrap break-words text-muted-foreground text-sm">
-        {arrival.body}
-      </p>
+      <div className="mt-6">
+        <ChatMarkdown
+          text={arrival.body}
+          cwd={undefined}
+          environmentId={environmentId}
+          className="text-muted-foreground"
+        />
+      </div>
       {arrival.bodyTruncated ? (
         <p className="mt-2 text-muted-foreground text-xs">Read the full item at its source.</p>
       ) : null}

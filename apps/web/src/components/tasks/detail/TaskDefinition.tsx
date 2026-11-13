@@ -1,7 +1,8 @@
 import type { FactoryTaskSummary } from "@t3tools/contracts";
-import { type KeyboardEvent, useState } from "react";
+import { type KeyboardEvent, type MouseEvent, useState } from "react";
 
 import { cn } from "~/lib/utils";
+import ChatMarkdown from "../../ChatMarkdown";
 import { Input } from "../../ui/input";
 import { Textarea } from "../../ui/textarea";
 import { useTaskActions, useTaskPermissions } from "../shared";
@@ -94,21 +95,49 @@ export function TaskDescription({
       />
     );
   const text = description.trim();
-  if (!canUpdate)
-    return text ? (
-      <p className="whitespace-pre-wrap break-words text-muted-foreground text-sm">{text}</p>
-    ) : null;
+  const body = (
+    <ChatMarkdown
+      text={text}
+      cwd={undefined}
+      environmentId={task.ref.environmentId}
+      className="text-muted-foreground"
+    />
+  );
+  if (!canUpdate) return text ? body : null;
+  if (!text)
+    return (
+      <button
+        type="button"
+        className={cn(EDITABLE_TEXT, "py-0.5 text-muted-foreground text-sm")}
+        onClick={() => setDraft(description)}
+      >
+        Add a description…
+      </button>
+    );
+  // Controls, media and selections inside the description keep working; any other click edits.
+  // Portaled previews bubble here through React, so clicks outside this element are ignored.
+  const editOnClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (!(event.target instanceof Element) || !event.currentTarget.contains(event.target)) return;
+    if (event.target.closest("a, button, summary, input, video, audio, [role='button']")) return;
+    if (window.getSelection()?.isCollapsed === false) return;
+    setDraft(description);
+  };
   return (
-    <button
-      type="button"
-      aria-label={text ? "Edit description" : undefined}
-      className={cn(
-        EDITABLE_TEXT,
-        "whitespace-pre-wrap break-words py-0.5 text-muted-foreground text-sm",
-      )}
-      onClick={() => setDraft(description)}
+    <div
+      role="group"
+      aria-label="Description"
+      aria-description="Press Enter to edit"
+      tabIndex={0}
+      className={cn(EDITABLE_TEXT, "py-0.5")}
+      onClick={editOnClick}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && event.target === event.currentTarget) {
+          event.preventDefault();
+          setDraft(description);
+        }
+      }}
     >
-      {text || "Add a description…"}
-    </button>
+      {body}
+    </div>
   );
 }

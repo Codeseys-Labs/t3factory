@@ -59,6 +59,8 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;
 const RELEASE_SCOPE_CLOSE_TIMEOUT_MS = 30 * 1000;
+// Provider processes exit in real time; a TestClock advance must not expire the close bound.
+const wallClock = Clock.Clock.defaultValue();
 
 const busyTurnPrefix = (providerThreadId: ProviderThreadId) => `${providerThreadId}#`;
 const busyTurnKey = (providerThreadId: ProviderThreadId, runOrdinal: number) =>
@@ -933,18 +935,17 @@ export const layerWithOptions = (
         },
       );
 
+      // Each close gets one wall-clock bound from its start; release and shutdown both join it.
+      const pendingScopeCloses = new Set<Fiber.Fiber<Option.Option<Exit.Exit<void>>>>();
       // Scope close can wedge on a misbehaving adapter finalizer (e.g. a
       // provider process that never yields its message stream).
-      const closeScopeWithin = Effect.fn("ProviderSessionManager.closeScopeWithin")(function* (
-        scope: Scope.Closeable,
+      const awaitScopeClose = Effect.fn("ProviderSessionManager.awaitScopeClose")(function* (
+        closeFiber: Fiber.Fiber<Exit.Exit<void>>,
         annotations: { readonly providerSessionId?: ProviderSessionId; readonly reason: string },
       ) {
-        const closeFiber = yield* Scope.close(scope, Exit.void).pipe(
-          Effect.exit,
-          Effect.forkDetach({ startImmediately: true }),
-        );
         const closeExit = yield* Fiber.join(closeFiber).pipe(
           Effect.timeoutOption(RELEASE_SCOPE_CLOSE_TIMEOUT_MS),
+          Effect.provideService(Clock.Clock, wallClock),
         );
         if (Option.isNone(closeExit)) {
           yield* Effect.logWarning("orchestration-v2.provider-session-scope-close-timeout", {
@@ -967,6 +968,21 @@ export const layerWithOptions = (
           );
         }
         return closeExit;
+      });
+      const closeScopeWithin = Effect.fn("ProviderSessionManager.closeScopeWithin")(function* (
+        scope: Scope.Closeable,
+        annotations: { readonly providerSessionId?: ProviderSessionId; readonly reason: string },
+      ) {
+        const closeFiber = yield* Scope.close(scope, Exit.void).pipe(
+          Effect.exit,
+          Effect.forkDetach({ startImmediately: true }),
+        );
+        const boundedClose = yield* awaitScopeClose(closeFiber, annotations).pipe(
+          Effect.forkDetach({ startImmediately: true }),
+        );
+        pendingScopeCloses.add(boundedClose);
+        boundedClose.addObserver(() => pendingScopeCloses.delete(boundedClose));
+        return yield* Fiber.join(boundedClose);
       });
 
       const releaseEntry = (input: {
@@ -2060,22 +2076,24 @@ export const layerWithOptions = (
       const sessionScopes = yield* Scope.make("parallel");
       const shutdown = Effect.gen(function* () {
         const activeSessions = [...(yield* Ref.get(sessions)).values()];
-        yield* Effect.forEach(
-          activeSessions,
-          (entry) =>
-            releaseEntry({
-              providerSessionId: entry.runtime.providerSessionId,
-              reason: "server_shutdown",
-            }).pipe(
-              Effect.catchCause((cause) =>
-                Effect.logWarning("orchestration-v2.driver-session.shutdown-release-failed", {
-                  providerSessionId: entry.runtime.providerSessionId,
-                  cause,
-                }),
-              ),
+        const releases = activeSessions.map((entry) =>
+          releaseEntry({
+            providerSessionId: entry.runtime.providerSessionId,
+            reason: "server_shutdown",
+          }).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("orchestration-v2.driver-session.shutdown-release-failed", {
+                providerSessionId: entry.runtime.providerSessionId,
+                cause,
+              }),
             ),
-          { concurrency: "unbounded", discard: true },
+          ),
         );
+        const earlierCloses = [...pendingScopeCloses].map((fiber) => Fiber.join(fiber));
+        yield* Effect.all([...releases, ...earlierCloses], {
+          concurrency: "unbounded",
+          discard: true,
+        });
       });
       yield* Effect.addFinalizer(() =>
         shutdown.pipe(

@@ -946,6 +946,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const statusFetches = new Map<string, Fiber.Fiber<void, GitCommandError>>();
   const statusFetchProcesses = yield* Semaphore.make(4);
 
+  const configReadFailures = new WeakSet<GitCommandError>();
+
   const executeRaw: GitVcsDriver.GitVcsDriver["Service"]["execute"] = Effect.fnUntraced(
     function* (input) {
       const commandInput = {
@@ -1045,6 +1047,27 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         ).pipe(Effect.map(([stdout, stderr, exitCode]) => [stdout, stderr, exitCode] as const));
         yield* trace2Monitor.flush;
 
+        // Git reads configuration during startup, before worktree/branch mutations can run.
+        if (
+          exitCode !== 0 &&
+          /(?:^|\n)(?:error: [^\r\n]*[\\/]config|warning: unable to access '[^'\r\n]*[\\/]config'): Permission denied\r?\n/.test(
+            stderr.text,
+          ) &&
+          stderr.text
+            .trimEnd()
+            .endsWith("fatal: unknown error occurred while reading the configuration files")
+        ) {
+          const error = new GitCommandError({
+            ...gitCommandContext(commandInput),
+            detail: "Failed to read Git configuration.",
+            exitCode,
+            stdoutLength: stdout.text.length,
+            stderrLength: stderr.text.length,
+          });
+          configReadFailures.add(error);
+          return yield* error;
+        }
+
         if (!input.allowNonZeroExit && exitCode !== 0) {
           const reason = classifyGitFailure(stderr.text);
           return yield* new GitCommandError({
@@ -1066,7 +1089,14 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         } satisfies GitVcsDriver.ExecuteGitResult;
       });
 
-      const execution = runGitCommand().pipe(Effect.scoped);
+      const execution = runGitCommand().pipe(
+        Effect.scoped,
+        Effect.retry({
+          while: (error) => configReadFailures.has(error),
+          times: 10,
+          schedule: Schedule.spaced("50 millis"),
+        }),
+      );
       if (timeoutMs === null) {
         return yield* execution;
       }
@@ -1088,11 +1118,19 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   );
 
   const sharedConfigLocks = new Map<string, Semaphore.Semaphore>();
-  const withSharedConfigLock = <A, E>(cwd: string, effect: Effect.Effect<A, E>) =>
+  const withSharedConfigLock = <A>(cwd: string, effect: Effect.Effect<A, GitCommandError>) =>
     resolveRepositoryPaths(cwd).pipe(
-      Effect.orElseSucceed(() => null),
       Effect.flatMap((repositoryPaths) => {
-        if (repositoryPaths === null) return effect;
+        if (repositoryPaths === null) {
+          return Effect.fail(
+            new GitCommandError({
+              operation: "GitVcsDriver.withSharedConfigLock",
+              cwd,
+              command: "git",
+              detail: "Cannot lock shared configuration outside a repository.",
+            }),
+          );
+        }
         let lock = sharedConfigLocks.get(repositoryPaths.gitCommonDir);
         if (lock === undefined) {
           lock = Semaphore.makeUnsafe(1);

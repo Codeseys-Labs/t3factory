@@ -3250,16 +3250,26 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         // overlaps another fails, and a branch can then be left without its worktree.
         let configWriters = 0;
         let peakConfigWriters = 0;
+        let failedCommonDir = false;
+        let resolvedCommonDir = false;
         const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
         const countingSpawner = ChildProcessSpawner.make((command) =>
           Effect.gen(function* () {
             const args = ChildProcess.isStandardCommand(command) ? command.args : [];
+            if (args.includes("--git-common-dir") && !failedCommonDir) {
+              failedCommonDir = true;
+              return makeFailedHandle(
+                "error: .git/config: Permission denied\nfatal: unknown error occurred while reading the configuration files",
+              );
+            }
+            if (args.includes("--git-common-dir")) resolvedCommonDir = true;
             const writesConfig =
               (args.includes("worktree") && args.includes("add") && args.includes("-b")) ||
               (args[0] === "branch" &&
                 (args[1] === "-m" || args[1]?.startsWith("--set-upstream-to"))) ||
               (args[0] === "config" && !args[1]?.startsWith("-"));
             if (!writesConfig) return yield* delegate.spawn(command);
+            assert.equal(resolvedCommonDir, true);
             configWriters += 1;
             peakConfigWriters = Math.max(peakConfigWriters, configWriters);
             const handle = yield* delegate.spawn(command);
@@ -3277,17 +3287,19 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         );
         const branches = Array.from({ length: 8 }, (_, index) => `feature/parallel-${index}`);
 
-        yield* Effect.forEach(
-          branches,
-          (branch) =>
-            driver.createWorktree({
-              cwd,
-              path: path.join(worktrees, branch.replace("/", "-")),
-              refName: `origin/${initialBranch}`,
-              newRefName: branch,
-              baseRefName: `origin/${initialBranch}`,
-            }),
-          { concurrency: "unbounded" },
+        yield* TestClock.withLive(
+          Effect.forEach(
+            branches,
+            (branch) =>
+              driver.createWorktree({
+                cwd,
+                path: path.join(worktrees, branch.replace("/", "-")),
+                refName: `origin/${initialBranch}`,
+                newRefName: branch,
+                baseRefName: `origin/${initialBranch}`,
+              }),
+            { concurrency: "unbounded" },
+          ),
         );
         // Launches rename their temporary branch from inside the new worktree.
         yield* Effect.forEach(
@@ -3302,6 +3314,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
           { concurrency: "unbounded" },
         );
 
+        assert.equal(failedCommonDir, true);
         assert.equal(peakConfigWriters, 1);
         for (const branch of branches) {
           const renamed = `${branch}-renamed`;

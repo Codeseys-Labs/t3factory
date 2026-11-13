@@ -1131,6 +1131,129 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("reports Git's own failure for a shared config write outside a repository", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+
+        const error = yield* driver
+          .setBranchUpstream({
+            cwd,
+            branch: "feature",
+            remoteName: "origin",
+            remoteBranch: "feature",
+          })
+          .pipe(Effect.flip);
+
+        assert.deepInclude(error, {
+          operation: "GitVcsDriver.setBranchUpstream",
+          reason: "not_a_repository",
+        });
+      }),
+    );
+
+    // On Windows, Git exits this way when a config read loses a race with a config.lock rename.
+    const configReadFailure =
+      "error: .git/config: Permission denied\nfatal: unknown error occurred while reading the configuration files\n";
+    const makeSpawnCountingDriver = (
+      matches: (args: ReadonlyArray<string>) => boolean,
+      handle?: () => ChildProcessSpawner.ChildProcessHandle,
+    ) =>
+      Effect.gen(function* () {
+        let spawns = 0;
+        const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const spawner = ChildProcessSpawner.make((command) => {
+          if (!ChildProcess.isStandardCommand(command) || !matches(command.args)) {
+            return delegate.spawn(command);
+          }
+          spawns += 1;
+          return handle === undefined ? delegate.spawn(command) : Effect.succeed(handle());
+        });
+        const driver = yield* makeGitVcsDriverCore().pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          Effect.provide(layerServerConfig),
+        );
+        return { driver, spawns: () => spawns };
+      });
+
+    it.effect.each([
+      {
+        checkout: "switchRef",
+        run: (driver: GitVcsDriver.GitVcsDriver["Service"], cwd: string) =>
+          driver.switchRef({ cwd, refName: "feature" }),
+      },
+      {
+        checkout: "checkout -q",
+        run: (driver: GitVcsDriver.GitVcsDriver["Service"], cwd: string) =>
+          driver.execute({
+            operation: "GitVcsDriver.test.checkout",
+            cwd,
+            args: ["checkout", "-q", "feature"],
+          }),
+      },
+    ])("does not repeat a $checkout whose post-checkout hook failed reading config", ({ run }) =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["branch", "feature"]);
+        // The hook runs after HEAD moved, so its failure must not rerun the checkout.
+        yield* writeTextFile(
+          cwd,
+          ".git/hooks/post-checkout",
+          [
+            "#!/bin/sh",
+            "[ -e .git/hook-failed ] && exit 0",
+            ": > .git/hook-failed",
+            `printf '%s' '${configReadFailure}' >&2`,
+            "exit 1",
+            "",
+          ].join("\n"),
+        );
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        yield* fs.chmod(path.join(cwd, ".git/hooks/post-checkout"), 0o755);
+        const { driver, spawns } = yield* makeSpawnCountingDriver((args) => args[0] === "checkout");
+
+        const result = yield* TestClock.withLive(run(driver, cwd)).pipe(Effect.result);
+
+        assert.equal(spawns(), 1);
+        assert.isTrue(Result.isFailure(result));
+        assert.equal(yield* git(cwd, ["branch", "--show-current"]), "feature");
+      }),
+    );
+
+    it.effect.each([
+      {
+        output: "other stderr",
+        handle: () => makeFailedHandle(`Switched to branch 'feature'\n${configReadFailure}`),
+      },
+      {
+        output: "stdout",
+        handle: () =>
+          ChildProcessSpawner.makeHandle({
+            ...makeFailedHandle(configReadFailure),
+            stdout: Stream.encodeText(Stream.make(".git\n")),
+          }),
+      },
+    ])(
+      "does not repeat a repository lookup whose config read failure follows $output",
+      ({ handle }) =>
+        Effect.gen(function* () {
+          const cwd = yield* makeTmpDir();
+          yield* initRepoWithCommit(cwd);
+          const { driver, spawns } = yield* makeSpawnCountingDriver(
+            (args) => args.includes("--git-common-dir"),
+            handle,
+          );
+
+          yield* TestClock.withLive(
+            driver.writeConfigValue({ cwd, key: "t3.test", value: "value" }),
+          ).pipe(Effect.flip);
+
+          assert.equal(spawns(), 1);
+        }),
+    );
+
     it.effect.each([
       { action: "worktree add", detail: "git worktree add failed" },
       { action: "worktree add -b", detail: "git worktree add failed" },

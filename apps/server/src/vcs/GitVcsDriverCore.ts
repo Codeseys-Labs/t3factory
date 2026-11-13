@@ -556,6 +556,23 @@ function isMissingGitCwdError(error: GitCommandError): boolean {
 function isNonRepositoryGitStderr(stderr: string): boolean {
   return stderr.toLowerCase().includes("not a git repository");
 }
+
+const CONFIG_READ_DENIED_LINE_PATTERN =
+  /^(?:error: .*[\\/]config|warning: unable to access '.*[\\/]config'): Permission denied$/;
+const CONFIG_READ_FATAL_LINE =
+  "fatal: unknown error occurred while reading the configuration files";
+
+// On Windows a config read that races a config.lock rename fails with exactly these lines.
+// Any other output means the command got further than reading its configuration.
+function isConfigReadFailure(stdout: string, stderr: string): boolean {
+  if (stdout.length > 0) return false;
+  const lines = stderr.split(/\r?\n/).filter((line) => line.length > 0);
+  return (
+    lines.length > 1 &&
+    lines.at(-1) === CONFIG_READ_FATAL_LINE &&
+    lines.slice(0, -1).every((line) => CONFIG_READ_DENIED_LINE_PATTERN.test(line))
+  );
+}
 function isUnbornHeadStderr(stderr: string): boolean {
   const normalized = stderr.toLowerCase();
   return (
@@ -1047,16 +1064,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         ).pipe(Effect.map(([stdout, stderr, exitCode]) => [stdout, stderr, exitCode] as const));
         yield* trace2Monitor.flush;
 
-        // Git reads configuration during startup, before worktree/branch mutations can run.
-        if (
-          exitCode !== 0 &&
-          /(?:^|\n)(?:error: [^\r\n]*[\\/]config|warning: unable to access '[^'\r\n]*[\\/]config'): Permission denied\r?\n/.test(
-            stderr.text,
-          ) &&
-          stderr.text
-            .trimEnd()
-            .endsWith("fatal: unknown error occurred while reading the configuration files")
-        ) {
+        // A silent command can print this after its hook's nested Git failed, so only callers
+        // that are safe to repeat retry it (retryWhileConfigLocked).
+        if (exitCode !== 0 && isConfigReadFailure(stdout.text, stderr.text)) {
           const error = new GitCommandError({
             ...gitCommandContext(commandInput),
             detail: "Failed to read Git configuration.",
@@ -1089,14 +1099,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         } satisfies GitVcsDriver.ExecuteGitResult;
       });
 
-      const execution = runGitCommand().pipe(
-        Effect.scoped,
-        Effect.retry({
-          while: (error) => configReadFailures.has(error),
-          times: 10,
-          schedule: Schedule.spaced("50 millis"),
-        }),
-      );
+      const execution = runGitCommand().pipe(Effect.scoped);
       if (timeoutMs === null) {
         return yield* execution;
       }
@@ -1117,20 +1120,23 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     },
   );
 
+  // Git never waits for .git/config.lock, and git run outside T3, such as an agent's, can hold it.
+  // Only commands that are safe to repeat retry.
+  const retryWhileConfigLocked = <A>(effect: Effect.Effect<A, GitCommandError>) =>
+    effect.pipe(
+      Effect.retry({
+        while: (error) => error.reason === "config_locked" || configReadFailures.has(error),
+        times: 10,
+        schedule: Schedule.spaced("50 millis"),
+      }),
+    );
+
   const sharedConfigLocks = new Map<string, Semaphore.Semaphore>();
   const withSharedConfigLock = <A>(cwd: string, effect: Effect.Effect<A, GitCommandError>) =>
     resolveRepositoryPaths(cwd).pipe(
       Effect.flatMap((repositoryPaths) => {
-        if (repositoryPaths === null) {
-          return Effect.fail(
-            new GitCommandError({
-              operation: "GitVcsDriver.withSharedConfigLock",
-              cwd,
-              command: "git",
-              detail: "Cannot lock shared configuration outside a repository.",
-            }),
-          );
-        }
+        // Outside a repository there is no shared config to race on; Git reports the failure.
+        if (repositoryPaths === null) return effect;
         let lock = sharedConfigLocks.get(repositoryPaths.gitCommonDir);
         if (lock === undefined) {
           lock = Semaphore.makeUnsafe(1);
@@ -1418,7 +1424,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         timeoutMs: 5_000,
         allowNonZeroExit: true,
       },
-    );
+    ).pipe(retryWhileConfigLocked);
     if (commonDirResult.exitCode !== 0) {
       const stderr = commonDirResult.stderr.trim();
       if (isNonRepositoryGitStderr(stderr)) {
@@ -1455,7 +1461,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
             timeoutMs: 5_000,
             allowNonZeroExit: true,
           },
-        ),
+        ).pipe(retryWhileConfigLocked),
         executeGit(
           "GitVcsDriver.resolveRepositoryPaths.currentBranch",
           cwd,
@@ -1464,7 +1470,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
             timeoutMs: 5_000,
             allowNonZeroExit: true,
           },
-        ),
+        ).pipe(retryWhileConfigLocked),
       ],
       { concurrency: 2 },
     );
@@ -3446,17 +3452,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     runGitStdout("GitVcsDriver.readConfigValue", cwd, ["config", "--get", key], true).pipe(
       Effect.map((stdout) => stdout.trim()),
       Effect.map((trimmed) => (trimmed.length > 0 ? trimmed : null)),
-    );
-
-  // Git never waits for .git/config.lock, and git run outside T3, such as an agent's, can hold it.
-  // Only writes that are safe to repeat retry.
-  const retryWhileConfigLocked = <A>(effect: Effect.Effect<A, GitCommandError>) =>
-    effect.pipe(
-      Effect.retry({
-        while: (error) => error.reason === "config_locked",
-        times: 10,
-        schedule: Schedule.spaced("50 millis"),
-      }),
     );
 
   const writeConfigValue: GitVcsDriver.GitVcsDriver["Service"]["writeConfigValue"] = Effect.fn(

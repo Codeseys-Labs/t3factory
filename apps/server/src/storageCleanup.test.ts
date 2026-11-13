@@ -400,7 +400,7 @@ const cleanupFixture = (
                         thread.deletedAt === null &&
                         thread.branch !== null &&
                         (values.length === 0 || values[0] === thread.branch)
-                          ? [{ branch: thread.branch }]
+                          ? [{ branch: thread.branch, projectId: thread.projectId }]
                           : [],
                       )
                     : [],
@@ -1707,6 +1707,22 @@ describe("orphan worktree removal", () => {
     ),
   );
 
+  it.live("counts no freed bytes when an orphan worktree's removal fails", () =>
+    runCleanupTest(
+      Effect.gen(function* () {
+        const fixture = yield* orphanRemovalFixture();
+        yield* fixture.command(fixture.repo, ["worktree", "lock", fixture.orphan]);
+        yield* fixture.fs.utimes(fixture.orphan, 1, 1);
+        const report = yield* fixture.service.runNow;
+        expect(report.entries).toEqual([
+          expect.objectContaining({ path: fixture.orphan, outcome: "failed", bytes: null }),
+        ]);
+        expect(report.bytesFreed).toBe(0);
+        expect(yield* fixture.fs.exists(fixture.orphan)).toBe(true);
+      }),
+    ),
+  );
+
   type OrphanFixture = Effect.Success<ReturnType<typeof orphanRemovalFixture>>;
   const keepCases: ReadonlyArray<{
     readonly name: string;
@@ -1816,7 +1832,7 @@ const branchCleanupFixture = () =>
       fixture.setSettings({
         storageCleanup: { ...DEFAULT_SERVER_SETTINGS.storageCleanup, ...rules },
       });
-    return { ...fixture, branches, enable };
+    return { ...fixture, remote, branches, enable };
   });
 
 describe("merged branch cleanup", () => {
@@ -1897,6 +1913,148 @@ describe("merged branch cleanup", () => {
         expect(yield* fixture.branches()).toContain("t3/late");
       }),
     ),
+  );
+
+  it.live("keeps merged branches, reported once, when another checkout has cleanup off", () =>
+    runCleanupTest(
+      Effect.gen(function* () {
+        const fixture = yield* branchCleanupFixture();
+        const { repo, command } = fixture;
+        yield* command(repo, ["branch", "t3/merged", "main"]);
+        const elsewhere = yield* fixture.fs.makeTempDirectoryScoped({ prefix: "cleanup-other-" });
+        const checkout = `${elsewhere}/checkout`;
+        yield* command(repo, ["worktree", "add", "--detach", checkout]);
+        fixture.setProjectRoots([repo, checkout]);
+        fixture.enable({ mergedBranches: true });
+        fixture.setSettings({
+          projectSettingsOverrides: {
+            [ProjectId.make("project-2")]: { worktreeCleanup: { mode: "off" } },
+          },
+        });
+        expect((yield* fixture.service.runNow).entries).toEqual([
+          expect.objectContaining({
+            kind: "branch",
+            outcome: "kept",
+            branch: "t3/merged",
+            projectPath: repo,
+            reason: "A project in this repository has cleanup off",
+          }),
+        ]);
+        expect(yield* fixture.branches()).toContain("t3/merged");
+      }),
+    ),
+  );
+
+  it.live("keeps a merged branch only for threads in projects sharing its repository", () =>
+    runCleanupTest(
+      Effect.gen(function* () {
+        const fixture = yield* branchCleanupFixture();
+        const { repo, command } = fixture;
+        for (const branch of ["t3/elsewhere", "t3/shared"])
+          yield* command(repo, ["branch", branch, "main"]);
+        const other = yield* fixture.fs.realPath(
+          yield* fixture.fs.makeTempDirectoryScoped({ prefix: "cleanup-unrelated-" }),
+        );
+        yield* command(other, ["init", "-b", "main"]);
+        const elsewhere = yield* fixture.fs.makeTempDirectoryScoped({ prefix: "cleanup-other-" });
+        const checkout = `${elsewhere}/checkout`;
+        yield* command(repo, ["worktree", "add", "--detach", checkout]);
+        fixture.setProjectRoots([repo, other, checkout]);
+        fixture.setThreads([
+          shell({ branch: "feature", worktreePath: fixture.worktree }),
+          shell({
+            id: ThreadId.make("thread-2"),
+            projectId: ProjectId.make("project-2"),
+            branch: "t3/elsewhere",
+          }),
+          shell({
+            id: ThreadId.make("thread-3"),
+            projectId: ProjectId.make("project-3"),
+            branch: "t3/shared",
+          }),
+        ]);
+        fixture.enable({ mergedBranches: true });
+        expect((yield* fixture.service.runNow).entries).toEqual([
+          expect.objectContaining({
+            kind: "branch",
+            outcome: "removed",
+            branch: "t3/elsewhere",
+            projectPath: repo,
+          }),
+        ]);
+        const branches = yield* fixture.branches();
+        expect(branches).not.toContain("t3/elsewhere");
+        expect(branches).toContain("t3/shared");
+      }),
+    ),
+  );
+
+  it.live.each([
+    { off: "project-1", subfolder: "present", projectPath: "subfolder" },
+    { off: "project-2", subfolder: "missing", projectPath: "repository" },
+  ] as const)(
+    "keeps merged branches when $off has cleanup off and the subfolder project is $subfolder",
+    ({ off, subfolder, projectPath }) =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          const fixture = yield* branchCleanupFixture();
+          const { repo, command } = fixture;
+          yield* command(repo, ["branch", "t3/merged", "main"]);
+          const nested = NodePath.join(repo, "packages", "app");
+          if (subfolder === "present") yield* fixture.fs.makeDirectory(nested, { recursive: true });
+          fixture.setProjectRoots([repo, nested]);
+          fixture.enable({ mergedBranches: true });
+          fixture.setSettings({
+            projectSettingsOverrides: {
+              [ProjectId.make(off)]: { worktreeCleanup: { mode: "off" } },
+            },
+          });
+          expect((yield* fixture.service.runNow).entries).toEqual([
+            expect.objectContaining({
+              kind: "branch",
+              outcome: "kept",
+              branch: "t3/merged",
+              projectPath: projectPath === "repository" ? repo : nested,
+              reason: "A project in this repository has cleanup off",
+            }),
+          ]);
+          expect(yield* fixture.branches()).toContain("t3/merged");
+        }),
+      ),
+  );
+
+  it.live.each([
+    { remoteHead: "refs/heads/main", entries: [] },
+    {
+      remoteHead: "refs/heads/unborn",
+      entries: [
+        expect.objectContaining({
+          kind: "branch",
+          outcome: "kept",
+          branch: null,
+          reason: "Default branch is unavailable",
+        }),
+      ],
+    },
+  ])(
+    "tests merged branches against the remote's own default when it is $remoteHead",
+    ({ remoteHead, entries }) =>
+      runCleanupTest(
+        Effect.gen(function* () {
+          const fixture = yield* branchCleanupFixture();
+          const { repo, remote, command } = fixture;
+          yield* command(repo, ["switch", "-c", "master"]);
+          yield* command(repo, ["commit", "--allow-empty", "-m", "former default"]);
+          yield* command(repo, ["push", "origin", "master"]);
+          yield* command(repo, ["branch", "t3/legacy", "master"]);
+          // This clone still follows master, recorded before the remote's default moved.
+          yield* command(repo, ["remote", "set-head", "origin", "master"]);
+          yield* command(repo, ["--git-dir", remote, "symbolic-ref", "HEAD", remoteHead]);
+          fixture.enable({ mergedBranches: true });
+          expect((yield* fixture.service.runNow).entries).toEqual(entries);
+          expect(yield* fixture.branches()).toContain("t3/legacy");
+        }),
+      ),
   );
 });
 

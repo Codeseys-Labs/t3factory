@@ -753,17 +753,20 @@ const make = Effect.gen(function* () {
   });
 
   // One sweep reads each repository's default branch and refreshes its tracking ref once.
+  // Branch deletion asks the remote: the local `<remote>/HEAD` goes stale when its default moves.
   const makeDefaultRefs = () => {
     const branches = new Map<string, string | null>();
     const refreshed = new Set<string>();
     return Effect.fn("StorageCleanup.defaultRef")(function* (
       repositoryCwd: string,
       remote: string,
+      source: "local" | "remote" = "local",
     ) {
-      const key = `${repositoryCwd}\0${remote}`;
+      const key = `${source}\0${repositoryCwd}\0${remote}`;
       let branch = branches.get(key);
       if (branch === undefined) {
-        branch = yield* git.resolveDefaultBranchName(repositoryCwd, remote);
+        branch =
+          source === "local" ? yield* git.resolveDefaultBranchName(repositoryCwd, remote) : null;
         // Without a local HEAD ref, only the remote can identify its default;
         // a conventional name may be a feature branch.
         if (branch === null) {
@@ -926,7 +929,7 @@ const make = Effect.gen(function* () {
       (effect) => withWorkspaceLease(worktreePath, effect),
       Effect.catch((error) =>
         Effect.gen(function* () {
-          entries.push(entry("failed", cleanupFailureReason(error)));
+          entries.push({ ...entry("failed", cleanupFailureReason(error)), bytes: null });
           yield* Effect.logWarning("storage cleanup failed for orphan worktree", {
             worktreePath,
             error,
@@ -1288,62 +1291,108 @@ const make = Effect.gen(function* () {
     });
   });
 
+  // Linked worktrees share one set of local branches; their common directory names the repository.
+  const repositoryKey = Effect.fn("StorageCleanup.repositoryKey")(function* (cwd: string) {
+    if (!(yield* fs.exists(cwd))) return null;
+    const result = yield* git.execute({
+      operation: "StorageCleanup.repositoryKey",
+      cwd,
+      args: ["rev-parse", "--git-common-dir"],
+      env: { LC_ALL: "C" },
+      allowNonZeroExit: true,
+    });
+    if (result.exitCode !== 0 && result.stderr.toLowerCase().includes("not a git repository"))
+      return null;
+    if (result.exitCode !== 0)
+      return yield* new GitCommandError({
+        operation: "StorageCleanup.repositoryKey",
+        command: "git rev-parse",
+        cwd,
+        detail: result.stderr.trim().split(/\r?\n/)[0]?.slice(0, 1000) || "command failed",
+      });
+    // Git prints a relative common directory from the physical cwd.
+    return pathKey(yield* fs.realPath(path.resolve(yield* fs.realPath(cwd), result.stdout.trim())));
+  });
+
   // A thread that still names a branch can recreate its checkout from it, so
-  // only branches no live or archived thread uses are candidates.
+  // only branches no live or archived thread of the repository uses are candidates.
   const cleanBranches = Effect.fn("StorageCleanup.cleanBranches")(function* (
     serverSettings: ServerSettings,
     defaultRef: ReturnType<typeof makeDefaultRefs>,
     entries: StorageCleanupReportEntry[],
   ) {
-    const usedRows = yield* sql<{ branch: string }>`
-      SELECT DISTINCT json_extract(payload_json, '$.branch') AS "branch"
-      FROM orchestration_v2_projection_threads
-      WHERE deleted_at IS NULL AND json_extract(payload_json, '$.branch') IS NOT NULL
-    `.pipe(NodeSqliteClient.readOnly);
-    const usedBranches = new Set(usedRows.map((row) => row.branch));
-    const threadUsesBranch = (branch: string) =>
-      sql<{ branch: string }>`
-        SELECT json_extract(payload_json, '$.branch') AS "branch"
-        FROM orchestration_v2_projection_threads
-        WHERE deleted_at IS NULL AND json_extract(payload_json, '$.branch') = ${branch}
-        LIMIT 1
-      `.pipe(
-        NodeSqliteClient.readOnly,
-        Effect.map((rows) => rows.length > 0),
-      );
-    const repositories = new Set<string>();
-    for (const project of yield* projectStore.listShells()) {
-      const repositoryCwd = path.resolve(project.workspaceRoot);
-      if (projectCleanupOff(serverSettings, project.id)) continue;
-      if (repositories.has(pathKey(repositoryCwd))) continue;
-      repositories.add(pathKey(repositoryCwd));
-      const entry = (
-        outcome: StorageCleanupReportEntry["outcome"],
-        reason: string,
-        branch: string | null,
-      ): StorageCleanupReportEntry => ({
-        kind: "branch",
-        outcome,
-        reason,
-        path: null,
-        projectPath: project.workspaceRoot,
-        threadId: null,
-        threadTitle: null,
-        branch,
-        bytes: null,
-        files: null,
-      });
-      const failed = (branch: string | null) => (error: { readonly message: string }) =>
+    const entry = (
+      projectPath: string,
+      outcome: StorageCleanupReportEntry["outcome"],
+      reason: string,
+      branch: string | null,
+    ): StorageCleanupReportEntry => ({
+      kind: "branch",
+      outcome,
+      reason,
+      path: null,
+      projectPath,
+      threadId: null,
+      threadTitle: null,
+      branch,
+      bytes: null,
+      files: null,
+    });
+    const failed =
+      (projectPath: string, branch: string | null) => (error: { readonly message: string }) =>
         Effect.gen(function* () {
-          entries.push(entry("failed", cleanupFailureReason(error), branch));
+          entries.push(entry(projectPath, "failed", cleanupFailureReason(error), branch));
           yield* Effect.logWarning("storage cleanup failed for branch", {
-            projectPath: project.workspaceRoot,
+            projectPath,
             branch,
             error,
           });
         });
+    const shells = yield* projectStore.listShells();
+    const repositories = new Map<string, Array<(typeof shells)[number]>>();
+    const projectRepositories = new Map<ProjectId, string>();
+    let offProjectUnlocated = false;
+    for (const project of shells) {
+      const repository = yield* repositoryKey(path.resolve(project.workspaceRoot)).pipe(
+        Effect.catch((error) =>
+          failed(project.workspaceRoot, null)(error).pipe(Effect.as(undefined)),
+        ),
+      );
+      if (repository === undefined && projectCleanupOff(serverSettings, project.id))
+        offProjectUnlocated = true;
+      if (repository == null) continue;
+      projectRepositories.set(project.id, repository);
+      repositories.set(repository, [...(repositories.get(repository) ?? []), project]);
+    }
+    // That project's cleanup is off and it may share any repository's branches.
+    if (offProjectUnlocated) return;
+    // A thread whose project has no known repository may use any repository's branch.
+    const sharesRepository = (projectId: ProjectId, repository: string) =>
+      (projectRepositories.get(projectId) ?? repository) === repository;
+    const usedRows = yield* sql<{ branch: string; projectId: ProjectId }>`
+      SELECT DISTINCT json_extract(payload_json, '$.branch') AS "branch", project_id AS "projectId"
+      FROM orchestration_v2_projection_threads
+      WHERE deleted_at IS NULL AND json_extract(payload_json, '$.branch') IS NOT NULL
+    `.pipe(NodeSqliteClient.readOnly);
+    const threadUsesBranch = (branch: string, repository: string) =>
+      sql<{ branch: string; projectId: ProjectId }>`
+        SELECT json_extract(payload_json, '$.branch') AS "branch", project_id AS "projectId"
+        FROM orchestration_v2_projection_threads
+        WHERE deleted_at IS NULL AND json_extract(payload_json, '$.branch') = ${branch}
+      `.pipe(
+        NodeSqliteClient.readOnly,
+        Effect.map((rows) => rows.some((row) => sharesRepository(row.projectId, repository))),
+      );
+    for (const [repository, located] of repositories) {
+      const project = located.find((member) => !projectCleanupOff(serverSettings, member.id));
+      if (project === undefined) continue;
+      const repositoryCwd = path.resolve(project.workspaceRoot);
+      const usedBranches = new Set(
+        usedRows.flatMap((row) =>
+          sharesRepository(row.projectId, repository) ? [row.branch] : [],
+        ),
+      );
       yield* Effect.gen(function* () {
-        if (!(yield* fs.exists(repositoryCwd))) return;
         const candidates = (
           (yield* listCleanupBranches(
             repositoryCwd,
@@ -1351,39 +1400,61 @@ const make = Effect.gen(function* () {
           )) ?? []
         ).filter((branch) => !branch.checkedOut && !usedBranches.has(branch.name));
         if (candidates.length === 0) return;
+        // A project in a subfolder shares these branches even after its folder is gone.
+        const worktrees = yield* git.listWorktreePaths(repositoryCwd);
+        const projects = shells.filter(
+          (member) =>
+            projectRepositories.get(member.id) === repository ||
+            worktrees.some(
+              (worktree) =>
+                pathKey(worktree) === pathKey(member.workspaceRoot) ||
+                inside(worktree, member.workspaceRoot),
+            ),
+        );
+        const cleanupOff = (settings: ServerSettings) =>
+          projects.some((member) => projectCleanupOff(settings, member.id));
         const remote = yield* git
           .resolvePrimaryRemoteName(repositoryCwd)
           .pipe(Effect.orElseSucceed(() => null));
-        const target = remote === null ? null : yield* defaultRef(repositoryCwd, remote);
+        const target = remote === null ? null : yield* defaultRef(repositoryCwd, remote, "remote");
         if (target === null) {
-          entries.push(entry("kept", "Default branch is unavailable", null));
+          entries.push(entry(project.workspaceRoot, "kept", "Default branch is unavailable", null));
           return;
         }
         const base = yield* git.resolveCommit({ cwd: repositoryCwd, revision: target.ref });
         for (const candidate of candidates) {
           if (candidate.name === target.branch) continue;
           const keep = (reason: string) => {
-            entries.push(entry("kept", sentence(reason), candidate.name));
+            entries.push(entry(project.workspaceRoot, "kept", sentence(reason), candidate.name));
           };
           yield* Effect.gen(function* () {
             if (!(yield* isIntegrated(repositoryCwd, candidate.sha, base.commitSha))) return;
+            if (cleanupOff(serverSettings))
+              return keep("a project in this repository has cleanup off");
             const latest = (
               (yield* listCleanupBranches(repositoryCwd, [`refs/heads/${candidate.name}`])) ?? []
             ).find((branch) => branch.name === candidate.name);
             if (latest === undefined) return;
             if (latest.sha !== candidate.sha) return keep("branch moved since check");
             if (latest.checkedOut) return keep("checked out since check");
-            if (yield* threadUsesBranch(candidate.name))
+            if (yield* threadUsesBranch(candidate.name, repository))
               return keep("a thread uses this branch now");
             const current = yield* settingsService.getSettings;
-            if (!current.storageCleanup.mergedBranches || projectCleanupOff(current, project.id))
+            if (!current.storageCleanup.mergedBranches || cleanupOff(current))
               return keep("settings changed since check");
             yield* git.deleteLocalBranch({ cwd: repositoryCwd, refName: candidate.name });
-            entries.push(entry("removed", `Merged into ${target.branch}`, candidate.name));
+            entries.push(
+              entry(
+                project.workspaceRoot,
+                "removed",
+                `Merged into ${target.branch}`,
+                candidate.name,
+              ),
+            );
             yield* Effect.logInfo("storage cleanup deleted branch", { branch: candidate.name });
-          }).pipe(Effect.catch(failed(candidate.name)));
+          }).pipe(Effect.catch(failed(project.workspaceRoot, candidate.name)));
         }
-      }).pipe(Effect.catch(failed(null)));
+      }).pipe(Effect.catch(failed(project.workspaceRoot, null)));
     }
   });
 

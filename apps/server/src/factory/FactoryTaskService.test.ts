@@ -1543,8 +1543,11 @@ it.effect(
   () =>
     scenario(
       Effect.gen(function* () {
-        const { sql, tasks, create, start, summary, attemptOf, until } = yield* harness;
+        const { sql, tasks, feed, create, start, summary, attemptOf, until } = yield* harness;
         const engine = yield* ExecutionStore.FactoryExecutionStore;
+        const sink = yield* EventSink.EventSinkV2;
+        const projections = yield* ProjectionStore.ProjectionStoreV2;
+        const occurredAt = DateTime.makeUnsafe(at);
         const task = yield* create("Backtest the momentum signal", { lane: "ready" });
         assert.equal(
           (yield* tasks
@@ -1553,15 +1556,84 @@ it.effect(
           "no-run",
         );
         const run = (yield* start(task)).run!;
-        // The agent died while the server stayed up: its session is recorded as errored and the
+        // The service reads events in order and only this announces profiles here, so its notice
+        // means every event written before it has been handled. Returns the changes taken on the way.
+        const handled = Effect.fn("test.handled")(function* (name: string) {
+          const commandId = command(`marker:${name}`);
+          yield* sink.commitProjectCommand({
+            commandId,
+            projectId: otherProjectId,
+            commandType: "project.meta.update",
+            acceptedAt: occurredAt,
+            event: {
+              eventId: EventId.make(`marker:${name}`),
+              aggregateKind: "project",
+              aggregateId: otherProjectId,
+              occurredAt: at,
+              commandId,
+              causationEventId: null,
+              correlationId: commandId,
+              metadata: {},
+              type: "project.meta-updated",
+              payload: {
+                projectId: otherProjectId,
+                defaultModelSelection: model(name),
+                updatedAt: at,
+              },
+            },
+          });
+          const taken: FactoryTaskChange[] = [];
+          do taken.push(yield* PubSub.take(feed));
+          while (!taken.at(-1)!.profiles);
+          return taken;
+        });
+        // The agent died while the server stayed up: its session is recorded as ended and the
         // thread's run never ended.
         yield* sql`UPDATE orchestration_v2_projection_runs SET status = 'running', payload_json = json_set(payload_json, '$.status', 'running') WHERE run_id = ${run.runId}`;
-        yield* sql`INSERT INTO orchestration_v2_projection_provider_sessions(provider_session_id,provider,status,updated_at,payload_json) SELECT p.provider_session_id, 'devReplay', 'error', ${at}, ${canonicalExecutionJson({ status: "error" })} FROM orchestration_v2_projection_run_attempts a JOIN orchestration_v2_projection_provider_threads p ON p.provider_thread_id = a.provider_thread_id WHERE a.attempt_id = ${yield* attemptOf(run)}`;
-        const lost = yield* summary(task);
-        assert.deepEqual(
-          [lost.run?.state, lost.attention.map((need) => [need.reason, need.detail])],
-          ["running", [["lost", "Agent session ended · run still open"]]],
-        );
+        const projection = yield* projections.getThreadProjection(run.threadId);
+        const attemptId = yield* attemptOf(run);
+        const providerThread = projection.providerThreads.find(
+          (thread) =>
+            thread.id ===
+            projection.attempts.find((attempt) => attempt.id === attemptId)!.providerThreadId,
+        )!;
+        const session = {
+          id: providerThread.providerSessionId!,
+          driver: providerThread.driver,
+          providerInstanceId: providerThread.providerInstanceId,
+          cwd: "/task-project",
+          model: "replay",
+          capabilities: AcpProviderCapabilitiesV2,
+          createdAt: occurredAt,
+          updatedAt: occurredAt,
+          lastError: null,
+        };
+        yield* handled("before");
+        for (const status of ["stopped", "error"] as const) {
+          yield* sink.write({
+            events: [
+              {
+                id: EventId.make(`session:${status}`),
+                type: "provider-session.updated",
+                threadId: run.threadId,
+                driver: session.driver,
+                providerInstanceId: session.providerInstanceId,
+                occurredAt,
+                payload: { ...session, status },
+              },
+            ],
+          });
+          // No run.updated follows: the session ending alone tells clients to read the task again.
+          assert.isTrue(
+            (yield* handled(status)).some((change) => change.rootIds.includes(task.ref.rootId)),
+            status,
+          );
+          const lost = yield* summary(task);
+          assert.deepEqual(
+            [lost.run?.state, lost.attention.map((need) => [need.reason, need.detail])],
+            ["running", [["lost", "Agent session ended · run still open"]]],
+          );
+        }
         const stop = { commandId: command("stop"), ref: task.ref };
         const stopping = (yield* tasks.stop(stop, human)).task;
         assert.deepEqual(

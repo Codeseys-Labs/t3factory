@@ -70,6 +70,7 @@ export class FactoryExecutionLifecycle extends Context.Service<
       work: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E | FactoryExecutionError, R>;
     readonly recover: (input: Identity) => Effect.Effect<void, FactoryExecutionError>;
+    readonly retryHeld: (input: Identity) => Effect.Effect<void, FactoryExecutionError>;
     readonly stop: (input: Identity) => Effect.Effect<boolean, FactoryExecutionError>;
     readonly quiesce: (input: Identity) => Effect.Effect<boolean, FactoryExecutionError>;
     readonly complete: (input: Identity) => Effect.Effect<boolean, FactoryExecutionError>;
@@ -357,6 +358,17 @@ const make = Effect.gen(function* () {
       if (managed === null || managed.quiescent) return;
       if (!managed.stopRequested && !(yield* store.hasNativeClaims(input.runAttemptId))) return;
       yield* reconcile(input, owners.get(input.runAttemptId) === undefined);
+    }),
+    // Unlike recover, a local owner's joined claims and quiet jobs are proof enough to release.
+    retryHeld: Effect.fn("FactoryExecutionLifecycle.retryHeld")(function* (input) {
+      const managed = yield* binding(input);
+      if (managed === null || managed.quiescent || !managed.stopRequested) return;
+      yield* reconcile(input).pipe(
+        Effect.catchTags({
+          FactoryExecutionError: (error) =>
+            error.reason === "not-quiescent" ? Effect.void : Effect.fail(error),
+        }),
+      );
     }),
     stop: Effect.fn("FactoryExecutionLifecycle.stop")((input) =>
       reconcile(input, owners.get(input.runAttemptId) === undefined),

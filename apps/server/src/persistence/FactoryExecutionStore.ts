@@ -180,6 +180,18 @@ export class FactoryExecutionStore extends Context.Service<
     readonly hasNativeClaims: (
       attemptId: RunAttemptId,
     ) => Effect.Effect<boolean, FactoryExecutionError>;
+    /** Told to stop, writers not yet confirmed gone, and no outbox effect working on the thread. */
+    readonly listHeldAttempts: (input: {
+      readonly after: RunAttemptId | null;
+      readonly limit: number;
+    }) => Effect.Effect<
+      ReadonlyArray<{
+        readonly threadId: ThreadId;
+        readonly runId: RunId;
+        readonly runAttemptId: RunAttemptId;
+      }>,
+      FactoryExecutionError
+    >;
     readonly canBeginCapture: (
       attemptId: RunAttemptId,
     ) => Effect.Effect<boolean, FactoryExecutionError>;
@@ -1374,6 +1386,16 @@ const make = Effect.gen(function* () {
         .length > 0
     );
   }, Effect.mapError(failure));
+  const listHeldAttempts = Effect.fn("FactoryExecutionStore.listHeldAttempts")(function* (input: {
+    readonly after: RunAttemptId | null;
+    readonly limit: number;
+  }) {
+    return yield* sql<{
+      readonly threadId: ThreadId;
+      readonly runId: RunId;
+      readonly runAttemptId: RunAttemptId;
+    }>`SELECT thread_id AS threadId, run_id AS runId, attempt_id AS runAttemptId FROM factory_execution_bindings b WHERE stop_requested = 1 AND quiescent = 0 AND attempt_id > ${input.after ?? ""} AND NOT EXISTS (SELECT 1 FROM orchestration_v2_effect_outbox e WHERE e.thread_id = b.thread_id AND e.status IN ('pending','running')) ORDER BY attempt_id LIMIT ${input.limit}`;
+  }, Effect.mapError(failure));
   const canBeginCapture = Effect.fn("FactoryExecutionStore.canBeginCapture")(function* (
     attemptId: RunAttemptId,
   ) {
@@ -1402,6 +1424,7 @@ const make = Effect.gen(function* () {
     replay,
     getBinding,
     hasNativeClaims,
+    listHeldAttempts,
     canBeginCapture,
     findNativeBinding,
     authorizeRuntimeResponse,

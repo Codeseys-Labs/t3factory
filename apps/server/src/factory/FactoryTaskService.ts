@@ -583,27 +583,18 @@ const make = Effect.gen(function* () {
       return yield* refuse("missing-profile");
   });
 
-  /** What a run ended by telling the person: its last assistant message. */
-  const finalAnswer = Effect.fn("FactoryTaskService.finalAnswer")(function* (input: {
-    readonly threadId: ThreadId;
-    readonly runId: RunId;
-    /** The engine's retained text, for a thread whose messages are gone. */
-    readonly retained: string;
-  }) {
+  /** What a run ended by telling the person: its last assistant message, if the thread has it. */
+  const finalAnswer = Effect.fn("FactoryTaskService.finalAnswer")(function* (
+    threadId: ThreadId,
+    runId: RunId,
+  ) {
     const messages = yield* projections
-      .getThreadRecords(input.threadId, ["messages"], {
+      .getThreadRecords(threadId, ["messages"], {
         messageRoles: ["assistant"],
-        messageRunIds: [input.runId],
+        messageRunIds: [runId],
       })
       .pipe(Effect.mapError(asTaskError));
-    return (
-      messages.messages.findLast((message) => message.text.trim() !== "")?.text ??
-      input.retained
-        .trim()
-        .split(/\r?\n\s*\r?\n/)
-        .at(-1) ??
-      ""
-    );
+    return messages.messages.findLast((message) => message.text.trim() !== "")?.text ?? null;
   });
 
   const describeResult = Effect.fn("FactoryTaskService.describeResult")(function* (
@@ -648,17 +639,19 @@ const make = Effect.gen(function* () {
       }
     }
     // A run that changed no file answered in words: its result is the text.
-    const retained = yield* executions
+    const text = yield* executions
       .readOutput({ selection: pending.output.selection, resultId: pending.output.resultId })
       .pipe(
         Effect.map((output) => output.text),
         Effect.orElseSucceed(() => ""),
       );
-    const answer = yield* finalAnswer({
-      threadId: pending.threadId,
-      runId: pending.output.runId,
-      retained,
-    });
+    const answer =
+      (yield* finalAnswer(pending.threadId, pending.output.runId)) ??
+      text
+        .trim()
+        .split(/\r?\n\s*\r?\n/)
+        .at(-1) ??
+      "";
     return { kind: "document" as const, summary: firstLine(answer), files: [], filesOmitted: 0 };
   });
 
@@ -1689,11 +1682,10 @@ const make = Effect.gen(function* () {
         resultId: result.resultId,
       })
       .pipe(Effect.mapError(executionError));
-    const report = (yield* finalAnswer({
-      threadId: result.threadId,
-      runId: output.output.runId,
-      retained: output.text,
-    })).trim();
+    // Without the thread's messages, everything the run said is the closest account of it.
+    const report = (
+      (yield* finalAnswer(result.threadId, output.output.runId)) ?? output.text
+    ).trim();
     return {
       title:
         subjects.length === 1

@@ -1728,7 +1728,7 @@ it.effect(
         yield* finish(
           (yield* start(task)).run!,
           "sealed",
-          "Looking at the ring buffer.\n\nThe ring now wraps at its capacity; `vp test run ring.test.ts` passes 4 of 4.",
+          "The ring now wraps at its capacity.\n\n`vp test run ring.test.ts` passes 4 of 4.",
         );
         yield* until(task, (current) => current.status === "in-review");
 
@@ -1762,7 +1762,7 @@ it.effect(
               branch: `t3/T-1-rev1-${executionDigest([environmentId, projectId, task.ref.rootId, task.ref.taskId]).slice(0, 32)}/audio-ring-demo`,
               // The result's one commit names the pull request; its report, not the brief, is the body.
               title: "fix(board): cards keep their width",
-              body: "The ring now wraps at its capacity; `vp test run ring.test.ts` passes 4 of 4.\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_",
+              body: "The ring now wraps at its capacity.\n\n`vp test run ring.test.ts` passes 4 of 4.\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_",
               head: resultCommit,
             },
           ],

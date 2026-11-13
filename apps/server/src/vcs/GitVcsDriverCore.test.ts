@@ -1157,7 +1157,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
       "error: .git/config: Permission denied\nfatal: unknown error occurred while reading the configuration files\n";
     const makeSpawnCountingDriver = (
       matches: (args: ReadonlyArray<string>) => boolean,
-      handle?: () => ChildProcessSpawner.ChildProcessHandle,
+      handle?: (spawn: number) => ChildProcessSpawner.ChildProcessHandle | undefined,
     ) =>
       Effect.gen(function* () {
         let spawns = 0;
@@ -1167,7 +1167,8 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
             return delegate.spawn(command);
           }
           spawns += 1;
-          return handle === undefined ? delegate.spawn(command) : Effect.succeed(handle());
+          const replacement = handle?.(spawns);
+          return replacement === undefined ? delegate.spawn(command) : Effect.succeed(replacement);
         });
         const driver = yield* makeGitVcsDriverCore().pipe(
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -1221,6 +1222,65 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         assert.equal(spawns(), 1);
         assert.isTrue(Result.isFailure(result));
         assert.equal(yield* git(cwd, ["branch", "--show-current"]), "feature");
+      }),
+    );
+
+    it.effect("retries a config read that failed reading config", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["config", "checkout.workers", "4"]);
+        const { driver, spawns } = yield* makeSpawnCountingDriver(
+          (args) => args[0] === "config" && args[1] === "--get",
+          (spawn) => (spawn === 1 ? makeFailedHandle(configReadFailure) : undefined),
+        );
+
+        const value = yield* TestClock.withLive(driver.readConfigValue(cwd, "checkout.workers"));
+
+        assert.equal(value, "4");
+        assert.equal(spawns(), 2);
+      }),
+    );
+
+    it.effect.each([
+      {
+        read: "the start point lookup",
+        matches: (args: ReadonlyArray<string>) => args.includes("--symbolic-full-name"),
+      },
+      {
+        read: "checkout.workers",
+        matches: (args: ReadonlyArray<string>) =>
+          args[0] === "config" && args[1] === "--get" && args[2] === "checkout.workers",
+      },
+    ])("creates the worktree when $read fails reading config once", ({ matches }) =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        const remote = yield* makeTmpDir("git-remote-");
+        const { initialBranch } = yield* initRepoWithCommit(cwd);
+        yield* git(remote, ["init", "--bare"]);
+        yield* git(cwd, ["remote", "add", "origin", remote]);
+        yield* git(cwd, ["push", "origin", `${initialBranch}:release`]);
+        const path = yield* Path.Path;
+        const worktreePath = path.join(yield* makeTmpDir("git-worktrees-"), "tracked");
+        const { driver, spawns } = yield* makeSpawnCountingDriver(matches, (spawn) =>
+          spawn === 1 ? makeFailedHandle(configReadFailure) : undefined,
+        );
+
+        yield* TestClock.withLive(
+          driver.createWorktree({
+            cwd,
+            path: worktreePath,
+            refName: "origin/release",
+            newRefName: "feature/tracked",
+          }),
+        );
+
+        assert.equal(spawns(), 2);
+        assert.equal(yield* git(worktreePath, ["branch", "--show-current"]), "feature/tracked");
+        assert.equal(
+          yield* git(cwd, ["rev-parse", "--abbrev-ref", "feature/tracked@{upstream}"]),
+          "origin/release",
+        );
       }),
     );
 

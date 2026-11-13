@@ -60,9 +60,11 @@ const make = Effect.gen(function* () {
       });
       deliveryCursor = resumeAfter(unconfirmed, (intent) => intent.id);
       for (const intent of unconfirmed)
-        yield* delivery.reconcile({ projectId: intent.projectId, intentId: intent.id }).pipe(
-          contained("Factory watchdog could not re-check a delivery", { deliveryId: intent.id }),
-        );
+        yield* delivery
+          .reconcile({ projectId: intent.projectId, intentId: intent.id })
+          .pipe(
+            contained("Factory watchdog could not re-check a delivery", { deliveryId: intent.id }),
+          );
     },
   );
 

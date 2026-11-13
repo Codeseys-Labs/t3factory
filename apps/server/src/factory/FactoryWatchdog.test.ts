@@ -189,7 +189,10 @@ it.effect("re-checks unconfirmed deliveries one page per tick and keeps going pa
     yield* Effect.gen(function* () {
       const first = yield* Queue.takeN(checked, 20);
       const start = first[0]![0];
-      assert.deepEqual(first, ids.slice(0, 20).map((id) => [start, id] as const));
+      assert.deepEqual(
+        first,
+        ids.slice(0, 20).map((id) => [start, id] as const),
+      );
       yield* TestClock.adjust("5 minutes");
       assert.deepEqual(yield* Queue.take(checked), [start + 300_000, ids[20]!] as const);
       yield* TestClock.adjust("5 minutes");

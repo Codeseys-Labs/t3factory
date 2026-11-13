@@ -103,6 +103,8 @@ describe("serverSettings helpers", () => {
       worktreeOnDelete: false,
       worktreeUnchanged: false,
       worktreeKeepWhen: "uncommitted-changes",
+      orphanWorktrees: false,
+      mergedBranches: false,
       browserArtifactsAfterDays: null,
       logsAfterDays: 30,
     });

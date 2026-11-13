@@ -1185,13 +1185,14 @@ export function shouldRecommendDatabaseCompaction(status: DatabaseStorageStatus)
 }
 
 export const StorageCleanupReportEntry = Schema.Struct({
-  kind: Schema.Literals(["worktree", "browser-artifacts", "logs"]),
+  kind: Schema.Literals(["worktree", "branch", "browser-artifacts", "logs"]),
   outcome: Schema.Literals(["removed", "kept", "failed"]),
   reason: Schema.String,
   path: Schema.NullOr(Schema.String),
   projectPath: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   threadId: Schema.NullOr(ThreadId),
   threadTitle: Schema.NullOr(Schema.String),
+  branch: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   bytes: Schema.NullOr(Schema.Number).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   files: Schema.NullOr(Schema.Number).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
 });
@@ -1218,6 +1219,8 @@ export const StorageCleanupSettings = Schema.Struct({
   worktreeOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   worktreeOnDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   worktreeUnchanged: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  orphanWorktrees: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  mergedBranches: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   browserArtifactsAfterDays: StorageRetentionDays.pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -1609,6 +1612,8 @@ export const ServerSettingsPatch = Schema.Struct({
       worktreeOnMerge: Schema.optionalKey(Schema.Boolean),
       worktreeOnDelete: Schema.optionalKey(Schema.Boolean),
       worktreeUnchanged: Schema.optionalKey(Schema.Boolean),
+      orphanWorktrees: Schema.optionalKey(Schema.Boolean),
+      mergedBranches: Schema.optionalKey(Schema.Boolean),
       browserArtifactsAfterDays: Schema.optionalKey(StorageRetentionDays),
       logsAfterDays: Schema.optionalKey(StorageRetentionDays),
     }),

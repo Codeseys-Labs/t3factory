@@ -94,6 +94,8 @@ function setup() {
       worktreeOnMerge: false,
       worktreeOnDelete: false,
       worktreeUnchanged: false,
+      orphanWorktrees: false,
+      mergedBranches: false,
       browserArtifactsAfterDays: null,
       logsAfterDays: null,
     },

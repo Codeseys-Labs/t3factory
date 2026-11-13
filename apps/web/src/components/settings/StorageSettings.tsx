@@ -197,9 +197,11 @@ function CleanupResults({
             ? ((entry.threadId === null
                 ? entry.path
                 : entry.path?.split(/[\\/]/).findLast(Boolean)) ?? "Worktrees")
-            : entry.kind === "logs"
-              ? "Rotated logs"
-              : "Browser artifacts";
+            : entry.kind === "branch"
+              ? (entry.branch ?? "Branches")
+              : entry.kind === "logs"
+                ? "Rotated logs"
+                : "Browser artifacts";
         return (
           <SettingsRow
             key={`${entry.path ?? entry.kind}:${entry.threadId ?? index}`}
@@ -308,6 +310,8 @@ function CleanupSection() {
     return (
       settings.storageCleanup.browserArtifactsAfterDays !== null ||
       settings.storageCleanup.logsAfterDays !== null ||
+      settings.storageCleanup.orphanWorktrees ||
+      settings.storageCleanup.mergedBranches ||
       enabled(resolveWorktreeCleanup(settings, null)) ||
       Object.values(settings.projectSettingsOverrides).some(
         (override) =>
@@ -638,6 +642,41 @@ export function WorktreeCleanupSection() {
                   />
                 }
               />
+              {!isProjectScope &&
+                connectedEnvironments.every(
+                  (environment) =>
+                    environment.serverConfig?.environment.capabilities.orphanAndBranchCleanup ===
+                    true,
+                ) && (
+                  <>
+                    <SettingsRow
+                      title="Delete worktrees no thread uses"
+                      status={ruleStatus("orphanWorktrees")}
+                      description="Remove worktrees in the worktree folder that no thread uses. Worktrees with local changes, open terminals or running agents are kept, and so are their branches."
+                      serverScoped
+                      control={
+                        <Switch
+                          aria-label="Delete worktrees no thread uses"
+                          checked={settings.orphanWorktrees}
+                          onCheckedChange={(orphanWorktrees) => update({ orphanWorktrees })}
+                        />
+                      }
+                    />
+                    <SettingsRow
+                      title="Delete merged branches"
+                      status={ruleStatus("mergedBranches")}
+                      description="Delete local t3/ and t3-factory/ branches that are merged into the default branch, aren't checked out, and no thread uses."
+                      serverScoped
+                      control={
+                        <Switch
+                          aria-label="Delete merged branches"
+                          checked={settings.mergedBranches}
+                          onCheckedChange={(mergedBranches) => update({ mergedBranches })}
+                        />
+                      }
+                    />
+                  </>
+                )}
               {connectedEnvironments.every(
                 (environment) =>
                   environment.serverConfig?.environment.capabilities.storageCleanupRun === true,

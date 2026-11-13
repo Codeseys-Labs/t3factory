@@ -38,6 +38,8 @@ describe("storage cleanup settings", () => {
       worktreeOnDelete: false,
       worktreeUnchanged: false,
       worktreeKeepWhen: "uncommitted-changes",
+      orphanWorktrees: false,
+      mergedBranches: false,
       browserArtifactsAfterDays: null,
       logsAfterDays: null,
     });

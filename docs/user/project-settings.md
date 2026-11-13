@@ -205,7 +205,16 @@ Existing prompts for deleting a worktree manually remain available when this pol
 
 Choose **Delete now** to run the enabled rules immediately. The latest results show which
 worktrees were removed or kept and why, plus any failures.
-Results also list folders in the worktree folder that no thread uses, with their sizes; cleanup never removes them, so remove them manually if you want.
+Results also list folders in the worktree folder that no thread uses, with their sizes. Enable
+**Delete worktrees no thread uses** to remove the ones that are worktrees of a project on that
+machine. Local changes (untracked files included), open terminals, running agents, and commits
+that are on no branch keep a worktree. Its branch stays.
+
+Enable **Delete merged branches** to delete local `t3/` and `t3-factory/` branches that are merged
+into the remote default branch, aren't checked out in any worktree, and no thread uses. A thread
+keeps its branch so its checkout can be recreated, so this mostly clears branches left by deleted
+threads and removed worktrees. Git's safe delete can still refuse a branch, and remote branches
+are never touched. Both rules are machine-wide and skip projects whose cleanup is set to **Off**.
 
 Browser captures and rotated logs have separate retention periods. Expired capture links stop
 working. Current logs, message attachments, and browser profiles are kept.

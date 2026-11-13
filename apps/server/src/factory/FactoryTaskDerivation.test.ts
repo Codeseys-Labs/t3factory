@@ -477,7 +477,10 @@ describe("workRunState", () => {
       "stopped",
     ],
   ];
-  it.each(cases)("%s", (_name, overrides, state, lost = false) => {
+  const rows = cases.map(
+    ([name, overrides, state, lost = false]) => [name, overrides, state, lost] as const,
+  );
+  it.each(rows)("%s", (_name, overrides, state, lost) => {
     const outcome = workRunState({ ...base, ...overrides });
     assert.deepEqual([outcome.state, outcome.lost === true], [state, lost]);
   });

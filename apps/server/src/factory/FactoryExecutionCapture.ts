@@ -12,6 +12,55 @@ import type { NativeExecutionFinalizationContext } from "../orchestration-v2/Nat
 import { canonicalExecutionJson, executionDigest } from "./FactoryExecutionDigest.ts";
 import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 
+const SHA = /^[a-f0-9]{40,64}$/;
+// The identity T3's own checkpoint commits carry, for a repository that configures none.
+const T3_IDENTITY = ["-c", "user.name=T3 Code", "-c", "user.email=t3code@users.noreply.github.com"];
+
+/**
+ * The commit a code result names. A native checkpoint is T3's own snapshot commit
+ * ("t3 checkpoint ref=…") on the agent's HEAD and must not reach a pull request: when it adds
+ * nothing, the agent's HEAD is the result; otherwise its files are committed on that HEAD under
+ * the task's title.
+ */
+export const codeResultCommit = Effect.fn("FactoryExecutionCapture.codeResultCommit")(
+  function* (input: {
+    readonly cwd: string;
+    readonly checkpoint: string;
+    readonly tree: string;
+    readonly message: string;
+  }) {
+    const processes = yield* Processes.ProcessRunner;
+    const run = (args: ReadonlyArray<string>) =>
+      processes
+        .run({
+          command: "git",
+          args,
+          cwd: input.cwd,
+          maxOutputBytes: 64 * 1024,
+          outputMode: "error",
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) => new FactoryExecutionError({ reason: "prerequisite-held", cause }),
+          ),
+        );
+    const parent = yield* run(["rev-parse", "--verify", "--quiet", `${input.checkpoint}^1`]);
+    // A checkpoint taken before the first commit stands on nothing.
+    if (parent.code !== 0) return input.checkpoint;
+    const head = parent.stdout.trim();
+    const headTree = yield* run(["rev-parse", "--verify", `${head}^{tree}`]);
+    if (headTree.code === 0 && headTree.stdout.trim() === input.tree) return head;
+    const commitTree = ["commit-tree", input.tree, "-p", head, "-m", input.message];
+    // The repository's own identity, as the agent's own `git commit` would use; T3's without one.
+    let created = yield* run(["-c", "user.useConfigOnly=true", ...commitTree]);
+    if (created.code !== 0) created = yield* run([...T3_IDENTITY, ...commitTree]);
+    const commit = created.stdout.trim();
+    if (created.code !== 0 || !SHA.test(commit))
+      return yield* new FactoryExecutionError({ reason: "prerequisite-held" });
+    return commit;
+  },
+);
+
 export class FactoryExecutionCapture extends Context.Service<
   FactoryExecutionCapture,
   {
@@ -23,7 +72,6 @@ export class FactoryExecutionCapture extends Context.Service<
     ) => Effect.Effect<Store.ObserveResultInput | null, FactoryExecutionError>;
   }
 >()("t3/factory/FactoryExecutionCapture") {}
-
 const make = Effect.gen(function* () {
   const store = yield* Store.FactoryExecutionStore;
   const projections = yield* Projections.ProjectionStoreV2;
@@ -129,13 +177,13 @@ const make = Effect.gen(function* () {
       );
       if (!verification || !scope || !nativeCheckpoint)
         return yield* new FactoryExecutionError({ reason: "prerequisite-held" });
-      const commit = yield* git(scope.cwd, [
+      const checkpointCommit = yield* git(scope.cwd, [
         "rev-parse",
         "--verify",
         `${nativeCheckpoint.ref}^{commit}`,
       ]);
-      const tree = yield* git(scope.cwd, ["rev-parse", "--verify", `${commit}^{tree}`]);
-      if (!/^[a-f0-9]{40,64}$/.test(commit) || !/^[a-f0-9]{40,64}$/.test(tree))
+      const tree = yield* git(scope.cwd, ["rev-parse", "--verify", `${checkpointCommit}^{tree}`]);
+      if (!SHA.test(checkpointCommit) || !SHA.test(tree))
         return yield* new FactoryExecutionError({ reason: "prerequisite-held" });
       const retainedRef = `refs/t3/factory/outputs/${executionDigest(input.runAttemptId)}`;
       const existing = yield* processes
@@ -146,10 +194,21 @@ const make = Effect.gen(function* () {
           maxOutputBytes: 256,
         })
         .pipe(Effect.mapError(failure));
-      if (existing.code === 0 && existing.stdout.trim() !== commit)
-        return yield* new FactoryExecutionError({ reason: "capture-conflict" });
-      if (existing.code !== 0)
+      let commit: string;
+      if (existing.code === 0) {
+        // An earlier try of this capture already chose the result commit and kept it.
+        commit = existing.stdout.trim();
+        if ((yield* git(scope.cwd, ["rev-parse", "--verify", `${commit}^{tree}`])) !== tree)
+          return yield* new FactoryExecutionError({ reason: "capture-conflict" });
+      } else {
+        commit = yield* codeResultCommit({
+          cwd: scope.cwd,
+          checkpoint: checkpointCommit,
+          tree,
+          message: Store.bindingTitle(binding),
+        }).pipe(Effect.provideService(Processes.ProcessRunner, processes));
         yield* git(scope.cwd, ["update-ref", retainedRef, commit, "0".repeat(commit.length)]);
+      }
       const temporary = yield* fs
         .makeTempDirectoryScoped({ prefix: "t3-factory-verify-" })
         .pipe(Effect.mapError(failure));

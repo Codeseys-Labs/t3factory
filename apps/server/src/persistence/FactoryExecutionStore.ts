@@ -287,6 +287,10 @@ const prerequisiteInputText = (
     text,
   ].join("\n");
 
+/** The task title a binding's input opens with, as `prepareAdmission` writes it. */
+export const bindingTitle = (binding: { readonly inputText: string }) =>
+  binding.inputText.split("\n", 1)[0]!.trim();
+
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const plans = yield* Plans.FactoryPlanStore;
@@ -571,6 +575,7 @@ const make = Effect.gen(function* () {
     if ((board[0]?.accepted ?? null) !== null)
       return yield* new FactoryExecutionError({ reason: "task-conflict" });
     const inputs: string[] = [
+      // First, so `bindingTitle` can read it back.
       task.title,
       task.context,
       ...plan.workContexts

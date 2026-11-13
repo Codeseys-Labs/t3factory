@@ -337,7 +337,7 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
     readonly hasPendingBackgroundWork?: Effect.Effect<boolean>;
     readonly hasPendingBackgroundWorkForThread?: Effect.Effect<boolean>;
     readonly backgroundTasksEndWithProcess?: boolean;
-    readonly hangSessionScopeClose?: boolean;
+    readonly holdSessionScopeClose?: Deferred.Deferred<void>;
     readonly startTurn?: Effect.Effect<void>;
     readonly beforeUnload?: Effect.Effect<void>;
     readonly spawnBeforeOpen?: boolean;
@@ -351,13 +351,14 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
       closeCount: current.closeCount + 1,
     })),
   );
-  // Register after countClose to wedge teardown before its finalizer, matching a provider stream that never yields.
-  const hangClose = Effect.addFinalizer(() =>
-    (options.scopeCloseReached === undefined
-      ? Effect.void
-      : Deferred.succeed(options.scopeCloseReached, undefined)
-    ).pipe(Effect.andThen(Effect.never)),
-  );
+  // Register after countClose so teardown holds before its finalizer, like a provider process still exiting.
+  const holdClose = (gate: Deferred.Deferred<void>) =>
+    Effect.addFinalizer(() =>
+      (options.scopeCloseReached === undefined
+        ? Effect.void
+        : Deferred.succeed(options.scopeCloseReached, undefined)
+      ).pipe(Effect.andThen(Deferred.await(gate))),
+    );
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: ProviderInstanceId.make("codex"),
     driver: CODEX_DRIVER,
@@ -367,7 +368,8 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
       Effect.gen(function* () {
         if (options.spawnBeforeOpen === true) {
           yield* countClose;
-          if (options.hangSessionScopeClose === true) yield* hangClose;
+          if (options.holdSessionScopeClose !== undefined)
+            yield* holdClose(options.holdSessionScopeClose);
         }
         if (options.mcpConfigs !== undefined && options.spawnBeforeOpen === true) {
           const mcpConfig = yield* mcpSessions.read(input.threadId);
@@ -398,7 +400,8 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
         });
         if (options.spawnBeforeOpen !== true) {
           yield* countClose;
-          if (options.hangSessionScopeClose === true) yield* hangClose;
+          if (options.holdSessionScopeClose !== undefined)
+            yield* holdClose(options.holdSessionScopeClose);
         }
 
         return {
@@ -484,7 +487,7 @@ function layerTest(input: {
   readonly hasPendingBackgroundWork?: Effect.Effect<boolean>;
   readonly hasPendingBackgroundWorkForThread?: Effect.Effect<boolean>;
   readonly backgroundTasksEndWithProcess?: boolean;
-  readonly hangSessionScopeClose?: boolean;
+  readonly holdSessionScopeClose?: Deferred.Deferred<void>;
   readonly startTurn?: Effect.Effect<void>;
   readonly beforeUnload?: Effect.Effect<void>;
   readonly spawnBeforeOpen?: boolean;
@@ -517,9 +520,9 @@ function layerTest(input: {
       ...(input.backgroundTasksEndWithProcess === undefined
         ? {}
         : { backgroundTasksEndWithProcess: input.backgroundTasksEndWithProcess }),
-      ...(input.hangSessionScopeClose === undefined
+      ...(input.holdSessionScopeClose === undefined
         ? {}
-        : { hangSessionScopeClose: input.hangSessionScopeClose }),
+        : { holdSessionScopeClose: input.holdSessionScopeClose }),
       ...(input.startTurn === undefined ? {} : { startTurn: input.startTurn }),
       ...(input.beforeUnload === undefined ? {} : { beforeUnload: input.beforeUnload }),
       ...(input.spawnBeforeOpen === undefined ? {} : { spawnBeforeOpen: input.spawnBeforeOpen }),
@@ -1404,6 +1407,49 @@ it.effect("ProviderSessionManagerV2 stops a session still opening when its layer
     );
 
     assert.equal((yield* Ref.get(state)).closeCount, 1);
+  }),
+);
+
+// regression: #104 shutdown returned while an idle release was still stopping the provider
+it.effect("ProviderSessionManagerV2 shutdown waits for an idle release still closing", () =>
+  Effect.gen(function* () {
+    const state = yield* Ref.make(emptyState);
+    const scopeCloseReached = yield* Deferred.make<void>();
+    const finishScopeClose = yield* Deferred.make<void>();
+    yield* Effect.gen(function* () {
+      const eventSink = yield* EventSink.EventSinkV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread-provider-session-manager-shutdown-during-close");
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId,
+      });
+      yield* eventSink.write({
+        events: [yield* makeThreadCreatedEvent({ idAllocator, threadId, now })],
+      });
+      yield* manager.open({ threadId, providerSessionId, modelSelection, runtimePolicy });
+
+      yield* TestClock.adjust("1 second");
+      yield* Deferred.await(scopeCloseReached);
+      yield* TestClock.adjust("30 seconds");
+      const stopping = yield* manager.shutdown.pipe(
+        Effect.andThen(Ref.get(state)),
+        Effect.forkChild({ startImmediately: true }),
+      );
+      yield* Deferred.succeed(finishScopeClose, undefined);
+      assert.equal((yield* Fiber.join(stopping)).closeCount, 1);
+    }).pipe(
+      Effect.provide(
+        layerTest({
+          state,
+          idleTimeoutMs: 1_000,
+          holdSessionScopeClose: finishScopeClose,
+          scopeCloseReached,
+        }),
+      ),
+    );
   }),
 );
 

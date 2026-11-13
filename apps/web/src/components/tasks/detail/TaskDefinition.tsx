@@ -114,10 +114,11 @@ export function TaskDescription({
         Add a description…
       </button>
     );
-  // Links and selections inside the rendered description keep working; any other click edits.
+  // Controls, media and selections inside the description keep working; any other click edits.
+  // Portaled previews bubble here through React, so clicks outside this element are ignored.
   const editOnClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (event.target instanceof Element && event.target.closest("a, button, summary, input"))
-      return;
+    if (!(event.target instanceof Element) || !event.currentTarget.contains(event.target)) return;
+    if (event.target.closest("a, button, summary, input, video, audio, [role='button']")) return;
     if (window.getSelection()?.isCollapsed === false) return;
     setDraft(description);
   };

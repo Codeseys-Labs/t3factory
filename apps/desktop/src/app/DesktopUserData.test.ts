@@ -3,8 +3,9 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as PlatformError from "effect/PlatformError";
 
-import { resolveUserDataPath } from "./DesktopUserData.ts";
+import { clearStaleGpuCaches, resolveUserDataPath } from "./DesktopUserData.ts";
 
 it.effect.each(["t3code", "T3 Code (Alpha)"])(
   "preserves Windows credential keys from %s without copying browser databases",
@@ -43,29 +44,99 @@ it.effect.each(["t3code", "T3 Code (Alpha)"])(
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-it.effect.each([false, true])(
-  "gives Factory an isolated profile (development: %s)",
-  (isDevelopment) =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3factory-profile-" });
-      for (const name of ["t3code", "T3 Code (Alpha)", "t3code-v2"]) {
-        yield* fs.makeDirectory(path.join(directory, name), { recursive: true });
-        yield* fs.writeFileString(path.join(directory, name, "Local State"), "live T3 keys");
-      }
+const gpuCacheDirectories = [
+  "GPUCache",
+  "GrShaderCache",
+  "ShaderCache",
+  "DawnGraphiteCache",
+  "DawnWebGPUCache",
+  "GPUPersistentCache",
+];
 
-      const userDataPath = yield* resolveUserDataPath({
-        appDataDirectory: directory,
-        isDevelopment,
-        platform: "win32",
-        distribution: "factory-preview",
-      });
+it.effect.each([
+  { profile: "written by Electron 44.10.0", marker: "44.10.0" },
+  { profile: "with no recorded Electron version", marker: undefined },
+])("clears GPU caches $profile once when Electron 44.10.1 starts", ({ marker }) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const userDataPath = yield* fs.makeTempDirectoryScoped({ prefix: "t3-v2-gpu-cache-" });
+    for (const name of gpuCacheDirectories) {
+      yield* fs.makeDirectory(path.join(userDataPath, name), { recursive: true });
+      yield* fs.writeFileString(path.join(userDataPath, name, "data_0"), "44.10.0 shaders");
+    }
+    yield* fs.makeDirectory(path.join(userDataPath, "Local Storage"), { recursive: true });
+    yield* fs.writeFileString(path.join(userDataPath, "Local Storage", "LOCK"), "profile");
+    yield* fs.writeFileString(path.join(userDataPath, "Local State"), "profile");
+    if (marker !== undefined) {
+      yield* fs.writeFileString(path.join(userDataPath, "gpu-cache-electron-version"), marker);
+    }
 
-      assert.equal(
-        userDataPath,
-        path.join(directory, isDevelopment ? "t3factory-dev" : "t3factory"),
-      );
-      assert.isFalse(yield* fs.exists(userDataPath));
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    yield* clearStaleGpuCaches({ userDataPath, electronVersion: "44.10.1" });
+
+    const survivingCaches: Array<string> = [];
+    for (const name of gpuCacheDirectories) {
+      if (yield* fs.exists(path.join(userDataPath, name))) survivingCaches.push(name);
+    }
+    assert.deepStrictEqual(survivingCaches, []);
+    assert.equal(
+      yield* fs.readFileString(path.join(userDataPath, "Local Storage", "LOCK")),
+      "profile",
+    );
+    assert.equal(yield* fs.readFileString(path.join(userDataPath, "Local State")), "profile");
+
+    yield* fs.makeDirectory(path.join(userDataPath, "GPUCache"));
+    yield* fs.writeFileString(path.join(userDataPath, "GPUCache", "data_0"), "44.10.1 shaders");
+    yield* clearStaleGpuCaches({ userDataPath, electronVersion: "44.10.1" });
+    assert.equal(
+      yield* fs.readFileString(path.join(userDataPath, "GPUCache", "data_0")),
+      "44.10.1 shaders",
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect("keeps GPU caches built on the first launch of a fresh install", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const appData = yield* fs.makeTempDirectoryScoped({ prefix: "t3-v2-fresh-" });
+    const userDataPath = path.join(appData, "t3code-v2");
+
+    yield* clearStaleGpuCaches({ userDataPath, electronVersion: "44.10.1" });
+    yield* fs.makeDirectory(path.join(userDataPath, "GPUCache"));
+    yield* fs.writeFileString(path.join(userDataPath, "GPUCache", "data_0"), "44.10.1 shaders");
+    yield* clearStaleGpuCaches({ userDataPath, electronVersion: "44.10.1" });
+
+    assert.equal(
+      yield* fs.readFileString(path.join(userDataPath, "GPUCache", "data_0")),
+      "44.10.1 shaders",
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect("retries on the next launch when a GPU cache cannot be removed", () =>
+  Effect.gen(function* () {
+    const writes: Array<string> = [];
+    const fileSystem = FileSystem.makeNoop({
+      remove: (path) =>
+        Effect.fail(
+          PlatformError.systemError({
+            _tag: "PermissionDenied",
+            module: "FileSystem",
+            method: "remove",
+            pathOrDescriptor: path,
+          }),
+        ),
+      writeFileString: (path) =>
+        Effect.sync(() => {
+          writes.push(path);
+        }),
+    });
+
+    yield* clearStaleGpuCaches({ userDataPath: "/profile", electronVersion: "44.10.1" }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+    );
+
+    assert.deepStrictEqual(writes, []);
+  }).pipe(Effect.provide(NodeServices.layer)),
 );

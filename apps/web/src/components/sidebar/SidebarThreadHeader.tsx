@@ -13,7 +13,6 @@ import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export interface SidebarThreadHeaderProps {
-  searchFieldRef?: RefObject<HTMLDivElement | null>;
   hasProjects: boolean;
   projectScope: ReactNode;
   onNewProject: () => void;
@@ -31,7 +30,6 @@ export interface SidebarThreadHeaderProps {
 }
 
 export function SidebarThreadHeader({
-  searchFieldRef,
   hasProjects,
   projectScope,
   onNewProject,
@@ -51,28 +49,8 @@ export function SidebarThreadHeader({
   // Shrinking results can remove the active option; never leave aria-activedescendant pointing at it.
   const activeResultExists = resultsVisible && activeSearchResultIndex < searchResultCount;
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex h-8 items-center gap-1">
-        <div className="min-w-0 flex-1">
-          {hasProjects ? (
-            projectScope
-          ) : (
-            <span className="px-2 text-sm text-sidebar-muted-foreground">{scopeLabel}</span>
-          )}
-        </div>
-        <SidebarHeaderIconButton label="Add project" onClick={onNewProject}>
-          <FolderPlusIcon />
-        </SidebarHeaderIconButton>
-      </div>
-      <Button variant="outline" size="sm" className="w-full" onClick={onNewTask}>
-        <PlusIcon />
-        New task
-        {newTaskShortcutLabel ? <Kbd>{newTaskShortcutLabel}</Kbd> : null}
-      </Button>
-      <div
-        ref={searchFieldRef}
-        className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70"
-      >
+    <div className="flex items-center gap-1">
+      <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70">
         <SearchIcon className="size-4 shrink-0 text-(--sidebar-icon-color)" />
         <SidebarInput
           ref={searchInputRef}

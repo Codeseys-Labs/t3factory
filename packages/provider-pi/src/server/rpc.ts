@@ -59,7 +59,28 @@ export function piRecordNumber(input: unknown, key: string): number | undefined 
   return Predicate.isNumber(value) && Number.isFinite(value) ? value : undefined;
 }
 
-export function parsePiModelSlug(slug: string): { provider: string; modelId: string } | null {
+// Pi provider names and model ids may both contain "/", so a slug only splits
+// reliably through the `{provider, id}` pairs `get_available_models` reported.
+export function findReportedPiModel(
+  slug: string,
+  reportedModels: unknown,
+): { provider: string; modelId: string } | undefined {
+  if (!Array.isArray(reportedModels)) return undefined;
+  for (const model of reportedModels) {
+    const provider = piRecordString(model, "provider");
+    const modelId = piRecordString(model, "id");
+    if (provider !== undefined && modelId !== undefined && `${provider}/${modelId}` === slug)
+      return { provider, modelId };
+  }
+  return undefined;
+}
+
+export function resolvePiModelSlug(
+  slug: string,
+  reportedModels: unknown,
+): { provider: string; modelId: string } | null {
+  const reported = findReportedPiModel(slug, reportedModels);
+  if (reported !== undefined) return reported;
   const separator = slug.indexOf("/");
   if (separator <= 0 || separator === slug.length - 1) return null;
   return { provider: slug.slice(0, separator), modelId: slug.slice(separator + 1) };
@@ -97,14 +118,16 @@ const MAX_PI_RECORD_CHARS =
 function makeJsonlFramer() {
   let buffer = "";
   let dropping = false;
-  return (chunk: string): ReadonlyArray<string> => {
+  return (chunk: string) => {
     const lines: string[] = [];
+    const droppedLengths: number[] = [];
     let start = 0;
     while (start < chunk.length) {
       const newline = chunk.indexOf("\n", start);
       const end = newline < 0 ? chunk.length : newline;
       if (!dropping) {
         if (buffer.length + end - start > MAX_PI_RECORD_CHARS) {
+          droppedLengths.push(buffer.length + end - start);
           buffer = "";
           dropping = true;
         } else {
@@ -119,9 +142,21 @@ function makeJsonlFramer() {
       dropping = false;
       start = newline + 1;
     }
-    return lines;
+    return { lines, droppedLengths };
   };
 }
+
+// Report the observed length before LF arrives; an unterminated response can time out first.
+const logDroppedPiRecords = (droppedLengths: ReadonlyArray<number>) =>
+  Effect.forEach(
+    droppedLengths,
+    (recordLength) =>
+      Effect.logWarning("Dropping oversized pi stdout record.", {
+        recordLength,
+        maxRecordLength: MAX_PI_RECORD_CHARS,
+      }),
+    { discard: true },
+  );
 
 const UnknownFromJsonString = Schema.fromJsonString(Schema.Unknown);
 const decodeJsonLine = Schema.decodeSync(UnknownFromJsonString);
@@ -179,16 +214,19 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
   const spawnCommand = yield* resolveSpawnCommand(options.command, [...options.args], {
     env: options.env,
   }).pipe(Effect.mapError((cause) => new PiRpcError({ operation: "spawn", cause })));
-  const child = yield* spawnOwnedProcess(
-    spawner,
-    ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-      env: options.env,
-      extendEnv: false,
-      shell: spawnCommand.shell,
-      detached: platform !== "win32",
-    }),
-  ).pipe(Effect.mapError((cause) => new PiRpcError({ operation: "spawn", cause })));
+  const child = yield* spawner
+    .spawn(
+      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+        ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+        env: options.env,
+        extendEnv: false,
+        shell: spawnCommand.shell,
+        detached: platform !== "win32",
+        // On stdin EOF Pi quits without its SIGTERM handler, so the later SIGTERM kills it mid-cleanup.
+        stdin: { stream: "pipe", endOnDone: false },
+      }),
+    )
+    .pipe(Effect.mapError((cause) => new PiRpcError({ operation: "spawn", cause })));
 
   let childExited = false;
   let diagnosingStdoutClose = false;
@@ -300,7 +338,8 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
       Stream.decodeText(),
       Stream.runForEach((chunk) =>
         Effect.gen(function* () {
-          const lines = frame(chunk);
+          const { lines, droppedLengths } = frame(chunk);
+          yield* logDroppedPiRecords(droppedLengths);
           for (const line of lines) {
             const record = parsePiRecord(line);
             if (record === undefined) {
@@ -314,7 +353,9 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
         }),
       ),
     );
-    for (const line of frame("\n")) {
+    const flushed = frame("\n");
+    yield* logDroppedPiRecords(flushed.droppedLengths);
+    for (const line of flushed.lines) {
       const trailing = parsePiRecord(line);
       if (trailing !== undefined) yield* routeRecord(trailing);
     }

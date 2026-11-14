@@ -18,6 +18,7 @@ import {
   AuthProvidersManageScope,
   AuthSettingsWriteScope,
   DEFAULT_SERVER_SETTINGS,
+  ProviderDriverKind,
   ProviderInstanceId,
   SecretProviderId,
   ThreadId,
@@ -82,69 +83,10 @@ describe("RPC authorization scopes", () => {
     }
   });
 
-  it("keeps Work reads, including source prerequisites, on orchestration read scope", () => {
-    for (const method of [
-      WS_METHODS.factoryListWork,
-      WS_METHODS.factoryReadWork,
-      WS_METHODS.factoryReadWorkHistory,
-      WS_METHODS.factoryReadWorkPrerequisites,
-      WS_METHODS.factoryReadPlan,
-      WS_METHODS.factoryListPlans,
-      WS_METHODS.factoryReadPlanHistory,
-      WS_METHODS.factoryListTasks,
-      WS_METHODS.factoryCountTasks,
-      WS_METHODS.factoryReadTask,
-      WS_METHODS.factoryReadTaskResult,
-      WS_METHODS.factoryReadTaskActivity,
-      WS_METHODS.factoryFindTaskByThread,
-      WS_METHODS.factoryPreviewTaskAssignee,
-      WS_METHODS.factorySubscribeTaskChanges,
-      WS_METHODS.factoryListAgentProfiles,
-      WS_METHODS.factoryReadTaskPlanProposal,
-      WS_METHODS.factoryListIntakeSources,
-      WS_METHODS.factoryListIntakeRules,
-      WS_METHODS.factoryPreviewIntakeRule,
-      WS_METHODS.factoryListIntakeArrivals,
-      WS_METHODS.factorySubscribeIntakeChanges,
-    ]) {
+  it("lets thread readers observe and refresh checkout branches", () => {
+    for (const method of [WS_METHODS.subscribeVcsBranch, WS_METHODS.vcsRefreshBranch]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
     }
-  });
-
-  it("keeps task changes behind operate scope and intake sources, which fetch a URL, behind settings write", () => {
-    for (const method of [
-      WS_METHODS.factoryCreateTask,
-      WS_METHODS.factoryUpdateTask,
-      WS_METHODS.factoryStartTask,
-      WS_METHODS.factoryStopTask,
-      WS_METHODS.factoryRetryTask,
-      WS_METHODS.factoryAcceptTaskResult,
-      WS_METHODS.factoryRequestTaskChanges,
-      WS_METHODS.factoryReopenTask,
-      WS_METHODS.factoryCheckTaskResult,
-      WS_METHODS.factoryAddTaskComment,
-      WS_METHODS.factorySaveAgentProfile,
-      WS_METHODS.factoryDeleteAgentProfile,
-      WS_METHODS.factoryRequestTaskBreakdown,
-      WS_METHODS.factoryUpdateTaskPlanProposal,
-      WS_METHODS.factoryResolveTaskPlanProposal,
-      WS_METHODS.factorySaveIntakeRule,
-      WS_METHODS.factoryDeleteIntakeRule,
-      WS_METHODS.factoryResolveIntakeArrival,
-    ]) {
-      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
-    }
-    for (const method of [
-      WS_METHODS.factorySaveIntakeSource,
-      WS_METHODS.factoryDeleteIntakeSource,
-    ]) {
-      expect(requiredScopeForRpcMethod(method)).toBe(AuthSettingsWriteScope);
-    }
-  });
-
-  it("keeps publishing and merging a task result behind source-control write, apart from accepting", () => {
-    for (const method of [WS_METHODS.factoryPublishTaskResult, WS_METHODS.factoryMergeTaskResult])
-      expect(requiredScopeForRpcMethod(method)).toBe(AuthSourceControlWriteScope);
   });
 
   it("rejects unknown RPC method names", () => {
@@ -208,9 +150,64 @@ describe("RPC scope middleware", () => {
         requiredPermission: missing,
       });
       expect(handled).toEqual([]);
-    }).pipe(Effect.scoped),
+    }),
   );
 });
+
+it.effect.each([WS_METHODS.subscribeVcsBranch, WS_METHODS.subscribeVcsStatus] as const)(
+  "enforces read permission on stream %s",
+  (method) =>
+    Effect.gen(function* () {
+      const group = WsRpcGroup.omit(
+        ...[...WsRpcGroup.requests.keys()].filter(
+          (
+            tag,
+          ): tag is Exclude<
+            keyof typeof RPC_REQUIRED_SCOPES,
+            typeof WS_METHODS.subscribeVcsBranch | typeof WS_METHODS.subscribeVcsStatus
+          > => tag !== WS_METHODS.subscribeVcsBranch && tag !== WS_METHODS.subscribeVcsStatus,
+        ),
+      );
+      let handled = 0;
+      const handlers = Layer.mergeAll(
+        group.toLayerHandler(WS_METHODS.subscribeVcsBranch, () =>
+          Stream.fromEffect(
+            Effect.sync(() => {
+              handled++;
+              return { refName: "main" };
+            }),
+          ),
+        ),
+        group.toLayerHandler(WS_METHODS.subscribeVcsStatus, () =>
+          Stream.fromEffect(
+            Effect.sync(() => {
+              handled++;
+            }),
+          ).pipe(Stream.drain),
+        ),
+      );
+      const denied = yield* RpcTest.makeClient(group).pipe(
+        Effect.provide(Layer.merge(handlers, RpcAuthorization.layer([]))),
+      );
+      expect(
+        yield* Stream.runDrain(
+          method === WS_METHODS.subscribeVcsBranch
+            ? denied[method]({ cwd: "/repo" }).pipe(Stream.drain)
+            : denied[method]({ cwd: "/repo" }).pipe(Stream.drain),
+        ).pipe(Effect.flip),
+      ).toMatchObject({ requiredPermission: AuthOrchestrationReadScope });
+      expect(handled).toBe(0);
+      const granted = yield* RpcTest.makeClient(group).pipe(
+        Effect.provide(Layer.merge(handlers, RpcAuthorization.layer([AuthOrchestrationReadScope]))),
+      );
+      yield* Stream.runDrain(
+        method === WS_METHODS.subscribeVcsBranch
+          ? granted[method]({ cwd: "/repo" }).pipe(Stream.drain)
+          : granted[method]({ cwd: "/repo" }).pipe(Stream.drain),
+      );
+      expect(handled).toBe(1);
+    }),
+);
 
 describe("settings mutation authorization", () => {
   const group = WsRpcGroup.omit(
@@ -244,14 +241,41 @@ describe("settings mutation authorization", () => {
       );
       yield* client[WS_METHODS.serverUpdateSettings]({ patch: {}, providerInstanceMutation });
       expect(handled).toBe(1);
+      yield* client[WS_METHODS.serverUpdateSettings]({
+        patch: {},
+        providerInstanceMutation: {
+          operation: "upsert",
+          instanceId: ProviderInstanceId.make("codex_work"),
+          instance: {
+            driver: ProviderDriverKind.make("codex"),
+            environment: [
+              {
+                name: "OPENAI_API_KEY",
+                sensitive: true,
+                value: {
+                  provider: SecretProviderId.make("personal"),
+                  reference: "op://Private/OpenAI/credential",
+                },
+              },
+            ],
+          },
+        },
+      });
+      expect(handled).toBe(2);
       expect(
         yield* client[WS_METHODS.serverUpdateSettings]({
           patch: { defaultRuntimeMode: "full-access" },
           providerInstanceMutation,
         }).pipe(Effect.flip),
       ).toMatchObject({ requiredPermission: AuthSettingsWriteScope });
-      expect(handled).toBe(1);
-    }).pipe(Effect.scoped),
+      // Removing a secret provider clears settings fields that read from it.
+      expect(
+        yield* client[WS_METHODS.serverUpdateSettings]({
+          patch: { secretProviders: { [SecretProviderId.make("personal")]: null } },
+        }).pipe(Effect.flip),
+      ).toMatchObject({ requiredPermission: AuthSettingsWriteScope });
+      expect(handled).toBe(2);
+    }),
   );
 
   it.effect("does not let a settings grant create or remove providers or secret providers", () =>
@@ -282,7 +306,7 @@ describe("settings mutation authorization", () => {
         }).pipe(Effect.flip),
       ).toMatchObject({ requiredPermission: AuthProvidersManageScope });
       expect(handled).toBe(false);
-    }).pipe(Effect.scoped),
+    }),
   );
 });
 
@@ -320,7 +344,7 @@ it.effect("requires task permission before attaching a prepared worktree to a th
       }).pipe(Effect.flip),
     ).toMatchObject({ requiredPermission: AuthOrchestrationOperateScope });
     expect(handled).toBe(false);
-  }).pipe(Effect.scoped),
+  }),
 );
 
 describe("thread context authorization", () => {
@@ -372,7 +396,7 @@ describe("thread context authorization", () => {
           reader[WS_METHODS.gitRunStackedAction]({ ...withThread, actionId: "allowed" }),
         );
         expect(handled.at(-1)).toBe("allowed");
-      }).pipe(Effect.scoped),
+      }),
   );
 });
 
@@ -403,10 +427,14 @@ it.effect("separates host file URLs from readable attachment URLs", () =>
     yield* client[WS_METHODS.assetsCreateUrl]({
       resource: { _tag: "attachment", attachmentId: "image" },
     });
+    yield* client[WS_METHODS.assetsCreateUrl]({
+      resource: { _tag: "native-app-icon", app: { _tag: "app-id", appId: "com.apple.calculator" } },
+    });
     for (const resource of [
       { _tag: "workspace-file", threadId: ThreadId.make("thread"), path: "file.txt" },
       { _tag: "media-file", threadId: ThreadId.make("thread"), path: "/repo/image.png" },
       { _tag: "draft-workspace-file", cwd: "/repo", path: "file.txt" },
+      { _tag: "native-app-icon", app: { _tag: "app-path", path: "/private/Secret.app" } },
     ] as const) {
       expect(
         yield* client[WS_METHODS.assetsCreateUrl]({ resource }).pipe(Effect.flip),
@@ -415,8 +443,8 @@ it.effect("separates host file URLs from readable attachment URLs", () =>
         requiredPermission: AuthFilesystemReadScope,
       });
     }
-    expect(handled).toBe(1);
-  }).pipe(Effect.scoped),
+    expect(handled).toBe(2);
+  }),
 );
 
 it.effect("denies manual cleanup before the handler without settings permission", () =>
@@ -457,7 +485,7 @@ it.effect("denies manual cleanup before the handler without settings permission"
       requiredPermission: AuthSettingsWriteScope,
     });
     expect(handled).toBe(false);
-  }).pipe(Effect.scoped),
+  }),
 );
 
 describe("factory authorization", () => {

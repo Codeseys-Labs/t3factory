@@ -35,7 +35,44 @@ describe("V2 preview upgrade", () => {
       const sql = yield* SqlClient.SqlClient;
       yield* seedPreview;
       const imports = yield* sql`SELECT * FROM orchestration_v2_legacy_imports`;
-      assert.deepStrictEqual(yield* runMigrations(), expectedUpgradeLedger);
+      assert.deepStrictEqual(yield* runMigrations(), [
+        [53, "PullRequestFilesViewed"],
+        [54, "ProjectionThreadsAutoSettleDisabledAt"],
+        [56, "RemoveRedundantProjectionIndexes"],
+        [57, "ScheduledTaskWebhooks"],
+        [58, "WebhookRelayDeliveries"],
+        [59, "McpAppModelContext"],
+        [60, "ThreadSnapshotWindowIndexes"],
+        [61, "PullRequestReviewGuides"],
+        [62, "ThreadFailureLookupIndex"],
+        [63, "DropUnusedV1Projections"],
+        [64, "CanonicalizeThreadPullRequestLinks"],
+        [65, "CodexUsageNativeTurnIndex"],
+        [66, "RepairClientSettlementTimestamps"],
+        [67, "WebhookDedupe"],
+        [68, "ShellStopRequestIndex"],
+        [69, "ThreadMessageSearch"],
+        [70, "PeerLinks"],
+        [71, "PeerLinkFence"],
+        [72, "WaitingLinkRequestIndex"],
+        [73, "ActiveTurnItemIndexes"],
+        [74, "ExcludeAttachmentPlaceholdersFromSearch"],
+        [75, "SubagentDeliveryState"],
+        [76, "ProjectionProjectsPinArchive"],
+        [77, "RepairBooleanSettledOverride"],
+        [78, "DropOrchestrationEventCorrelationIndex"],
+        [79, "DelegatedRecoveryIndexes"],
+        [80, "ScheduledTaskThreadMode"],
+        [81, "ProjectionMessageSearchText"],
+        [82, "TurnItemConversationIndex"],
+        [83, "CommandReadIndexes"],
+        [84, "LastExecutedRunIndex"],
+        [85, "TurnItemCounts"],
+        [86, "QueuedTurnInputIndex"],
+        [87, "ProjectionProjectsCustomTitle"],
+        [88, "TurnItemTypeStatusIndex"],
+        [89, "ShellThreadReadIndexes"],
+      ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
       const history = yield* sql<{ readonly migration_id: number; readonly name: string }>`
@@ -110,7 +147,44 @@ describe("V2 preview upgrade", () => {
       );
       assert.strictEqual((yield* sql`SELECT * FROM orchestration_v2_legacy_imports`).length, 1);
       yield* sql`DROP TRIGGER fail_preview_upgrade`;
-      assert.deepStrictEqual(yield* runMigrations(), expectedUpgradeLedger);
+      assert.deepStrictEqual(yield* runMigrations(), [
+        [53, "PullRequestFilesViewed"],
+        [54, "ProjectionThreadsAutoSettleDisabledAt"],
+        [56, "RemoveRedundantProjectionIndexes"],
+        [57, "ScheduledTaskWebhooks"],
+        [58, "WebhookRelayDeliveries"],
+        [59, "McpAppModelContext"],
+        [60, "ThreadSnapshotWindowIndexes"],
+        [61, "PullRequestReviewGuides"],
+        [62, "ThreadFailureLookupIndex"],
+        [63, "DropUnusedV1Projections"],
+        [64, "CanonicalizeThreadPullRequestLinks"],
+        [65, "CodexUsageNativeTurnIndex"],
+        [66, "RepairClientSettlementTimestamps"],
+        [67, "WebhookDedupe"],
+        [68, "ShellStopRequestIndex"],
+        [69, "ThreadMessageSearch"],
+        [70, "PeerLinks"],
+        [71, "PeerLinkFence"],
+        [72, "WaitingLinkRequestIndex"],
+        [73, "ActiveTurnItemIndexes"],
+        [74, "ExcludeAttachmentPlaceholdersFromSearch"],
+        [75, "SubagentDeliveryState"],
+        [76, "ProjectionProjectsPinArchive"],
+        [77, "RepairBooleanSettledOverride"],
+        [78, "DropOrchestrationEventCorrelationIndex"],
+        [79, "DelegatedRecoveryIndexes"],
+        [80, "ScheduledTaskThreadMode"],
+        [81, "ProjectionMessageSearchText"],
+        [82, "TurnItemConversationIndex"],
+        [83, "CommandReadIndexes"],
+        [84, "LastExecutedRunIndex"],
+        [85, "TurnItemCounts"],
+        [86, "QueuedTurnInputIndex"],
+        [87, "ProjectionProjectsCustomTitle"],
+        [88, "TurnItemTypeStatusIndex"],
+        [89, "ShellThreadReadIndexes"],
+      ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 

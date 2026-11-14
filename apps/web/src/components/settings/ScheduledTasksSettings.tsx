@@ -867,6 +867,7 @@ function ScheduledTaskRow({
       );
     }
   };
+  const boundThreadId = scheduledTaskThreadMode(task) === "new_thread" ? null : task.threadId;
   return (
     <SettingsRow
       title={task.title}
@@ -902,8 +903,8 @@ function ScheduledTaskRow({
               Latest dispatch <ScheduledRelativeLabel value={task.lastRunAt} />
             </span>
           ) : null}
-          <span>{task.threadId ? "Bound thread (queued delivery)" : "New thread each run"}</span>
-          {dispatchedThreadId ? (
+          <span>{THREAD_MODE_LABELS[scheduledTaskThreadMode(task)]}</span>
+          {dispatchedThreadId && dispatchedThreadId !== boundThreadId ? (
             <Link
               to="/$environmentId/$threadId"
               params={{ environmentId, threadId: dispatchedThreadId }}
@@ -912,8 +913,8 @@ function ScheduledTaskRow({
               Open dispatched thread
             </Link>
           ) : null}
-          {task.threadId !== null && scheduledTaskThreadMode(task) !== "new_thread" ? (
-            <ScheduledTaskThreadLink environmentId={environmentId} threadId={task.threadId} />
+          {boundThreadId !== null ? (
+            <ScheduledTaskThreadLink environmentId={environmentId} threadId={boundThreadId} />
           ) : null}
           {task.lastRunError ? <span className="text-destructive">{task.lastRunError}</span> : null}
         </div>

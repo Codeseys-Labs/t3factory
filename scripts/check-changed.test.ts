@@ -150,12 +150,13 @@ describe("check:changed", () => {
         ".github/scripts/ci-changes.test.cjs",
         ".github\\scripts\\thread-transfer-report.test.cjs",
         "scripts/check-changed.test.ts",
+        "apps\\server\\src\\ws.test.ts",
       ]),
       {
         vitestTests: ["apps/server/src/ws.test.ts", "scripts/check-changed.test.ts"],
         nodeTests: [
           ".github/scripts/ci-changes.test.cjs",
-          ".github\\scripts\\thread-transfer-report.test.cjs",
+          ".github/scripts/thread-transfer-report.test.cjs",
         ],
       },
     );

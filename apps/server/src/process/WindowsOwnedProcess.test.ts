@@ -8,9 +8,12 @@ import * as NodePath from "node:path";
 import * as NodeCrypto from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as PlatformError from "effect/PlatformError";
+import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import * as CommandLine from "effect/process/CommandLine";
 import { makeWindowsOwnedProcess } from "./WindowsOwnedProcess.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
@@ -152,4 +155,30 @@ it.live(
         ),
       );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("hands the native spawner redacted arguments still redacted", () =>
+  Effect.gen(function* () {
+    if (windowsHost !== true) return;
+    const secret = "s3cr3t-arg";
+    const commands: ChildProcess.Command[] = [];
+    const native = ChildProcessSpawner.make((command) => {
+      commands.push(command);
+      return Effect.fail(
+        PlatformError.systemError({ module: "ChildProcess", method: "spawn", _tag: "Unknown" }),
+      );
+    });
+    const owner = yield* makeWindowsOwnedProcess();
+    yield* owner.spawner
+      .spawn(ChildProcess.make(process.execPath, ["plain", Redacted.make(secret)]), native)
+      .pipe(Effect.flip);
+    const command = commands[0];
+    assert.equal(command?._tag, "StandardCommand");
+    if (command?._tag !== "StandardCommand") return;
+    assert.notInclude(CommandLine.display([command.command, ...command.args]), secret);
+    // The payload carries the secret, so the PowerShell payload word must be the redacted one.
+    const payload = command.args.at(-1);
+    assert.isTrue(Redacted.isRedacted(payload));
+    assert.isFalse(command.args.some((arg) => typeof arg === "string" && arg.includes(secret)));
+  }).pipe(Effect.scoped),
 );

@@ -1,0 +1,68 @@
+[
+  {
+    "file": "apps/server/src/orchestration-v2/runtimeLayer.test.ts",
+    "name": "OrchestrationV2LayerLive lifecycle > restarts a continuation that failed before its prompt, unless stopped (false)",
+    "issue": 128,
+    "why": "times out in the shared lifecycle runtime on Windows on unmodified upstream too; passes alone"
+  },
+  {
+    "file": "apps/server/src/orchestration-v2/runtimeLayer.test.ts",
+    "name": "OrchestrationV2LayerLive lifecycle > restarts a continuation that failed before its prompt, unless stopped (true)",
+    "issue": 128,
+    "why": "times out in the shared lifecycle runtime on Windows on unmodified upstream too; passes alone"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "orphan worktree reports > compares thread paths with host casing rules and excludes existing projects (linux)",
+    "issue": 128,
+    "why": "simulates case-sensitive Linux paths, but realPath on a Windows disk is case-insensitive"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "orphan worktree reports > matches a terminal at the worktree root with host casing rules (linux, cwd)",
+    "issue": 128,
+    "why": "simulates case-sensitive Linux paths, but realPath on a Windows disk is case-insensitive"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "orphan worktree reports > matches a terminal at the worktree root with host casing rules (linux, worktreePath)",
+    "issue": 128,
+    "why": "simulates case-sensitive Linux paths, but realPath on a Windows disk is case-insensitive"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "orphan worktree reports > matches a provider session at the worktree root with host casing rules (linux)",
+    "issue": 128,
+    "why": "simulates case-sensitive Linux paths, but realPath on a Windows disk is case-insensitive"
+  },
+  {
+    "file": "apps/server/src/project/RepositoryIdentityResolver.test.ts",
+    "name": "RepositoryIdentityResolverLive > returns the git top-level root path when resolving from a nested workspace in \"repo \"",
+    "issue": 128,
+    "why": "Win32 strips the trailing space from a folder name, so the \"repo \" checkout cannot exist"
+  },
+  {
+    "file": "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts",
+    "name": "ClaudeAdapterV2 native fork > forks a session from its original directory after the workspace root changes",
+    "issue": 128,
+    "why": "expects path.resolve(\"/workspace\"), which adds a drive letter on Windows, while the adapter passes the cwd through unchanged"
+  },
+  {
+    "file": "apps/desktop/src/app/DesktopCliCommand.test.ts",
+    "name": "DesktopCliCommand > links the launcher onto PATH and removes only that link",
+    "issue": 128,
+    "why": "simulates a Linux shell on the host disk; pathSetup needs a /-rooted folder, and a Windows temp home has a drive letter"
+  },
+  {
+    "file": "apps/desktop/src/app/DesktopCliCommand.test.ts",
+    "name": "DesktopCliCommand > finds and removes a link left by a previous T3 home",
+    "issue": 128,
+    "why": "puts raw C:\\ paths into a Linux PATH that splits on \":\""
+  },
+  {
+    "file": "apps/desktop/scripts/electron-launcher.test.mjs",
+    "name": "electron development launcher > restores execute permissions on an unchanged launcher",
+    "issue": 128,
+    "why": "Windows has no POSIX execute bits, so the file mode never reads back as 0o755"
+  }
+]

@@ -151,6 +151,9 @@ export default defineConfig({
       NodeURL.fileURLToPath(
         new URL("./packages/shared/src/testing/providerEnv.ts", import.meta.url),
       ),
+      NodeURL.fileURLToPath(
+        new URL("./packages/shared/src/testing/windowsQuarantine.ts", import.meta.url),
+      ),
     ],
     ...(isRepoRootTestRun
       ? {

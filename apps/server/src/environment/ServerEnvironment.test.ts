@@ -108,6 +108,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("ServerEnvironmen
                   ...config,
                   mode,
                   desktopUpdatesDisabled,
+                  desktopAppUpdate: true,
                   desktopTelemetryControlFd: 5,
                 }),
               ),

@@ -936,13 +936,18 @@ function TaskForm({
       );
       return;
     }
+    // A bound task hides the model and workspace controls, so they must not block saving it.
+    const modelSelection =
+      draft.modelSelection ?? (draft.threadId === null ? null : boundThread?.modelSelection);
     if (
       !draft.title.trim() ||
       !draft.prompt.trim() ||
       !draft.projectId ||
-      !draft.modelSelection ||
+      !modelSelection ||
       !schedule ||
-      (draft.workspace === "existing_worktree" && !draft.checkoutPath.trim())
+      (draft.threadId === null &&
+        draft.workspace === "existing_worktree" &&
+        !draft.checkoutPath.trim())
     ) {
       Dialog.alert(
         "Incomplete task",
@@ -963,7 +968,7 @@ function TaskForm({
       title: draft.title.trim(),
       prompt: draft.prompt.trim(),
       projectId: draft.projectId,
-      modelSelection: withImplicitFastModeSelection(draft.modelSelection, config?.providers ?? []),
+      modelSelection: withImplicitFastModeSelection(modelSelection, config?.providers ?? []),
       schedule,
       enabled: draft.enabled,
       threadId: draft.threadId,

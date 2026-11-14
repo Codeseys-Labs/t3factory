@@ -1,0 +1,449 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { assert, it } from "@effect/vitest";
+import {
+  CommandId,
+  DEFAULT_SERVER_SETTINGS,
+  ProjectId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+} from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
+import * as SqlClient from "effect/sql/SqlClient";
+
+import * as ServerConfig from "../config.ts";
+import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
+import { runMigrations } from "../persistence/Migrations.ts";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
+import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
+import * as ProjectService from "../project/ProjectService.ts";
+import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
+import * as ServerSettings from "../serverSettings.ts";
+import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
+import * as T3CodeImport from "./T3CodeImport.ts";
+
+const codex = ProviderInstanceId.make("codex");
+const at = (minute: number) => `2026-11-01T00:0${minute}:00.000Z`;
+
+const settingsHere = ServerSettings.layerTest({
+  branchNamePrefix: "factory",
+  providerInstances: { [codex]: { driver: ProviderDriverKind.make("codex") } },
+});
+
+const layerFor = (input: {
+  readonly home: string;
+  readonly baseDir: string | { readonly prefix: string };
+  readonly settings?: typeof settingsHere;
+}) =>
+  T3CodeImport.layer.pipe(
+    Layer.provideMerge(RuntimeLayer.layerProjectService),
+    Layer.provideMerge(ProjectEnrichmentService.layer),
+    Layer.provideMerge(
+      Layer.succeed(WorkspacePaths.WorkspacePaths, {
+        normalizeWorkspaceRoot: (workspaceRoot) => Effect.succeed(workspaceRoot),
+        resolveRelativePathWithinRoot: ({ workspaceRoot, relativePath }) =>
+          Effect.succeed({ absolutePath: `${workspaceRoot}/${relativePath}`, relativePath }),
+      }),
+    ),
+    Layer.provideMerge(
+      Layer.merge(
+        Layer.mock(RepositoryIdentityResolver.RepositoryIdentityResolver)({
+          resolve: () => Effect.succeed(null),
+        }),
+        Layer.succeed(ProjectFaviconResolver.ProjectFaviconResolver, {
+          invalidate: () => Effect.void,
+          resolvePath: () => Effect.succeed(null),
+        }),
+      ),
+    ),
+    Layer.provideMerge(SqlitePersistence.layerMemory),
+    Layer.provideMerge(input.settings ?? settingsHere),
+    Layer.provideMerge(ServerConfig.layerTest(process.cwd(), input.baseDir)),
+    Layer.provideMerge(Layer.succeed(HostProcess.HomeDirectory, input.home)),
+    Layer.provideMerge(NodeCrypto.layer),
+  );
+
+/** T3 Code's data as its own server leaves it: sparse settings, a secret file and its database. */
+const writeT3Code = Effect.fn("test.writeT3Code")(function* (
+  home: string,
+  input: {
+    readonly settings: unknown;
+    readonly secrets: Readonly<Record<string, string>>;
+    readonly projects: ReadonlyArray<{
+      readonly id: string;
+      readonly title: string;
+      readonly root: string;
+      readonly scripts?: unknown;
+      readonly model?: unknown;
+      readonly threadEnvMode?: string;
+      readonly autoPull?: boolean;
+    }>;
+  },
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const userdata = path.join(home, ".t3", "userdata");
+  yield* fs.makeDirectory(path.join(userdata, "secrets"), { recursive: true });
+  yield* fs.writeFileString(path.join(userdata, "settings.json"), JSON.stringify(input.settings));
+  for (const [name, value] of Object.entries(input.secrets))
+    yield* fs.writeFileString(path.join(userdata, "secrets", `${name}.bin`), value);
+  yield* Effect.gen(function* () {
+    yield* runMigrations();
+    const sql = yield* SqlClient.SqlClient;
+    for (const [index, project] of input.projects.entries())
+      yield* sql`INSERT INTO projection_projects (project_id, title, workspace_root,
+        default_model_selection_json, default_thread_env_mode, auto_pull, favicon_path,
+        project_icon_json, scripts_json, created_at, updated_at, deleted_at)
+        VALUES (${project.id}, ${project.title}, ${project.root},
+          ${project.model === undefined ? null : JSON.stringify(project.model)},
+          ${project.threadEnvMode ?? null}, ${project.autoPull === true ? 1 : 0}, NULL, NULL,
+          ${JSON.stringify(project.scripts ?? [])}, ${at(index)}, ${at(index)}, NULL)`;
+  }).pipe(
+    Effect.provide(NodeSqliteClient.layer({ filename: path.join(userdata, "statev2.sqlite") })),
+  );
+});
+
+const envSecretName = (instanceId: string, variable: string) =>
+  `provider-env-${Buffer.from(instanceId).toString("base64url")}-${Buffer.from(variable).toString("base64url")}`;
+
+it.effect(
+  "imports only what is missing here, carries saved keys, and a second run adds nothing",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-import-home-" });
+      const folder = (name: string) => path.join(home, "code", name);
+      for (const name of ["alpha", "beta", "delta"])
+        yield* fs.makeDirectory(folder(name), { recursive: true });
+      const scratch = path.join(home, ".t3", "scratch", "notes");
+      yield* fs.makeDirectory(scratch, { recursive: true });
+      const script = {
+        id: "test",
+        name: "Test",
+        command: "vp test",
+        icon: "test",
+        runOnWorktreeCreate: false,
+      };
+      yield* writeT3Code(home, {
+        settings: {
+          defaultModelSelection: { instanceId: "codex", model: "gpt-5.4" },
+          branchNamePrefix: "t3",
+          // Already the value here: importing it would change nothing.
+          removeAgentCreditsOnMerge: false,
+          // An older T3 Code keeps the idle compaction mode in this switch.
+          compactIdleThreads: true,
+          // Points at T3 Code's own worktrees; never imported.
+          worktreesDirectory: path.join(home, ".t3", "worktrees"),
+          providerInstances: {
+            codex: { driver: "codex", enabled: false },
+            omp: {
+              driver: "acpRegistry",
+              environment: [{ name: "API_KEY", value: "", sensitive: true, valueRedacted: true }],
+            },
+            broken: {
+              driver: "acpRegistry",
+              environment: [{ name: "API_KEY", value: "", sensitive: true, valueRedacted: true }],
+            },
+          },
+          // T3 Code has not folded project settings yet: the row and the older maps still count,
+          // and a map entry outranks the row.
+          projectAutoPullOverrides: { alpha: false },
+          projectSettingsOverrides: {
+            alpha: { defaultRuntimeMode: "approval-required", worktreeCleanup: { mode: "off" } },
+            beta: { defaultRuntimeMode: "auto" },
+            gamma: { defaultRuntimeMode: "auto" },
+          },
+        },
+        secrets: { [envSecretName("omp", "API_KEY")]: "sk-imported" },
+        projects: [
+          {
+            id: "alpha",
+            title: "Alpha",
+            root: folder("alpha"),
+            scripts: [script],
+            model: { instanceId: "codex", model: "gpt-5.4-mini" },
+            autoPull: true,
+          },
+          {
+            id: "beta",
+            title: "Beta",
+            root: folder("beta"),
+            threadEnvMode: "worktree",
+            autoPull: true,
+          },
+          { id: "gamma", title: "Gamma", root: folder("gamma") },
+          { id: "delta", title: "Delta", root: folder("delta") },
+          { id: "scratch", title: "Notes", root: scratch },
+        ],
+      });
+      // A saved key that exists but cannot be read: a directory where its file should be.
+      yield* fs.makeDirectory(
+        path.join(home, ".t3", "userdata", "secrets", `${envSecretName("broken", "API_KEY")}.bin`),
+      );
+
+      yield* Effect.gen(function* () {
+        const projects = yield* ProjectService.ProjectService;
+        const settings = yield* ServerSettings.ServerSettingsService;
+        const service = yield* T3CodeImport.T3CodeImport;
+        // This install already has Beta under another id, and imported then removed Delta.
+        yield* projects.create({
+          commandId: CommandId.make("create-beta"),
+          projectId: ProjectId.make("beta-here"),
+          title: "Beta here",
+          workspaceRoot: folder("beta"),
+        });
+        yield* projects.create({
+          commandId: CommandId.make("create-delta"),
+          projectId: ProjectId.make("delta"),
+          title: "Delta",
+          workspaceRoot: folder("delta"),
+        });
+        yield* projects.delete({
+          commandId: CommandId.make("delete-delta"),
+          projectId: ProjectId.make("delta"),
+        });
+
+        const preview = yield* service.preview;
+        assert.equal(preview.status, "available");
+        if (preview.status !== "available") return;
+        assert.deepEqual(
+          preview.projects.map((project) => [project.projectId, project.status]),
+          [
+            ["alpha", "new"],
+            ["beta-here", "present"],
+            ["gamma", "missing-folder"],
+            ["delta", "removed-here"],
+          ],
+        );
+        assert.deepEqual(
+          preview.settings.map((setting) => [setting.key, setting.status, setting.secrets]),
+          [
+            ["defaultModelSelection", "new", 0],
+            ["branchNamePrefix", "present", 0],
+            ["removeAgentCreditsOnMerge", "present", 0],
+            ["idleCompaction", "new", 0],
+            ["projectSettingsOverrides/alpha", "new", 0],
+            ["projectSettingsOverrides/beta-here", "new", 0],
+            ["providerInstances/codex", "present", 0],
+            ["providerInstances/omp", "new", 1],
+            // Left out rather than imported without its key; the rest still imports.
+            ["providerInstances/broken", "unreadable", 0],
+          ],
+        );
+
+        const result = yield* service.apply({ projects: true, settings: true });
+        assert.deepEqual(result, {
+          projectsAdded: 1,
+          settingsAdded: 5,
+          secretsCopied: 1,
+          failed: [],
+        });
+        const alpha = Option.getOrThrow(yield* projects.getById(ProjectId.make("alpha")));
+        assert.deepEqual([alpha.title, alpha.workspaceRoot], ["Alpha", folder("alpha")]);
+        const after = yield* settings.getSettings;
+        assert.deepEqual(after.defaultModelSelection, { instanceId: codex, model: "gpt-5.4" });
+        assert.equal(after.branchNamePrefix, "factory");
+        assert.equal(after.idleCompaction, "beforeCacheExpires");
+        assert.equal(after.worktreesDirectory, DEFAULT_SERVER_SETTINGS.worktreesDirectory);
+        assert.equal(after.providerInstances[codex]?.enabled, undefined);
+        assert.isUndefined(after.providerInstances[ProviderInstanceId.make("broken")]);
+        assert.deepEqual(after.providerInstances[ProviderInstanceId.make("omp")]?.environment, [
+          { name: "API_KEY", value: "sk-imported", sensitive: true },
+        ]);
+        // The model and scripts land where this install reads them, without the cleanup rule.
+        assert.deepEqual(
+          [
+            after.projectSettingsOverrides[ProjectId.make("alpha")],
+            after.projectSettingsOverrides[ProjectId.make("beta-here")],
+          ],
+          [
+            {
+              defaultModelSelection: { instanceId: codex, model: "gpt-5.4-mini" },
+              defaultProjectScripts: [script],
+              defaultAutoPull: false,
+              defaultRuntimeMode: "approval-required",
+            },
+            { defaultThreadEnvMode: "worktree", defaultAutoPull: true, defaultRuntimeMode: "auto" },
+          ],
+        );
+
+        const again = yield* service.preview;
+        assert.deepEqual(
+          again.status === "available"
+            ? [...again.projects, ...again.settings].filter((item) => item.status === "new")
+            : null,
+          [],
+        );
+        assert.deepEqual(yield* service.apply({ projects: true, settings: true }), {
+          projectsAdded: 0,
+          settingsAdded: 0,
+          secretsCopied: 0,
+          failed: [],
+        });
+      }).pipe(Effect.provide(layerFor({ home, baseDir: { prefix: "t3code-import-factory-" } })));
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect("ignores the project row once T3 Code keeps project settings in its settings file", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-import-home-" });
+    yield* writeT3Code(home, {
+      settings: {
+        projectSettingsFolded: true,
+        projectSettingsOverrides: { alpha: { defaultRuntimeMode: "auto" } },
+      },
+      secrets: {},
+      // Scripts and a model the user has since reset in T3 Code.
+      projects: [
+        {
+          id: "alpha",
+          title: "Alpha",
+          root: home,
+          scripts: [
+            { id: "old", name: "Old", command: "old", icon: "test", runOnWorktreeCreate: false },
+          ],
+          model: { instanceId: "codex", model: "gpt-old" },
+        },
+      ],
+    });
+    yield* Effect.gen(function* () {
+      const service = yield* T3CodeImport.T3CodeImport;
+      yield* service.apply({ projects: true, settings: true });
+      const alpha = ProjectId.make("alpha");
+      const project = Option.getOrThrow(
+        yield* (yield* ProjectService.ProjectService).getById(alpha),
+      );
+      const settings = yield* (yield* ServerSettings.ServerSettingsService).getSettings;
+      assert.deepEqual(
+        [project.scripts, settings.projectSettingsOverrides[alpha]],
+        [[], { defaultRuntimeMode: "auto" }],
+      );
+    }).pipe(Effect.provide(layerFor({ home, baseDir: { prefix: "t3code-import-factory-" } })));
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect("leaves a setting alone when it is saved here between the plan and the write", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-import-home-" });
+    yield* writeT3Code(home, {
+      settings: { defaultModelSelection: { instanceId: "codex", model: "gpt-5.4" } },
+      secrets: {},
+      projects: [],
+    });
+    const own = { instanceId: codex, model: "gpt-own" };
+    // Another client's save lands just before the import's first write.
+    const racing = Layer.effect(
+      ServerSettings.ServerSettingsService,
+      Effect.gen(function* () {
+        const real = yield* ServerSettings.ServerSettingsService;
+        const pending = yield* Ref.make(true);
+        const afterOtherSave = <A, E>(write: Effect.Effect<A, E>) =>
+          Ref.getAndSet(pending, false).pipe(
+            Effect.flatMap((first) =>
+              first
+                ? Effect.orDie(real.updateSettings({ defaultModelSelection: own }))
+                : Effect.void,
+            ),
+            Effect.andThen(write),
+          );
+        return ServerSettings.ServerSettingsService.of({
+          ...real,
+          updateSettings: (patch) => afterOtherSave(real.updateSettings(patch)),
+          updateSettingsWith: (patch) => afterOtherSave(real.updateSettingsWith(patch)),
+        });
+      }),
+    ).pipe(Layer.provide(settingsHere));
+    yield* Effect.gen(function* () {
+      const service = yield* T3CodeImport.T3CodeImport;
+      const result = yield* service.apply({ projects: false, settings: true });
+      const settings = yield* (yield* ServerSettings.ServerSettingsService).getSettings;
+      assert.deepEqual([result.settingsAdded, settings.defaultModelSelection], [0, own]);
+    }).pipe(
+      Effect.provide(
+        layerFor({ home, baseDir: { prefix: "t3code-import-factory-" }, settings: racing }),
+      ),
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "offers nothing when this server keeps its data in T3 Code's folder or T3 Code has none",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-import-home-" });
+      const preview = (baseDir: string | { readonly prefix: string }) =>
+        Effect.flatMap(T3CodeImport.T3CodeImport, (service) => service.preview).pipe(
+          Effect.provide(layerFor({ home, baseDir })),
+        );
+      assert.deepEqual(yield* preview({ prefix: "t3code-import-factory-" }), {
+        status: "unavailable",
+        source: path.join(home, ".t3"),
+        reason: "not-found",
+      });
+      const shared = path.join(home, ".t3");
+      assert.deepEqual(yield* preview(shared), {
+        status: "unavailable",
+        source: shared,
+        reason: "same-data",
+      });
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "reads an older T3 Code project table, and still offers settings when it cannot read a newer one",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-import-home-" });
+      const userdata = path.join(home, ".t3", "userdata");
+      yield* fs.makeDirectory(userdata, { recursive: true });
+      yield* fs.writeFileString(
+        path.join(userdata, "settings.json"),
+        JSON.stringify({ defaultModelSelection: { instanceId: "codex", model: "gpt-5.4" } }),
+      );
+      const inT3Code = Effect.provide(
+        NodeSqliteClient.layer({ filename: path.join(userdata, "statev2.sqlite") }),
+      );
+      const preview = Effect.flatMap(T3CodeImport.T3CodeImport, (service) => service.preview).pipe(
+        Effect.provide(layerFor({ home, baseDir: { prefix: "t3code-import-factory-" } })),
+        Effect.map((result) =>
+          result.status === "available"
+            ? [
+                result.projectsReadable,
+                result.projects.map((project) => project.projectId),
+                result.settings.map((setting) => setting.key),
+              ]
+            : result,
+        ),
+      );
+      // Before the table had thread mode and auto-pull columns.
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`CREATE TABLE projection_projects (project_id TEXT PRIMARY KEY, title TEXT,
+        workspace_root TEXT, scripts_json TEXT, default_model_selection_json TEXT, created_at TEXT,
+        deleted_at TEXT)`;
+        yield* sql`INSERT INTO projection_projects VALUES ('alpha', 'Alpha', ${home}, '[]', NULL, ${at(0)}, NULL)`;
+      }).pipe(inT3Code);
+      assert.deepEqual(yield* preview, [true, ["alpha"], ["defaultModelSelection"]]);
+      // A later T3 Code that renamed a column this version needs.
+      yield* Effect.flatMap(
+        SqlClient.SqlClient,
+        (sql) => sql`ALTER TABLE projection_projects RENAME COLUMN workspace_root TO root_path`,
+      ).pipe(inT3Code);
+      assert.deepEqual(yield* preview, [false, [], ["defaultModelSelection"]]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);

@@ -1058,12 +1058,35 @@ export const make = Effect.gen(function* () {
     let retiredEffects = 0;
     const stoppedThisPass = new Map<string, RecoverySession>();
     const grouped = trigger === "shutdown" && threadIds.length > 1;
-    const groupSize = grouped ? 32 : 1;
-    for (let offset = 0; offset < threadIds.length; offset += groupSize) {
+    for (let offset = 0; offset < threadIds.length;) {
+      let end = offset + 1;
+      let useBatch = grouped;
+      if (grouped) {
+        end = offset;
+        for (const threadId of threadIds.slice(offset, offset + 32)) {
+          const managed = yield* factoryLifecycle
+            .binding({ threadId })
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProviderRuntimeRecoveryError({ operation: "reconcile", threadId, cause }),
+              ),
+            );
+          // A group rollback must not undo a Factory settlement.
+          if (managed !== null) {
+            if (end === offset) {
+              end++;
+              useBatch = false;
+            }
+            break;
+          }
+          end++;
+        }
+      }
       const cancelledEffectIds: string[] = [];
       // Read and decide on the writer so shared sessions see earlier updates in this group.
       const reconcileGroup = Effect.gen(function* () {
-        for (const threadId of threadIds.slice(offset, offset + groupSize)) {
+        for (const threadId of threadIds.slice(offset, end)) {
           const projection = yield* projections.getRuntimeRecoveryProjection(threadId).pipe(
             Effect.mapError(
               (cause) =>
@@ -1091,7 +1114,7 @@ export const make = Effect.gen(function* () {
           retiredEffects += result.retiredEffects;
         }
       });
-      yield* (grouped ? eventSink.withProviderBatch(reconcileGroup) : reconcileGroup).pipe(
+      yield* (useBatch ? eventSink.withProviderBatch(reconcileGroup) : reconcileGroup).pipe(
         Effect.mapError((cause) =>
           isProviderRuntimeRecoveryError(cause)
             ? cause
@@ -1100,6 +1123,7 @@ export const make = Effect.gen(function* () {
       );
       // Eventless outbox cancellations also wait for the group's durable commit.
       if (cancelledEffectIds.length > 0) yield* outbox.signalCancellations(cancelledEffectIds);
+      offset = end;
     }
     const outboxReconciliation = yield* outbox.reconcileAfterProcessLoss.pipe(
       Effect.mapError(

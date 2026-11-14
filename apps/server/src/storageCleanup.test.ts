@@ -1999,7 +1999,7 @@ describe("orphan worktree reports", () => {
           const customFolder = yield* fs.realPath(
             yield* fs.makeTempDirectoryScoped({ prefix: "cleanup-real-worktrees-" }),
           );
-          const realWorktree = `${customFolder}/seeded`;
+          const realWorktree = NodePath.join(customFolder, "seeded");
           yield* fixture.command(fixture.repo, ["worktree", "add", "-b", "seeded", realWorktree]);
           fixture.setSettings({ worktreesDirectory: customFolder });
           fixture.setThreads([
@@ -2078,9 +2078,9 @@ describe("orphan worktree reports", () => {
       Effect.gen(function* () {
         const fixture = yield* cleanupFixture();
         fixture.setThreads([]);
-        const replay = `${fixture.config.worktreesDir}/repository/replay`;
-        const deep = `${fixture.config.worktreesDir}/repository/deep`;
-        const worktrees = [`${deep}/a/b`, `${replay}/1376`];
+        const replay = NodePath.join(fixture.config.worktreesDir, "repository", "replay");
+        const deep = NodePath.join(fixture.config.worktreesDir, "repository", "deep");
+        const worktrees = [NodePath.join(deep, "a", "b"), NodePath.join(replay, "1376")];
         for (const [index, worktree] of worktrees.entries()) {
           yield* fixture.command(fixture.repo, [
             "worktree",
@@ -2108,8 +2108,8 @@ describe("orphan worktree reports", () => {
       Effect.gen(function* () {
         const fixture = yield* cleanupFixture();
         fixture.setThreads([]);
-        const replay = `${fixture.config.worktreesDir}/repository/replay`;
-        const worktree = `${replay}/1376`;
+        const replay = NodePath.join(fixture.config.worktreesDir, "repository", "replay");
+        const worktree = NodePath.join(replay, "1376");
         yield* fixture.command(fixture.repo, ["worktree", "add", "-b", "locked", worktree]);
         yield* fixture.command(fixture.repo, ["worktree", "lock", worktree]);
         yield* fixture.fs.rename(worktree, `${replay}/moved`);
@@ -2804,8 +2804,8 @@ describe("storage cleanup reports and local file policies", () => {
       Effect.gen(function* () {
         yield* TestClock.setTime(NOW_MS);
         const fixture = yield* cleanupFixture();
-        const scratchRoot = `${fixture.config.baseDir}/scratch`;
-        const folder = `${scratchRoot}/quiet-otter`;
+        const scratchRoot = NodePath.join(fixture.config.baseDir, "scratch");
+        const folder = NodePath.join(scratchRoot, "quiet-otter");
         yield* fixture.fs.makeDirectory(folder, { recursive: true });
         yield* fixture.fs.writeFileString(`${folder}/notes.md`, "scratch\n");
         fixture.setProjectRoots([scratchRoot]);
@@ -2860,15 +2860,15 @@ describe("storage cleanup reports and local file policies", () => {
         Effect.gen(function* () {
           yield* TestClock.setTime(NOW_MS);
           const fixture = yield* cleanupFixture();
-          const scratchRoot = `${fixture.config.baseDir}/scratch`;
-          const folder = `${scratchRoot}/quiet-otter`;
+          const scratchRoot = NodePath.join(fixture.config.baseDir, "scratch");
+          const folder = NodePath.join(scratchRoot, "quiet-otter");
           yield* fixture.fs.makeDirectory(
             repository === undefined ? folder : `${folder}/${repository}`,
             { recursive: true },
           );
           yield* fixture.fs.writeFileString(`${folder}/notes.md`, "scratch\n");
           // No thread owns this one, so it is listed and never removed.
-          const leftover = `${scratchRoot}/leftover`;
+          const leftover = NodePath.join(scratchRoot, "leftover");
           yield* fixture.fs.makeDirectory(leftover);
           yield* fixture.fs.utimes(leftover, 1, 1);
           fixture.setProjectRoots([scratchRoot]);
@@ -3043,7 +3043,7 @@ describe("storage cleanup reports and local file policies", () => {
           );
           const report = yield* service.runNow;
           expect(report.entries[0]).toMatchObject({ outcome: "removed", bytes });
-          expect(statted.includes(`${nodeModules}/.pnpm/pkg@1.0.0/index.js`)).toBe(
+          expect(statted.includes(NodePath.join(nodeModules, ".pnpm/pkg@1.0.0/index.js"))).toBe(
             store !== "same-device",
           );
         }),

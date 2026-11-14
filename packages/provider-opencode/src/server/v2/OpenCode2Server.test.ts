@@ -416,6 +416,8 @@ describe("OpenCode2Server spawned server", () => {
       assert.equal(owned, 1);
       assert.strictEqual(reconnected.url, dedicated.url);
       assert.notEqual(dedicated.url, first.url);
+      // Without a lifetime the adapter bounds recovery, so a live but silent attempt server fails.
+      assert.strictEqual(dedicated.processExit, undefined);
       const later = yield* server
         .withConnection((connection) => Effect.succeed(connection))
         .pipe(Effect.provideService(OwnedProcess, attempt));

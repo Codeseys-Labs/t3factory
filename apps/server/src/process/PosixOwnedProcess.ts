@@ -9,7 +9,11 @@ import * as PlatformError from "effect/PlatformError";
 import * as Scope from "effect/Scope";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import { awaitConfirmedExit, revealCommandWord } from "@t3tools/shared/ownedProcess";
+import {
+  awaitConfirmedExit,
+  redactIfAnyRedacted,
+  revealCommandWord,
+} from "@t3tools/shared/ownedProcess";
 import {
   makeLinuxCgroupController,
   resolveLinuxCgroupTargetCommand,
@@ -112,14 +116,19 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
                   value === undefined ? undefined : revealCommandWord(value),
                 ]),
               );
-              const args = command.args.map(revealCommandWord);
               const invocation = command.options.shell
                 ? {
                     command:
                       typeof command.options.shell === "string" ? command.options.shell : "/bin/sh",
-                    args: ["-c", [command.command, ...args].join(" ")],
+                    args: [
+                      "-c",
+                      redactIfAnyRedacted(
+                        command.args,
+                        [command.command, ...command.args.map(revealCommandWord)].join(" "),
+                      ),
+                    ],
                   }
-                : { command: command.command, args };
+                : { command: command.command, args: command.args };
               const target = resolveLinuxCgroupTargetCommand(
                 invocation.command,
                 command.options.cwd ?? cwd,
@@ -144,7 +153,8 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
               while (command.options.additionalFds?.[`fd${readyFd}`] !== undefined) readyFd++;
               // Values keep their newlines, so a random line, not an empty one, ends the exports.
               const environmentEnd = `t3-env-end-${NodeCrypto.randomUUID().replaceAll("-", "")}`;
-              const wrapped = wrapCommandForLinuxCgroup(lease, target, invocation.args, {
+              // The wrapper only prepends words, so the target's own arguments are appended after it.
+              const wrapped = wrapCommandForLinuxCgroup(lease, target, [], {
                 beforeExec: [
                   `printf 'contained\\n' >&${readyFd} || exit 125`,
                   `exec ${readyFd}>&-`,
@@ -163,7 +173,7 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
               const acquired = yield* Effect.exit(
                 native
                   .spawn(
-                    ChildProcess.make(wrapped.command, wrapped.args, {
+                    ChildProcess.make(wrapped.command, [...wrapped.args, ...invocation.args], {
                       ...command.options,
                       env: {},
                       extendEnv: false,

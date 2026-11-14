@@ -245,12 +245,9 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
         return yield* Effect.uninterruptibleMask((restore) =>
           restore(lock.withPermit(acquireDedicated(attempt))).pipe(
             Effect.flatMap((entry) =>
-              restore(
-                use({
-                  ...entry.connection,
-                  processExit: entry.server.exitCode.pipe(Effect.asVoid),
-                }),
-              ).pipe(Effect.ensuring(lock.withPermit(releaseDedicated(attempt, entry)))),
+              restore(use(entry.connection)).pipe(
+                Effect.ensuring(lock.withPermit(releaseDedicated(attempt, entry))),
+              ),
             ),
           ),
         );

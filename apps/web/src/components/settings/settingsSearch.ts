@@ -729,6 +729,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["logs traces processes resource history failures spans cpu memory"],
   },
   {
+    id: "import-from-t3code",
+    title: "Import from T3 Code",
+    to: "/settings/maintenance",
+    searchTerms: ["migrate copy projects settings providers keys sync t3 code"],
+  },
+  {
     id: "open-source-licenses",
     title: "Open source licenses",
     to: "/settings/about",

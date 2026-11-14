@@ -199,6 +199,22 @@ For provider-specific setup and accounts, see [Codex](./providers-codex.md),
 [Antigravity](./providers-antigravity.md), [Pi](./providers-pi.md),
 [Muse Code](./providers-muse.md), and [fx](./providers-fx.md).
 
+## Bring your T3 Code setup to T3 Factory
+
+T3 Factory keeps its own data in `~/.t3factory`, so it runs beside T3 Code without touching
+it. To bring your T3 Code setup over, open **Settings → Maintenance → T3 Code** in T3 Factory
+and choose **Review import**. It lists what T3 Code on the same machine has and T3 Factory
+doesn't yet:
+
+- **Projects** whose folders still exist. A project you removed in T3 Factory stays removed.
+- **Settings**: provider setups (with their saved keys), default models and modes, branch and
+  pull request preferences, and each imported project's own settings.
+
+Import only adds what is missing. It never changes or removes anything T3 Factory already
+has, so you can run it again whenever you add something in T3 Code. Threads stay in T3 Code.
+Worktree locations, cleanup rules, remote access and device hosts are not imported; set them in
+each app.
+
 ## Next steps
 
 - [Working with threads](./thread-sidebar.md): start tasks and organize parallel work.

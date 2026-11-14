@@ -5,6 +5,7 @@ import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
+  AuthProvidersManageScope,
   AuthSettingsWriteScope,
   AuthSourceControlWriteScope,
   AuthTerminalOperateScope,
@@ -120,6 +121,9 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.peerLinksUnlink]: AuthAccessWriteScope,
   // A link lets every agent here reach the other environment: Settings' bar.
   [WS_METHODS.peerLinksAnswerRequest]: AuthAccessWriteScope,
+  // Reads another install's settings, keys and project list from this machine.
+  [WS_METHODS.serverPreviewT3CodeImport]: AuthSettingsWriteScope,
+  [WS_METHODS.serverImportFromT3Code]: AuthSettingsWriteScope,
 } as const;
 export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
 
@@ -140,6 +144,9 @@ export function clientRpcRequiredScopes(
     method === WS_METHODS.factoryReconcileDelivery
   )
     return [AuthOrchestrationOperateScope, AuthSourceControlWriteScope];
+  // Import adds projects, settings and provider setups, so it needs each of their scopes.
+  if (method === WS_METHODS.serverImportFromT3Code)
+    return [AuthSettingsWriteScope, AuthProvidersManageScope, AuthOrchestrationOperateScope];
   if (method === WS_METHODS.gitPreparePullRequestThread && input !== undefined) {
     const payload = decodePrepareThread(input);
     if (payload.mode === "worktree" && payload.threadId !== undefined)

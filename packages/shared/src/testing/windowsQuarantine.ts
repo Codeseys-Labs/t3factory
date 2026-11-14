@@ -18,8 +18,11 @@ const QuarantineEntries = Schema.Array(
   }),
 );
 
-const listPath = NodeURL.fileURLToPath(new URL("./windowsQuarantine.json", import.meta.url));
-const repoRoot = NodeURL.fileURLToPath(new URL("../../../../", import.meta.url));
+// No global `URL` here: a test file that runs in a DOM environment gets the emulator's `URL`,
+// which `fileURLToPath` rejects.
+const here = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
+const listPath = NodePath.join(here, "windowsQuarantine.json");
+const repoRoot = NodePath.resolve(here, "../../../..");
 
 const entries = Schema.decodeSync(Schema.fromJsonString(QuarantineEntries))(
   NodeFS.readFileSync(listPath, "utf8"),

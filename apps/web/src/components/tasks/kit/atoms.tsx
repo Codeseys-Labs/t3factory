@@ -6,7 +6,7 @@ import type {
   FactoryTaskStatus,
   FactoryTaskType,
 } from "@t3tools/contracts";
-import { CircleDashedIcon, FolderIcon, LockIcon, SparklesIcon, UserIcon } from "lucide-react";
+import { BotIcon, CircleDashedIcon, FolderIcon, LockIcon, UserIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
 import { Badge } from "../../ui/badge";
@@ -174,7 +174,7 @@ export function AssigneeChip({
     assignee.kind === "agent" ? (
       <Monogram text={assignee.mono} />
     ) : assignee.kind === "auto" ? (
-      <SparklesIcon aria-hidden className="size-3.5 shrink-0 text-primary" />
+      <BotIcon aria-hidden className="size-3.5 shrink-0 text-primary" />
     ) : assignee.kind === "person" ? (
       <UserIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
     ) : (

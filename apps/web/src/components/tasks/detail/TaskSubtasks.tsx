@@ -6,7 +6,7 @@ import type {
   FactoryTaskSummary,
 } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
-import { CircleIcon, LockIcon, SparklesIcon } from "lucide-react";
+import { CircleIcon, ListTreeIcon, LockIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
 import { factoryTasks, useFactoryAgentProfiles } from "../../../state/factoryTasks";
@@ -70,7 +70,7 @@ export function TaskSubtasks({ detail }: { detail: FactoryTaskDetail }) {
             onClick={entries.breakDown.onClick}
             disabled={entries.breakDown.disabled}
           >
-            <SparklesIcon aria-hidden className="size-3.5" />
+            <ListTreeIcon aria-hidden className="size-3.5" />
             {entries.breakDown.label}
           </InlineButton>
         </p>

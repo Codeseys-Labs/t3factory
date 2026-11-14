@@ -15,10 +15,14 @@ pnpm mcp-tool-use --provider openrouter --model openai/gpt-6.1-sol --case work-p
 
 - `ANTHROPIC_API_KEY` in the repo root `.env` pays for Claude models and the Haiku shell simulator.
 - Codex models (`gpt-*` in `MODELS` in `run.ts`) go through a CLIProxyAPI server, set up as the `vibeproxy` model provider in `~/.codex/config.toml`. Keep the proxy under about 12 samples in flight across all runs.
+- Budget models also use the existing paths: `--model claude-haiku-5-5` for Claude replay, and `--model gpt-6-luna` or `gpt-6.1-terra` for Codex capture replay through CLIProxyAPI. The configured account/proxy must support the selected model; an evaluator model id does not establish entitlement or native-agent qualification. No product provider entry or credential requirement is added.
 - `--shell-model` picks the model that plays the shell: `claude-haiku-5-5` by default, or `gpt-6.1-terra` / `gpt-6-luna` through the same proxy, so Codex runs need no Anthropic key. Prefer Terra: Luna often contradicts the case's world (it calls named checkouts missing or files empty). Compare runs only when they used the same shell model.
+- `--provider openrouter` uses only `OPENROUTER_API_KEY`, for both the agent and shell simulator, through OpenRouter's [Messages endpoint](https://openrouter.ai/docs/api/api-reference/anthropic-messages/create-messages). Pass the exact catalog id with `--model publisher/model`; `--shell-model` defaults to `anthropic/claude-haiku-5.5` and accepts another qualified id. Before paid calls, the runner checks both ids against the live public catalog and requires tool support for the agent. An unsupported model or request fails without substitution. Catalog tool support does not prove support for every Messages feature.
+- Every OpenRouter model replays the same Claude capture and local ToolSearch/tool-reference pipeline, including OpenAI models. These are comparisons within a Claude capture replay, not evidence of each model's native harness behavior. Results record provider, requested agent and shell models, returned models in usage, harness, template, source commit, and effort. Use the same ids, template, cases, samples, and effort on both source versions for a paired comparison.
 - Flags: `--case <ids>`, `--cases <file.ndjson>`, `--samples <n>` (default 2, and a 3rd when the first 2 disagree), `--concurrency <n>` (samples in flight, default 8), `--max-steps <n>`, `--effort <level>`, `--dry-run` (prints request bodies, no model calls), and `--context` (prints the size of T3's text and schemas, no key needed).
 - `--baseline <results.jsonl> --stop-on-regression` stops as soon as a case that passed every baseline sample fails. Use it to test one copy change against a baseline run.
 - Cost: a full run of all cases at 3 samples cost $25 on Sonnet and $45 on Opus on 2026-11-10. The 16 device cases at 3 samples each cost about $5.70–5.90 on Opus and $2.90–3.40 on Sonnet (main's text–#25661), including the Haiku shell simulator; dry runs cost $0. Results record token costs for the agent and shell simulator. Codex proxy charges are outside that total; only its shell simulator is priced here, about $0.60–0.70 for the device cases.
+- OpenRouter summaries use `usage.cost` when the API reports it, with the fraction of responses carrying cost for agent and shell separately. Missing charges are unknown; a partial reported sum is not the total run cost. Direct Claude prices above are never applied to OpenRouter. The OpenRouter dashboard remains the billing record.
 - A rate limit or overload (429, 529 or another 5xx) is retried with backoff for up to about 4 minutes. A sample that still fails gets an `error` in `results.jsonl`, is left out of every pass rate, and is listed in the summary; the tokens it spent still count toward the cost.
 - Invalid, stalled or time-limited Codex code cells return a tool error inside the sample. The model can recover within its step budget; unfinished work remains graded. Fixture and provider failures still abort. Codex proxy summaries record returned model IDs when supplied; missing identity remains unverified.
 
@@ -30,7 +34,39 @@ Cases are JSON lines in `cases/`, one file per area. The case schema in `run.ts`
 - `experience`: the real mistake, in a sentence. `source`: where it happened.
 - `setup`: the fake thread, its `world` (repo, branch, files, PRs, pages), `priorTurns`, and `mocks` for tool results. With `world.backgroundTasks`, `t3_background_wait` answers from T3's own handler and ThreadManagementService, so its result and errors are the checkout's; a prior wait with `"result": "default"` gets that result too.
 - `setup.priorTurns[].toolCalls[].resultFile`: load a repository-relative file as the tool result instead of copying its contents into the case. An empty `prompt` resumes a top-level thread after its last prior tool result without adding a user message. Side-chat and subagent setups require a nonempty prompt.
-- `expect`: the checks, such as `calls`, `callsMustNot`, `maxCalls`, `order`, `shellMust`, `textMust`, `finalTextMust` (the last text, once the turn ended), and `linked`. A call's `args` match partially: `~text` is a case-insensitive substring, `"<=N"` / `">=N"` bound a number, `null` matches a missing key, and keys may be dotted paths. Device cases also use `device` to check every child brief, forbid raw UI commands, bound failed device actions per user turn, and require artifact paths in completed final answers. Secrets cases use `secret` (see [Secrets cases](#secrets-cases)).
+- `expect`: the checks, such as `calls`, `callsMustNot`, `maxCalls`, `order`, `orderedCalls`, `shellMust`, `textMust`, `finalTextMust` (the last text, once the turn ended), and `linked`. A call's `args` match partially: `~text` is a case-insensitive substring, `"<=N"` / `">=N"` bound a number, `null` matches a missing key, and keys may be dotted paths. Device cases also use `device` to check every child brief, forbid raw UI commands, bound failed device actions per user turn, and require artifact paths in completed final answers. Secrets cases use `secret` (see [Secrets cases](#secrets-cases)).
+
+Use `expect.finalTextMust` and `finalTextMustNot` for conclusions that must appear in the completed answer. Both require `end_turn` and a final answer; interim planning text and truncated answers earn no credit. These regexes are not early-stop checks. `finalTextMust` passes when a pattern matches the raw answer or the answer with link URLs and bold/code delimiters stripped; `finalTextMustNot` reads only the stripped answer. They are wording heuristics, not semantic judges: independently review sampled answers before using scores to choose a model. The factory cases' completed-answer bans are written around explicit negation, so `not ready`, `not accepted` and `cannot establish that it has no blockers` keep passing. Negation does not carry across a contrast clause boundary (`but`, `however`, a comma), so `readiness is unknown, but the issue has no blockers` and `readiness is unknown, but the issue Work is ready and accepted` fail while a same-clause `cannot establish that it has no blockers` still passes; the unadmitted-blocker ban adds the explicit affirmative `has a/the retained root` after `but`/`however`, keeping `#4 is not admitted here and has no retained root` passing. The denied case stays predicate-local: `No Work was listed, inspected` passes while `no retained Work exists` and `the environment has no Work` fail. Every ban grades only the phrasings it lists — an `and`-joined contradiction, `yet` as the contrast, or a paraphrase outside the list passes ungraded, and the paging completeness check accepts its listed keywords or an explicit `nextCursor`-null/listing-ended phrase. They stay bounded regexes, not semantic guarantees.
+
+`expect.calls` matches partially by default. An entry may set `exactArgs: true` to require the call's complete input object to equal the entry's `args`, reading an omitted input as `{}`; the default partial matching is unchanged. `expect.orderedCalls` takes the same entries in a required order: each entry must match a run call whose `step` strictly increases through the list, so a guessed reference used before its discovery earns no credit. `expect.order` (first calls of these tools) is unchanged.
+
+For tools whose result depends on the requested subject, use `setup.mockResponses` instead of a static `mocks` payload:
+
+```json
+{
+  "mockResponses": {
+    "factory_read_work_prerequisites": [
+      {
+        "args": {
+          "ref": {
+            "version": 1,
+            "environmentId": "env-acme",
+            "kind": "brief",
+            "id": "brief-pricing"
+          }
+        },
+        "result": {
+          "status": "not-modeled",
+          "kind": "brief",
+          "fetchedAt": "2026-11-02T12:00:00.000Z"
+        }
+      }
+    ]
+  }
+}
+```
+
+Selectors use the same partial argument matching as `expect.calls`, including dotted paths, unless the row sets `exactArgs: true`: then the call's complete input object must equal the row's `args`, with an omitted input read as `{}`. Include every identity field when matching a Work ref. Exactly one row must match. Unmatched arguments return an eval error and fail the graded sample, so wrong model references remain in the pass-rate denominator. Ambiguous matches abort as fixture errors and stay outside pass rates. Neither falls back to `mocks`, a default tool result, or the shell simulator. Tools without a response table keep the existing static-mock behavior. Matching rows are reusable, not a call sequence.
 
 Check that the case builds with `--dry-run --case <id>`. Then run it on the text before your fix, where it must fail, and on the text after, where it must pass.
 

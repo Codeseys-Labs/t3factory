@@ -9,6 +9,14 @@ import {
   AuthSessionId,
   AuthSourceControlWriteScope,
   EnvironmentId,
+  CommandId,
+  FactoryFeedError,
+  FactoryResearchError,
+  FactoryResearchProtocolId,
+  FactoryIssueError,
+  FactoryReadinessOverrideId,
+  FactoryFeedSourceId,
+  type EnvironmentAuthorizationError,
   EventId,
   GitManagerError,
   MessageId,
@@ -155,6 +163,7 @@ import * as TriageService from "./triage/TriageService.ts";
 import * as TextGenerators from "./textGeneration/TextGenerators.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
+import * as FactoryExecutionStore from "./persistence/FactoryExecutionStore.ts";
 import * as SecretCheck from "./secrets/SecretCheck.ts";
 import * as ServerConfigModule from "./config.ts";
 import * as Keybindings from "./keybindings.ts";
@@ -816,6 +825,7 @@ it.effect("shell snapshots omit idle children and older settled threads only on 
 const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(DocumentText.DocumentText)({}),
   Layer.mock(ServerSecretStore.ServerSecretStore)({}),
+  Layer.mock(FactoryExecutionStore.FactoryExecutionStore)({}),
   Layer.mock(SecretCheck.SecretCheck)({}),
   Layer.mock(WorkspacePaths.WorkspacePaths)({}),
   Layer.mock(TraceDiagnostics.TraceDiagnostics)({}),
@@ -1292,6 +1302,7 @@ it.effect("access changes made while the snapshot loads reach the client after i
         Layer.fresh(layerConfigSources),
         Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
         Layer.mock(ServerBrowser.ServerBrowser)({}),
+        Layer.mock(ProjectCoordinatorService.ProjectCoordinatorService)({}),
       ),
     ),
   ),
@@ -1818,6 +1829,7 @@ it.effect("a missing thread worktree gets its project's skills in the cwd snapsh
         Layer.fresh(layerConfigSources),
         Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
         Layer.mock(ServerBrowser.ServerBrowser)({}),
+        Layer.mock(ProjectCoordinatorService.ProjectCoordinatorService)({}),
       ),
     ),
   ),
@@ -1891,6 +1903,7 @@ it.effect("a git action that fails partway still refreshes the repository status
         Layer.fresh(layerConfigSources),
         Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
         Layer.mock(ServerBrowser.ServerBrowser)({}),
+        Layer.mock(ProjectCoordinatorService.ProjectCoordinatorService)({}),
       ),
     ),
   ),
@@ -1978,6 +1991,7 @@ it.effect("a publish whose push fails still refreshes the new remote", () =>
         Layer.fresh(layerConfigSources),
         Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
         Layer.mock(ServerBrowser.ServerBrowser)({}),
+        Layer.mock(ProjectCoordinatorService.ProjectCoordinatorService)({}),
       ),
     ),
   ),
@@ -2481,6 +2495,7 @@ it.effect("ACP session RPCs list a thread missing its history and repair it on i
         EventSink.layer.pipe(Layer.provideMerge(acpStores)),
         Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
         Layer.mock(ServerBrowser.ServerBrowser)({}),
+        Layer.mock(ProjectCoordinatorService.ProjectCoordinatorService)({}),
       ),
     ),
   ),
@@ -2548,6 +2563,8 @@ it.effect("routes all eight feed RPCs to the service without translating domain 
             },
             {},
             yield* ServerBrowser.ServerBrowser,
+            () => Effect.void,
+            { secretReferences: true },
           ).pipe(Layer.provide(services)),
           RpcAuthorization.layer([
             "orchestration:read",
@@ -2672,6 +2689,8 @@ it.effect(
               },
               {},
               yield* ServerBrowser.ServerBrowser,
+              () => Effect.void,
+              { secretReferences: true },
             ).pipe(Layer.provide(services)),
             RpcAuthorization.layer(["orchestration:read", "orchestration:operate"]),
           ),
@@ -2781,6 +2800,8 @@ it.effect("routes research RPCs with trusted client attribution and domain refus
             },
             {},
             yield* ServerBrowser.ServerBrowser,
+            () => Effect.void,
+            { secretReferences: true },
           ).pipe(Layer.provide(services)),
           RpcAuthorization.layer([
             "orchestration:read",
@@ -2883,6 +2904,8 @@ it.effect("routes read-only claims and preserves domain refusals", () =>
             },
             {},
             yield* ServerBrowser.ServerBrowser,
+            () => Effect.void,
+            { secretReferences: true },
           ).pipe(Layer.provide(services)),
           RpcAuthorization.layer(["orchestration:read"]),
         ),

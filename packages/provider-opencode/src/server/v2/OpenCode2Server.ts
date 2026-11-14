@@ -1,3 +1,4 @@
+import { OwnedProcess, type OwnedProcessSpawner } from "@t3tools/shared/ownedProcess";
 import { resolveProviderProbeTimeoutMs } from "@t3tools/provider-core/server/snapshotProbe";
 // One OpenCode 2 process serves all directories; share it across instance threads.
 import type { OpenCodeClient } from "@opencode/client/effect";
@@ -128,7 +129,7 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
   const opencode = yield* OpenCode2Client.OpenCode2Client;
   const runtime = yield* OpenCodeRuntime.OpenCodeRuntime;
   const providerScope = yield* Scope.Scope;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const connectTo = Effect.fn("OpenCode2Server.connectTo")(function* (
     url: string,
     password: Redacted.Redacted,
@@ -162,7 +163,7 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
     });
   }
 
-  const password = yield* generatePassword.pipe(Effect.provideService(Crypto.Crypto, crypto));
+  const password = yield* generatePassword;
   const owner = yield* OpenCodeServerOwner.make({
     binaryPath: input.binaryPath,
     directory: input.directory,
@@ -192,7 +193,7 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
     }
     const scope = yield* Scope.fork(providerScope);
     const dedicatedPassword = yield* generatePassword.pipe(
-      Effect.provideService(Crypto.Crypto, crypto),
+      Effect.provideService(SecureRandom.SecureRandom, random),
     );
     let connection: OpenCode2Connection | undefined;
     const server = yield* runtime
@@ -244,9 +245,12 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
         return yield* Effect.uninterruptibleMask((restore) =>
           restore(lock.withPermit(acquireDedicated(attempt))).pipe(
             Effect.flatMap((entry) =>
-              restore(use(entry.connection)).pipe(
-                Effect.ensuring(lock.withPermit(releaseDedicated(attempt, entry))),
-              ),
+              restore(
+                use({
+                  ...entry.connection,
+                  processExit: entry.server.exitCode.pipe(Effect.asVoid),
+                }),
+              ).pipe(Effect.ensuring(lock.withPermit(releaseDedicated(attempt, entry)))),
             ),
           ),
         );

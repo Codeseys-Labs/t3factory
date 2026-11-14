@@ -25,6 +25,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
@@ -394,6 +395,7 @@ it.effect.each(storageCases)(
         Effect.provide(
           Layer.merge(ProviderTurnControlService.layer, RuntimeRequestService.layer).pipe(
             Layer.provide(Layer.merge(layerSessions, layerEvents)),
+            Layer.provide(FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle),
           ),
         ),
       );

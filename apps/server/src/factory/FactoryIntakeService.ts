@@ -33,7 +33,8 @@ import {
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -270,7 +271,8 @@ const make = Effect.gen(function* () {
   const issues = yield* Issues.FactoryIssueService;
   const feeds = yield* Feeds.FactoryFeedService;
   const projects = yield* Projects.ProjectService;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
+  const digester = yield* Digest.Digest;
   const environmentId = yield* (yield* ServerEnvironmentIdentity).getEnvironmentId;
   const changesPubSub = yield* PubSub.unbounded<FactoryIntakeChange>();
   // One writer at a time keeps read-check-write sequences (versions, receipts, rule firing) atomic.
@@ -284,13 +286,13 @@ const make = Effect.gen(function* () {
       ? PubSub.publish(changesPubSub, { environmentId, ...flags }).pipe(Effect.asVoid)
       : Effect.void;
   const newId = (prefix: string) =>
-    crypto.randomUUIDv4().pipe(
+    random.uuidV4().pipe(
       Effect.map((uuid) => `${prefix}:${uuid}`),
       Effect.orDie,
     );
   const digestOf = (operation: CommandOperation, payload: string) =>
-    crypto
-      .digest("SHA-256", new TextEncoder().encode(`${operation}\n${payload}`))
+    digester
+      .digest(Digest.sha256, new TextEncoder().encode(`${operation}\n${payload}`))
       .pipe(Effect.map(Hex.encode), Effect.orDie);
   const replayOf = Effect.fn("FactoryIntakeService.replayOf")(function* (
     commandId: CommandId,
@@ -422,8 +424,8 @@ const make = Effect.gen(function* () {
       // A periodic check never revives a feed the host told us to stop reading.
       if (feed !== undefined && feed.status === "suspended" && !options.rebind) return failed;
       if (feed === undefined || feed.status === "suspended") {
-        const bindingKey = yield* crypto
-          .digest("SHA-256", new TextEncoder().encode(url))
+        const bindingKey = yield* digester
+          .digest(Digest.sha256, new TextEncoder().encode(url))
           .pipe(Effect.map(Hex.encode), Effect.orDie);
         feed = (yield* feeds.bindSource({
           commandId: CommandId.make(`factory-intake:${source.id}:${bindingKey}`),

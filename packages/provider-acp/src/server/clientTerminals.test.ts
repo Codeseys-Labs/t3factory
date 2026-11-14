@@ -133,23 +133,26 @@ describe("AcpClientTerminals", () => {
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
-  it.live("runs Devin shell source with arguments, pipes, and session fallback variables", () =>
-    Effect.gen(function* () {
-      const terminals = yield* makeAcpClientTerminals({
-        defaultCwd: process.cwd(),
-        shellCommands: true,
-        environmentForSession: () => ({ T3_ACP_MCP_NODE: "mailbox-probe" }),
-      });
-      yield* Effect.addFinalizer(() => terminals.disposeAll);
-      const terminal = yield* terminals.create({
-        sessionId: "devin",
-        command: 'printf "%s\\n" "$T3_ACP_MCP_NODE" | tr a-z A-Z',
-      });
-      const exit = yield* terminals.waitForExit({ sessionId: "devin", ...terminal });
-      const output = yield* terminals.output({ sessionId: "devin", ...terminal });
-      expect(exit.exitCode).toBe(0);
-      expect(output.output.trim()).toBe("MAILBOX-PROBE");
-    }).pipe(Effect.provide(NodeServices.layer)),
+  // POSIX shell source; Windows runs shell commands through cmd.exe, which keeps $VAR literal.
+  it.live.skipIf(HostProcess.Platform.defaultValue() === "win32")(
+    "runs Devin shell source with arguments, pipes, and session fallback variables",
+    () =>
+      Effect.gen(function* () {
+        const terminals = yield* makeAcpClientTerminals({
+          defaultCwd: process.cwd(),
+          shellCommands: true,
+          environmentForSession: () => ({ T3_ACP_MCP_NODE: "mailbox-probe" }),
+        });
+        yield* Effect.addFinalizer(() => terminals.disposeAll);
+        const terminal = yield* terminals.create({
+          sessionId: "devin",
+          command: 'printf "%s\\n" "$T3_ACP_MCP_NODE" | tr a-z A-Z',
+        });
+        const exit = yield* terminals.waitForExit({ sessionId: "devin", ...terminal });
+        const output = yield* terminals.output({ sessionId: "devin", ...terminal });
+        expect(exit.exitCode).toBe(0);
+        expect(output.output.trim()).toBe("MAILBOX-PROBE");
+      }).pipe(Effect.provide(NodeServices.layer)),
   );
 
   it.live.each([

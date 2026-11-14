@@ -52,6 +52,7 @@ import * as Orchestrator from "./Orchestrator.ts";
 import { continueRestartedRun } from "./RestartContinuation.ts";
 import * as RuntimeLayer from "./runtimeLayer.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
+import * as RuntimeLayerTestkit from "./testkit/RuntimeLayerTestkit.ts";
 import { limitRecoveryCommand } from "./UsageLimitRecoveryWorker.ts";
 import * as ProviderTurnStartServiceTestkit from "./ProviderTurnStartService.testkit.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -123,6 +124,7 @@ const layerTest = Layer.mergeAll(
   RuntimeLayerTestkit.layer,
   RuntimeLayer.layerEventSink,
   ThreadCommandExecutor.layer,
+  FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
   EffectOutbox.layer,
 ).pipe(
   Layer.provideMerge(RuntimeLayer.layerProjectService),

@@ -22,6 +22,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
@@ -259,6 +260,9 @@ const makeHarness = Effect.fn("FactoryTaskPlanningTest.makeHarness")(function* (
     Planning.layer.pipe(Layer.provide(dependencies), Layer.provide(Layer.succeedContext(context))),
   );
   const service = Context.get(serviceContext, Planning.FactoryTaskPlanningService);
+  const encodeProposeSubtasks = Schema.encodeEffect(
+    Schema.toCodecJson(Planning.ProposeSubtasksInput),
+  );
   const tool = Effect.fn("FactoryTaskPlanningTest.tool")(function* (
     input: typeof Planning.ProposeSubtasksInput.Type,
     threadId: ThreadId,
@@ -283,7 +287,7 @@ const makeHarness = Effect.fn("FactoryTaskPlanningTest.makeHarness")(function* (
       Effect.provide(Access.HandlersLayer.layer(Handlers.layer).pipe(Layer.provide(deps))),
     );
     return yield* toolkit
-      .handle("factory_propose_subtasks", input)
+      .handle("factory_propose_subtasks", yield* encodeProposeSubtasks(input))
       .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(deps));
   });
   return {

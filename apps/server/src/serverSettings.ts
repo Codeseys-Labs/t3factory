@@ -990,20 +990,19 @@ const make = Effect.gen(function* () {
     secretWriteGeneration++;
     materialized = null;
   });
-  const getMaterializedSettings = getSettingsFromCache.pipe(
-    Effect.flatMap((source) => {
-      if (materialized?.source === source) return Effect.succeed(materialized.value);
-      const generation = secretWriteGeneration;
-      return materializeSettingsSecrets(source).pipe(
-        Effect.map(toEffective),
-        Effect.tap((value) =>
-          Effect.sync(() => {
-            if (generation === secretWriteGeneration) materialized = { source, value };
-          }),
-        ),
-      );
-    }),
-  );
+  const materializeSource = (source: ServerSettings) => {
+    if (materialized?.source === source) return Effect.succeed(materialized.value);
+    const generation = secretWriteGeneration;
+    return materializeSettingsSecrets(source).pipe(
+      Effect.map(toEffective),
+      Effect.tap((value) =>
+        Effect.sync(() => {
+          if (generation === secretWriteGeneration) materialized = { source, value };
+        }),
+      ),
+    );
+  };
+  const getMaterializedSettings = getSettingsFromCache.pipe(Effect.flatMap(materializeSource));
 
   const materializeChanges = (changes: Stream.Stream<ServerSettings>) =>
     changes.pipe(

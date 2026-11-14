@@ -119,8 +119,39 @@ const PRICES = {
 type PricedModel = keyof typeof PRICES;
 /** GPT models that can play the shell through CLIProxyAPI, when no Anthropic key is at hand. */
 const PROXY_SHELL_MODELS = ["gpt-6-luna", "gpt-6.1-terra"] as const;
-type ShellModel = PricedModel | (typeof PROXY_SHELL_MODELS)[number];
-const isPricedModel = (model: ShellModel): model is PricedModel => model in PRICES;
+const isProxyShellModel = (model: string) =>
+  (PROXY_SHELL_MODELS as ReadonlyArray<string>).includes(model);
+const isPricedModel = (model: string): model is PricedModel => Object.hasOwn(PRICES, model);
+type EvalProvider = "direct" | "openrouter";
+type Proxy = { readonly url: string; readonly headers: Readonly<Record<string, string>> };
+/** OpenRouter uses the same Messages replay for every model, including the shell simulator. */
+export const openRouterProxy = (apiKey: string): Proxy => ({
+  url: "https://openrouter.ai/api/v1",
+  headers: { Authorization: `Bearer ${apiKey}` },
+});
+
+export const evalModels = (provider: EvalProvider, model?: string, shellModel?: string) => {
+  if (provider === "openrouter") {
+    const qualified = (id: string) => /^[\w-]+\/[^\s/]+$/.test(id);
+    if (!model || !qualified(model))
+      throw new Error("--provider openrouter needs a fully qualified --model (publisher/model).");
+    const shell = shellModel ?? "anthropic/claude-haiku-5.5";
+    if (!qualified(shell)) throw new Error("OpenRouter --shell-model must be publisher/model.");
+    return { model, shellModel: shell };
+  }
+  const agent = model ?? "claude-sonnet-5-5";
+  const shell = shellModel ?? "claude-haiku-5-5";
+  if (!Object.hasOwn(MODELS, agent)) throw new Error(`Unknown direct model: ${agent}`);
+  if (!isPricedModel(shell) && !isProxyShellModel(shell))
+    throw new Error(`Unknown direct shell model: ${shell}`);
+  return { model: agent, shellModel: shell };
+};
+
+export const redactModelError = (message: string, secrets: ReadonlyArray<string>) =>
+  secrets
+    .flatMap((value) => [value, value.replace(/^Bearer /i, "")])
+    .filter(Boolean)
+    .reduce((redacted, value) => redacted.replaceAll(value, "[redacted]"), message);
 const T3_PREFIX = "mcp__t3-code__";
 const RUNTIME_MARKER = "<runtime_info>";
 const TOOL_LOADED = "Tool loaded.";
@@ -131,6 +162,14 @@ class EvalToolCallError extends Schema.TaggedError<EvalToolCallError>()("EvalToo
 }) {
   override get message(): string {
     return `The ${this.tool} tool call failed.`;
+  }
+}
+
+class EvalModelError extends Schema.TaggedError<EvalModelError>()("EvalModelError", {
+  cause: Schema.Defect(),
+}) {
+  override get message(): string {
+    return this.cause instanceof Error ? this.cause.message : String(this.cause);
   }
 }
 const DEFERRED_LIST =
@@ -190,8 +229,9 @@ const PriorToolCall = Schema.Struct({
 });
 
 /**
- * One expected call. `args` match partially: `~text` is a case-insensitive substring,
- * `"<=N"` / `">=N"` bound a number, `null` matches a missing key, and keys may be dotted paths.
+ * One expected call. Unless `exactArgs` is true, `args` match partially: `~text` is a
+ * case-insensitive substring, `"<=N"` / `">=N"` bound a number, `null` matches a missing key,
+ * and keys may be dotted paths.
  */
 const McpToolUseCall = Schema.Struct({
   tool: Schema.String,
@@ -204,6 +244,7 @@ type McpToolUseCall = typeof McpToolUseCall.Type;
 const McpToolUseExpect = Schema.Struct({
   /** Each entry needs one matching call. */
   calls: Schema.optional(Schema.Array(McpToolUseCall)),
+  taskPlanning: Schema.optional(Schema.Boolean),
   /** Each entry matches a different call, and no call matches two entries; tool names are exact. */
   distinctCalls: Schema.optional(Schema.Array(McpToolUseCall)),
   /** No call may match any entry. */
@@ -232,8 +273,13 @@ const McpToolUseExpect = Schema.Struct({
   /** Case-sensitive regexes on the agent's visible text. */
   textMust: Schema.optional(Schema.Array(Schema.String)),
   textMustNot: Schema.optional(Schema.Array(Schema.String)),
-  /** Case-sensitive regexes on the final answer: the last response's text, once the turn ended. */
+  /**
+   * Regexes on the final answer: the last response's text, once the turn ended. Each passes on
+   * the raw text or on it with link URLs and bold/code delimiters stripped.
+   */
   finalTextMust: Schema.optional(Schema.Array(Schema.String)),
+  /** Regexes the final answer, with link URLs and bold/code delimiters stripped, must not match. */
+  finalTextMustNot: Schema.optional(Schema.Array(Schema.String)),
   /** Each entry matches a PR URL linked at the end, as `args` values match. */
   linked: Schema.optional(Schema.Array(Schema.String)),
   /** The PR numbers linked at the end, exactly. */
@@ -495,7 +541,25 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
   DeviceToolkit,
   HtmlToolkit,
   MessageToolkit,
-].flatMap((toolkit): ReadonlyArray<Tool.Any> => Object.values(toolkit.tools));
+]
+  .flatMap((toolkit): ReadonlyArray<Tool.Any> => Object.values(toolkit.tools))
+  .concat(
+    Object.values(FactoryToolkit.tools).filter((tool) =>
+      [
+        "factory_get_orchestrator",
+        "factory_start_orchestrator",
+        "factory_assign_orchestrator",
+        "factory_list_work",
+        "factory_read_work_prerequisites",
+        "factory_read_issue_readiness",
+        "factory_list_plans",
+        "factory_read_plan",
+        "factory_read_plan_history",
+        "factory_apply_plan",
+        "factory_propose_subtasks",
+      ].includes(tool.name),
+    ),
+  );
 // McpHttpServer decodes arguments with each tool's JSON codec, which drops undeclared keys.
 const t3InputDecoders = new Map(
   t3SourceTools.map((tool) => [
@@ -696,7 +760,8 @@ export const buildBase = (
   const append = options.nativeSubagent
     ? ""
     : t3SystemAppend(model, options.deviceAccess, options.browserAccess);
-  const modelLine = `You are powered by the model named ${MODELS[model]}. The exact model ID is ${model}.`;
+  const name = Object.hasOwn(MODELS, model) ? MODELS[model as keyof typeof MODELS] : model;
+  const modelLine = `You are powered by the model named ${name}. The exact model ID is ${model}.`;
   const joined = systemTexts.join("\n");
   // The capture's home directory names its user. Cases use `/home/user` paths instead.
   const cwd = /Primary working directory: (\S+)/.exec(joined)?.[1] ?? "/home/user/app";
@@ -1623,7 +1688,7 @@ type Config = {
   readonly proxy?: Proxy;
   readonly effort: string;
   readonly maxSteps: number;
-  readonly shellModel: ShellModel;
+  readonly shellModel: string;
 };
 
 /**
@@ -1645,9 +1710,9 @@ const simulate = Effect.fn("evaluateMcpToolUse.simulate")(function* (
   let output = typeof command === "string" ? cannedOutput(sample, command) : undefined;
   if (output === undefined) {
     const body = shellRequest(sample, call, config.shellModel);
-    const response = isPricedModel(config.shellModel)
-      ? yield* callModel(config.apiKey, body, config.apiKey ? undefined : config.proxy)
-      : yield* callCodex(config, shellResponsesRequest(body));
+    const response = isProxyShellModel(config.shellModel)
+      ? yield* callCodex(config, shellResponsesRequest(body))
+      : yield* callModel(config.apiKey, body, config.apiKey ? undefined : config.proxy);
     addUsage(sample.shellUsage, response.usage);
     recordModel(sample.shellUsage, response.model);
     output = shellOutput(response.content);
@@ -1704,7 +1769,22 @@ export const answerToolCall = Effect.fn("evaluateMcpToolUse.answerToolCall")(fun
   if (isPageTool(name) && typeof input.path === "string" && !input.path.startsWith("/")) {
     return failed(`${input.path} is not a readable HTML document. Pass an absolute path.`);
   }
-  const mock = nextMock(sample, name, testCase.setup.mocks?.[name]);
+  const responses = testCase.setup.mockResponses?.[name];
+  const selected = responses?.filter((response) =>
+    matchesArgs(response, response.exactArgs ? call.input : input),
+  );
+  if (selected?.length === 0)
+    return failed(`EvalFixtureMismatch: no response for ${name} ${valueText(input)}.`);
+  if (selected !== undefined && selected.length !== 1)
+    return yield* Effect.die(
+      new Error(
+        `Expected one mock response for ${name} ${valueText(input)}; matched ${selected.length}.`,
+      ),
+    );
+  const mock =
+    selected === undefined
+      ? nextMock(sample, name, testCase.setup.mocks?.[name])
+      : selected[0]!.result;
   if (isT3Name(call.name) && PREVIEW_TOOLS.has(name)) {
     if (testCase.setup.world?.browserAgentAccess === false)
       return failed(
@@ -1790,6 +1870,14 @@ const matches = (expected: unknown, actual: unknown): boolean => {
       .reduce<unknown>((value, key) => (isRecord(value) ? value[key] : undefined), actual);
   return Object.entries(expected).every(([path, value]) => matches(value, at(path)));
 };
+
+const matchesArgs = (
+  { args = {}, exactArgs }: Pick<McpToolUseCall, "args" | "exactArgs">,
+  input: unknown,
+) =>
+  exactArgs
+    ? NodeUtil.isDeepStrictEqual(args, input === undefined ? {} : input)
+    : matches(args, input);
 
 /** Each new top-level thread request in a run; a failed call created nothing. */
 const newThreadRequests = (calls: ReadonlyArray<Call>) =>
@@ -1878,11 +1966,21 @@ export const gradeSample = (
 ) => {
   const checks: Array<{ readonly check: string; readonly pass: boolean }> = [];
   const add = (check: string, pass: boolean) => checks.push({ check, pass });
+  if (expect.taskPlanning)
+    add(
+      "usablePlanningSubmission",
+      run.calls.some(
+        (call) => call.tool === "factory_propose_subtasks" && usablePlanningSubmission(call.input),
+      ),
+    );
+  if (run.calls.some((call) => call.failed && call.output?.startsWith("EvalFixtureMismatch:")))
+    add("fixtureArguments", false);
   const written = scriptsBefore(run.calls, true);
   // A refused page call showed nothing, so it neither previews nor renders, and no file stands in
   // for its page. Inline HTML it sent still counts against callsMustNot.
   const attempted = run.calls.map((call, index) => ({
     ...call,
+    rawInput: call.input,
     input: withPage(
       call.tool,
       withOptionsObject(call.input),
@@ -1893,8 +1991,11 @@ export const gradeSample = (
   // `tool` may list alternatives, as in "link_pull_request|watch_pull_request"; counts add up.
   const count = (tool: string) =>
     calls.filter((call) => tool.split("|").includes(call.tool)).length;
-  const found = ({ tool, args = {} }: McpToolUseCall, among = calls) =>
-    among.some((call) => tool.split("|").includes(call.tool) && matches(args, call.input));
+  const matchesCall = (expected: McpToolUseCall, call: (typeof calls)[number]) =>
+    expected.tool.split("|").includes(call.tool) &&
+    matchesArgs(expected, expected.exactArgs ? call.rawInput : call.input);
+  const found = (expected: McpToolUseCall, among = calls) =>
+    among.some((call) => matchesCall(expected, call));
   const label = ({ tool, args }: McpToolUseCall) => (args ? `${tool} ${valueText(args)}` : tool);
   for (const call of expect.calls ?? []) add(`calls ${label(call)}`, found(call));
   if (expect.distinctCalls !== undefined) {
@@ -1980,8 +2081,14 @@ export const gradeSample = (
     );
   for (const p of expect.textMust ?? []) add(`textMust /${p}/`, test(p, run.text));
   for (const p of expect.textMustNot ?? []) add(`textMustNot /${p}/`, !test(p, run.text));
+  const completed = run.stopReason === "end_turn" && run.finalText !== undefined;
+  const finalText = (run.finalText ?? "")
+    .replace(/\[([^\]]+)\]\([^\s)]+\)/g, "$1")
+    .replace(/\*\*|__|`/g, "");
   for (const p of expect.finalTextMust ?? [])
-    add(`finalTextMust /${p}/`, run.stopReason === "end_turn" && test(p, run.finalText ?? ""));
+    add(`finalTextMust /${p}/`, completed && (test(p, run.finalText ?? "") || test(p, finalText)));
+  for (const p of expect.finalTextMustNot ?? [])
+    add(`finalTextMustNot /${p}/`, completed && !test(p, finalText));
   const isLinked = (url: string) => (run.linked ?? []).some((at) => matches(url, at));
   for (const url of expect.linked ?? []) add(`linked ${url}`, isLinked(url));
   if (expect.linkedNumbers !== undefined) {
@@ -2004,7 +2111,7 @@ export const gradeSample = (
 
 // Checks that can only go from pass to fail as a sample goes on.
 const SETTLED =
-  /^(?:(?:notCalls|callsMustNot|shellMustNot|maxCalls|textMustNot) |secret\.(?:chatAsk|askTools|values|fileUse|noCardDemand|afterDecline) )/;
+  /^(?:fixtureArguments$|(?:notCalls|callsMustNot|shellMustNot|maxCalls|textMustNot) |secret\.(?:chatAsk|askTools|values|fileUse|noCardDemand|afterDecline) )/;
 /** True once the sample has failed for good, so the rest of it cannot change the result. */
 export const failedEarly = (expect: McpToolUseCase["expect"], run: SampleRun, pasted = "") =>
   gradeSample(
@@ -2044,6 +2151,7 @@ const codexRequest = (base: Base, input: ReadonlyArray<Block>) => ({
   input: [...(base.codex?.input ?? []), ...input],
 });
 
+// @effect-diagnostics-next-line extendsNativeError:off - a throw sentinel inside the model code bridge's promises.
 class ModelCodeError extends Error {}
 
 /** The bridge only accepts serialized data. Model code never receives host objects/functions. */
@@ -2274,7 +2382,11 @@ export const runSample = Effect.fn("evaluateMcpToolUse.runSample")(function* (
   for (let step = 0; step < maxSteps; step++) {
     const response = input
       ? yield* callCodex(config, codexRequest(base, input))
-      : yield* callModel(config.apiKey, requestBody(sample, config.effort, messages), config.proxy);
+      : yield* callModel(
+          config.apiKey,
+          requestBody(sample, config.effort, messages),
+          config.apiKey ? undefined : config.proxy,
+        );
     addUsage(usage, response.usage);
     recordModel(usage, "model" in response ? response.model : undefined);
     if ("raw" in response) {
@@ -2341,15 +2453,25 @@ export const runSample = Effect.fn("evaluateMcpToolUse.runSample")(function* (
         };
         return yield* Effect.tryPromise({
           try: async () => {
-            const output =
-              use.name === "exec"
-                ? await executeCodex(
-                    valueText(use.input),
-                    codexCatalog(base),
-                    answer,
-                    sample.codeStore,
-                  )
-                : await answer(use.name, use.input, false);
+            let output;
+            try {
+              output =
+                use.name === "exec"
+                  ? await executeCodex(
+                      valueText(use.input),
+                      codexCatalog(base),
+                      answer,
+                      sample.codeStore,
+                    )
+                  : await answer(use.name, use.input, false);
+            } catch (cause) {
+              if (!(cause instanceof ModelCodeError)) throw cause;
+              output = `ModelCodeError: ${cause.message}`;
+              if (own) {
+                own.failed = true;
+                own.output = output;
+              }
+            }
             const item = {
               type: use.name === "exec" ? "custom_tool_call_output" : "function_call_output",
               call_id: use.id,
@@ -2414,9 +2536,10 @@ const groups = <A>(rows: ReadonlyArray<A>, key: (row: A) => string) =>
 
 const USAGE_KEYS = ["input", "output", "cacheWrite", "cacheRead"] as const;
 /** Token totals and their cost in USD at one model's prices. Proxy runs have no price. */
-const spend = (usages: ReadonlyArray<Usage>, model: ShellModel | undefined) => {
-  const total = (key: keyof Usage) => usages.reduce((sum, usage) => sum + usage[key], 0);
-  const price = (key: keyof Usage) => (model && isPricedModel(model) ? PRICES[model][key] : 0);
+const spend = (usages: ReadonlyArray<Usage>, model: PricedModel | undefined) => {
+  const total = (key: (typeof USAGE_KEYS)[number]) =>
+    usages.reduce((sum, usage) => sum + usage[key], 0);
+  const price = (key: (typeof USAGE_KEYS)[number]) => (model ? PRICES[model][key] : 0);
   const cost = USAGE_KEYS.reduce((sum, key) => sum + total(key) * price(key), 0) / 1e6;
   return { cost, tokens: USAGE_KEYS.map((key) => `${key} ${total(key)}`).join(", ") };
 };
@@ -2424,7 +2547,12 @@ const spend = (usages: ReadonlyArray<Usage>, model: ShellModel | undefined) => {
 /** Markdown report. With a baseline, each case shows its earlier pass rate and the change. */
 export const summarize = (
   rows: Array<ResultRow>,
-  options: { readonly header: string; readonly shellModel: ShellModel; readonly model: Model },
+  options: {
+    readonly header: string;
+    readonly shellModel: string;
+    readonly model: Model;
+    readonly provider?: EvalProvider;
+  },
   before?: Map<string, number>,
 ) => {
   const codex = isCodex(options.model);
@@ -2475,11 +2603,19 @@ export const summarize = (
     `- ${options.header}`,
     `- Pass: ${percent(passRate(rows))} of ${finished} samples.`,
     ...(errors.length > 0 ? [errorNote] : []),
-    codex
-      ? "- Cost: the agent is not priced. `vibeproxy` in `~/.codex/config.toml` may use a subscription or bill an API key per token; agent tokens are below."
-      : `- Estimated cost $${cost.toFixed(2)}, $${(cost / rows.length).toFixed(3)} per sample.`,
-    `- Agent tokens: ${agent.tokens}${codex ? "." : ` ($${agent.cost.toFixed(2)}).`}`,
-    `- Shell simulator (${options.shellModel}) tokens: ${shell.tokens} (API-price estimate $${shell.cost.toFixed(2)}).`,
+    openrouter
+      ? "- Cost: OpenRouter API-reported amounts below; partial coverage is not a total run cost."
+      : codex
+        ? "- Cost: the agent is not priced. `vibeproxy` in `~/.codex/config.toml` may use a subscription or bill an API key per token; agent tokens are below."
+        : `- Estimated cost $${cost.toFixed(2)}, $${(cost / rows.length).toFixed(3)} per sample.`,
+    `- Agent tokens: ${agent.tokens}${openrouter ? `; OpenRouter cost ${reported("usage")}.` : codex ? "." : ` ($${agent.cost.toFixed(2)}).`}`,
+    `- Shell simulator (${options.shellModel}) tokens: ${shell.tokens}${openrouter ? `; OpenRouter cost ${reported("shellUsage")}.` : ` (API-price estimate $${shell.cost.toFixed(2)}).`}`,
+    ...(openrouter || codex
+      ? (["usage", "shellUsage"] as const).map((key) => {
+          const models = [...new Set(rows.flatMap((row) => row[key].models ?? []))];
+          return `- Returned ${key === "usage" ? "agent" : "shell"} models: ${models.join(", ") || "not reported; identity unverified"}.`;
+        })
+      : []),
     ...(codex
       ? [
           "- Code-mode tools use case mocks and a simulated machine. Native subagent prompts and asynchronous notifications are approximate.",
@@ -2510,10 +2646,7 @@ const Flags = Schema.Struct({
   concurrency: PositiveInt,
   "max-steps": Schema.optional(PositiveInt),
   effort: Schema.optional(Schema.Literals(EFFORTS)),
-  "shell-model": Schema.Literals([
-    ...(Object.keys(PRICES) as Array<PricedModel>),
-    ...PROXY_SHELL_MODELS,
-  ]),
+  "shell-model": Schema.optional(Schema.String),
   "user-instructions": Schema.Literals(["keep", "drop"]),
   "dry-run": Schema.Boolean,
   "stop-on-regression": Schema.Boolean,
@@ -2585,9 +2718,10 @@ const main = Effect.gen(function* () {
     },
   });
   const decoded = yield* decodeFlags({ template: "", ...values });
-  const models = yield* Effect.try(() =>
-    evalModels(decoded.provider, decoded.model, decoded["shell-model"]),
-  );
+  const models = yield* Effect.try({
+    try: () => evalModels(decoded.provider, decoded.model, decoded["shell-model"]),
+    catch: (cause) => new EvalModelError({ cause }),
+  });
   const flags = { ...decoded, model: models.model, "shell-model": models.shellModel };
   if (flags.context) {
     process.stdout.write(`${t3ContextReport(flags.model)}\n`);
@@ -2728,7 +2862,10 @@ const main = Effect.gen(function* () {
     }
     return;
   }
-  const apiKey = yield* Config.String("ANTHROPIC_API_KEY").pipe(Config.withDefault(""));
+  const openrouter = flags.provider === "openrouter";
+  const keyName = openrouter ? "OPENROUTER_API_KEY" : "ANTHROPIC_API_KEY";
+  const key = yield* Config.String(keyName).pipe(Config.withDefault(""));
+  const apiKey = openrouter ? "" : key;
   const out = flags.out;
   if ((!key && (openrouter || !codex)) || out === undefined) {
     const message = `Set ${keyName} and pass --out <directory>. ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL are never used.`;
@@ -2742,12 +2879,19 @@ const main = Effect.gen(function* () {
     const catalog = yield* response.json.pipe(
       Effect.flatMap(Schema.decodeUnknownEffect(OpenRouterCatalog)),
     );
-    yield* Effect.try(() => validateOpenRouterModels(catalog, flags.model, flags["shell-model"]));
+    yield* Effect.try({
+      try: () => validateOpenRouterModels(catalog, flags.model, flags["shell-model"]),
+      catch: (cause) => new EvalModelError({ cause }),
+    });
   }
   const config: Config = {
     apiKey,
     model: flags.model,
-    ...(codex || !isPricedModel(flags["shell-model"]) ? { proxy: proxyConfig() } : {}),
+    ...(openrouter
+      ? { proxy: openRouterProxy(key) }
+      : codex || !isPricedModel(flags["shell-model"])
+        ? { proxy: proxyConfig() }
+        : {}),
     effort,
     maxSteps: flags["max-steps"] ?? (codex ? 10 : 6),
     shellModel: flags["shell-model"],

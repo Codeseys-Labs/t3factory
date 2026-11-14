@@ -1725,6 +1725,48 @@ const make = Effect.gen(function* () {
       : null;
     const resultContextTransferId = resultTransfer?.id ?? null;
     const latestTerminalResultContextTransferId = resultTransferForRun(terminalRun)?.id ?? null;
+    // Continuations keep the original launch base; never resolve a historical branch at today's HEAD.
+    let launchRun = terminalRun ?? childRun;
+    const visitedRuns = new Set<RunId>();
+    while (
+      launchRun !== undefined &&
+      launchRun.workspacePreparation === undefined &&
+      launchRun.restartContinuationOfRunId !== undefined &&
+      !visitedRuns.has(launchRun.id)
+    ) {
+      visitedRuns.add(launchRun.id);
+      launchRun = childControls.runs.find(
+        (run) => run.id === launchRun?.restartContinuationOfRunId,
+      );
+    }
+    const preparation = launchRun?.workspacePreparation ?? childRun?.workspacePreparation;
+    const baseRef = preparation?.type === "worktree" ? preparation.baseRef : undefined;
+    const immutableBase =
+      baseRef !== undefined && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(baseRef) ? baseRef : null;
+    const checkpoint = resultRecords.checkpoints?.find(
+      (candidate) =>
+        terminalRun !== undefined &&
+        candidate.id === terminalRun.checkpointId &&
+        candidate.runId === terminalRun.id &&
+        candidate.status === "ready",
+    );
+    const commits =
+      checkpoint === undefined
+        ? { baseCommit: immutableBase, resultCommit: null }
+        : yield* Effect.gen(function* () {
+            const project = yield* requireProject(childControls.thread.projectId);
+            const resolve = (revision: string | null) =>
+              revision === null
+                ? Effect.succeed(null)
+                : gitDriver.resolveCommit({ cwd: project.workspaceRoot, revision }).pipe(
+                    Effect.map((commit) => commit.commitSha),
+                    Effect.orElseSucceed(() => null),
+                  );
+            return {
+              baseCommit: immutableBase,
+              resultCommit: yield* resolve(checkpoint?.ref ?? null),
+            };
+          }).pipe(Effect.orElseSucceed(() => ({ baseCommit: immutableBase, resultCommit: null })));
     const executionRun =
       task.result === null
         ? (taskResultRun ?? childRun)

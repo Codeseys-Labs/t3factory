@@ -1,4 +1,3 @@
-import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 import * as Dialog from "../../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -12,6 +11,7 @@ import type {
   EnvironmentId,
   ProjectId,
   ScheduledTask,
+  ScheduledTaskId,
   ScheduledTaskThreadMode,
   ScheduledTaskUpsertInput,
 } from "@t3tools/contracts";
@@ -40,7 +40,7 @@ import {
   type WebhookFilterDraft,
 } from "@t3tools/client-runtime/scheduled-task-webhook";
 import { scheduleTimeZoneLabel } from "@t3tools/client-runtime/scheduled-task-time-zone";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useFocusEffect, useNavigation, usePreventRemove } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { AppState, Platform, Pressable, TextInput as RNTextInput, View } from "react-native";
@@ -63,10 +63,13 @@ import { tryCopyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { usePreparedConnection } from "../../state/session";
 import { buildModelOptions } from "../../lib/modelOptions";
 import { withImplicitFastModeSelection } from "../../lib/providerOptions";
-import { useProjects, useEnvironmentServerConfig } from "../../state/entities";
+import { useProjects, useEnvironmentServerConfig, useServerConfigs } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useEnvironments } from "../../state/environments";
+import { factoryCoordinatorSupportedAtom, factoryEnvironment } from "../../state/factory";
+import { environmentThreadShells } from "../../state/threads";
 import { resolveNewTaskBranchLabel } from "../threads/new-task-context-presentation";
 import { RUNTIME_MODE_CHOICES } from "../threads/thread-settings-options";
 import { useVoiceInputController } from "../voice-input/useVoiceInputController";
@@ -77,9 +80,12 @@ import { SettingsSection } from "./components/SettingsSection";
 import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";
 import {
   changeDraftProject,
+  createDraft,
+  createFactoryDraft,
   editDraft,
   parseIntervalMinutes,
   scheduledTaskDefaultModel,
+  moveDraftToThread,
   scheduleFromDraft,
   unbindDraftFromThread,
   type ScheduledTaskDraft as Draft,
@@ -89,6 +95,8 @@ import { useScheduledTaskDestinationLabel, useScheduledTaskEditor } from "./sche
 import {
   discardScheduledTaskEditor,
   markScheduledTaskEditorSaved,
+  moveScheduledTaskEditor,
+  scheduledTaskInScope,
 } from "./scheduled-task-editor-state";
 import {
   formatNextScheduledTaskRun,
@@ -799,6 +807,46 @@ function TaskForm({
   const config = useEnvironmentServerConfig(environmentId);
   const destinationLabel = useScheduledTaskDestinationLabel(environmentId, draft.threadId);
   const modelOptions = buildModelOptions(config, null, undefined, draft.projectId);
+  const supportsCoordinator = useAtomValue(factoryCoordinatorSupportedAtom(environmentId));
+  const coordinatorQuery = useEnvironmentQuery(
+    supportsCoordinator && draft.projectId !== null
+      ? factoryEnvironment.coordinatorsGet({ environmentId, input: { projectId: draft.projectId } })
+      : null,
+  );
+  const coordinator = coordinatorQuery.error ? null : coordinatorQuery.data?.coordinator;
+  const threadShells = useAtomValue(environmentThreadShells.threadShellsAtom);
+  const boundThread = threadShells.find(
+    (thread) => thread.environmentId === environmentId && thread.id === draft.threadId,
+  );
+  const coordinatorThread = coordinator
+    ? threadShells.find(
+        (thread) =>
+          thread.environmentId === environmentId &&
+          thread.id === coordinator.threadId &&
+          thread.projectId === draft.projectId &&
+          thread.deletedAt === null &&
+          thread.archivedAt === null,
+      )
+    : undefined;
+  const canBindCoordinator =
+    coordinator?.current === true &&
+    coordinatorThread !== undefined &&
+    (coordinator.status === "idle" ||
+      coordinator.status === "running" ||
+      coordinator.status === "preparing");
+  const coordinatorUnavailableReason = !draft.projectId
+    ? "Choose a project to select its orchestrator."
+    : !supportsCoordinator
+      ? "This environment does not support project orchestrators."
+      : coordinatorQuery.error
+        ? `Project orchestrator unavailable: ${coordinatorQuery.error}`
+        : !coordinatorQuery.data
+          ? "Loading project orchestrator…"
+          : !coordinator
+            ? "No project orchestrator exists. Create one in the Factory Orchestrator section."
+            : !canBindCoordinator
+              ? `Project orchestrator unavailable for binding (${coordinator.status}).`
+              : null;
   // Existing webhook tasks keep the option so they can still switch to a timer.
   const webhookDenial = managedCapabilityDenial(config?.managedPolicy, "webhookTasks");
   const canOperate = useAtomValue(
@@ -811,10 +859,12 @@ function TaskForm({
   const submissionPending = useRef(false);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [runAtPicker, setRunAtPicker] = useState<"date" | "time" | null>(null);
-  const taskMissing =
+  const liveTask = tasks.data?.tasks.find((task) => task.id === draft.task?.id);
+  const ownerChanged =
     draft.task !== null &&
-    tasks.data !== null &&
-    !tasks.data.tasks.some((task) => task.id === draft.task?.id);
+    liveTask !== undefined &&
+    (liveTask.threadId !== draft.task.threadId || liveTask.projectId !== draft.task.projectId);
+  const taskMissing = draft.task !== null && tasks.data !== null && liveTask === undefined;
   const runAtZone = scheduleTimeZoneLabel(tasks.data?.timeZone);
   const environmentUnavailable = !availableTargets.some(
     (target) => target.environmentId === environmentId,
@@ -928,10 +978,10 @@ function TaskForm({
                 baseRef: draft.baseRef.trim() || "main",
                 startFromOrigin: draft.startFromOrigin,
               },
-      // Tasks have no mode picker; a mode above the administrator's ceiling is refused.
+      // A mode above the administrator's ceiling is refused.
       runtimeMode:
         clampManagedRuntimeMode(config?.managedPolicy, draft.runtimeMode) ?? draft.runtimeMode,
-      interactionMode: draft.task?.interactionMode ?? "default",
+      interactionMode: draft.interactionMode,
       creationSource: draft.task?.creationSource ?? "mobile",
     };
     submissionPending.current = true;
@@ -1118,85 +1168,45 @@ function TaskForm({
               value={
                 draft.threadId === null && draft.threadMode !== "new_thread"
                   ? "Started by the first run"
-                  : destinationLabel
+                  : draft.threadId !== null && draft.threadId === coordinator?.threadId
+                    ? "Current project orchestrator"
+                    : destinationLabel
               }
               onPress={() => navigation.navigate("SettingsScheduledTaskThread")}
               disabled={!draft.projectId || saving || dictationPending || environmentUnavailable}
             />
           ) : null}
-        </SettingsSection>
-
-        <SettingsSection title="Workspace">
-          <SelectRow
-            label="Run in"
-            value={
-              draft.threadId === null
-                ? "New thread each run"
-                : draft.threadId === coordinator?.threadId
-                  ? "Current project orchestrator"
-                  : `Bound thread: ${boundThread?.title ?? draft.threadId}`
-            }
-            actions={[
-              {
-                id: "direct",
-                title: "New thread each run",
-                state: draft.threadId === null ? "on" : undefined,
-              },
-              ...(canBindCoordinator
-                ? [
-                    {
-                      id: "coordinator",
-                      title: "Current project orchestrator",
-                      state: draft.threadId === coordinator?.threadId ? ("on" as const) : undefined,
-                    },
-                  ]
-                : []),
-              ...(draft.task?.threadId
-                ? [
-                    {
-                      id: "preserved",
-                      title: `Original bound thread: ${draft.task.threadId}`,
-                      state: draft.threadId === draft.task.threadId ? ("on" as const) : undefined,
-                    },
-                  ]
-                : []),
-            ]}
-            onSelect={(id) => {
-              if (id === "direct") setDraft({ ...draft, threadId: null });
-              if (id === "coordinator" && canBindCoordinator && coordinator) {
+          {canBindCoordinator &&
+          coordinator &&
+          coordinatorThread &&
+          draft.threadId !== coordinator.threadId ? (
+            <Button
+              label="Deliver to project orchestrator"
+              disabled={saving || dictationPending || environmentUnavailable}
+              onPress={() =>
                 setDraft({
-                  ...draft,
-                  threadId: coordinator.threadId,
+                  ...moveDraftToThread(draft, {
+                    id: coordinator.threadId,
+                    projectId: coordinatorThread.projectId,
+                  }),
                   modelSelection: draft.modelSelection ?? coordinator.modelSelection,
-                });
+                })
               }
-              if (id === "preserved" && draft.task?.threadId) {
-                setDraft({
-                  ...draft,
-                  projectId: draft.task.projectId,
-                  threadId: draft.task.threadId,
-                });
-              }
-            }}
-          />
+            />
+          ) : null}
           {coordinatorUnavailableReason ? (
             <Text className="px-4 pb-3 text-sm text-foreground-muted">
               {coordinatorUnavailableReason}
             </Text>
           ) : null}
-          {draft.workspace === "existing_worktree" ? (
-            <FormField
-              label="Checkout path"
-              disabled={saving}
-              value={draft.checkoutPath}
-              borderTop
-              onChange={(checkoutPath) =>
-                setDraft({
-                  ...draft,
-                  checkoutPath: resolvePastedPath(draft.checkoutPath, checkoutPath),
-                })
-              }
-            />
+          {supportsCoordinator && draft.projectId ? (
+            <Button label="Refresh orchestrator" onPress={coordinatorQuery.refresh} />
+          ) : null}
+          {bindingUnavailable ? (
+            <Text className="px-4 pb-3 text-sm text-danger-foreground">
+              The bound thread is unavailable in this project. Reconnect or choose another thread
+              before saving. The saved binding has not been cleared.
+            </Text>
           ) : null}
         </SettingsSection>
 
@@ -1244,7 +1254,7 @@ function TaskForm({
 
             <SettingsSection title="Workspace">
               <SelectRow
-                label="Checkout"
+                label="Run in"
                 value={
                   draft.workspace === "worktree"
                     ? "New worktree"
@@ -1295,7 +1305,12 @@ function TaskForm({
                   disabled={saving}
                   value={draft.checkoutPath}
                   borderTop
-                  onChange={(checkoutPath) => setDraft({ ...draft, checkoutPath })}
+                  onChange={(checkoutPath) =>
+                    setDraft({
+                      ...draft,
+                      checkoutPath: resolvePastedPath(draft.checkoutPath, checkoutPath),
+                    })
+                  }
                 />
               ) : null}
             </SettingsSection>
@@ -1599,6 +1614,9 @@ function TaskForm({
           dictationPending ||
           taskMissing ||
           environmentUnavailable ||
+          taskUnavailable ||
+          bindingUnavailable ||
+          ownerChanged ||
           // The server refuses an enabled webhook task under this policy.
           (draft.enabled && draft.schedule.mode === "webhook" && webhookDenial !== undefined)
         }
@@ -1732,7 +1750,6 @@ function EnvironmentTasks({
   const visibleTasks = tasks.data?.tasks.filter((task) =>
     scheduledTaskInScope(task, projectIds, taskId),
   );
-  const selectDetail = useSelectWorkspaceDetail();
   const navigation = useNavigation();
   const deepLinkOpened = useRef<ScheduledTaskId | null>(null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Opens a loaded workflow deep link in the native navigator once.
@@ -1896,6 +1913,17 @@ function EnvironmentTasks({
                   : task.nextRunAt
                     ? ` · ${formatNextScheduledTaskRun(task.nextRunAt, now)}`
                     : ""}
+              </Text>
+              <Text className="text-sm text-foreground-muted">
+                {task.runCount} dispatch attempt{task.runCount === 1 ? "" : "s"}
+                {task.lastRunAt ? ` · Latest: ${new Date(task.lastRunAt).toLocaleString()}` : ""}
+                {task.lastRunStatus === "never"
+                  ? " · Never dispatched"
+                  : task.lastRunStatus === "failed"
+                    ? " · Dispatch failed"
+                    : task.lastRunStatus === "running"
+                      ? " · Dispatching"
+                      : " · Dispatch accepted"}
               </Text>
               {task.blockedByPolicy ? (
                 <Text className="text-sm text-foreground-muted" numberOfLines={2}>

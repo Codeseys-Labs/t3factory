@@ -178,11 +178,11 @@ describe("ServerBrowserContexts", () => {
     expect(await pool.contextFor("work/team")).toBe(persistent);
     expect(await pool.contextFor("work/team", "agent")).not.toBe(persistent);
     expect(launches.persistent).toHaveBeenCalledExactlyOnceWith(
-      "/test/profiles/work%2Fteam",
+      profilePath("work%2Fteam"),
       expect.objectContaining({ chromiumSandbox: true, executablePath: "/test/chromium-launcher" }),
     );
     expect(release).toHaveBeenCalledTimes(2);
-    expect(launches.mkdir).toHaveBeenCalledWith("/test/profiles/work%2Fteam", { recursive: true });
+    expect(launches.mkdir).toHaveBeenCalledWith(profilePath("work%2Fteam"), { recursive: true });
     await pool.close();
     expect(human.close).toHaveBeenCalledTimes(1);
   });
@@ -256,7 +256,7 @@ describe("ServerBrowserContexts", () => {
 
     expect(deletionsBeforeClose).toBe(0);
     expect(human.close).toHaveBeenCalledTimes(1);
-    expect(launches.rm).toHaveBeenCalledExactlyOnceWith("/test/profiles/work%2Fteam", {
+    expect(launches.rm).toHaveBeenCalledExactlyOnceWith(profilePath("work%2Fteam"), {
       recursive: true,
       force: true,
     });

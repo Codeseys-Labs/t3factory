@@ -117,7 +117,7 @@ function harness(
     Layer.mock(WorkspacePaths.WorkspacePaths)({
       normalizeWorkspaceRoot: (root) => Effect.succeed(root),
     }),
-    Layer.mock(GitWorkflow.GitWorkflowService)({ isRepository: () => Effect.succeed(false) }),
+    Layer.mock(GitWorkflow.GitWorkflowService)({ currentBranch: () => Effect.succeed(null) }),
     Layer.mock(CloneTracker.ProjectCloneTracker)({ get: () => Effect.succeed(null) }),
     Layer.mock(Terminal.TerminalManager)({ close: () => Effect.void }),
     Layer.mock(SetupRunner.ProjectSetupScriptRunner)({
@@ -142,7 +142,7 @@ function harness(
     folderForThread: () => (options.beforeFolder ?? Effect.void).pipe(Effect.as(Option.none())),
   });
   const launcher = ThreadLaunch.layer.pipe(
-    Layer.provide(Layer.mergeAll(projects, folders, threads, receipts, external)),
+    Layer.provide(Layer.mergeAll(projects, folders, threads, receipts, orchestrator, external)),
   );
   const dependencies = Layer.mergeAll(
     projects,

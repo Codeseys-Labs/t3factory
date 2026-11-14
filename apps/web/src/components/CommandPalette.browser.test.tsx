@@ -110,9 +110,10 @@ describe("CommandPalette open intents", () => {
 
     openCommandPalette({});
     await expect
-      .element(page.getByPlaceholder("Search commands, projects, and threads..."))
+      .element(page.getByPlaceholder("Search tasks, commands, projects, and threads..."))
       .toHaveFocus();
-    await userEvent.keyboard("{ArrowDown}");
+    // The opening list shows only Factory task actions; every other action is found by search.
+    await userEvent.keyboard("New thread in...");
     await expect
       .element(page.getByRole("option", { name: /^New thread in\.\.\./ }))
       .toHaveAttribute("data-highlighted");

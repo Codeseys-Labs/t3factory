@@ -1532,7 +1532,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         timeoutMs: 5_000,
         allowNonZeroExit: true,
       },
-    );
+    ).pipe(retryWhileConfigLocked);
     // Git terminates --show-toplevel with exactly one "\n" on every platform (stdout is
     // binary mode on Windows). Whitespace before it belongs to the path and must survive,
     // because this root becomes the editor target for every repository-relative status path.
@@ -1547,6 +1547,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       timeoutMs: 5_000,
       allowNonZeroExit: true,
     }).pipe(
+      retryWhileConfigLocked,
       Effect.map((result) => (result.exitCode === 0 ? branchNameFromHeadRef(result.stdout) : null)),
     );
 

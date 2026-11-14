@@ -5,6 +5,7 @@ import { makeThreadFixture } from "../test-fixtures";
 import {
   newThreadNoProjectIndex,
   buildNestedSearchItems,
+  buildRootGroups,
   resolveCommandPaletteProject,
   buildThreadActionItems,
   buildLinkedThreadActionItems,

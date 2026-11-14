@@ -12,43 +12,24 @@ run-name: ${{ github.event_name == 'workflow_dispatch' && format('Dev client {0}
 #   cache miss, when the person running it may dispatch workflows here, and
 #   waits for the client in the cache. The run name is how it finds its run.
 # - pull_request (this file or the script): builds without sharing, as a check.
+# T3Factory: inherited trigger neutralized to reusable-only with no caller; native clients build locally.
 on:
-  push:
-    branches: [main]
-    paths:
-      - apps/mobile/**
-      - packages/client-runtime/**
-      - packages/contracts/**
-      - packages/shared/**
-      - assets/**
-      - patches/**
-      - scripts/mobile-native-client.ts
-      - package.json
-      - pnpm-lock.yaml
-      - pnpm-workspace.yaml
-      - .github/workflows/mobile-dev-client.yml
-  pull_request:
-    paths:
-      - .github/workflows/mobile-dev-client.yml
-      - scripts/mobile-native-client.ts
-  workflow_dispatch:
+  workflow_call:
     inputs:
       ref:
         description: Commit to build (default main)
         required: false
         type: string
       platform:
-        description: Platform
-        required: true
+        description: Platform (android or ios)
+        required: false
         default: android
-        type: choice
-        options: [android, ios]
+        type: string
       abi:
-        description: Android ABI of the device
-        required: true
+        description: Android ABI of the device (x86_64 or arm64-v8a)
+        required: false
         default: x86_64
-        type: choice
-        options: [x86_64, arm64-v8a]
+        type: string
       fingerprint:
         description: Native fingerprint the caller expects; the run fails when the commit's differs
         required: false

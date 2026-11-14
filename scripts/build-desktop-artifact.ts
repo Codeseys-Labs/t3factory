@@ -2869,9 +2869,11 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   const factoryPreview = distribution === "factory-preview";
   const buildConfig: Record<string, unknown> = {
     afterPack: (yield* Path.Path).join(yield* RepoRoot, "scripts/prepare-server-compile-cache.cjs"),
-    appId: DESKTOP_APP_ID,
-    productName: resolveDesktopProductName(version),
-    artifactName: "T3-Code-${version}-${arch}.${ext}",
+    appId: factoryPreview ? FACTORY_PREVIEW_IDENTITY.appId : DESKTOP_APP_ID,
+    productName: resolveDesktopProductName(version, distribution),
+    artifactName: factoryPreview
+      ? `${FACTORY_PREVIEW_IDENTITY.artifactPrefix}\${version}-\${arch}.\${ext}`
+      : "T3-Code-${version}-${arch}.${ext}",
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
     files: [
       ...DESKTOP_FILE_EXCLUSIONS,

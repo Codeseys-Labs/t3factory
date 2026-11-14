@@ -9,7 +9,7 @@ import {
 import { isLocalLoopbackHost, isPrivateNetworkHost } from "@t3tools/shared/hostClassification";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
@@ -239,7 +239,7 @@ function parse(xml: string, locator: string) {
 
 const make = Effect.gen(function* () {
   const client = HttpClient.withScope(yield* HttpClient.HttpClient);
-  const crypto = yield* Crypto.Crypto;
+  const digester = yield* Digest.Digest;
   const fetch = Effect.fn("FeedFetch.fetch")(
     function* (
       source: { readonly id: FactoryFeedSourceId; readonly locator: string },
@@ -333,9 +333,9 @@ const make = Effect.gen(function* () {
             isFetchError(cause) ? cause : new FeedFetchError({ reason: "invalid-feed", cause }),
         });
         const items = yield* Effect.forEach(document.items, (item) =>
-          crypto
+          digester
             .digest(
-              "SHA-256",
+              Digest.sha256,
               new TextEncoder().encode(
                 JSON.stringify([
                   "t3.factory.feed-item-content/1",

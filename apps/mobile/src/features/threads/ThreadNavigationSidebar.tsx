@@ -24,6 +24,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
+import { NavigationRow } from "../../components/ui/NavigationRow";
+import { SymbolView } from "../../components/ui/AppSymbol";
 import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
 import { useProjects } from "../../state/entities";
 import { steadyNavigationThreadShellsAtom } from "../../state/threads";
@@ -111,16 +113,20 @@ type SidebarNavigationProps = ThreadNavigationSidebarProps & {
 };
 
 export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
+  const navigation = useNavigation();
+  const onOpenFactory = () => {
+    navigation.navigate("SettingsFactoryIssues");
+  };
   return (
     <ThreadPrDemandProvider visible={props.visible}>
       <WorkspaceSidebarColumn width={props.width}>
-        <ThreadNavigationSidebarPane {...props} />
+        <ThreadNavigationSidebarPane {...props} onOpenFactory={onOpenFactory} />
       </WorkspaceSidebarColumn>
     </ThreadPrDemandProvider>
   );
 }
 
-function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+function ThreadNavigationSidebarPane(props: SidebarNavigationProps) {
   const floatingTabsEnabled = useAndroidFloatingTabs();
   const { themeVariables: materialTheme } = useAppearancePreferences();
   const drawerColor = materialTheme["--color-drawer"];
@@ -536,7 +542,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
   };
   const header = (
     <WorkspaceListHeader
-      accessibilityLabel="T3 Code, Threads"
+      accessibilityLabel="T3 Code Factory, Threads"
       onOpenEnvironments={props.onOpenEnvironmentSettings}
       onOpenSettings={props.onOpenSettings}
       search={{
@@ -681,7 +687,10 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
         }}
       >
         {listItems.length === 0 ? (
-          <View className="flex-1 items-center justify-center">{listEmpty}</View>
+          <>
+            {factoryNavigation}
+            <View className="flex-1 items-center justify-center">{listEmpty}</View>
+          </>
         ) : (
           <SwipeableScrollGateProvider enabled={swipeEnabled}>
             <GestureDetector gesture={sidebarScrollGesture}>

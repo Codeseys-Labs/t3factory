@@ -26,6 +26,7 @@ export const DesktopBackendBootstrap = Schema.Struct({
   otlpLogsUrl: Schema.optional(Schema.String),
   desktopTelemetryFd: Schema.optionalKey(PositiveInt),
   desktopTelemetryControlFd: Schema.optionalKey(PositiveInt),
+  desktopUpdatesDisabled: Schema.optionalKey(Schema.Boolean),
   // Whether the spawning desktop app can install updates when the server requests one.
   desktopAppUpdate: Schema.optionalKey(Schema.Boolean),
   desktopBrowserFd: Schema.optionalKey(PositiveInt),

@@ -66,6 +66,8 @@ export interface SourceControlDriverInstance {
     Scope.Scope
   >;
   readonly signIn?: SourceControlSignIn;
+  /** Null for a host whose issues this build cannot read. */
+  readonly issues: IssueTrackerProviderApi | null;
   /** Whether the server's account on `host` starred `repository` (`owner/name`). */
   readonly isRepositoryStarred?: (host: string, repository: string) => Effect.Effect<boolean>;
   /** Stars `repository` as the server's account on `host`; false when the forge refused. */

@@ -12,6 +12,7 @@ import * as Electron from "electron";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import * as DesktopEarlyElectronStartup from "./DesktopEarlyElectronStartup.ts";
+import { bundledDesktopDistribution } from "./DesktopDistribution.ts";
 import { trimmedString } from "./DesktopConfig.ts";
 import { resolveDesktopAppBranding } from "./DesktopEnvironment.ts";
 import {

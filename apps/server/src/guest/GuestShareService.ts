@@ -52,6 +52,7 @@ import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { coalesceThreadLiveStream } from "../orchestration-v2/ThreadLiveEventCoalescer.ts";
 import { buildBoundedThreadStreamSnapshot } from "../orchestration-v2/ThreadStream.ts";
 import {
+  projectDomainEventForWire,
   projectTurnItemForDetail,
   projectTurnItemForWire,
   threadStreamEventItem,
@@ -559,7 +560,16 @@ const make = Effect.gen(function* () {
     const live = orchestrator
       .streamStoredEventsFrom({ threadId: thread.id, afterSequence: snapshot.snapshotSequence })
       .pipe(
-        Stream.map(threadStreamEventItem),
+        // Events arrive wire-projected and shared; only a managed thread's questions differ.
+        Stream.map((stored) =>
+          managedWireOptions !== undefined && stored.event.type === "runtime-request.updated"
+            ? {
+                kind: "event" as const,
+                sequence: stored.sequence,
+                event: projectDomainEventForWire(stored.event, managedWireOptions),
+              }
+            : threadStreamEventItem(stored),
+        ),
         // Ending the source here flushes what the coalescer holds, so `ended` is not held back.
         Stream.takeUntil((item) => endsShare(item.event)),
         coalesceThreadLiveStream,

@@ -101,6 +101,7 @@ it.effect.each([false, true])("keeps Codex inside its attempt owner (owned %s)",
             return { command: process.execPath, args: ["systemd-wrapper", ...input.args] };
           }),
         stop: () => Effect.void,
+        kill: () => Effect.succeed(false),
         clear: () => Effect.void,
         oomKilled: () => Effect.succeed(false),
       }),

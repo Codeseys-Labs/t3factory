@@ -5,6 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import * as ProjectEnrichment from "../project/ProjectEnrichmentService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
@@ -103,6 +104,7 @@ it.effect.each([
         Layer.mock(ThreadManagement.ThreadManagementService)({
           recoverDelegatedTask: () => Effect.void,
         }),
+        Layer.mock(FactoryDelivery.FactoryDeliveryService)({}),
         ServerSettings.layerTest(),
         Layer.mock(ProviderTurnStart.ProviderTurnStartServiceV2)({
           start: () => Effect.sync(() => calls.push("start")).pipe(Effect.asVoid),

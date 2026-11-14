@@ -361,6 +361,7 @@ const cleanupFixture = (
     let outboxStatus: string | null = null;
     let scheduledThreadIds: string[] = [];
     let fullStatusCalls = 0;
+    let indexPathStderr: string | null = null;
     let gitInspections = 0;
     let snapshotReads = 0;
     let beforeGit: (input: GitVcsDriver.ExecuteGitInput) => Effect.Effect<void> = () => Effect.void;
@@ -372,6 +373,7 @@ const cleanupFixture = (
         ...git,
         execute: (input) =>
           Effect.gen(function* () {
+            yield* beforeGit(input);
             gitInspections++;
             // Before Git's own clean check: inside `git worktree remove`, or on
             // Windows the same status check the removal makes before deleting.
@@ -480,9 +482,17 @@ const cleanupFixture = (
                       ...threads.flatMap((thread) => thread.worktreePath ?? []),
                       ...storedWorktreePaths,
                     ].map((worktreePath) => ({ worktreePath }))
-                  : strings.join("").includes("scheduled_tasks")
-                    ? scheduledThreadIds.map((threadId) => ({ threadId }))
-                    : [],
+                  : strings.join("").includes('AS "branch"')
+                    ? threads.flatMap((thread) =>
+                        thread.deletedAt === null &&
+                        thread.branch !== null &&
+                        (values.length === 0 || values[0] === thread.branch)
+                          ? [{ branch: thread.branch, projectId: thread.projectId }]
+                          : [],
+                      )
+                    : strings.join("").includes("scheduled_tasks")
+                      ? scheduledThreadIds.map((threadId) => ({ threadId }))
+                      : [],
         )) as unknown as SqlClient.SqlClient),
       Effect.provideService(GitManager.GitManager, {
         invalidateStatus: () => Effect.void,
@@ -588,6 +598,9 @@ const cleanupFixture = (
         indexPathStderr = stderr;
       },
       snapshotReads: () => snapshotReads,
+      beforeGit: (hook: typeof beforeGit) => {
+        beforeGit = hook;
+      },
       sessionLiveChecks: () => sessionLiveChecks,
       activate: (domainEvents: Stream.Stream<OrchestrationV2DomainEvent>) => {
         events = domainEvents;
@@ -3263,7 +3276,8 @@ describe("storage cleanup reports and local file policies", () => {
   it.live("compares the checked-out branch without a full status", () =>
     runCleanupTest(
       Effect.gen(function* () {
-        const { service, fs, repo, worktree, command, fullStatusCalls } = yield* cleanupFixture();
+        const { service, fs, repo, worktree, command, fullStatusCalls, setIndexPathStderr } =
+          yield* cleanupFixture();
         const changed = { outcome: "kept", reason: "Repository or branch changed" };
         yield* command(worktree, ["checkout", "--detach"]);
         expect((yield* service.runNow).entries[0]).toMatchObject(changed);

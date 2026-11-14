@@ -48,6 +48,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as TerminalManager from "./Manager.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import { makePrepareTerminalLaunch } from "../workspace/restoreMissingWorktree.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import { terminalOutputStream } from "./OutputProtocol.ts";
@@ -1942,6 +1943,7 @@ it.layer(
         const runner = yield* ProjectSetupScriptRunner.make.pipe(
           Effect.provide(
             Layer.mergeAll(
+              FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
               Layer.succeed(TerminalManager.TerminalManager, terminals),
               Layer.mock(ProjectService.ProjectService)({}),
               Layer.mock(ProjectionStore.ProjectionStoreV2)({
@@ -2091,6 +2093,7 @@ it.layer(
       const runner = yield* ProjectSetupScriptRunner.make.pipe(
         Effect.provide(
           Layer.mergeAll(
+            FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
             Layer.succeed(TerminalManager.TerminalManager, manager),
             Layer.mock(ProjectService.ProjectService)({}),
             Layer.mock(ProjectionStore.ProjectionStoreV2)({

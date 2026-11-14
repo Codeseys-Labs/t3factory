@@ -726,6 +726,7 @@ export class GitHubPullRequestApi extends Context.Service<
       readonly removeAgentCreditsOnMerge?: boolean;
       readonly mergeMethod?: PullRequestMergeMethod;
       readonly updateMethod?: PullRequestUpdateMethod;
+      readonly expectedHeadSha?: string;
     }) => Effect.Effect<ProviderChangeRequestSummary | void, GitHubPullRequestApiError>;
 
     readonly commentOnPullRequest: (input: {

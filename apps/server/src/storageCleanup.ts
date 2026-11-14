@@ -532,33 +532,71 @@ const make = Effect.gen(function* () {
     },
   );
 
-  // Sessions can outlive their run and can be shared across app threads. Ready
-  // persisted sessions may have released their runtime; only live sessions protect the path.
-  const liveSessionInside = Effect.fn("StorageCleanup.liveSessionInside")(function* (
-    worktreePath: string,
-  ) {
-    const sessionRows = yield* sql<{ payload_json: string }>`
-      SELECT payload_json FROM orchestration_v2_projection_provider_sessions
-      WHERE status != 'stopped'
-    `.pipe(NodeSqliteClient.readOnly);
-    const sessions = yield* Effect.forEach(sessionRows, (row) =>
-      decodeCleanupSession(row.payload_json),
-    );
-    for (const session of sessions) {
-      const cwd = path.resolve(session.cwd);
-      if (
-        (cwd === worktreePath || inside(worktreePath, cwd)) &&
-        (yield* providerSessions.isLive(session.id))
-      )
-        return true;
-    }
-    return false;
-  });
+  // One sweep's view of which checkouts terminals and provider sessions occupy.
+  const makeWorktreeGuards = () => {
+    // Threads may store one checkout through different symlinked spellings; compare real paths.
+    // Keys are only compared, never opened, so they take pathKey's Windows case folding.
+    const canonicalPaths = new Map<string, string>();
+    const canonical = Effect.fnUntraced(function* (target: string) {
+      const resolved = path.resolve(target);
+      const cached = canonicalPaths.get(resolved);
+      if (cached !== undefined) return cached;
+      const realPath = yield* fs.realPath(resolved).pipe(Effect.orElseSucceed(() => resolved));
+      const key = pathKey(realPath);
+      canonicalPaths.set(resolved, key);
+      return key;
+    });
+    // A cwd in a deleted folder cannot be resolved, so stored spellings are compared too.
+    const occupies = Effect.fnUntraced(function* (
+      worktreePaths: ReadonlyArray<string>,
+      target: string,
+    ) {
+      const targets = [path.resolve(target), yield* canonical(target)];
+      return worktreePaths.some((worktree) =>
+        targets.some((cwd) => pathKey(cwd) === pathKey(worktree) || inside(worktree, cwd)),
+      );
+    });
+    const hasTerminal = Effect.fnUntraced(function* (worktreePaths: ReadonlyArray<string>) {
+      for (const terminal of [...liveTerminals.values()].flatMap((entries) => [
+        ...entries.values(),
+      ])) {
+        if (terminal.status !== "starting" && terminal.status !== "running") continue;
+        if (
+          (terminal.worktreePath !== null &&
+            (yield* occupies(worktreePaths, terminal.worktreePath))) ||
+          (yield* occupies(worktreePaths, terminal.cwd))
+        )
+          return true;
+      }
+      return false;
+    });
+    // Sessions can outlive their run and can be shared across app threads. Ready persisted
+    // sessions may have released their runtime; only live sessions protect the path.
+    const hasLiveSession = Effect.fnUntraced(function* (worktreePaths: ReadonlyArray<string>) {
+      const sessionRows = yield* sql<{ payload_json: string }>`
+        SELECT payload_json FROM orchestration_v2_projection_provider_sessions
+        WHERE status != 'stopped'
+      `.pipe(NodeSqliteClient.readOnly);
+      const sessions = yield* Effect.forEach(sessionRows, (row) =>
+        decodeCleanupSession(row.payload_json),
+      );
+      for (const session of sessions) {
+        if (
+          (yield* occupies(worktreePaths, session.cwd)) &&
+          (yield* providerSessions.isLive(session.id))
+        )
+          return true;
+      }
+      return false;
+    });
+    return { canonical, hasTerminal, hasLiveSession };
+  };
 
   const reportOrphanWorktrees = Effect.fn("StorageCleanup.reportOrphanWorktrees")(function* (
     roots: ReadonlyArray<string>,
     projects: ReadonlyArray<{ readonly workspaceRoot: string }>,
     serverSettings: ServerSettings,
+    guards: ReturnType<typeof makeWorktreeGuards>,
     entries: StorageCleanupReportEntry[],
     scratchRoot: string | null,
   ) {
@@ -632,12 +670,13 @@ const make = Effect.gen(function* () {
           if (Option.isSome(measured)) orphanSizes.set(key, measured.value.bytes);
         }
         const bytes = orphanSizes.get(key) ?? null;
-        if (linked && serverSettings.storageCleanup.orphanWorktrees)
+        if (linked && !scratch && serverSettings.storageCleanup.orphanWorktrees)
           return yield* removeOrphanWorktree(
             worktreePath,
             bytes,
             projectRoots,
             serverSettings,
+            guards,
             entries,
           );
         entries.push({
@@ -1094,6 +1133,7 @@ const make = Effect.gen(function* () {
     bytes: number | null,
     projectRoots: ReadonlyArray<string>,
     serverSettings: ServerSettings,
+    guards: ReturnType<typeof makeWorktreeGuards>,
     entries: StorageCleanupReportEntry[],
   ) {
     const machineRules = resolveWorktreeCleanup(serverSettings, null);
@@ -1129,10 +1169,10 @@ const make = Effect.gen(function* () {
         )
       )
         return "a thread uses this worktree now";
-      if (yield* containsProjectRoot(worktreePath, yield* projectStore.listShells()))
+      if (yield* containsProjectRoot([worktreePath], yield* projectStore.listShells()))
         return "contains a project checkout";
-      if (hasTerminal(worktreePath)) return "open terminal";
-      if (yield* liveSessionInside(worktreePath)) return "provider session is still open";
+      if (yield* guards.hasTerminal([worktreePath])) return "open terminal";
+      if (yield* guards.hasLiveSession([worktreePath])) return "provider session is still open";
       return null;
     });
     yield* Effect.gen(function* () {
@@ -1173,6 +1213,9 @@ const make = Effect.gen(function* () {
       if (onRef.stdout.trim() === "") return keep("has commits not on any branch");
       const submodules = yield* submoduleRemoval(worktreePath, rules);
       if (submodules.reason !== null) return keep(submodules.reason);
+      // Worktree removal deletes ignored nested repositories, which status does not report.
+      const inspection = yield* measureWorktree(worktreePath, true);
+      if (inspection.reason !== null) return keep(inspection.reason);
       const blockedLate = yield* blockedSinceCheck();
       if (blockedLate !== null) return keep(blockedLate);
       const current = yield* settingsService.getSettings;
@@ -1301,44 +1344,8 @@ const make = Effect.gen(function* () {
     )).filter((thread) => thread.worktreePath !== null && thread.branch !== null);
     const snapshot = yield* readThreads();
     const threadsById = new Map(snapshot.threads.map((thread) => [thread.id, thread]));
-    const refreshedDefaultRefs = new Map<string, Set<string>>();
-    const defaultBranches = new Map<string, string | null>();
-    // Threads may store one checkout through different symlinked spellings; compare real paths.
-    // Keys are only compared, never opened, so they take pathKey's Windows case folding.
-    const canonicalPaths = new Map<string, string>();
-    const canonical = Effect.fnUntraced(function* (target: string) {
-      const resolved = path.resolve(target);
-      const cached = canonicalPaths.get(resolved);
-      if (cached !== undefined) return cached;
-      const realPath = yield* fs.realPath(resolved).pipe(Effect.orElseSucceed(() => resolved));
-      const key = pathKey(realPath);
-      canonicalPaths.set(resolved, key);
-      return key;
-    });
-    // A cwd in a deleted folder cannot be resolved, so stored spellings are compared too.
-    const occupies = Effect.fnUntraced(function* (
-      worktreePaths: ReadonlyArray<string>,
-      target: string,
-    ) {
-      const targets = [path.resolve(target), yield* canonical(target)];
-      return worktreePaths.some((worktree) =>
-        targets.some((cwd) => pathKey(cwd) === pathKey(worktree) || inside(worktree, cwd)),
-      );
-    });
-    const hasTerminal = Effect.fnUntraced(function* (worktreePaths: ReadonlyArray<string>) {
-      for (const terminal of [...liveTerminals.values()].flatMap((entries) => [
-        ...entries.values(),
-      ])) {
-        if (terminal.status !== "starting" && terminal.status !== "running") continue;
-        if (
-          (terminal.worktreePath !== null &&
-            (yield* occupies(worktreePaths, terminal.worktreePath))) ||
-          (yield* occupies(worktreePaths, terminal.cwd))
-        )
-          return true;
-      }
-      return false;
-    });
+    const guards = makeWorktreeGuards();
+    const { canonical, hasTerminal, hasLiveSession } = guards;
     const liveThreads = snapshot.threads.filter((thread) => thread.worktreePath !== null);
     const liveKeys = yield* Effect.forEach(liveThreads, (thread) =>
       canonical(thread.worktreePath!),
@@ -1560,22 +1567,8 @@ const make = Effect.gen(function* () {
             )
               return "parent settlement changed since check";
           }
-          // Sessions can outlive their run and can be shared across app threads.
-          const sessionRows = yield* sql<{ payload_json: string }>`
-            SELECT payload_json FROM orchestration_v2_projection_provider_sessions
-            WHERE status != 'stopped'
-          `.pipe(NodeSqliteClient.readOnly);
-          const sessions = yield* Effect.forEach(sessionRows, (row) =>
-            decodeCleanupSession(row.payload_json),
-          );
-          // Ready persisted sessions may have released their runtime; only live sessions protect the path.
-          for (const session of sessions) {
-            if (
-              (yield* occupies(worktreePaths, session.cwd)) &&
-              (yield* providerSessions.isLive(session.id))
-            )
-              return waitForStop("provider session is still open");
-          }
+          if (yield* hasLiveSession(worktreePaths))
+            return waitForStop("provider session is still open");
           return null;
         });
         const settingsChangedSinceCheck = Effect.gen(function* () {
@@ -1644,8 +1637,8 @@ const make = Effect.gen(function* () {
             remotes.stdout.trim() === ""
               ? null
               : yield* git.resolvePrimaryRemoteName(repositoryCwd);
-          let branch: string | null | undefined;
-          let defaultRef: string;
+          let branch: string;
+          let baseRef: string;
           if (remote === null) {
             if (!unchangedApplies)
               return keep(
@@ -1660,57 +1653,19 @@ const make = Effect.gen(function* () {
               allowNonZeroExit: true,
             });
             if (projectHead.exitCode !== 0) return keep("project branch is unavailable");
-            defaultRef = projectHead.stdout.trim();
-            branch = defaultRef.slice("refs/heads/".length);
+            baseRef = projectHead.stdout.trim();
+            branch = baseRef.slice("refs/heads/".length);
           } else {
-            const defaultBranchKey = `${repositoryCwd}\0${remote}`;
-            branch = defaultBranches.get(defaultBranchKey);
-            if (branch === undefined) {
-              branch = yield* git.resolveDefaultBranchName(repositoryCwd, remote);
-              // Without a local HEAD ref, only the remote can identify its default;
-              // a conventional name may be a feature branch.
-              if (branch === null) {
-                branch = yield* git
-                  .execute({
-                    operation: "StorageCleanup.resolveDefaultBranch",
-                    cwd: repositoryCwd,
-                    args: ["ls-remote", "--symref", "--", remote, "HEAD"],
-                    timeoutMs: 20_000,
-                  })
-                  .pipe(
-                    Effect.map(
-                      (result) =>
-                        /^ref: refs\/heads\/(.+)\tHEAD\r?$/m.exec(result.stdout)?.[1] ?? null,
-                    ),
-                    Effect.orElseSucceed(() => null),
-                  );
-              }
-              defaultBranches.set(defaultBranchKey, branch);
-            }
-            if (branch === null) return keep("default branch is unavailable");
-            defaultRef = `refs/remotes/${remote}/${branch}`;
-            const refreshed = refreshedDefaultRefs.get(repositoryCwd) ?? new Set<string>();
-            if (!refreshed.has(defaultRef)) {
-              yield* git.fetchRemoteTrackingBranch({
-                cwd: repositoryCwd,
-                remoteName: remote,
-                remoteBranch: branch,
-              });
-              refreshed.add(defaultRef);
-              refreshedDefaultRefs.set(repositoryCwd, refreshed);
-            }
+            const target = yield* defaultRef(repositoryCwd, remote);
+            if (target === null) return keep("default branch is unavailable");
+            branch = target.branch;
+            baseRef = target.ref;
           }
           const base = yield* git.resolveCommit({
             cwd: worktreePath,
-            revision: defaultRef,
+            revision: baseRef,
           });
-          const ancestor = yield* git.execute({
-            operation: "StorageCleanup.integratedBranch",
-            cwd: worktreePath,
-            args: ["merge-base", "--is-ancestor", head.commitSha, base.commitSha],
-            allowNonZeroExit: true,
-          });
-          const integrated = ancestor.exitCode === 0;
+          const integrated = yield* isIntegrated(worktreePath, head.commitSha, base.commitSha);
           eligible = integrated && unchangedApplies;
           if (eligible)
             removalReason =
@@ -1802,6 +1757,7 @@ const make = Effect.gen(function* () {
       roots,
       yield* projectStore.list({ includeDeleted: true }),
       serverSettings,
+      guards,
       entries,
       scratchRoot,
     );
@@ -1822,8 +1778,7 @@ const make = Effect.gen(function* () {
       allowNonZeroExit: true,
       maxOutputBytes: 16 * 1024 * 1024,
     });
-    if (result.exitCode !== 0 && result.stderr.toLowerCase().includes("not a git repository"))
-      return null;
+    if (result.exitCode !== 0 && isNonRepositoryGitStderr(result.stderr)) return null;
     if (result.exitCode !== 0 || result.stdoutTruncated)
       return yield* new GitCommandError({
         operation: "StorageCleanup.listBranches",
@@ -1852,8 +1807,7 @@ const make = Effect.gen(function* () {
       env: { LC_ALL: "C" },
       allowNonZeroExit: true,
     });
-    if (result.exitCode !== 0 && result.stderr.toLowerCase().includes("not a git repository"))
-      return null;
+    if (result.exitCode !== 0 && isNonRepositoryGitStderr(result.stderr)) return null;
     if (result.exitCode !== 0)
       return yield* new GitCommandError({
         operation: "StorageCleanup.repositoryKey",

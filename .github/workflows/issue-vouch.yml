@@ -1,15 +1,8 @@
 name: Issue Vouch
 
+# T3Factory: inherited trigger neutralized to reusable-only with no caller; the vouch list is upstream's.
 on:
-  issues:
-    types: [opened, reopened]
-  push:
-    branches:
-      - main
-    paths:
-      - .github/VOUCHED.td
-      - .github/workflows/issue-vouch.yml
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

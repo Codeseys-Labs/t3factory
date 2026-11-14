@@ -10,6 +10,10 @@ import { assert, expect, it } from "@effect/vitest";
 import {
   ComposerContextId,
   EnvironmentId,
+  FactoryIssueReadinessReadResult,
+  FactoryWorkListResult,
+  FactoryWorkPrerequisitesResult,
+  OrchestratorMcpFailure,
   PreviewAutomationUnavailableError,
   ThreadId,
 } from "@t3tools/contracts";
@@ -31,6 +35,10 @@ import {
   mockOutput,
   normalizeToolInput,
   normalizeToolName,
+  modelTarget,
+  openRouterProxy,
+  redactModelError,
+  runSample,
   pastedText,
   type SampleRun,
   shellOutput,
@@ -1086,6 +1094,251 @@ const browserCase = (id: string) =>
     .split("\n")
     .map((line) => decodeDeviceCase(line))
     .find((c) => c.id === id)!;
+
+it.effect("answers argument-specific fixtures without falling back to the root payload", () =>
+  Effect.gen(function* () {
+    const tool = "factory_read_work_prerequisites";
+    const ref = { version: 1, environmentId: "env-acme", kind: "issue", id: "root-12" };
+    const blocker = { ...ref, id: "root-9" };
+    const rootResult = { status: "observed", issueNumber: 12 };
+    const blockerResult = { status: "owner-unavailable", reason: "missing-project" };
+    const testCase = decodeMcpCase(
+      JSON.stringify({
+        ...childCase,
+        setup: {
+          role: "top",
+          mocks: { [tool]: rootResult },
+          mockResponses: {
+            [tool]: [
+              { args: { ref }, result: rootResult },
+              {
+                args: {
+                  "ref.version": 1,
+                  "ref.environmentId": "env-acme",
+                  "ref.kind": "issue",
+                  "ref.id": "root-9",
+                },
+                result: blockerResult,
+              },
+            ],
+          },
+        },
+        expect: {},
+      }),
+    );
+    const base = buildBase(template, { model: "claude-sonnet-5-5", keepUserInstructions: false });
+    const replay = (inputs: Array<unknown>, fixture = testCase, toolName = tool) => {
+      let step = 0;
+      const http = HttpClient.make((request) =>
+        Effect.sync(() =>
+          HttpClientResponse.fromWeb(
+            request,
+            Response.json({
+              content:
+                step++ === 0
+                  ? inputs.map((input, i) => ({
+                      type: "tool_use",
+                      id: `call-${i}`,
+                      name: `mcp__t3-code__${toolName}`,
+                      input,
+                    }))
+                  : [{ type: "text", text: "Done." }],
+              stop_reason: step === 1 ? "tool_use" : "end_turn",
+              usage: { input_tokens: 0, output_tokens: 0 },
+            }),
+          ),
+        ),
+      );
+      return runSample(
+        fixture,
+        {
+          apiKey: "unused",
+          model: "claude-sonnet-5-5",
+          shellModel: "claude-haiku-5-5",
+          effort: "high",
+          maxSteps: 2,
+        },
+        { ...base, nativeTools: [...base.nativeTools, ...base.deferred] },
+        {
+          usage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+          shellUsage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+        },
+      ).pipe(Effect.provideService(HttpClient.HttpClient, http));
+    };
+    const run = yield* replay([{ ref, extra: "still partial" }, { ref: blocker }, { ref }]);
+    assert.deepEqual(
+      run.calls.map((call) => JSON.parse(call.output!)),
+      [rootResult, blockerResult, rootResult],
+    );
+    for (const wrong of [
+      { ...ref, id: "unknown" },
+      { ...ref, environmentId: "env-other" },
+      { ...ref, kind: "brief" },
+      { ...ref, version: 2 },
+      {},
+    ]) {
+      const result = yield* replay([{ ref: wrong }]);
+      assert.equal(result.calls[0]!.failed, true, JSON.stringify(wrong));
+      assert.include(result.calls[0]!.output!, "EvalFixtureMismatch:");
+      assert.deepEqual(gradeSample({}, result), [{ check: "fixtureArguments", pass: false }]);
+    }
+    const legacy = yield* replay([{ ref: blocker }], {
+      ...testCase,
+      setup: { role: "top", mocks: { [tool]: rootResult } },
+    });
+    assert.deepEqual(JSON.parse(legacy.calls[0]!.output!), rootResult);
+    const ambiguous = yield* replay([{ ref }], {
+      ...testCase,
+      setup: {
+        ...testCase.setup,
+        mockResponses: {
+          [tool]: [
+            { args: {}, result: rootResult },
+            { args: { ref }, result: blockerResult },
+          ],
+        },
+      },
+    }).pipe(Effect.exit);
+    assert.equal(ambiguous._tag, "Failure");
+    const listTool = "factory_list_work";
+    for (const args of [{}, { limit: 50 }]) {
+      const fixture = decodeMcpCase(
+        JSON.stringify({
+          ...testCase,
+          setup: {
+            role: "top",
+            mocks: { [listTool]: blockerResult },
+            mockResponses: { [listTool]: [{ args, exactArgs: true, result: rootResult }] },
+          },
+        }),
+      );
+      const valid = yield* replay([args], fixture, listTool);
+      assert.deepEqual(
+        valid.calls.map((call) => JSON.parse(call.output!)),
+        [rootResult],
+      );
+      for (const extra of [
+        { projectIds: [] },
+        { projectIds: ["project-other"] },
+        { kind: "issue" },
+        { scope: "project" },
+        { cursor: "cursor-issue-2" },
+        { limit: 1 },
+      ]) {
+        const input = { ...args, ...extra };
+        const result = yield* replay([input], fixture, listTool);
+        assert.isTrue(result.calls[0]!.failed, JSON.stringify(input));
+        assert.include(result.calls[0]!.output!, "EvalFixtureMismatch:");
+        assert.deepEqual(gradeSample({}, result), [{ check: "fixtureArguments", pass: false }]);
+      }
+      for (const exactArgs of [undefined, false]) {
+        const partial = yield* replay(
+          [{ ...args, projectIds: [], kind: "issue" }],
+          {
+            ...fixture,
+            setup: {
+              role: "top",
+              mockResponses: { [listTool]: [{ args, exactArgs, result: rootResult }] },
+            },
+          },
+          listTool,
+        );
+        assert.deepEqual(JSON.parse(partial.calls[0]!.output!), rootResult);
+      }
+    }
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+);
+
+it.effect("keeps Codex cell errors graded and records the proxy's returned model", () =>
+  Effect.gen(function* () {
+    const model = "gpt-6-luna";
+    const base = {
+      ...buildBase(template, { model, keepUserInstructions: false }),
+      codex: { input: [], reasoning: { effort: "low" } },
+      nativeTools: [{ name: "exec", description: "Code cell" }],
+    };
+    const testCase = {
+      ...childCase,
+      setup: { role: "top" as const },
+      expect: { finalTextMust: ["Done"] },
+    };
+    const replay = (
+      code: string,
+      returnedModel: string | undefined,
+      maxSteps = 2,
+      fixture: McpToolUseCase = testCase,
+    ) => {
+      let step = 0;
+      const http = HttpClient.make((request) =>
+        Effect.sync(() => {
+          const response = {
+            model: returnedModel,
+            output:
+              step++ === 0
+                ? [{ type: "custom_tool_call", call_id: "cell-1", name: "exec", input: code }]
+                : [{ type: "message", content: [{ type: "output_text", text: "Done." }] }],
+            usage: {
+              input_tokens: 10,
+              output_tokens: 2,
+              input_tokens_details: { cached_tokens: 0 },
+            },
+          };
+          return HttpClientResponse.fromWeb(
+            request,
+            new Response(`data: ${JSON.stringify({ type: "response.completed", response })}\n\n`),
+          );
+        }),
+      );
+      return runSample(
+        fixture,
+        {
+          apiKey: "",
+          model,
+          shellModel: "claude-haiku-5-5",
+          effort: "low",
+          maxSteps,
+          proxy: { url: "https://proxy.invalid/v1", headers: {} },
+        },
+        base,
+        {
+          usage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+          shellUsage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+        },
+      ).pipe(Effect.provideService(HttpClient.HttpClient, http));
+    };
+    for (const code of ["const = ;", "await new Promise(() => {});", "while (true) {}"]) {
+      const run = yield* replay(code, "served-model");
+      assert.equal(run.stopReason, "end_turn");
+      assert.equal(run.calls[0]!.failed, true);
+      assert.include(run.calls[0]!.output!, "ModelCodeError:");
+      assert.include(JSON.stringify(run.transcript), "ModelCodeError:");
+      assert.deepEqual(run.usage.models, ["served-model"]);
+      assert.deepEqual(failed(testCase.expect, run), []);
+      const unfinished = yield* replay(code, undefined, 1);
+      assert.equal(unfinished.stopReason, "max_steps");
+      assert.isNotEmpty(failed(testCase.expect, unfinished));
+      assert.isUndefined(unfinished.usage.models);
+    }
+    const fixtureError = yield* replay(
+      "await tools.mcp__t3_code__factory_read_work_prerequisites({});",
+      undefined,
+      2,
+      {
+        ...testCase,
+        setup: {
+          role: "top",
+          mockResponses: {
+            factory_read_work_prerequisites: [
+              { args: {}, result: {} },
+              { args: {}, result: {} },
+            ],
+          },
+        },
+      },
+    ).pipe(Effect.exit);
+    assert.equal(fixtureError._tag, "Failure");
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+);
 
 it("rebuilds the template from this checkout and sends a child T3's task prompt", () => {
   const base = buildBase(template, { model: "claude-sonnet-5-5", keepUserInstructions: false });
@@ -3674,6 +3927,11 @@ it("keeps direct defaults and requires exact OpenRouter model ids", () => {
     model: "gpt-6.1-sol",
     shellModel: "claude-haiku-5-5",
   });
+  assert.deepEqual(evalModels("direct", "gpt-6.1-sol", "gpt-6.1-terra"), {
+    model: "gpt-6.1-sol",
+    shellModel: "gpt-6.1-terra",
+  });
+  assert.throws(() => evalModels("direct", "gpt-6.1-sol", "gpt-6.1-sol"), /shell model/);
   assert.deepEqual(evalModels("openrouter", "openai/gpt-6.1-sol"), {
     model: "openai/gpt-6.1-sol",
     shellModel: "anthropic/claude-haiku-5.5",
@@ -3810,7 +4068,7 @@ it.effect("routes agent and shell through OpenRouter in the same Claude capture 
     assert.include(summary, `Returned shell models: ${shellModel}.`);
     assert.notInclude(summary, "API-price estimate");
     assert.notInclude(summary, "Estimated cost");
-  }).pipe(Effect.provide(NodeServices.layer)),
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 it.each(["couldn't", "couldn’t", "can’t"])(

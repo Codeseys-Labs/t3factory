@@ -667,7 +667,7 @@ it.layer(NodeServices.layer)("DesktopLinuxUrlHandler theme icons", (it) => {
       }
       assert.isFalse(yield* fileSystem.exists(fixture.cachePath));
       assert.equal(iconCacheRuns(run), 0);
-    }),
+    }).pipe(withCaseSensitiveThemeIcons),
   );
 
   it.effect("replaces same-length stale icons and refreshes an existing cache once", () =>
@@ -703,7 +703,7 @@ it.layer(NodeServices.layer)("DesktopLinuxUrlHandler theme icons", (it) => {
         run.commands.filter(({ command }) => command === "gtk-update-icon-cache"),
         [{ command: "gtk-update-icon-cache", args: ["-f", "-t", fixture.hicolorDir] }],
       );
-    }),
+    }).pipe(withCaseSensitiveThemeIcons),
   );
 
   it.effect("refreshes when this launch changed an icon even if the cache looks newer", () =>

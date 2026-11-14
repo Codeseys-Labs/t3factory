@@ -108,6 +108,19 @@ const makeHarness = Effect.fn("test.make_desktop_app_update_harness")(function* 
 });
 
 it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("desktop app update", (it) => {
+  it.effect("rejects update preparation and commit when the desktop disables updates", () =>
+    Effect.gen(function* () {
+      const { service } = yield* makeHarness({ desktopUpdatesDisabled: true });
+      expect(service.available).toBe(false);
+      expect((yield* service.run(() => Effect.void).pipe(Effect.flip)).reason).toContain(
+        "disabled",
+      );
+      expect((yield* service.commit("untrusted-token").pipe(Effect.flip)).reason).toContain(
+        "cannot commit",
+      );
+    }),
+  );
+
   it.effect("collapses state reports into progress stages and succeeds on installing", () =>
     Effect.gen(function* () {
       const { service } = yield* makeHarness({

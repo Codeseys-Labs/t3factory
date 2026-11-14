@@ -20,7 +20,8 @@ import {
   type ProjectId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -98,7 +99,8 @@ const make = Effect.gen(function* () {
   const projects = yield* Projects.ProjectService;
   const threads = yield* Threads.ThreadManagementService;
   const launcher = yield* ThreadLaunch.ThreadLaunchService;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
+  const digester = yield* Digest.Digest;
   const environment = yield* ServerEnvironmentIdentity;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -111,8 +113,8 @@ const make = Effect.gen(function* () {
     new FactoryKnowledgeError({ reason: "persistence-failure", cause });
 
   const sha256 = (text: string) =>
-    crypto
-      .digest("SHA-256", new TextEncoder().encode(text))
+    digester
+      .digest(Digest.sha256, new TextEncoder().encode(text))
       .pipe(Effect.map(Hex.encode), Effect.orDie);
   // Covers only task-defining text: ids and timestamps are not part of what a reviewer approves.
   // JSON keeps empty strings distinct from absent text and escapes lone surrogates.
@@ -260,7 +262,7 @@ const make = Effect.gen(function* () {
     };
     return yield* store.createBrief(
       {
-        id: `brief:${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`,
+        id: `brief:${yield* random.uuidV4()}`,
         projectId: input.projectId,
         ...content,
         revision: yield* revisionOf(content),
@@ -324,7 +326,7 @@ const make = Effect.gen(function* () {
       return yield* new FactoryKnowledgeError({ reason: "artifact-changed" });
     const acceptance = yield* store.insertAcceptance(
       {
-        id: `knowledge-acceptance:${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`,
+        id: `knowledge-acceptance:${yield* random.uuidV4()}`,
         briefId: brief.id,
         threadId: task.threadId,
         projectId: input.projectId,
@@ -405,7 +407,7 @@ const make = Effect.gen(function* () {
     const project = yield* projects.getById(input.projectId).pipe(Effect.mapError(persistence));
     if (Option.isNone(project))
       return yield* new FactoryKnowledgeError({ reason: "unknown-brief" });
-    const attempt = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const attempt = yield* random.uuidV4();
     const creationSource = input.creationSource ?? "web";
     const intent: Store.FactoryKnowledgeLaunchIntent = {
       briefId: brief.id,

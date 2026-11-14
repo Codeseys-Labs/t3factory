@@ -5294,6 +5294,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     getCapabilities: Effect.fn("OpencodeAdapter.getCapabilities")(function () {
       return Effect.succeed({
         ...OpenCode2ProviderCapabilities,
+        ownedWriters: server.ownedWriters === true,
         turns: {
           ...OpenCode2ProviderCapabilities.turns,
           ...(nativeGoalSupport === undefined ? {} : { supportsNativeGoals: nativeGoalSupport }),

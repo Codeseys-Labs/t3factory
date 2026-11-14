@@ -17,7 +17,11 @@ import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as PlatformError from "effect/PlatformError";
+import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import { makeClaudeOwnedSpawner } from "../../process/ClaudeOwnedProcess.ts";
 import * as TestClock from "effect/testing/TestClock";
 import { vi } from "vite-plus/test";
 
@@ -330,6 +334,7 @@ it.live.each([
         });
         child.stdin.end("owned-input");
         return {
+          initializationResult: async () => ({}),
           setMcpServers: async () => {
             await exited.promise;
             return { added: [], removed: [], errors: {} };

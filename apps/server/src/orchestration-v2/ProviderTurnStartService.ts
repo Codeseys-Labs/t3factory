@@ -442,6 +442,11 @@ export const layer: Layer.Layer<
               } satisfies OrchestrationV2DomainEvent;
             }),
           );
+          const managed = yield* factoryLifecycle.binding({
+            threadId: projection.thread.id,
+            runId,
+            runAttemptId: attempt.id,
+          });
           const written = yield* eventSink.writeIfRunCurrent({
             threadId: projection.thread.id,
             runId,
@@ -1816,20 +1821,37 @@ export const layer: Layer.Layer<
           // Storage cleanup removes worktrees under the same lease. Only startup
           // holds it; the provider turn runs after it is released.
           const { thread } = yield* projectionStore.getThreadRecords(input.threadId, []);
+          const managed = yield* factoryLifecycle.binding({
+            threadId: input.threadId,
+            runId: input.runId,
+            ...(input.runAttemptId === undefined ? {} : { runAttemptId: input.runAttemptId }),
+          });
+          if (managed !== null && input.runAttemptId === undefined)
+            return yield* new ProviderTurnStartError({
+              runId: input.runId,
+              cause: "Managed start requires immutable attempt binding.",
+            });
           const cwd =
             thread.worktreePath ??
             (yield* projects
               .getById(thread.projectId, { includeDeleted: true })
               .pipe(Effect.map((project) => Option.getOrUndefined(project)?.workspaceRoot)));
-          const providerTurn = yield* cwd === undefined
-            ? start(input)
-            : withTurnStartReservation(
-                fileSystem,
-                path,
-                path.resolve(cwd),
-                thread.worktreePath === null
-                  ? start(input)
-                  : withWorkspaceLease(path.resolve(thread.worktreePath), start(input)),
+          const startup =
+            cwd === undefined
+              ? start(input)
+              : withTurnStartReservation(
+                  fileSystem,
+                  path,
+                  path.resolve(cwd),
+                  thread.worktreePath === null
+                    ? start(input)
+                    : withWorkspaceLease(path.resolve(thread.worktreePath), start(input)),
+                );
+          const providerTurn = yield* managed === null
+            ? startup
+            : factoryLifecycle.runPhase(
+                { ...managed, phase: "session" },
+                factoryLifecycle.runPhase({ ...managed, phase: "native-thread" }, startup),
               );
           if (providerTurn !== undefined) yield* providerTurn;
         },

@@ -18,7 +18,8 @@ import type {
   TrackerRepositoryRef,
 } from "@t3tools/source-control-core/server/IssueTrackerProvider";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
@@ -80,7 +81,8 @@ export class FactoryIssueService extends Context.Service<
 const make = Effect.gen(function* () {
   const launches = yield* Launches.FactoryIssueLaunches;
   const threads = yield* Threads.ThreadManagementService;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
+  const digester = yield* Digest.Digest;
   const folders = yield* ManagedFolders.ManagedProjectFolders;
   const environment = yield* ServerEnvironmentIdentity;
 
@@ -122,9 +124,9 @@ const make = Effect.gen(function* () {
     repository: FactoryRepository,
     issue: Launches.FactoryLaunchIntent["issue"],
   ) =>
-    crypto
+    digester
       .digest(
-        "SHA-256",
+        Digest.sha256,
         new TextEncoder().encode(
           JSON.stringify([
             "t3.factory.issue-content/1",
@@ -248,7 +250,7 @@ const make = Effect.gen(function* () {
       current.project.workspaceRoot !== project.workspaceRoot
     )
       return yield* new FactoryIssueError({ reason: "repository-changed" });
-    const attempt = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const attempt = yield* random.uuidV4();
     const intent: Launches.FactoryLaunchIntent = {
       repository,
       issue,

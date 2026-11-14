@@ -34,6 +34,8 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
+import * as FactoryExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as Statement from "effect/sql/Statement";
 import {
   orchestrationCommandDuration,

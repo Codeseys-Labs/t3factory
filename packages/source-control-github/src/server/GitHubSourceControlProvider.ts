@@ -974,10 +974,10 @@ export const make = Effect.gen(function* () {
         return GitHubChangeRequestTemplate.detect(cwd, treeish, git.execute);
       },
     ),
-    // `createChangeRequest` targets what `resolveRepository` picks: GH_REPO when it parses, else
-    // gh's pick among the checkout's remotes, led by the one `gh repo set-default` marked
-    // (`gh-resolved`). An HTTPS remote keeps a non-default port in the context's host, and the
-    // mark is then ignored.
+    // Implicit creates target what `resolveRepository` picks: GH_REPO when it parses, else gh's
+    // pick among the checkout's remotes, led by the one `gh repo set-default` marked
+    // (`gh-resolved`). Explicit target selectors pin the repository independently. An HTTPS
+    // remote keeps a non-default port in the context's host, and the mark is then ignored.
     createsChangeRequestsIn: Effect.fn("GitHubSourceControlProvider.createsChangeRequestsIn")(
       function* ({ cwd, context, repository }) {
         const host = URL.canParse(context.provider.baseUrl)

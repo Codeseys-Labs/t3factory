@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off - hashes inputs with node:crypto and sizes the budget with node:os.
+// @effect-diagnostics nodeBuiltinImport:off - hashes inputs with node:crypto, sizes the budget with node:os, and reads qualification pins synchronously with node:fs.
 // Runs CI's fast checks for this branch's changes: format and lint of the
 // changed files, knip, generated GraphQL operations, typecheck of the affected
 // packages and their dependents, the test files beside the changed files, and
@@ -14,10 +14,12 @@
 // Uncommitted and untracked files count. Affected packages come from
 // .github/scripts/ci-changes.cjs, the same mapping CI uses to gate its jobs.
 // The steps run side by side within a budget derived from the machine's cores
-// and available memory, and each prints its output when it finishes. A step
-// running past the timeout is killed with its process group and reported as
-// TIMEOUT. A rerun on exactly the files of the last passing run prints that
-// run's summary.
+// and available memory, and each prints its output when it finishes. A file
+// list too long for one command line runs as several commands, one after
+// another. A step running past the timeout is killed with its process group and
+// reported as TIMEOUT. A rerun on exactly the files of the last passing run
+// prints that run's summary.
+import * as NodeFS from "node:fs";
 import * as NodeCrypto from "node:crypto";
 import * as NodeOS from "node:os";
 
@@ -39,6 +41,11 @@ import { Argument, Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { decide, readWorkspace } from "../.github/scripts/ci-changes.cjs";
+import {
+  splitArguments,
+  splitCompilerPattern,
+  touchesQualificationPin,
+} from "./lib/check-changed-plan.ts";
 import { vitePlusCommand } from "./check-changed-command.ts";
 
 const GiB = 1024 ** 3;
@@ -336,6 +343,10 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
   for (const test of docReaderTests(files)) tests.add(test);
   // It reads files other than the ones beside it, so no changed file selects it.
   if (affected.includes("t3")) tests.add("apps/server/src/provider/AgentContextBudget.test.ts");
+  // It hashes every file cases.json pins, across packages, so no changed file selects it.
+  if (touchesQualificationPin(files, (file) => NodeFS.readFileSync(inRoot(file), "utf8"))) {
+    tests.add("evals/factory-qualification/dataset.test.ts");
+  }
   const { vitestTests, nodeTests } = splitTests(tests);
 
   // React Compiler coverage compiles every client source file, so run only the
@@ -472,15 +483,30 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
   const filters = (names: ReadonlyArray<string>) => names.flatMap((name) => ["--filter", name]);
   const typecheckWorkers = Math.min(concurrency, affected.length);
   const command = (name: string, args: ReadonlyArray<string>) => ({ name, run: vp(args) });
+  // Windows refuses long command lines, so a long file list runs as several commands in turn.
+  const commands = (name: string, argLists: ReadonlyArray<ReadonlyArray<string>>) => ({
+    name,
+    run: Effect.forEach(argLists, (args) => vp(args)).pipe(
+      Effect.map((results) => ({
+        ok: results.every((result) => result.ok),
+        output: results.map((result) => result.output).join("\n"),
+      })),
+    ),
+  });
   const compilerFiles = compilerApps.reduce((count, app) => count + app.names.length, 0);
 
   const steps: Array<Step<never>> = [
     ...(runPatchCheck ? [{ name: "unused patches", run: checkPatches }] : []),
     ...(present.length > 0
-      ? [command("format", ["fmt", "--check", "--no-error-on-unmatched-pattern", ...present])]
+      ? [
+          commands(
+            "format",
+            splitArguments(["fmt", "--check", "--no-error-on-unmatched-pattern"], present),
+          ),
+        ]
       : []),
     ...(code.length > 0
-      ? [command("lint", ["lint", "--no-error-on-unmatched-pattern", ...code])]
+      ? [commands("lint", splitArguments(["lint", "--no-error-on-unmatched-pattern"], code))]
       : []),
     ...(runKnip
       ? knipPasses.map((args, index) => command(`knip ${index + 1}/${knipPasses.length}`, args))
@@ -510,12 +536,10 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
     ...(vitestTests.length > 0
       ? [
           {
-            ...command(`test (${vitestTests.length} files)`, [
-              "test",
-              "run",
-              "--passWithNoTests",
-              ...vitestTests,
-            ]),
+            ...commands(
+              `test (${vitestTests.length} files)`,
+              splitArguments(["test", "run", "--passWithNoTests"], vitestTests),
+            ),
             serial: true,
           },
         ]
@@ -533,13 +557,10 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
     ...(compilerApps.length > 0
       ? [
           {
-            ...command(`react compiler (${compilerFiles} files)`, [
-              "test",
-              "run",
-              ...compilerApps.map((app) => app.test),
-              "-t",
-              compilerApps.flatMap((app) => app.pattern).join("|"),
-            ]),
+            ...commands(
+              `react compiler (${compilerFiles} files)`,
+              splitCompilerPattern(compilerApps),
+            ),
             serial: true,
           },
         ]

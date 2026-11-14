@@ -127,6 +127,7 @@ const layerTest = Layer.mergeAll(
   layerCommandReceiptStoreProvided,
   IdAllocator.layer,
   layerProjectionMaintenanceProvided,
+  FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
   layerProjectionReplayProvided,
 );
 

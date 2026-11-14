@@ -200,8 +200,9 @@ qualification provenance check when a file its dataset pins changes, and React C
 for only the changed web and mobile files. It maps
 files to packages with [ci-changes.cjs](../../.github/scripts/ci-changes.cjs), as CI does. It
 compares against the closest merge base with any remote's `main`, so a fork whose `main` lags
-upstream still compares against upstream, or with a ref you pass. CI still runs the full
-test suites and the jobs the summary lists, so a local pass does not promise a green CI run.
+upstream still compares against upstream, or with a ref you pass. Hosted validation runs only
+when a maintainer dispatches [factory-check.yml](../../.github/workflows/factory-check.yml), so a
+local pass is the gate before any hosted run, and it does not promise a green hosted run.
 
 The steps run side by side, as many at once as the machine allows: one per two cores and per 6 GiB
 of available memory. On a large machine a run takes about as long as its slowest step, usually
@@ -271,6 +272,25 @@ vp run dist:desktop:artifact --platform linux --target AppImage --arch arm64
 DMGs default to the host architecture. Use `--arch` to choose another target and `--keep-stage`
 to retain packaging files for inspection. Run `vp run dist:desktop:artifact --help` for other
 options.
+
+### T3Factory preview zip
+
+`vp run dist:desktop:artifact --distribution factory-preview --output-dir <dir>` builds the
+unsigned Windows x64 portable `T3Factory-<version>-x64.zip` as `T3Factory (Preview)`. It
+uses its own app ID, `t3factory` scheme, `%APPDATA%\t3factory` profile and `~/.t3factory` home
+unless `T3CODE_HOME` explicitly selects a different home. Check that variable before launching:
+pointing it at a T3 Code home opens that database and may migrate it. With the default home,
+the preview never reads or imports local T3 Code profiles or `~/.t3`, and has no
+update feed, telemetry, WSL backend, or `t3` PATH command. The build refuses any configured
+Clerk or relay value, so T3 Connect sign-in is unavailable in this preview. Installers,
+signing, `--skip-build`, and other platforms are rejected. Hosted provenance and publication
+are separate; see [T3Factory manual validation](release.md#t3factory-manual-validation).
+
+Launching the portable app registers the `t3factory` URL handler to that executable; launching
+another copy replaces that handler without changing `t3code`. Factory development builds use
+the separate `t3factory-dev` profile and scheme. A resource monitor reused through
+`T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR` does not prove the Windows Spectre prerequisite was met;
+retain its build provenance when qualifying a package.
 
 ### Prepared server bytecode
 

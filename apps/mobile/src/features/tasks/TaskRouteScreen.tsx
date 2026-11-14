@@ -68,7 +68,7 @@ export function TaskRouteScreen({ route }: StaticScreenProps<TaskRouteParams>) {
     return <TaskLoaded key={detail.task.ref.taskId} task={detail.task} />;
   return (
     <View className="flex-1 bg-screen">
-      <AppBar title={displayId} onBack={() => navigation.goBack()} sidebar={false} />
+      <AppBar title={displayId} onBack={() => navigation.goBack()} />
       {status === "loading" || status === "current" ? (
         <View className="items-center py-10">
           <AppActivityIndicator colorClassName="accent-icon" accessibilityLabel="Loading task" />

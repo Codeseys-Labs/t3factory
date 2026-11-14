@@ -14,7 +14,8 @@ import {
   type FactoryPlanWorkContext,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -75,10 +76,11 @@ const make = Effect.gen(function* () {
   const sink = yield* EventSink.EventSinkV2;
   const work = yield* Work.FactoryWorkService;
   const identity = yield* ServerEnvironmentIdentity;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
+  const digester = yield* Digest.Digest;
   const sha256 = Effect.fn("FactoryPlanService.sha256")((value: unknown) =>
-    crypto
-      .digest("SHA-256", new TextEncoder().encode(canonical(value)))
+    digester
+      .digest(Digest.sha256, new TextEncoder().encode(canonical(value)))
       .pipe(Effect.map(Hex.encode), Effect.orDie),
   );
   const invalid = (cause: unknown) => new FactoryPlanError({ reason: "invalid-operation", cause });
@@ -108,7 +110,7 @@ const make = Effect.gen(function* () {
     };
     return yield* sink.commitFactoryPlanCommand({
       commandId: input.commandId,
-      eventId: EventId.make(yield* crypto.randomUUIDv4().pipe(Effect.orDie)),
+      eventId: EventId.make(yield* random.uuidV4()),
       ref,
       expectedRevision: 0,
       requestDigest: yield* sha256([
@@ -174,7 +176,7 @@ const make = Effect.gen(function* () {
     }
     return yield* sink.commitFactoryPlanCommand({
       commandId: input.commandId,
-      eventId: EventId.make(yield* crypto.randomUUIDv4().pipe(Effect.orDie)),
+      eventId: EventId.make(yield* random.uuidV4()),
       ref: input.ref,
       expectedRevision: input.expectedRevision,
       requestDigest: yield* sha256([

@@ -240,7 +240,13 @@ export const make = Effect.gen(function* () {
         // A quiescent binding has no owner, live claims or blocking effects; its orphaned
         // run must be terminalized by the pass below or retry admission stays blocked.
         if (settled === null || !settled.quiescent)
-          return { terminalizedRuns: 0, stoppedSessions: 0, closedRequests: 0, retiredEffects: 0 };
+          return {
+            terminalizedRuns: 0,
+            stoppedSessions: 0,
+            closedRequests: 0,
+            retiredEffects: 0,
+            cancelledEffectIds: [],
+          };
       }
       const now = yield* DateTime.now;
       let runs = [] as Array<OrchestrationV2ThreadProjection["runs"][number]>;
@@ -1130,6 +1136,7 @@ export const make = Effect.gen(function* () {
       (threadId) =>
         Effect.gen(function* () {
           const projection = yield* projections.getRuntimeRecoveryProjection(threadId);
+          if ((yield* factoryLifecycle.binding({ threadId })) !== null) return;
           if (
             !resolveProjectSettings(enabled, projection.thread.projectId).settings
               .continueThreadsAfterServerUpdate

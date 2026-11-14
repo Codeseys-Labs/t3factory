@@ -22,6 +22,11 @@ import { Route as ChatUsageRouteImport } from './routes/_chat.usage'
 import { Route as ChatSettingsRouteImport } from './routes/_chat.settings'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
+import { Route as ChatInboxRouteImport } from './routes/_chat.inbox'
+import { Route as ChatFactoryRouteImport } from './routes/_chat.factory'
+import { Route as ChatAutomationsRouteImport } from './routes/_chat.automations'
+import { Route as ChatTasksIndexRouteImport } from './routes/_chat.tasks.index'
+import { Route as ChatFactoryIndexRouteImport } from './routes/_chat.factory.index'
 import { Route as ThreadsEnvironmentIdThreadIdRouteImport } from './routes/threads.$environmentId.$threadId'
 import { Route as ChatSettingsWorktreesRouteImport } from './routes/_chat.settings.worktrees'
 import { Route as ChatSettingsVoiceRouteImport } from './routes/_chat.settings.voice'
@@ -123,6 +128,31 @@ const ChatNewRoute = ChatNewRouteImport.update({
   id: '/new',
   path: '/new',
   getParentRoute: () => ChatRoute,
+} as any)
+const ChatInboxRoute = ChatInboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatFactoryRoute = ChatFactoryRouteImport.update({
+  id: '/factory',
+  path: '/factory',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatAutomationsRoute = ChatAutomationsRouteImport.update({
+  id: '/automations',
+  path: '/automations',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatTasksIndexRoute = ChatTasksIndexRouteImport.update({
+  id: '/tasks/',
+  path: '/tasks/',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatFactoryIndexRoute = ChatFactoryIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ChatFactoryRoute,
 } as any)
 const ThreadsEnvironmentIdThreadIdRoute =
   ThreadsEnvironmentIdThreadIdRouteImport.update({
@@ -369,6 +399,9 @@ export interface FileRoutesByFullPath {
   '/settings/voice': typeof ChatSettingsVoiceRoute
   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
   '/threads/$environmentId/$threadId': typeof ThreadsEnvironmentIdThreadIdRoute
+  '/factory/': typeof ChatFactoryIndexRoute
+  '/tasks/': typeof ChatTasksIndexRoute
+  '/tasks/$environmentId/$displayId': typeof ChatTasksEnvironmentIdDisplayIdRoute
 }
 export interface FileRoutesByTo {
   '/approve-agent': typeof ApproveAgentRoute
@@ -421,6 +454,9 @@ export interface FileRoutesByTo {
   '/settings/voice': typeof ChatSettingsVoiceRoute
   '/settings/worktrees': typeof ChatSettingsWorktreesRoute
   '/threads/$environmentId/$threadId': typeof ThreadsEnvironmentIdThreadIdRoute
+  '/factory': typeof ChatFactoryIndexRoute
+  '/tasks': typeof ChatTasksIndexRoute
+  '/tasks/$environmentId/$displayId': typeof ChatTasksEnvironmentIdDisplayIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -476,6 +512,9 @@ export interface FileRoutesById {
   '/_chat/settings/voice': typeof ChatSettingsVoiceRoute
   '/_chat/settings/worktrees': typeof ChatSettingsWorktreesRoute
   '/threads/$environmentId/$threadId': typeof ThreadsEnvironmentIdThreadIdRoute
+  '/_chat/factory/': typeof ChatFactoryIndexRoute
+  '/_chat/tasks/': typeof ChatTasksIndexRoute
+  '/_chat/tasks/$environmentId/$displayId': typeof ChatTasksEnvironmentIdDisplayIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -531,6 +570,9 @@ export interface FileRouteTypes {
     | '/settings/voice'
     | '/settings/worktrees'
     | '/threads/$environmentId/$threadId'
+    | '/factory/'
+    | '/tasks/'
+    | '/tasks/$environmentId/$displayId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/approve-agent'
@@ -583,6 +625,9 @@ export interface FileRouteTypes {
     | '/settings/voice'
     | '/settings/worktrees'
     | '/threads/$environmentId/$threadId'
+    | '/factory'
+    | '/tasks'
+    | '/tasks/$environmentId/$displayId'
   id:
     | '__root__'
     | '/_chat'
@@ -637,6 +682,9 @@ export interface FileRouteTypes {
     | '/_chat/settings/voice'
     | '/_chat/settings/worktrees'
     | '/threads/$environmentId/$threadId'
+    | '/_chat/factory/'
+    | '/_chat/tasks/'
+    | '/_chat/tasks/$environmentId/$displayId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -743,6 +791,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/new'
       preLoaderRoute: typeof ChatNewRouteImport
       parentRoute: typeof ChatRoute
+    }
+    '/_chat/inbox': {
+      id: '/_chat/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof ChatInboxRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/factory': {
+      id: '/_chat/factory'
+      path: '/factory'
+      fullPath: '/factory'
+      preLoaderRoute: typeof ChatFactoryRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/automations': {
+      id: '/_chat/automations'
+      path: '/automations'
+      fullPath: '/automations'
+      preLoaderRoute: typeof ChatAutomationsRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/tasks/': {
+      id: '/_chat/tasks/'
+      path: '/tasks'
+      fullPath: '/tasks/'
+      preLoaderRoute: typeof ChatTasksIndexRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/factory/': {
+      id: '/_chat/factory/'
+      path: '/'
+      fullPath: '/factory/'
+      preLoaderRoute: typeof ChatFactoryIndexRouteImport
+      parentRoute: typeof ChatFactoryRoute
     }
     '/threads/$environmentId/$threadId': {
       id: '/threads/$environmentId/$threadId'

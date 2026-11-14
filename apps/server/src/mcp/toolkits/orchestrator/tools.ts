@@ -88,7 +88,7 @@ const OrchestratorCapabilitiesTool = Tool.make("orchestrator_capabilities", {
 
 const DelegateTaskTool = Tool.make("delegate_task", {
   description:
-    "Start one child agent with only `task`. No parent history. Separate checkout or PR per child: `isolation:'worktree'`. Keep `taskId` for `task_status` and `task_cancel`. No secrets in `task`.",
+    "Start one child with only `task`, no parent history. Separate checkout/PR: `isolation:'worktree'`. For A/B then I, launch A/B in parallel at the same explicit immutable `baseRef` (local worktrees only). Keep `taskId` for `task_status`/`task_cancel`; follow `next`, ending your turn. On completion wake, read `task_status`; give I each producer's reported `baseCommit`, `resultCommit`, and matching `latestTerminalRunId`, including follow-ups. Null/missing evidence cannot be guessed; snapshots imply no push or acceptance. No secrets in `task`.",
   parameters: OrchestratorMcpDelegateTaskInput,
   success: OrchestratorMcpDelegateTaskResult,
   failure: OrchestratorMcpFailure,

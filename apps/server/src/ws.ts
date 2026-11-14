@@ -954,7 +954,16 @@ export const subscribeOrchestrationV2Thread = Effect.fn("ws.orchestrationV2.subs
           afterSequence,
         })
         .pipe(
-          Stream.map(threadStreamEventItem),
+          // Live events arrive projected once for every subscriber; managed threads also close questions.
+          Stream.map((stored) =>
+            managedThread
+              ? {
+                  kind: "event" as const,
+                  sequence: stored.sequence,
+                  event: projectDomainEventForWire(stored.event, managedWireOptions),
+                }
+              : threadStreamEventItem(stored),
+          ),
           coalesceThreadLiveStream,
           Stream.mapError(
             (cause) =>
@@ -3892,22 +3901,23 @@ export const layer = Layer.unwrap(
               serverBrowser,
               reportProfiles,
               readSettingsClient(url.value),
-            ).pipe(
-              Layer.provideMerge(RpcSerialization.layerJson),
-              // Handler-context reporters see only request defects, not server-wide defects.
-              Layer.provide(DefectReporter.layer),
-              Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
-              Layer.provide(AcpRegistrySessions.layer),
-              Layer.provide(ProviderMaintenanceRunner.layer),
-              Layer.provide(Layer.succeed(NpmRelease.NpmRelease, npmRelease)),
-              Layer.provide(Layer.succeed(ServerSelfUpdate.ServerSelfUpdate, serverSelfUpdate)),
-              // Share server-lifetime PR caches so WS mutations invalidate every client's HTTP diffs.
-              Layer.provide(Layer.succeed(PullRequestService.PullRequestService, pullRequests)),
-              Layer.provide(OtlpEndpointCheck.layer),
-              Layer.provide(
-                Layer.succeed(
-                  PullRequestReviewGuideService.PullRequestReviewGuideService,
-                  reviewGuides,
+            )
+              .pipe(
+                Layer.provideMerge(RpcSerialization.layerJson),
+                // Handler-context reporters see only request defects, not server-wide defects.
+                Layer.provide(DefectReporter.layer),
+                Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
+                Layer.provide(AcpRegistrySessions.layer),
+                Layer.provide(ProviderMaintenanceRunner.layer),
+                Layer.provide(Layer.succeed(NpmRelease.NpmRelease, npmRelease)),
+                Layer.provide(Layer.succeed(ServerSelfUpdate.ServerSelfUpdate, serverSelfUpdate)),
+                // Share server-lifetime PR caches so WS mutations invalidate every client's HTTP diffs.
+                Layer.provide(Layer.succeed(PullRequestService.PullRequestService, pullRequests)),
+              )
+              .pipe(
+                Layer.provide(Layer.succeed(FactoryIssueService.FactoryIssueService, factory)),
+                Layer.provide(
+                  Layer.succeed(FactoryIssueRelations.FactoryIssueRelations, factoryRelations),
                 ),
                 Layer.provide(Layer.succeed(FactoryFeedService.FactoryFeedService, factoryFeeds)),
                 Layer.provide(
@@ -4024,4 +4034,4 @@ export const layer = Layer.unwrap(
       ),
     );
   }),
-).pipe(Layer.provide(NpmRelease.layer));
+).pipe(Layer.provide(FactoryExecutionStore.layer), Layer.provide(NpmRelease.layer));

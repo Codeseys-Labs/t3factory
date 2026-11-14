@@ -45,6 +45,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { CodexAppServerRequestError } from "effect-codex-app-server/errors";
 import { SqlError, classifySqliteError } from "effect/sql/SqlError";
 
+import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
 import { toPersistenceSqlError } from "../persistence/Errors.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as CheckpointService from "./CheckpointService.ts";
@@ -1265,6 +1266,7 @@ it.effect("prompts the provider only after a forked baseline capture finishes", 
     const layerTest = RunExecutionService.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           McpAppModelContext.layerEmpty,
           PreviewAgentActivity.layer,
           Layer.mock(CheckpointService.CheckpointServiceV2)({
@@ -1541,6 +1543,7 @@ it.effect("ingests new member threads of an owned child after the root turn term
     const layerTest = RunExecutionService.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           Layer.succeed(ProviderUsageAnalytics.ProviderTurnAnalytics, {
             runStarted: (input) =>
               Ref.update(requests, (current) => [...current, `started:${input.runId}`]),
@@ -2697,6 +2700,7 @@ it.effect("settles native subagents when a workspace handoff completes the root 
     const layerTest = RunExecutionService.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           McpAppModelContext.layerEmpty,
           PreviewAgentActivity.layer,
           Layer.mock(CheckpointService.CheckpointServiceV2)({

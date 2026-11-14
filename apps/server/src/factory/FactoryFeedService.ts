@@ -23,7 +23,7 @@ import {
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -78,7 +78,7 @@ const make = Effect.gen(function* () {
   const projects = yield* Projects.ProjectService;
   const threads = yield* Threads.ThreadManagementService;
   const folders = yield* ManagedFolders.ManagedProjectFolders;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const environment = yield* ServerEnvironmentIdentity;
   const repositoryResolver = yield* TaskLaunch.makeRepositoryResolver;
   const resolveBase = yield* TaskLaunch.makeBaseResolver;
@@ -204,7 +204,7 @@ const make = Effect.gen(function* () {
   ) {
     yield* requireProject(input.projectId);
     yield* FeedFetch.validateLocator(input.url);
-    const id = FactoryFeedSourceId.make(`feed:${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`);
+    const id = FactoryFeedSourceId.make(`feed:${yield* random.uuidV4()}`);
     const source = yield* store.bind({
       id,
       projectId: input.projectId,
@@ -343,7 +343,7 @@ const make = Effect.gen(function* () {
       current.project.workspaceRoot !== project.workspaceRoot
     )
       return yield* new FactoryFeedError({ reason: "repository-changed" });
-    const attempt = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const attempt = yield* random.uuidV4();
     const snapshot = {
       feed: source.locator,
       title: item.title,

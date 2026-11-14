@@ -1,4 +1,12 @@
-import { ArrowLeftIcon, ArrowRightIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ChartNoAxesColumnIcon,
+  InboxIcon,
+  PanelsTopLeftIcon,
+  ZapIcon,
+  SettingsIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
@@ -62,31 +70,19 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
       : null;
 
   return (
-    <>
-      <div
-        className={cn(
-          "relative flex h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center gap-2 pr-3",
-          isElectron && "drag-region",
-        )}
-      >
-        {backdropVariant ? <SidebarStageBackdrop variant={backdropVariant} /> : null}
-        <div className="relative top-[calc(var(--workspace-controls-top)-env(safe-area-inset-top))] z-10 ml-[calc(var(--workspace-controls-left)+1px-env(safe-area-inset-left))] flex shrink-0 items-center md:hidden">
-          <SidebarTrigger
-            variant={backdropVariant ? "media-navigation" : "ghost"}
-            className="relative top-auto translate-y-0"
-            aria-label="Toggle main sidebar"
-          />
-        </div>
-        <div className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5">
-          <SidebarBrand onBackdrop={backdropVariant !== null} />
-          {pillLabel ? (
-            <div className="ml-1 flex h-7 items-center">
-              <Badge data-environment-identification="pill" size="sm" variant="secondary">
-                {pillLabel}
-              </Badge>
-            </div>
-          ) : null}
-        </div>
+    <div
+      className={cn(
+        "relative flex h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center gap-2 pr-3",
+        isElectron && "drag-region",
+      )}
+    >
+      {backdropVariant ? <SidebarStageBackdrop variant={backdropVariant} /> : null}
+      <div className="relative top-[calc(var(--workspace-controls-top)-env(safe-area-inset-top))] z-10 ml-[calc(var(--workspace-controls-left)+1px-env(safe-area-inset-left))] flex shrink-0 items-center md:hidden">
+        <SidebarTrigger
+          variant={backdropVariant ? "media-navigation" : "ghost"}
+          className="relative top-auto translate-y-0"
+          aria-label="Toggle main sidebar"
+        />
       </div>
       <div className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5">
         <div className="flex shrink-0 items-center gap-1">
@@ -137,6 +133,54 @@ export function SidebarBrandWidthProbe({
   );
 }
 
+export function SidebarTaskNavigation() {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const { isMobile, setOpenMobile } = useSidebar();
+  const { needs, incomplete } = useNeedsYou();
+  const closeMobileSidebar = () => {
+    if (isMobile) setOpenMobile(false);
+  };
+
+  return (
+    <div className="shrink-0 pt-2">
+      <SidebarMenu aria-label="Primary navigation">
+        {[
+          { to: "/tasks", label: "Tasks", Icon: PanelsTopLeftIcon },
+          { to: "/inbox", label: "Inbox", Icon: InboxIcon },
+          { to: "/automations", label: "Automations", Icon: ZapIcon },
+        ].map(({ to, label, Icon }) => (
+          <SidebarMenuItem key={to}>
+            <SidebarMenuButton
+              isActive={pathname === to || pathname.startsWith(`${to}/`)}
+              aria-current={pathname === to || pathname.startsWith(`${to}/`) ? "page" : undefined}
+              render={<Link to={to} />}
+              onClick={closeMobileSidebar}
+            >
+              <Icon />
+              <span className="flex-1">{label}</span>
+              {to === "/inbox" ? (
+                <span
+                  aria-label={
+                    incomplete
+                      ? `At least ${needs.count} asks; count incomplete`
+                      : `${needs.count} asks`
+                  }
+                >
+                  {incomplete ? (
+                    <span className="text-xs text-muted-foreground">{needs.count}+</span>
+                  ) : (
+                    <CountBadge count={needs.count} tone="attention" />
+                  )}
+                </span>
+              ) : null}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ))}
+      </SidebarMenu>
+    </div>
+  );
+}
+
 function HistoryNavigationButton({
   direction,
   onBackdrop,
@@ -183,7 +227,7 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   const { isMobile, setOpenMobile } = useSidebar();
   return (
     <Link
-      aria-label="T3 Code home"
+      aria-label={`${SIDEBAR_APP_NAME} home`}
       className={cn(
         "relative z-10 ml-[var(--workspace-titlebar-content-left)] hidden h-7 w-fit min-w-0 shrink-0 items-center overflow-hidden rounded-md outline-hidden ring-ring focus-visible:ring-2 focus-visible:ring-inset md:flex",
         onBackdrop ? "text-white" : "text-foreground",

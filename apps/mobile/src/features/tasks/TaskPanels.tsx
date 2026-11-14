@@ -45,7 +45,7 @@ export function TaskFrame(props: TaskFrameProps) {
   const insets = useSafeAreaInsets();
   return (
     <View className="flex-1 bg-screen">
-      <AppBar title={props.displayId} onBack={props.onBack} sidebar={false} />
+      <AppBar title={props.displayId} onBack={props.onBack} />
       <KeyboardAvoidingView automaticOffset behavior="height" className="flex-1">
         <ScrollView
           className="flex-1"

@@ -21,7 +21,7 @@ const QuarantineEntries = Schema.Array(
 const listPath = NodeURL.fileURLToPath(new URL("./windowsQuarantine.json", import.meta.url));
 const repoRoot = NodeURL.fileURLToPath(new URL("../../../../", import.meta.url));
 
-const entries = Schema.decodeUnknownSync(Schema.fromJsonString(QuarantineEntries))(
+const entries = Schema.decodeSync(Schema.fromJsonString(QuarantineEntries))(
   NodeFS.readFileSync(listPath, "utf8"),
 );
 

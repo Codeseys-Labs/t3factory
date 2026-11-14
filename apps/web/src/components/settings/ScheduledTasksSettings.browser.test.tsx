@@ -71,7 +71,12 @@ function environment() {
     label: "Laptop",
     connection: { phase: state.connected ? "connected" : "disconnected" },
     serverConfig: state.connected
-      ? { environment: { platform: "linux", capabilities: { oneTimeSchedules: true } } }
+      ? {
+          environment: {
+            platform: { os: "linux" },
+            capabilities: { repositoryIdentity: false, oneTimeSchedules: true },
+          },
+        }
       : null,
   };
 }

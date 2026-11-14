@@ -181,6 +181,9 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
   const update: ServerSelfUpdate["Service"]["update"] = Effect.fn(
     "cloud.server_self_update.update",
   )(function* (input, reportProgress = () => Effect.void, onHandoffAccepted = () => Effect.void) {
+    if (serverConfig.mode === "desktop" && serverConfig.desktopUpdatesDisabled) {
+      return yield* failWith("Updates are disabled for this desktop distribution.");
+    }
     const policyRefusal = managedUpdateRefusal(
       policy.document,
       capability === "boot-service" ? cliReleaseChannelOf(input.targetVersion.trim()) : undefined,

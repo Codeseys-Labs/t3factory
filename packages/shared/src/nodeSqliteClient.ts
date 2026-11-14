@@ -211,18 +211,21 @@ const describe = (error) => ({
 let db;
 try {
   // A read-only open cannot be undone by SQL, unlike PRAGMA query_only.
-  const next = new DatabaseSync(workerData.filename, {
+  db = new DatabaseSync(workerData.filename, {
     readOnly: workerData.readOnly,
     allowExtension: workerData.allowExtension,
   });
-  next.exec("PRAGMA busy_timeout = 5000;");
+  db.exec("PRAGMA busy_timeout = 5000;");
   // Reads the header, so a file that is not a database fails here rather than on first use.
-  const mode = String(next.prepare("PRAGMA journal_mode").get().journal_mode).toLowerCase();
+  const mode = String(db.prepare("PRAGMA journal_mode").get().journal_mode).toLowerCase();
   // Without WAL a reader's shared lock blocks the writer's commits, so refuse.
   if (workerData.requireWal && mode !== "wal") throw new Error("database uses journal_mode " + mode + ", not wal");
-  db = next;
   parentPort.postMessage({ type: "ready" });
 } catch (error) {
+  try {
+    if (db !== undefined) db.close();
+  } catch {}
+  db = undefined;
   parentPort.postMessage({ type: "unavailable", ...describe(error) });
 }
 const statements = new Map();
@@ -359,6 +362,7 @@ const makeWorkerConnection = Effect.fnUntraced(function* (options: {
         readonly worker: NodeWorkerThreads.Worker;
         readonly connection: Connection;
         readonly started: Promise<WorkerStartup>;
+        ready: boolean;
       }
     | undefined;
   let nextRequestId = 0;
@@ -506,7 +510,9 @@ const makeWorkerConnection = Effect.fnUntraced(function* (options: {
     Effect.promise(async () => {
       const open = current;
       if (open === undefined) return;
-      if (options.role === "writer") {
+      // Close SQLite inside the worker before its isolate is torn down; the writer also
+      // checkpoints. A reader still starting has nothing to close and may be blocked opening.
+      if (options.role === "writer" || open.ready) {
         await new Promise<void>((resolve) => {
           open.worker.once("exit", () => resolve());
           open.worker.ref();

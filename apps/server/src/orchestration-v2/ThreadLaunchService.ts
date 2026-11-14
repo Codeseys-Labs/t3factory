@@ -518,7 +518,11 @@ const make = Effect.gen(function* () {
         },
       );
 
-      const requestedBranch = input.workspaceStrategy.branch;
+      const requestedBranch =
+        input.workspaceStrategy.branch ??
+        (managed === null
+          ? undefined
+          : `t3-factory/${threadId.replace(/[^a-zA-Z0-9-]/g, "-").slice(-80)}`);
       const generatedTemporaryBranch =
         input.workspaceStrategy.type === "worktree" && requestedBranch === undefined;
       let branch: string | null;
@@ -537,7 +541,8 @@ const make = Effect.gen(function* () {
           });
         }
       } else {
-        branch = yield* launchBranch(input.workspaceStrategy, project.workspaceRoot);
+        branch =
+          requestedBranch ?? (yield* launchBranch(input.workspaceStrategy, project.workspaceRoot));
       }
       let worktreePath =
         input.workspaceStrategy.type === "existing_worktree"
@@ -1283,7 +1288,7 @@ const make = Effect.gen(function* () {
 
         // Fork preparation before the full projection read; it is only part of the reply.
         const shouldSchedule = runId === null ? Option.isNone(launchReceipt) : true;
-        if (shouldSchedule && (yield* reservePreparation(input.commandId))) {
+        if (shouldSchedule && (yield* reservePreparation(input.commandId, runId))) {
           yield* Effect.gen(function* () {
             const current =
               runId === null
@@ -1295,7 +1300,7 @@ const make = Effect.gen(function* () {
               current !== null &&
               !current.runs.some((run) => run.id === runId && run.status === "preparing")
             ) {
-              return yield* releasePreparation(input.commandId);
+              return yield* releasePreparation(input.commandId, runId);
             }
             const boundWorktreePath = current?.thread.worktreePath ?? null;
             const preparationStrategy: ThreadLaunchWorkspaceStrategy =
@@ -1313,7 +1318,7 @@ const make = Effect.gen(function* () {
               threadId,
               runId,
             );
-          }).pipe(Effect.onError(() => releasePreparation(input.commandId)));
+          }).pipe(Effect.onError(() => releasePreparation(input.commandId, runId)));
         }
         const projection = yield* threads
           .getThreadProjection(threadId)

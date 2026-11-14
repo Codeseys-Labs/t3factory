@@ -6,6 +6,9 @@ import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as SqlError from "effect/sql/SqlError";
+import * as Context from "effect/Context";
+import * as Option from "effect/Option";
+import * as Semaphore from "effect/Semaphore";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 import { hasPendingMigrations, runMigrations } from "./Migrations.ts";
@@ -14,6 +17,61 @@ import * as ServerConfig from "../config.ts";
 import * as ServerOwnership from "../serverOwnership.ts";
 
 const WAL_SIZE_LIMIT_BYTES = 128 * 1024 * 1024;
+
+class CommitCallbacks extends Context.Service<CommitCallbacks, Array<Effect.Effect<void>>>()(
+  "t3/persistence/Sqlite/CommitCallbacks",
+) {}
+
+/**
+ * Runs `effect` once the outermost transaction commits, or now outside one. Callbacks run under
+ * the commit lock, so they must not open a write transaction.
+ */
+export const afterCommit = Effect.fn("Sqlite.afterCommit")(function* (effect: Effect.Effect<void>) {
+  const callbacks = yield* Effect.serviceOption(CommitCallbacks);
+  if (Option.isSome(callbacks)) callbacks.value.push(effect);
+  else yield* effect;
+});
+
+// One layer per client: layers memoize by reference, so a shared wrapper would hand a build that
+// opens both a file and an in-memory database the same client.
+const withOrderedTransactions = <E, R>(client: Layer.Layer<SqlClient.SqlClient, E, R>) =>
+  Layer.effect(
+    SqlClient.SqlClient,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const withTransaction = sql.withTransaction;
+      // Keep publication ordered with commits, including transactions opened outside the event sink.
+      // Read-only transactions write nothing to publish and must not queue behind writers.
+      const commits = yield* Semaphore.make(1);
+      const ordered = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            const parent = yield* Effect.serviceOption(CommitCallbacks);
+            const callbacks: Array<Effect.Effect<void>> = [];
+            const transaction = withTransaction(
+              restore(effect).pipe(Effect.provideService(CommitCallbacks, callbacks)),
+            ).pipe(
+              Effect.tap(() =>
+                Option.isSome(parent)
+                  ? Effect.sync(() => {
+                      parent.value.push(...callbacks);
+                    })
+                  : Effect.forEach(callbacks, (callback) => callback, { discard: true }),
+              ),
+            );
+            if (Option.isSome(parent)) return yield* transaction;
+            yield* restore(commits.take(1));
+            return yield* transaction.pipe(Effect.ensuring(commits.release(1)));
+          }),
+        );
+      return Object.assign(sql, {
+        withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+          Effect.flatMap(NodeSqliteClient.isReadOnly, (readOnly) =>
+            readOnly ? withTransaction(effect) : ordered(effect),
+          ),
+      });
+    }),
+  ).pipe(Layer.provide(client));
 
 export class ServerOwnsDatabaseError extends Schema.TaggedError<ServerOwnsDatabaseError>()(
   "ServerOwnsDatabaseError",
@@ -108,16 +166,18 @@ const makeLayerFromPath = <E, R>(makeSetup: (dbPath: string) => Layer.Layer<neve
 
     return Layer.provideMerge(
       makeSetup(dbPath),
-      NodeSqliteClient.layer({
-        filename: dbPath,
-        readerWorker: true,
-        // A slow disk then delays writes instead of freezing every client.
-        writerWorker: true,
-        spanAttributes: {
-          "db.name": path.basename(dbPath),
-          "service.name": "t3code-server",
-        },
-      }),
+      withOrderedTransactions(
+        NodeSqliteClient.layer({
+          filename: dbPath,
+          readerWorker: true,
+          // A slow disk then delays writes instead of freezing every client.
+          writerWorker: true,
+          spanAttributes: {
+            "db.name": path.basename(dbPath),
+            "service.name": "t3code-server",
+          },
+        }),
+      ),
     ).pipe(
       Layer.catchTag("SqlError", (error) =>
         Layer.effect(
@@ -136,7 +196,7 @@ export const layerFromPath = makeLayerFromPath(() => layerSetup);
 
 export const layerMemory = Layer.provideMerge(
   layerSetup,
-  layerTransactions.pipe(Layer.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  withOrderedTransactions(NodeSqliteClient.layer({ filename: ":memory:" })),
 );
 
 const makeLayerConfig = <E, R>(

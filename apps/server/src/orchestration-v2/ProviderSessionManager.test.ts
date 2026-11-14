@@ -1851,6 +1851,49 @@ it.effect("ProviderSessionManagerV2 stops a session still opening when its layer
   }),
 );
 
+// regression: #104 shutdown returned while an idle release was still stopping the provider
+it.effect("ProviderSessionManagerV2 shutdown waits for an idle release still closing", () =>
+  Effect.gen(function* () {
+    const state = yield* Ref.make(emptyState);
+    const scopeCloseReached = yield* Deferred.make<void>();
+    const finishScopeClose = yield* Deferred.make<void>();
+    yield* Effect.gen(function* () {
+      const eventSink = yield* EventSink.EventSinkV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread-provider-session-manager-shutdown-during-close");
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId,
+      });
+      yield* eventSink.write({
+        events: [yield* makeThreadCreatedEvent({ idAllocator, threadId, now })],
+      });
+      yield* manager.open({ threadId, providerSessionId, modelSelection, runtimePolicy });
+
+      yield* TestClock.adjust("1 second");
+      yield* Deferred.await(scopeCloseReached);
+      yield* TestClock.adjust("30 seconds");
+      const stopping = yield* manager.shutdown.pipe(
+        Effect.andThen(Ref.get(state)),
+        Effect.forkChild({ startImmediately: true }),
+      );
+      yield* Deferred.succeed(finishScopeClose, undefined);
+      assert.equal((yield* Fiber.join(stopping)).closeCount, 1);
+    }).pipe(
+      Effect.provide(
+        layerTest({
+          state,
+          idleTimeoutMs: 1_000,
+          holdSessionScopeClose: finishScopeClose,
+          scopeCloseReached,
+        }),
+      ),
+    );
+  }),
+);
+
 it.effect(
   "ProviderSessionManagerV2 projects idle extension statuses and rejects a retired runtime's updates",
   () =>

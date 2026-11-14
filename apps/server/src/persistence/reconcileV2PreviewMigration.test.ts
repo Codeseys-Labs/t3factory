@@ -5,10 +5,35 @@ import * as Exit from "effect/Exit";
 import * as Migrator from "effect/sql/Migrator";
 import * as SqlClient from "effect/sql/SqlClient";
 
-import { migrationManifest, runMigrations } from "./Migrations.ts";
+import {
+  hasPendingMigrations,
+  migrationManifest,
+  runMigrations,
+  skippedV2Migrations,
+} from "./Migrations.ts";
 import PullRequestFilesViewed from "./Migrations/053_PullRequestFilesViewed.ts";
 import RemoveRedundantProjectionIndexes from "./Migrations/056_RemoveRedundantProjectionIndexes.ts";
 import OrchestrationV2 from "./Migrations/055_OrchestrationV2.ts";
+import FactoryIssueLaunches from "./Migrations/193_FactoryIssueLaunches.ts";
+import ProjectCoordinators from "./Migrations/194_ProjectCoordinators.ts";
+import FactoryFeeds from "./Migrations/195_FactoryFeeds.ts";
+import FactoryIssueRelations from "./Migrations/196_FactoryIssueRelations.ts";
+import FactoryReadinessOverrides from "./Migrations/197_FactoryReadinessOverrides.ts";
+import FactoryResearch from "./Migrations/198_FactoryResearch.ts";
+import FactoryClaims from "./Migrations/199_FactoryClaims.ts";
+import FactoryAcceptances from "./Migrations/200_FactoryAcceptances.ts";
+import FactoryDeliveryIntents from "./Migrations/201_FactoryDeliveryIntents.ts";
+import FactoryKnowledge from "./Migrations/202_FactoryKnowledge.ts";
+import FactoryArtifactDeliveries from "./Migrations/203_FactoryArtifactDeliveries.ts";
+import FactoryBaseBranches from "./Migrations/204_FactoryBaseBranches.ts";
+import ProjectCoordinatorRevisions from "./Migrations/205_ProjectCoordinatorRevisions.ts";
+import FactoryWorkReadIndexes from "./Migrations/206_FactoryWorkReadIndexes.ts";
+import FactoryPlans from "./Migrations/207_FactoryPlans.ts";
+import FactoryExecutions from "./Migrations/208_FactoryExecutions.ts";
+import FactoryTasks from "./Migrations/209_FactoryTasks.ts";
+import FactoryTaskProposals from "./Migrations/210_FactoryTaskProposals.ts";
+import FactoryIntake from "./Migrations/211_FactoryIntake.ts";
+import FactoryTaskDefaultModes from "./Migrations/212_FactoryTaskDefaultModes.ts";
 
 const seedPreview = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -35,44 +60,7 @@ describe("V2 preview upgrade", () => {
       const sql = yield* SqlClient.SqlClient;
       yield* seedPreview;
       const imports = yield* sql`SELECT * FROM orchestration_v2_legacy_imports`;
-      assert.deepStrictEqual(yield* runMigrations(), [
-        [53, "PullRequestFilesViewed"],
-        [54, "ProjectionThreadsAutoSettleDisabledAt"],
-        [56, "RemoveRedundantProjectionIndexes"],
-        [57, "ScheduledTaskWebhooks"],
-        [58, "WebhookRelayDeliveries"],
-        [59, "McpAppModelContext"],
-        [60, "ThreadSnapshotWindowIndexes"],
-        [61, "PullRequestReviewGuides"],
-        [62, "ThreadFailureLookupIndex"],
-        [63, "DropUnusedV1Projections"],
-        [64, "CanonicalizeThreadPullRequestLinks"],
-        [65, "CodexUsageNativeTurnIndex"],
-        [66, "RepairClientSettlementTimestamps"],
-        [67, "WebhookDedupe"],
-        [68, "ShellStopRequestIndex"],
-        [69, "ThreadMessageSearch"],
-        [70, "PeerLinks"],
-        [71, "PeerLinkFence"],
-        [72, "WaitingLinkRequestIndex"],
-        [73, "ActiveTurnItemIndexes"],
-        [74, "ExcludeAttachmentPlaceholdersFromSearch"],
-        [75, "SubagentDeliveryState"],
-        [76, "ProjectionProjectsPinArchive"],
-        [77, "RepairBooleanSettledOverride"],
-        [78, "DropOrchestrationEventCorrelationIndex"],
-        [79, "DelegatedRecoveryIndexes"],
-        [80, "ScheduledTaskThreadMode"],
-        [81, "ProjectionMessageSearchText"],
-        [82, "TurnItemConversationIndex"],
-        [83, "CommandReadIndexes"],
-        [84, "LastExecutedRunIndex"],
-        [85, "TurnItemCounts"],
-        [86, "QueuedTurnInputIndex"],
-        [87, "ProjectionProjectsCustomTitle"],
-        [88, "TurnItemTypeStatusIndex"],
-        [89, "ShellThreadReadIndexes"],
-      ]);
+      assert.deepStrictEqual(yield* runMigrations(), expectedUpgradeLedger);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
       const history = yield* sql<{ readonly migration_id: number; readonly name: string }>`
@@ -147,44 +135,7 @@ describe("V2 preview upgrade", () => {
       );
       assert.strictEqual((yield* sql`SELECT * FROM orchestration_v2_legacy_imports`).length, 1);
       yield* sql`DROP TRIGGER fail_preview_upgrade`;
-      assert.deepStrictEqual(yield* runMigrations(), [
-        [53, "PullRequestFilesViewed"],
-        [54, "ProjectionThreadsAutoSettleDisabledAt"],
-        [56, "RemoveRedundantProjectionIndexes"],
-        [57, "ScheduledTaskWebhooks"],
-        [58, "WebhookRelayDeliveries"],
-        [59, "McpAppModelContext"],
-        [60, "ThreadSnapshotWindowIndexes"],
-        [61, "PullRequestReviewGuides"],
-        [62, "ThreadFailureLookupIndex"],
-        [63, "DropUnusedV1Projections"],
-        [64, "CanonicalizeThreadPullRequestLinks"],
-        [65, "CodexUsageNativeTurnIndex"],
-        [66, "RepairClientSettlementTimestamps"],
-        [67, "WebhookDedupe"],
-        [68, "ShellStopRequestIndex"],
-        [69, "ThreadMessageSearch"],
-        [70, "PeerLinks"],
-        [71, "PeerLinkFence"],
-        [72, "WaitingLinkRequestIndex"],
-        [73, "ActiveTurnItemIndexes"],
-        [74, "ExcludeAttachmentPlaceholdersFromSearch"],
-        [75, "SubagentDeliveryState"],
-        [76, "ProjectionProjectsPinArchive"],
-        [77, "RepairBooleanSettledOverride"],
-        [78, "DropOrchestrationEventCorrelationIndex"],
-        [79, "DelegatedRecoveryIndexes"],
-        [80, "ScheduledTaskThreadMode"],
-        [81, "ProjectionMessageSearchText"],
-        [82, "TurnItemConversationIndex"],
-        [83, "CommandReadIndexes"],
-        [84, "LastExecutedRunIndex"],
-        [85, "TurnItemCounts"],
-        [86, "QueuedTurnInputIndex"],
-        [87, "ProjectionProjectsCustomTitle"],
-        [88, "TurnItemTypeStatusIndex"],
-        [89, "ShellThreadReadIndexes"],
-      ]);
+      assert.deepStrictEqual(yield* runMigrations(), expectedUpgradeLedger);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
@@ -199,6 +150,96 @@ describe("V2 preview upgrade", () => {
         yield* sql`SELECT * FROM effect_sql_migrations ORDER BY migration_id`,
         history,
       );
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+});
+
+const factoryMigrations = {
+  "193_FactoryIssueLaunches": FactoryIssueLaunches,
+  "194_ProjectCoordinators": ProjectCoordinators,
+  "195_FactoryFeeds": FactoryFeeds,
+  "196_FactoryIssueRelations": FactoryIssueRelations,
+  "197_FactoryReadinessOverrides": FactoryReadinessOverrides,
+  "198_FactoryResearch": FactoryResearch,
+  "199_FactoryClaims": FactoryClaims,
+  "200_FactoryAcceptances": FactoryAcceptances,
+  "201_FactoryDeliveryIntents": FactoryDeliveryIntents,
+  "202_FactoryKnowledge": FactoryKnowledge,
+  "203_FactoryArtifactDeliveries": FactoryArtifactDeliveries,
+  "204_FactoryBaseBranches": FactoryBaseBranches,
+  "205_ProjectCoordinatorRevisions": ProjectCoordinatorRevisions,
+  "206_FactoryWorkReadIndexes": FactoryWorkReadIndexes,
+  "207_FactoryPlans": FactoryPlans,
+  "208_FactoryExecutions": FactoryExecutions,
+  "209_FactoryTasks": FactoryTasks,
+  "210_FactoryTaskProposals": FactoryTaskProposals,
+  "211_FactoryIntake": FactoryIntake,
+  "212_FactoryTaskDefaultModes": FactoryTaskDefaultModes,
+};
+
+const recordedHistory = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{ readonly migration_id: number; readonly name: string }>`
+    SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id
+  `;
+  return rows.map((row) => [row.migration_id, row.name] as const);
+});
+
+describe("Factory history upgrade", () => {
+  // Fork databases record Factory ids above every upstream id the last sync knew.
+  it.effect("installs the upstream migrations a sync added below recorded Factory ids", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 73 });
+      yield* Migrator.make({})({ loader: Migrator.fromRecord(factoryMigrations) });
+      yield* sql`
+        INSERT INTO factory_issue_launches
+          (thread_id, canonical_key, issue_number, request_command_id, intent_json)
+        VALUES ('factory-thread', 'github.com/owner/repo', 1, 'factory-command', '{}')
+      `;
+      const synced = migrationManifest.filter(([id]) => id > 73 && id < 193);
+      assert.isAbove(synced.length, 0);
+      const before = (yield* recordedHistory).map(([id, name]) => ({ id, name }));
+      assert.deepStrictEqual(skippedV2Migrations(before), []);
+      assert.isTrue(yield* hasPendingMigrations());
+
+      assert.deepStrictEqual(yield* runMigrations(), synced);
+
+      assert.deepStrictEqual(yield* runMigrations(), []);
+      assert.isFalse(yield* hasPendingMigrations());
+      assert.deepStrictEqual(yield* recordedHistory, migrationManifest);
+      assert.deepStrictEqual(yield* sql`SELECT thread_id FROM factory_issue_launches`, [
+        { thread_id: "factory-thread" },
+      ]);
+      assert.strictEqual(
+        (yield* sql`
+          SELECT name FROM sqlite_master WHERE name = 'orchestration_v2_projection_turn_item_counts'
+        `).length,
+        1,
+      );
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("leaves the history unchanged when an install fails, then retries", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 73 });
+      yield* Migrator.make({})({ loader: Migrator.fromRecord(factoryMigrations) });
+      yield* sql`CREATE TABLE orchestration_v2_projection_turn_item_counts (thread_id TEXT)`;
+      const before = yield* recordedHistory;
+
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(runMigrations())));
+      assert.deepStrictEqual(yield* recordedHistory, before);
+      assert.deepStrictEqual(
+        yield* sql`
+          SELECT name FROM sqlite_master WHERE name = 'idx_orch_events_correlation_id'
+        `,
+        [{ name: "idx_orch_events_correlation_id" }],
+      );
+
+      yield* sql`DROP TABLE orchestration_v2_projection_turn_item_counts`;
+      yield* runMigrations();
+      assert.deepStrictEqual(yield* recordedHistory, migrationManifest);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 });

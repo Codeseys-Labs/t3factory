@@ -348,6 +348,10 @@ function getAutoUpdateDisabledReason(args: {
   disabledByEnv: boolean;
   hasUpdateFeedConfig: boolean;
 }): string | null {
+  // Checked first: no feed, policy mirror or mock setting may fall back to upstream T3 Code releases.
+  if (args.distribution === "factory-preview") {
+    return "T3Factory (Preview) does not update itself. Download a newer preview build to update.";
+  }
   if (args.policy.mode === "off") {
     return args.policy.message ?? "Updates are turned off on this machine.";
   }

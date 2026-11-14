@@ -298,24 +298,19 @@ const SETTINGS_SCREENS = {
   SettingsFactoryIssues: createNativeStackScreen({
     screen: FactoryRouteScreen,
     linking: "settings/factory-issues",
-    options: { ...SETTINGS_PAGE_OPTIONS, title: "Factory" },
+    options: settingsPage("Factory"),
   }),
   SettingsFactoryWork: createNativeStackScreen({
     screen: FactoryWorkDetailRouteScreen,
-    options: { ...SETTINGS_PAGE_OPTIONS, title: "Work" },
+    options: settingsPage("Work"),
   }),
   SettingsFactoryBranch: createNativeStackScreen({
     screen: FactoryBranchPickerRouteScreen,
-    options: { ...SETTINGS_PAGE_OPTIONS, title: "Base branch" },
+    options: settingsPage("Base branch"),
   }),
   SettingsFactoryModel: createNativeStackScreen({
     screen: FactoryModelPickerRouteScreen,
-    options: {
-      headerShown: false,
-      ...(Platform.OS === "android"
-        ? { presentation: "card" as const }
-        : THREAD_SETTINGS_SHEET_OPTIONS),
-    },
+    options: THREAD_SETTINGS_ROUTE,
   }),
   SettingsScheduledTasks: createNativeStackScreen({
     screen: SettingsScheduledTasksRouteScreen,
@@ -537,17 +532,17 @@ const RootStackConfig = createWorkspaceStackNavigator({
     Tasks: createNativeStackScreen({
       screen: TasksRouteScreen,
       linking: "tasks",
-      options: DETAIL_HEADER_OPTIONS,
+      options: pageRoute(),
     }),
     TasksInbox: createNativeStackScreen({
       screen: TasksInboxRouteScreen,
       linking: "tasks/inbox",
-      options: DETAIL_HEADER_OPTIONS,
+      options: pageRoute(),
     }),
     Task: createNativeStackScreen({
       screen: TaskRouteScreen,
       linking: "tasks/:environmentId/:displayId",
-      options: DETAIL_HEADER_OPTIONS,
+      options: pageRoute(),
     }),
     PullRequest: createNativeStackScreen({
       screen: PullRequestRouteScreen,

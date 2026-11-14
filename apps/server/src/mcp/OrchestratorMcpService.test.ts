@@ -38,6 +38,7 @@ import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
@@ -1445,6 +1446,316 @@ describe("OrchestratorMcpService provider resolution", () => {
     }),
   );
 
+  it.effect("pins a common worktree base and rejects invalid, shared, and remote bases", () =>
+    Effect.gen(function* () {
+      const commit = "a".repeat(40);
+      const revisions: Array<{ cwd: string; revision: string }> = [];
+      const requests: Array<OrchestrationV2ServerCommand> = [];
+      const task = {
+        id: taskId,
+        threadId: parentThreadId,
+        origin: "app_owned",
+        childThreadId,
+        providerInstanceId: codexInstanceId,
+        model: "gpt-5.4",
+        status: "running",
+        result: null,
+      };
+      const layerDependencies = Layer.mergeAll(
+        NodeServices.layer,
+        NodeCrypto.layer,
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
+          getThreadRecords: (id) =>
+            Effect.succeed(id === parentThreadId ? parentProjection([task]) : childProjection),
+          hasReceipt: () => Effect.succeed(false),
+          isProviderInstanceEnabledForProject: () => Effect.succeed(true),
+          dispatch: (command) =>
+            Effect.sync(() => {
+              requests.push(command);
+              return {
+                storedEvents: [{ event: { type: "subagent.updated", payload: task } }],
+              } as never;
+            }),
+        }),
+        Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+        Layer.mock(GitVcsDriver.GitVcsDriver)({
+          resolveCommit: (input) =>
+            Effect.suspend(() => {
+              revisions.push(input);
+              return input.revision === "missing"
+                ? Effect.fail({} as never)
+                : Effect.succeed({
+                    commitSha: input.revision === "HEAD" ? "b".repeat(40) : commit,
+                  });
+            }),
+        }),
+        Layer.mock(ProjectService.ProjectService)({
+          getById: () =>
+            Effect.succeedSome({
+              id: projectId,
+              title: "Project",
+              workspaceRoot: "/project",
+            } as never),
+        }),
+        providerRegistryLayer([
+          providerSnapshot({
+            instanceId: codexInstanceId,
+            driver: ProviderDriverKind.make("codex"),
+            model: "gpt-5.4",
+          }),
+        ]),
+        adapterRegistryLayer([codexInstanceId]),
+        ServerSettings.layerTest(),
+        Layer.mock(SecretRequests.SecretRequests)({}),
+        Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+      );
+      yield* Effect.gen(function* () {
+        const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+        for (const key of ["producer-a", "producer-b"]) {
+          yield* service.delegateTask(scope, {
+            task: key,
+            isolation: "worktree",
+            baseRef: "common-base",
+            clientRequestId: key,
+          });
+        }
+        assert.equal(requests.length, 2);
+        for (const request of requests) {
+          assert.equal(request.type, "delegated_task.request");
+          if (request.type === "delegated_task.request") {
+            assert.deepEqual(request.workspaceStrategy, {
+              type: "worktree",
+              baseRef: commit,
+              startFromOrigin: false,
+            });
+          }
+        }
+        assert.deepEqual(revisions, [
+          { cwd: "/project", revision: "common-base" },
+          { cwd: "/project", revision: commit },
+          { cwd: "/project", revision: "common-base" },
+          { cwd: "/project", revision: commit },
+        ]);
+        for (const input of [
+          { isolation: "worktree" as const, baseRef: "missing" },
+          { isolation: "worktree" as const, baseRef: "--all" },
+          { isolation: "shared" as const, baseRef: commit },
+          { baseRef: commit },
+          {
+            isolation: "worktree" as const,
+            baseRef: commit,
+            target: { environmentId: EnvironmentId.make("remote") },
+          },
+        ]) {
+          const error = yield* service
+            .delegateTask(scope, { task: "invalid", ...input })
+            .pipe(Effect.flip);
+          assert.equal(error.code, "invalid_request");
+        }
+        assert.equal(requests.length, 2);
+      }).pipe(Effect.provide(OrchestratorMcpService.layer.pipe(Layer.provide(layerDependencies))));
+    }),
+  );
+
+  it.live("attributes snapshots to the reported terminal run after worktree deletion", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const cwd = yield* checkpointWorkspace("mcp-result-commit");
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const git = yield* GitVcsDriver.GitVcsDriver;
+        const vcs = yield* GitVcsDriver.makeVcsDriverShape();
+        const base = (yield* git.resolveCommit({ cwd, revision: "HEAD" })).commitSha;
+        const childPath = path.join(cwd, "child");
+        yield* git.execute({
+          operation: "test",
+          cwd,
+          args: ["worktree", "add", "--detach", childPath, base],
+        });
+        yield* fs.writeFileString(path.join(childPath, "result.txt"), "producer result\n");
+        const checkpointRef = CheckpointRef.make(
+          "refs/t3/orchestration-v2/checkpoints/test/ordinal/1",
+        );
+        yield* vcs.checkpoints.captureCheckpoint({ cwd: childPath, checkpointRef });
+        const resultSha = (yield* git.resolveCommit({ cwd, revision: checkpointRef })).commitSha;
+        yield* git.execute({
+          operation: "test",
+          cwd,
+          args: ["worktree", "remove", "--force", childPath],
+        });
+        yield* git.execute({
+          operation: "test",
+          cwd,
+          args: ["commit", "--allow-empty", "-m", "newer head"],
+        });
+        const newerHead = (yield* git.resolveCommit({ cwd, revision: "HEAD" })).commitSha;
+        assert.notEqual(newerHead, resultSha);
+        const originalRunId = RunId.make("run:snapshot-original");
+        const terminalRunId = RunId.make("run:snapshot-continuation");
+        const checkpointId = CheckpointId.make("checkpoint:snapshot");
+        const child = {
+          ...childProjection,
+          thread: { ...childProjection.thread, projectId, worktreePath: childPath },
+          runs: [
+            {
+              id: originalRunId,
+              ordinal: 1,
+              delegatedTaskId: taskId,
+              status: "cancelled",
+              startedAt: DateTime.makeUnsafe("2026-10-01"),
+              completedAt: DateTime.makeUnsafe("2026-10-02"),
+              checkpointId: null,
+              workspacePreparation: { type: "worktree", baseRef: base, startFromOrigin: false },
+            },
+            {
+              id: terminalRunId,
+              ordinal: 2,
+              delegatedTaskId: taskId,
+              restartContinuationOfRunId: originalRunId,
+              status: "completed",
+              startedAt: DateTime.makeUnsafe("2026-10-03"),
+              completedAt: DateTime.makeUnsafe("2026-10-04"),
+              checkpointId,
+            },
+            {
+              id: RunId.make("run:snapshot-newer"),
+              ordinal: 3,
+              delegatedTaskId: NodeId.make("node:another-task"),
+              status: "completed",
+              startedAt: DateTime.makeUnsafe("2026-10-05"),
+              completedAt: DateTime.makeUnsafe("2026-10-06"),
+            },
+          ],
+          checkpoints: [
+            {
+              id: checkpointId,
+              threadId: childThreadId,
+              runId: terminalRunId,
+              ref: checkpointRef,
+              status: "ready",
+            },
+          ],
+        } as unknown as OrchestrationV2ThreadProjection;
+        const task = {
+          id: taskId,
+          threadId: parentThreadId,
+          origin: "app_owned",
+          childThreadId,
+          providerInstanceId: codexInstanceId,
+          model: "gpt-5.4",
+          result: "producer result",
+          status: "completed",
+          completionDelivery: { state: "acknowledged" },
+        };
+        let checkpoint = child.checkpoints[0]!;
+        let hasCheckpoint = true;
+        let includeFollowup = false;
+        let projectAvailable = true;
+        let remote = false;
+        const layerDependencies = Layer.mergeAll(
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            getThreadRecords: (id) =>
+              Effect.succeed(
+                id === parentThreadId
+                  ? parentProjection([
+                      remote
+                        ? {
+                            ...task,
+                            childThreadId: null,
+                            remoteChild: {
+                              environmentId: EnvironmentId.make("remote"),
+                              threadId: childThreadId,
+                              label: "Remote",
+                            },
+                          }
+                        : task,
+                    ])
+                  : {
+                      ...child,
+                      runs: includeFollowup ? child.runs : child.runs.slice(0, 2),
+                      checkpoints: hasCheckpoint ? [checkpoint] : [],
+                    },
+              ),
+          }),
+          Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+          Layer.succeed(GitVcsDriver.GitVcsDriver, git),
+          Layer.mock(ProjectService.ProjectService)({
+            getById: () =>
+              Effect.succeed(
+                projectAvailable
+                  ? Option.some({ id: projectId, workspaceRoot: cwd } as never)
+                  : Option.none(),
+              ),
+          }),
+          providerRegistryLayer([]),
+          adapterRegistryLayer([]),
+          ServerSettings.layerTest(),
+          Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+        );
+        yield* Effect.gen(function* () {
+          const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+          const result = yield* service.taskStatus(scope, taskId);
+          assert.equal(result.latestTerminalRunId, terminalRunId);
+          assert.equal(result.baseCommit, base);
+          assert.equal(result.resultCommit, resultSha);
+          assert.equal(
+            (yield* git.execute({
+              operation: "test",
+              cwd,
+              args: ["show", `${result.resultCommit}:result.txt`],
+            })).stdout,
+            "producer result\n",
+          );
+          hasCheckpoint = false;
+          assert.isNull((yield* service.taskStatus(scope, taskId)).resultCommit);
+          hasCheckpoint = true;
+          includeFollowup = true;
+          const followup = yield* service.taskStatus(scope, taskId);
+          assert.equal(followup.latestTerminalRunId, RunId.make("run:snapshot-newer"));
+          assert.equal(followup.baseCommit, base);
+          assert.isNull(followup.resultCommit);
+          includeFollowup = false;
+          projectAvailable = false;
+          const unavailable = yield* service.taskStatus(scope, taskId);
+          assert.equal(unavailable.baseCommit, base);
+          assert.isNull(unavailable.resultCommit);
+          projectAvailable = true;
+          for (const status of ["missing", "error", "stale"] as const) {
+            checkpoint = Object.assign({}, checkpoint, { status });
+            assert.isNull((yield* service.taskStatus(scope, taskId)).resultCommit);
+          }
+          checkpoint = { ...checkpoint, status: "ready", runId: originalRunId };
+          assert.isNull((yield* service.taskStatus(scope, taskId)).resultCommit);
+          checkpoint = {
+            ...checkpoint,
+            runId: terminalRunId,
+            ref: CheckpointRef.make("refs/t3/missing"),
+          };
+          assert.isNull((yield* service.taskStatus(scope, taskId)).resultCommit);
+          remote = true;
+          const remoteResult = yield* service.taskStatus(scope, taskId);
+          assert.isNull(remoteResult.baseCommit);
+          assert.isNull(remoteResult.resultCommit);
+        }).pipe(
+          Effect.provide(OrchestratorMcpService.layer.pipe(Layer.provide(layerDependencies))),
+        );
+      }).pipe(
+        Effect.provide(
+          GitVcsDriver.layer.pipe(
+            Layer.provideMerge(VcsProcess.layer),
+            Layer.provideMerge(
+              ServerConfig.layerTest(process.cwd(), { prefix: "mcp-result-commit-" }),
+            ),
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+          ),
+        ),
+      ),
+    ),
+  );
+
   it.effect(
     "advertises orchestration capability from registered adapters rather than a driver allowlist",
     () =>
@@ -2253,7 +2564,27 @@ describe("OrchestratorMcpService provider resolution", () => {
           Layer.provide(CommandReceiptStore.layer.pipe(Layer.provide(layerDatabase))),
           Layer.provideMerge(layerSettings),
         );
-        const layerTest = layerOrchestratorService.pipe(
+        const baseCommit = "a".repeat(40);
+        const resolvedRevisions: Array<string> = [];
+        const preparedRuns: Array<string> = [];
+        const layerTest = OrchestratorMcpService.layer.pipe(
+          Layer.provide(
+            Layer.mock(ThreadLaunchService.ThreadLaunchService)({
+              prepareRun: ({ runId }) =>
+                Effect.sync(() => {
+                  preparedRuns.push(runId);
+                }),
+            }),
+          ),
+          Layer.provide(
+            Layer.mock(GitVcsDriver.GitVcsDriver)({
+              resolveCommit: ({ revision }) =>
+                Effect.sync(() => {
+                  resolvedRevisions.push(revision);
+                  return { commitSha: revision === "moving-base" ? baseCommit : revision };
+                }),
+            }),
+          ),
           Layer.provideMerge(layerThreads),
           Layer.provide(
             Layer.mergeAll(
@@ -2265,7 +2596,9 @@ describe("OrchestratorMcpService provider resolution", () => {
                 providerSnapshot({ instanceId: codexInstanceId, driver, model: "gpt-5.4" }),
                 providerSnapshot({ instanceId: altInstanceId, driver, model: "gpt-5.5" }),
               ]),
-              Layer.mock(ProjectService.ProjectService)({}),
+              Layer.mock(ProjectService.ProjectService)({
+                getById: () => Effect.succeedSome({ id: projectId, workspaceRoot: cwd } as never),
+              }),
               Layer.mock(SecretRequests.SecretRequests)({}),
               Layer.mock(RemoteDelegation.RemoteDelegation)({}),
               Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
@@ -2329,6 +2662,21 @@ describe("OrchestratorMcpService provider resolution", () => {
             ...request,
             clientRequestId: "empty",
           });
+          const delegation = {
+            task: "Produce a result.",
+            target: { driverKind: driver, model },
+            isolation: "worktree" as const,
+            baseRef: "moving-base",
+            clientRequestId: "delegate-base-retry",
+          };
+          const delegated = yield* service.delegateTask(scope, delegation);
+          const delegatedBefore = yield* orchestrator.getThreadProjection(delegated.childThreadId!);
+          assert.deepEqual(delegatedBefore.runs[0]?.workspacePreparation, {
+            type: "worktree",
+            baseRef: baseCommit,
+            startFromOrigin: false,
+          });
+          assert.equal(delegated.baseCommit, baseCommit);
           const emojiAtLimit = yield* service.createThreads(scope, {
             threads: [{ ...request.threads[0]!, prompt: `${"a".repeat(76)}😀 and more work.` }],
             clientRequestId: "emoji-title",
@@ -2351,6 +2699,24 @@ describe("OrchestratorMcpService provider resolution", () => {
           assert.deepEqual(after.thread.modelSelection, selection);
           assert.deepEqual(after.runs, before.runs);
           assert.deepEqual(after.messages, before.messages);
+          const replayed = yield* service.delegateTask(scope, {
+            ...delegation,
+            baseRef: "now-missing",
+          });
+          assert.equal(replayed.taskId, delegated.taskId);
+          assert.equal(replayed.childThreadId, delegated.childThreadId);
+          assert.equal(replayed.childRunId, delegated.childRunId);
+          assert.equal(replayed.baseCommit, baseCommit);
+          assert.deepEqual(
+            (yield* orchestrator.getThreadProjection(delegated.childThreadId!)).runs,
+            delegatedBefore.runs,
+          );
+          assert.equal(
+            resolvedRevisions.filter((revision) => revision === "moving-base").length,
+            1,
+          );
+          assert.notInclude(resolvedRevisions, "now-missing");
+          assert.deepEqual(preparedRuns, [delegated.childRunId!, delegated.childRunId!]);
 
           const freshError = yield* service
             .createThreads(scope, {

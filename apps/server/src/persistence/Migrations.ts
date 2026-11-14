@@ -97,6 +97,26 @@ import Migration0086 from "./Migrations/086_QueuedTurnInputIndex.ts";
 import Migration0087 from "./Migrations/087_ProjectionProjectsCustomTitle.ts";
 import Migration0088 from "./Migrations/088_TurnItemTypeStatusIndex.ts";
 import Migration0089 from "./Migrations/089_ShellThreadReadIndexes.ts";
+import Migration0193 from "./Migrations/193_FactoryIssueLaunches.ts";
+import Migration0194 from "./Migrations/194_ProjectCoordinators.ts";
+import Migration0195 from "./Migrations/195_FactoryFeeds.ts";
+import Migration0196 from "./Migrations/196_FactoryIssueRelations.ts";
+import Migration0197 from "./Migrations/197_FactoryReadinessOverrides.ts";
+import Migration0198 from "./Migrations/198_FactoryResearch.ts";
+import Migration0199 from "./Migrations/199_FactoryClaims.ts";
+import Migration0200 from "./Migrations/200_FactoryAcceptances.ts";
+import Migration0201 from "./Migrations/201_FactoryDeliveryIntents.ts";
+import Migration0202 from "./Migrations/202_FactoryKnowledge.ts";
+import Migration0203 from "./Migrations/203_FactoryArtifactDeliveries.ts";
+import Migration0204 from "./Migrations/204_FactoryBaseBranches.ts";
+import Migration0205 from "./Migrations/205_ProjectCoordinatorRevisions.ts";
+import Migration0206 from "./Migrations/206_FactoryWorkReadIndexes.ts";
+import Migration0207 from "./Migrations/207_FactoryPlans.ts";
+import Migration0208 from "./Migrations/208_FactoryExecutions.ts";
+import Migration0209 from "./Migrations/209_FactoryTasks.ts";
+import Migration0210 from "./Migrations/210_FactoryTaskProposals.ts";
+import Migration0211 from "./Migrations/211_FactoryIntake.ts";
+import Migration0212 from "./Migrations/212_FactoryTaskDefaultModes.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -189,6 +209,26 @@ const migrationEntries = [
   [87, "ProjectionProjectsCustomTitle", Migration0087],
   [88, "TurnItemTypeStatusIndex", Migration0088],
   [89, "ShellThreadReadIndexes", Migration0089],
+  [193, "FactoryIssueLaunches", Migration0193],
+  [194, "ProjectCoordinators", Migration0194],
+  [195, "FactoryFeeds", Migration0195],
+  [196, "FactoryIssueRelations", Migration0196],
+  [197, "FactoryReadinessOverrides", Migration0197],
+  [198, "FactoryResearch", Migration0198],
+  [199, "FactoryClaims", Migration0199],
+  [200, "FactoryAcceptances", Migration0200],
+  [201, "FactoryDeliveryIntents", Migration0201],
+  [202, "FactoryKnowledge", Migration0202],
+  [203, "FactoryArtifactDeliveries", Migration0203],
+  [204, "FactoryBaseBranches", Migration0204],
+  [205, "ProjectCoordinatorRevisions", Migration0205],
+  [206, "FactoryWorkReadIndexes", Migration0206],
+  [207, "FactoryPlans", Migration0207],
+  [208, "FactoryExecutions", Migration0208],
+  [209, "FactoryTasks", Migration0209],
+  [210, "FactoryTaskProposals", Migration0210],
+  [211, "FactoryIntake", Migration0211],
+  [212, "FactoryTaskDefaultModes", Migration0212],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -203,11 +243,66 @@ const makeMigrationLoader = (throughId?: number) =>
   );
 
 const FIRST_V2_MIGRATION_ID = 55;
+// Factory ids sit above upstream's so a sync never reuses one; upstream ids added since sit below.
+const FIRST_FACTORY_MIGRATION_ID = 193;
+// The pre-sync Factory build recorded 193-199 at 69-75.
+const LEGACY_FACTORY_ID_OFFSET = 124;
+
+type MigrationRow = { readonly id: number; readonly name: string };
+
+const isManifestRow = (row: MigrationRow) =>
+  migrationEntries.some(([id, name]) => id === row.id && name === row.name);
+
+const isLegacyFactoryRow = (row: MigrationRow) =>
+  row.id >= 69 &&
+  row.id <= 75 &&
+  isManifestRow({ id: row.id + LEGACY_FACTORY_ID_OFFSET, name: row.name });
+
+const includesFactory = (throughId?: number) =>
+  throughId === undefined || throughId >= FIRST_FACTORY_MIGRATION_ID;
+
+/**
+ * The migrator never runs an id below the highest recorded, so a history holding Factory ids would
+ * skip every upstream migration a sync adds. Startup translates the pre-sync 69-75 Factory ids and
+ * installs each unrecorded upstream V2 migration first. Null when it refuses to rewrite the history.
+ */
+function reconciledFactoryHistory(recorded: ReadonlyArray<MigrationRow>) {
+  const legacy = recorded.filter(isLegacyFactoryRow);
+  const translated = recorded.map((row) =>
+    isLegacyFactoryRow(row) ? { id: row.id + LEGACY_FACTORY_ID_OFFSET, name: row.name } : row,
+  );
+  const recordedIds = new Set(translated.map((row) => row.id));
+  if (
+    legacy.length > 0 &&
+    (recordedIds.size !== translated.length || !translated.every(isManifestRow))
+  ) {
+    return null;
+  }
+  const isFactory = translated.some(
+    (row) => row.id >= FIRST_FACTORY_MIGRATION_ID && isManifestRow(row),
+  );
+  const install = migrationEntries.filter(
+    ([id]) =>
+      isFactory &&
+      id >= FIRST_V2_MIGRATION_ID &&
+      id < FIRST_FACTORY_MIGRATION_ID &&
+      !recordedIds.has(id),
+  );
+  return {
+    legacy,
+    install,
+    history: [...translated, ...install.map(([id, name]) => ({ id, name }))],
+  };
+}
 
 export function skippedV2Migrations(
-  recorded: ReadonlyArray<{ readonly id: number; readonly name: string }>,
+  history: ReadonlyArray<MigrationRow>,
   throughId?: number,
 ): string[] {
+  // Startup reconciles Factory history before this check, so check what it will see.
+  const reconciled = includesFactory(throughId) ? reconciledFactoryHistory(history) : { history };
+  if (reconciled === null) return ["an unrecognized legacy Factory migration history"];
+  const recorded = reconciled.history;
   const latestRecordedId = Math.max(0, ...recorded.map((row) => row.id));
   const recordedNames = new Map(recorded.map((row) => [row.id, row.name]));
   return migrationManifest.flatMap(([id, name]) => {
@@ -247,9 +342,64 @@ const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function*
   });
 });
 
+// One transaction, so a failed install leaves the history as it was and the next start retries.
+const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(function* (
+  throughId?: number,
+) {
+  if (!includesFactory(throughId)) return [];
+  const sql = yield* SqlClient.SqlClient;
+  return yield* sql.withTransaction(
+    Effect.gen(function* () {
+      const tables = yield* sql`
+        SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+      `;
+      if (tables.length === 0) return [];
+      const rows = yield* sql<{ readonly migration_id: number; readonly name: string }>`
+        SELECT migration_id, name FROM effect_sql_migrations
+      `;
+      const recorded = rows.map((row) => ({ id: row.migration_id, name: row.name }));
+      const reconciled = reconciledFactoryHistory(recorded);
+      if (reconciled === null) {
+        return yield* new Migrator.MigrationError({
+          kind: "BadState",
+          message:
+            "Unrecognized or mixed legacy Factory migration history; refusing to rewrite it.",
+        });
+      }
+      // assertV2MigrationsCanRun reports a history that would still skip migrations, unchanged.
+      if (skippedV2Migrations(recorded, throughId).length > 0) return [];
+      for (const row of reconciled.legacy) {
+        yield* sql`UPDATE effect_sql_migrations SET migration_id = ${row.id + LEGACY_FACTORY_ID_OFFSET} WHERE migration_id = ${row.id} AND name = ${row.name}`;
+      }
+      const executed: Array<readonly [id: number, name: string]> = [];
+      for (const [index, [id, name, migration]] of reconciled.install.entries()) {
+        yield* Effect.log(DATABASE_MIGRATION_PROGRESS_MESSAGE).pipe(
+          Effect.annotateLogs({
+            migration: `${id}_${name}`,
+            progress: `${index + 1} of ${reconciled.install.length}`,
+          }),
+        );
+        yield* Effect.mapError(
+          migration,
+          (cause: unknown) =>
+            new Migrator.MigrationError({
+              kind: "Failed",
+              message: `Failed to install ${id}_${name} while upgrading Factory migration history.`,
+              cause,
+            }),
+        );
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${id}, ${name})`;
+        executed.push([id, name]);
+      }
+      return executed;
+    }),
+  );
+});
+
 const latestMigrationId = Math.max(...migrationEntries.map(([id]) => id));
 
-// Mirrors the Migrator, which runs only ids above the highest recorded, plus the V2-preview reconciliation.
+// Mirrors the Migrator, which runs only ids above the highest recorded, plus the V2-preview and
+// Factory reconciliations.
 export const hasPendingMigrations = Effect.fn("hasPendingMigrations")(function* () {
   const sql = yield* SqlClient.SqlClient;
   const tables = yield* sql`
@@ -263,7 +413,14 @@ export const hasPendingMigrations = Effect.fn("hasPendingMigrations")(function* 
     FROM effect_sql_migrations
   `;
   const row = rows[0];
-  return (row?.latestId ?? 0) < latestMigrationId || (row?.previewRows ?? 0) > 0;
+  if ((row?.latestId ?? 0) < latestMigrationId || (row?.previewRows ?? 0) > 0) return true;
+  const recorded = yield* sql<{ readonly migration_id: number; readonly name: string }>`
+    SELECT migration_id, name FROM effect_sql_migrations
+  `;
+  const reconciled = reconciledFactoryHistory(
+    recorded.map((entry) => ({ id: entry.migration_id, name: entry.name })),
+  );
+  return reconciled === null || reconciled.legacy.length > 0 || reconciled.install.length > 0;
 });
 
 const run = Migrator.make({});
@@ -303,7 +460,10 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
   );
   // One transaction per migration: an index build on a large database can take minutes, and a
   // restart then resumes after the last finished migration instead of rolling all of them back.
-  const executedMigrations: Array<readonly [id: number, name: string]> = [...previewMigrations];
+  const executedMigrations: Array<readonly [id: number, name: string]> = [
+    ...previewMigrations,
+    ...factoryMigrations,
+  ];
   for (const [index, [id, name]] of pending.entries()) {
     if (latestRecordedId > 0) {
       yield* Effect.log(DATABASE_MIGRATION_PROGRESS_MESSAGE).pipe(

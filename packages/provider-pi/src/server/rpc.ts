@@ -214,19 +214,18 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
   const spawnCommand = yield* resolveSpawnCommand(options.command, [...options.args], {
     env: options.env,
   }).pipe(Effect.mapError((cause) => new PiRpcError({ operation: "spawn", cause })));
-  const child = yield* spawner
-    .spawn(
-      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-        ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-        env: options.env,
-        extendEnv: false,
-        shell: spawnCommand.shell,
-        detached: platform !== "win32",
-        // On stdin EOF Pi quits without its SIGTERM handler, so the later SIGTERM kills it mid-cleanup.
-        stdin: { stream: "pipe", endOnDone: false },
-      }),
-    )
-    .pipe(Effect.mapError((cause) => new PiRpcError({ operation: "spawn", cause })));
+  const child = yield* spawnOwnedProcess(
+    spawner,
+    ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+      env: options.env,
+      extendEnv: false,
+      shell: spawnCommand.shell,
+      detached: platform !== "win32",
+      // On stdin EOF Pi quits without its SIGTERM handler, so the later SIGTERM kills it mid-cleanup.
+      stdin: { stream: "pipe", endOnDone: false },
+    }),
+  ).pipe(Effect.mapError((cause) => new PiRpcError({ operation: "spawn", cause })));
 
   let childExited = false;
   let diagnosingStdoutClose = false;

@@ -308,6 +308,7 @@ it.effect(
           Layer.mergeAll(
             layerProjection,
             layerSessionManager,
+            FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
             Layer.mock(EventSink.EventSinkV2)({}),
           ),
         ),

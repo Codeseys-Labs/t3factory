@@ -103,12 +103,14 @@ export class ProviderTurnControlServiceV2 extends Context.Service<
 export const layer: Layer.Layer<
   ProviderTurnControlServiceV2,
   never,
+  | FactoryExecutionLifecycle.FactoryExecutionLifecycle
   | EventSink.EventSinkV2
   | ProjectionStore.ProjectionStoreV2
   | ProviderSessionManager.ProviderSessionManagerV2
 > = Layer.effect(
   ProviderTurnControlServiceV2,
   Effect.gen(function* () {
+    const factoryLifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
     const eventSink = yield* EventSink.EventSinkV2;
     const projections = yield* ProjectionStore.ProjectionStoreV2;
     const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;

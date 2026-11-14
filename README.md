@@ -1,31 +1,38 @@
-<p align="center">
-  <a href="https://t3.codes">
-    <img src="./assets/prod/t3-black-web-icon-192x192.png" width="80" height="80" alt="T3 Code logo" />
-  </a>
-</p>
+# T3 Factory
 
-<h1 align="center">T3 Code</h1>
+T3 Factory (`t3factory`) evolves [T3 Code](https://github.com/pingdotgg/t3code) into one
+product for software, research, and knowledge work. Start a thread with an outcome,
+coordinate people, agents, tools, and compute, then review evidence and authorize delivery.
+**T3 Factory is the application, not a feature inside T3 Code.** Its product identity
+and branding apply across web, Electron desktop, and native mobile.
+Upstream T3 Code is developed by T3 Tools; its attribution and license remain unchanged.
 
-<p align="center">The open-source control plane for coding agents.</p>
+This describes the product direction, not a claim that every designed flow is implemented.
+The [design library](./docs/factory/design/README.md) contains editable source assets,
+the Figma/FigJam entry points, and the standalone/optional Linear design contract.
 
-<p align="center">
-  <a href="https://t3.codes/download"><strong>Download</strong></a> ·
-  <a href="https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824">iOS</a> ·
-  <a href="https://play.google.com/store/apps/details?id=com.t3tools.t3code">Android</a> ·
-  <a href="https://app.t3.codes">Web</a> ·
-  <a href="./docs/README.md">Docs</a> ·
-  <a href="https://discord.gg/jn4EGJjrvv">Discord</a>
-</p>
+Open **Factory** for Overview, Issues, Sources, Workflows, and Orchestrator. Use **Sessions** or
+**New thread** for ordinary conversations. The [Factory guide](./docs/user/source-control.md#factory)
+explains scope selection, reviewed issue and feed-item starts, orchestrator orientation, and
+workflow dispatch limits.
 
-<p align="center">
-  <a href="https://t3.codes">
-    <img src="./.github/readme/hero.webp" width="100%" alt="T3 Code on desktop with a finished Claude thread, next to the phone app asking to approve a command from Codex" />
-  </a>
-</p>
+Fork work is tracked in [this repository's issues](https://github.com/Codeseys-Labs/t3factory/issues),
+including [the Factory UX specification](https://github.com/Codeseys-Labs/t3factory/issues/29).
+Inspiration sources, research, and parity evidence remain in
+[the source register](https://github.com/Codeseys-Labs/t3factory/issues/1),
+[research](https://github.com/Codeseys-Labs/t3factory/issues/27), and
+[the design decision](https://github.com/Codeseys-Labs/t3factory/issues/28).
+Those references do not imply feature parity or source reuse.
 
-T3 Code runs the coding agents on your machine and gives them one fast interface. Start a thread at your desk, then approve the next step from your phone.
+The [T3 Factory vision](./docs/factory/vision.md) describes a shared thread-first experience
+for software, research, and knowledge work, with editable SVG, Mermaid, and draw.io diagrams.
+It distinguishes existing capabilities from proposed orchestration and sandbox extensions.
 
-It works with Claude Code, Codex, Cursor, OpenCode, Grok Build, Antigravity, Kiro, Pi, Muse Code, fx, and any [ACP](./docs/user/providers-acp.md) agent. If an agent is set up on your computer, T3 Code can control it.
+## Upstream installation
+
+The commands and releases below install upstream T3 Code, not this fork.
+To work on this fork, use the source setup below and the
+[development guide](./docs/operations/development.md).
 
 ## What you get
 
@@ -83,18 +90,23 @@ Nothing. We built T3 Code because we wanted the best possible development experi
 
 We wanted something performant, remote-ready, and truly open. If we ever go the wrong direction, we want you to have everything you need to fork and build the tool that you want.
 
+## Some notes
+
+This fork's issue tracker records Factory work. The upstream project has its own contribution
+policy; read [CONTRIBUTING.md](./CONTRIBUTING.md) before proposing an upstream change.
+
 ## Documentation
 
 - [Install and first run](./docs/user/install.md)
 - [Remote access from a phone or another machine](./docs/user/remote-access.md)
 - [Permission modes](./docs/user/permission-modes.md)
-- [Source control](./docs/user/source-control.md)
+- [Factory and source control](./docs/user/source-control.md)
 - [Connect outside agents over MCP](./docs/user/outside-agents.md)
 - [FAQ](./docs/user/faq.md)
 
 [All docs](./docs/README.md) has the full list.
 
-## Contributing
+## Source setup and upstream support
 
 We have limited review capacity. Small, focused fixes are the most likely to be merged. Features need an approved discussion first.
 

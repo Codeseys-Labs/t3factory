@@ -18,6 +18,8 @@ import {
   ThreadId,
   type OrchestrationV2TurnItem,
   type ProviderThreadId,
+  type RunId,
+  type RunAttemptId,
   type ProviderTurnId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -66,6 +68,8 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;
 const RELEASE_SCOPE_CLOSE_TIMEOUT_MS = 30 * 1000;
+// Provider processes exit in real time; a TestClock advance must not expire the close bound.
+const wallClock = Clock.Clock.defaultValue();
 /** Past adapters' own 10 s stop fallbacks, so they settle first when the provider answers at all. */
 export const PROVIDER_INTERRUPT_TIMEOUT_MS = 15 * 1000;
 
@@ -2277,7 +2281,11 @@ export const layerWithOptions = (
                 providerInstanceId: runtime.instanceId,
               }),
             ).pipe(
-              Effect.andThen(loadNatively(runtime.ensureThread(input))),
+              Effect.andThen(
+                loadNatively(
+                  guardNativeCall(input.threadId, runtime.driver)(runtime.ensureThread(input)),
+                ),
+              ),
               Effect.tap(({ loaded: providerThread, linkedEnvironments }) =>
                 markProviderThreadLoaded({
                   providerSessionId,
@@ -2337,7 +2345,9 @@ export const layerWithOptions = (
                       loaded: input.providerThread,
                       linkedEnvironments: undefined,
                     })
-                  : loadNatively(runtime.resumeThread(input)),
+                  : loadNatively(
+                      guardNativeCall(threadId, runtime.driver)(runtime.resumeThread(input)),
+                    ),
               ),
               Effect.tap(({ loaded: providerThread, linkedEnvironments }) =>
                 markProviderThreadLoaded({
@@ -2368,7 +2378,20 @@ export const layerWithOptions = (
                 providerInstanceId: runtime.instanceId,
               }),
             ).pipe(
-              Effect.andThen(loadNatively(runtime.forkThread(input))),
+              Effect.andThen(
+                loadNatively(
+                  guardNativeCall(
+                    input.sourceProviderThread.appThreadId ?? input.targetThreadId,
+                    runtime.driver,
+                    false,
+                  )(
+                    guardNativeCall(
+                      input.targetThreadId,
+                      runtime.driver,
+                    )(runtime.forkThread(input)),
+                  ),
+                ),
+              ),
               Effect.tap(({ loaded: providerThread, linkedEnvironments }) =>
                 markProviderThreadLoaded({
                   providerSessionId,
@@ -2891,6 +2914,11 @@ export const layerWithOptions = (
             ),
           ),
         );
+        const earlierCloses = [...pendingScopeCloses].map((fiber) => Fiber.join(fiber));
+        yield* Effect.all([...releases, ...earlierCloses], {
+          concurrency: "unbounded",
+          discard: true,
+        });
       }).pipe(Effect.withSpan("ProviderSessionManager.shutdown"));
       yield* Effect.addFinalizer(() =>
         shutdown.pipe(
@@ -2977,6 +3005,13 @@ export const layerWithOptions = (
                     }),
                 ),
               );
+              if (managed !== null && adapter.driver !== managed.driver)
+                return yield* new ProviderSessionOpenError({
+                  instanceId: input.modelSelection.instanceId,
+                  providerSessionId: input.providerSessionId,
+                  cause:
+                    "Provider configuration changed after admission; unsupported native session spawn is suppressed.",
+                });
               const openedWithLinkedEnvironments = yield* readLinkedEnvironments;
               const prepared = yield* prepareMcpSession(
                 input.threadId,

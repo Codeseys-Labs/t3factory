@@ -299,7 +299,7 @@ it.effect.each([false, true])(
               body: JSON.stringify({ version: "2.0.18", pid: 1, urls: [], paths: { tmp: "/tmp" } }),
             }),
           ),
-          Layer.provideMerge(NodeServices.layer),
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         ),
       ),
     ),
@@ -363,7 +363,7 @@ it.effect("closes borrowed dedicated servers when the provider scope closes", ()
             body: JSON.stringify({ version: "2.0.18", pid: 1, urls: [], paths: { tmp: "/tmp" } }),
           }),
         ),
-        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       ),
     ),
   ),
@@ -400,6 +400,29 @@ describe("OpenCode2Server spawned server", () => {
       assert.strictEqual(first.version, "2.0.18");
       assert.strictEqual(first.external, false);
       assert.strictEqual(second.client, first.client);
+      let owned = 0;
+      const attempt = {
+        spawn: (...[command, native]: Parameters<OwnedProcessSpawner["spawn"]>) => {
+          owned++;
+          return native.spawn(command);
+        },
+      };
+      // An event-stream reconnect borrows again before it releases the previous borrow.
+      const [dedicated, reconnected] = yield* server
+        .withConnection((held) =>
+          server.withConnection((next) => Effect.succeed([held, next] as const)),
+        )
+        .pipe(Effect.provideService(OwnedProcess, attempt));
+      assert.equal(owned, 1);
+      assert.strictEqual(reconnected.url, dedicated.url);
+      assert.notEqual(dedicated.url, first.url);
+      const later = yield* server
+        .withConnection((connection) => Effect.succeed(connection))
+        .pipe(Effect.provideService(OwnedProcess, attempt));
+      assert.equal(owned, 2);
+      assert.notStrictEqual(later.client, dedicated.client);
+      const normal = yield* server.withConnection((connection) => Effect.succeed(connection));
+      assert.strictEqual(normal.client, first.client);
       if (first.processExit === undefined)
         return yield* Effect.die("Missing owned process lifetime");
       return first.processExit;

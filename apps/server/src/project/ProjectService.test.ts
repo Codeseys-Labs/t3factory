@@ -120,6 +120,7 @@ it.effect("resolves only the requested active project page in creation order", (
       Ref.update(inspected, (roots) => new Set([...roots, workspaceRoot]));
     const metadata = Layer.merge(
       Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+        resolveRemote: () => Effect.succeed(null),
         resolve: (workspaceRoot) =>
           note(workspaceRoot).pipe(
             Effect.as({
@@ -748,6 +749,7 @@ it.effect("resolves a restored icon immediately after reselecting its saved path
     const iconPath = `${cwd}/icon.svg`;
     const metadata = Layer.merge(
       Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+        resolveRemote: () => Effect.succeed(null),
         resolve: () => Effect.succeed(null),
       }),
       ProjectFaviconResolver.layer.pipe(

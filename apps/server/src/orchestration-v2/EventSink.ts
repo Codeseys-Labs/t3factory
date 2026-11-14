@@ -34,7 +34,7 @@ import * as SqlError from "effect/sql/SqlError";
 
 import { replayAndBufferProjectedLiveEvents } from "./LiveStreamBudget.ts";
 import type { UnsequencedProjectEvent } from "../persistence/OrchestrationEventStore.ts";
-import { projectStoredEventForWire } from "./WireProjection.ts";
+import { projectDomainEventForWire, projectStoredEventForWire } from "./WireProjection.ts";
 import { makeRunOutcomeRecorder, type RunOutcome } from "./RunMetrics.ts";
 
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
@@ -96,6 +96,14 @@ const CurrentProviderBatch = Context.Reference<ProviderBatchPublication | undefi
 );
 
 export interface EventSinkV2Shape {
+  readonly commitFactoryExecutionCommand: (input: {
+    readonly command: FactoryExecutions.FactoryExecutionCommit;
+    readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
+    readonly effects: ReadonlyArray<EffectOutbox.PendingOrchestrationEffectV2>;
+  }) => Effect.Effect<FactoryExecutionMutationResult, FactoryExecutionError>;
+  readonly commitFactoryPlanCommand: (
+    input: FactoryPlans.FactoryPlanCommit,
+  ) => Effect.Effect<FactoryPlanMutationResult, FactoryPlanError>;
   /** Items that are not provider snapshots, such as a consumer's own control items, never batch. */
   readonly consumeProviderEvents: <A extends { readonly type: string }, E, R, E2, R2>(
     source: Stream.Stream<A, E, R>,
@@ -1207,7 +1215,14 @@ const layerBase: Layer.Layer<
               afterSequence,
               filter: matches,
               replay,
-              project: projectStoredEventForWire,
+              // Only managed runtime requests differ; everything else shares the cached projection.
+              project: (stored) =>
+                managedWireOptions !== undefined && stored.event.type === "runtime-request.updated"
+                  ? {
+                      ...stored,
+                      event: projectDomainEventForWire(stored.event, managedWireOptions),
+                    }
+                  : projectStoredEventForWire(stored),
             });
           }
           const subscription = yield* PubSub.subscribe(pubsub);
@@ -1308,6 +1323,8 @@ const layerBase: Layer.Layer<
     );
 
     return EventSinkV2.of({
+      commitFactoryPlanCommand,
+      commitFactoryExecutionCommand,
       consumeProviderEvents: coordinator.consume,
       withProviderBatch,
       write: (input) =>

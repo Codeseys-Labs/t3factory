@@ -287,6 +287,7 @@ export function layerWithRegistry<Error>(
     readonly runContinuationWorker?: boolean;
     readonly recoverOnStartup?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
+    readonly factoryLifecycleLayer?: Layer.Layer<FactoryExecutionLifecycle.FactoryExecutionLifecycle>;
     /** Lets a test hold a projection read open to order concurrent dispatches. */
     readonly wrapProjectionStore?: (
       store: ProjectionStore.ProjectionStoreV2Shape,
@@ -418,6 +419,7 @@ export function layerWithRegistry<Error>(
         McpSessionRegistryTestkit.layer,
         layerProviderEventIngestorProvided,
         layerStores,
+        layerFactoryLifecycle,
         ProviderInstallationGate.layer,
       ),
     ),
@@ -462,7 +464,12 @@ export function layerWithRegistry<Error>(
   );
   const layerProviderTurnControlServiceProvided = ProviderTurnControlService.layer.pipe(
     Layer.provide(
-      Layer.mergeAll(layerEventSinkProvided, layerStores, layerProviderSessionManagerProvided),
+      Layer.mergeAll(
+        layerEventSinkProvided,
+        layerStores,
+        layerFactoryLifecycle,
+        layerProviderSessionManagerProvided,
+      ),
     ),
   );
   const layerRuntimeRequestServiceProvided = RuntimeRequestService.layer.pipe(

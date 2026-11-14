@@ -829,6 +829,8 @@ export const PullRequestActionInput = Schema.Struct({
   action: PullRequestAction,
   mergeMethod: Schema.optional(PullRequestMergeMethod),
   updateMethod: Schema.optional(PullRequestUpdateMethod),
+  /** Head commit the caller reviewed; the host refuses the action if the head has moved. */
+  expectedHeadSha: Schema.optional(TrimmedNonEmptyString),
   /** Opt-in, because older clients decode the action's success as void and reject a summary. */
   replyWithSummary: Schema.optional(Schema.Literal(true)),
 });

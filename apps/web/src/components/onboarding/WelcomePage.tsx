@@ -272,7 +272,7 @@ export function WelcomePage({
         <div className="min-h-0 flex-1 overflow-y-auto scrollbar-gutter-both">
           <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-6 pt-12 pb-8 sm:pt-20">
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              Welcome to T3 Code
+              Welcome to T3 Code Factory
             </h1>
             <p className="mt-1.5 text-sm text-muted-foreground">
               Setting up <span className="text-foreground">{label}</span>.
@@ -328,7 +328,7 @@ function TelemetryNotice({ environmentId }: { readonly environmentId: Environmen
   const telemetryOff = managedTelemetryOffMessage(useManagedPolicy(environmentId));
   return (
     <p className="mt-auto pt-12 text-2xs leading-relaxed text-muted-foreground/70">
-      {telemetryOff ?? "T3 Code collects anonymous usage data to improve the app."}{" "}
+      {telemetryOff ?? "T3 Code Factory collects anonymous usage data to improve the app."}{" "}
       {telemetryOff === undefined ? "To opt out, see the" : "See the"}{" "}
       <a
         className="underline decoration-current/40 underline-offset-2 hover:text-muted-foreground"

@@ -1061,7 +1061,7 @@ it.effect.each([
       let dispatched = 0;
       yield* continueRestartedRun({ threadId, sourceRunId: runId }).pipe(
         Effect.provide(
-          Layer.merge(
+          Layer.mergeAll(
             Layer.mock(ThreadManagementService.ThreadManagementService)({
               getThreadRecords: (id) =>
                 Effect.succeed((id === parentThreadId ? parent : child) as never),
@@ -1073,6 +1073,7 @@ it.effect.each([
                 }),
             }),
             ServerSettings.layerTest({ continueThreadsAfterServerUpdate: true }),
+            FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           ),
         ),
       );
@@ -1308,6 +1309,7 @@ it.effect("prepares independent continuations together and waits for durable wri
               }),
           }),
           IdAllocator.layer,
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           Layer.mock(EffectWorker.OrchestrationEffectWorkerV2)({}),
           Layer.mock(EffectOutbox.EffectOutboxV2)({}),
         ),
@@ -1331,6 +1333,7 @@ it.effect("skips restart discovery when no project enables continuation", () =>
           Layer.mock(ProjectionStore.ProjectionStoreV2)({}),
           Layer.mock(EventSink.EventSinkV2)({}),
           IdAllocator.layer,
+          FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
           Layer.mock(EffectWorker.OrchestrationEffectWorkerV2)({}),
           Layer.mock(EffectOutbox.EffectOutboxV2)({}),
         ),

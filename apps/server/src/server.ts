@@ -741,6 +741,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   Layer.provideMerge(layerOrchestrationApplication),
   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
   Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
+  Layer.provideMerge(IssueTrackerProviderRegistry.layer),
   Layer.provideMerge(SecretCheck.layer),
   Layer.provideMerge(SecretResolver.layer),
   // Above the settings it writes when a theme is applied.

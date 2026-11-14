@@ -341,7 +341,7 @@ const layerProjectionReplayTest = ProjectionReplay.layer.pipe(
 );
 
 const layerTest = Layer.mergeAll(
-  RuntimeLayer.layer,
+  RuntimeLayerTestkit.layer,
   layerProjectionReplayTest,
   RuntimeLayer.layerEventSink,
   ProjectStore.layer,
@@ -361,7 +361,10 @@ const layerTest = Layer.mergeAll(
   Layer.provide(layerPlatformTest),
 );
 
-const layerLegacyImportTest = Layer.merge(RuntimeLayer.layer, layerProjectionReplayTest).pipe(
+const layerLegacyImportTest = Layer.merge(
+  RuntimeLayerTestkit.layer,
+  layerProjectionReplayTest,
+).pipe(
   Layer.provide(McpSessionRegistryTestkit.layer),
   Layer.provide(McpProviderSessions.layer),
   Layer.provideMerge(SqlitePersistence.layerMemory),
@@ -1000,7 +1003,7 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
 
 const layerSharedApplicationDataPlaneTest = Layer.mergeAll(
   layerProjectionReplayTest,
-  RuntimeLayer.layer.pipe(Layer.provide(RuntimeLayer.layerProjectService)),
+  RuntimeLayerTestkit.layer.pipe(Layer.provide(RuntimeLayer.layerProjectService)),
   RuntimeLayer.layerProjectService,
   RuntimeLayer.layerEventSink,
   RuntimeLayer.layerEventInfrastructure,
@@ -9241,6 +9244,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           assert.deepEqual(pendingStarts[0]?.request, {
             type: "provider-turn.start",
             runId: source.id,
+            ...(source.activeAttemptId === null ? {} : { runAttemptId: source.activeAttemptId }),
           });
         }
         const afterRetries = yield* orchestrator.getThreadProjection(threadId);

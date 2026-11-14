@@ -1,3 +1,5 @@
+export const WEB_APP_BASE_NAME = "T3 Code Factory";
+
 const NIGHTLY_SERVER_VERSION_PATTERN = /^[^-+]+-(?:nightly|preview)\.\d{8}\.\d+$/;
 
 export function formatAppDisplayName(input: {

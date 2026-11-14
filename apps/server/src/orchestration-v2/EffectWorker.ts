@@ -290,7 +290,9 @@ export const layerExecutor: Layer.Layer<
             Effect.provideService(ThreadManagementService.ThreadManagementService, threads),
             Effect.provideService(ServerSettings.ServerSettingsService, settings),
             Effect.tapError(() =>
-              willRetry ? Effect.void : threads.recoverDelegatedTask(effect.threadId, sourceRunId),
+              willRetry
+                ? Effect.void
+                : threads.recoverDelegatedTask(effect.threadId, { sourceRunId }),
             ),
             Effect.mapError(
               (cause) =>
@@ -311,6 +313,24 @@ export const layerExecutor: Layer.Layer<
               ...(effect.request.revokeMcpCredential === undefined
                 ? {}
                 : { revokeMcpCredential: effect.request.revokeMcpCredential }),
+            })
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationEffectExecutionError({
+                    effectId: effect.id,
+                    effectType: effect.request.type,
+                    cause,
+                  }),
+              ),
+            );
+        case "provider-session.apply-model-selection":
+          return providerTurnControl
+            .applyModelSelection({
+              threadId: effect.threadId,
+              providerSessionId: effect.request.providerSessionId,
+              providerThreadId: effect.request.providerThreadId,
+              modelSelection: effect.request.modelSelection,
             })
             .pipe(
               Effect.mapError(
@@ -363,7 +383,180 @@ export const layerExecutor: Layer.Layer<
               Effect.tapError((cause) =>
                 request.subagent === undefined
                   ? Effect.void
-                  : threads.recoverDelegatedTask(effect.threadId, { sourceRunId }),
+                  : Effect.logWarning("orchestration-v2.subagent-stop-failed", {
+                      effectId: effect.id,
+                      cause,
+                    }),
+              ),
+              Effect.map((outcome) => ({ unresponsive: false, outcome }) as const),
+              // Settling here would end the run while the agent may still be running; the
+              // user decides with Force stop instead.
+              Effect.catchIf(
+                (cause) => request.subagent === undefined && cause.unresponsive === true,
+                () => Effect.succeed({ unresponsive: true, outcome: undefined } as const),
+              ),
+              Effect.catchIf(
+                (cause) =>
+                  request.subagent === undefined &&
+                  isNonRetryableProviderTurnControlFailure(
+                    request.type,
+                    Cause.pretty(Cause.fail(cause)),
+                  ),
+                () => Effect.succeed({ unresponsive: false, outcome: undefined } as const),
+              ),
+              Effect.andThen(({ unresponsive, outcome }) =>
+                unresponsive
+                  ? threads.dispatch({
+                      type: "thread.interrupt.unresponsive",
+                      commandId: CommandId.make(`${effect.id}:unresponsive`),
+                      threadId: effect.threadId,
+                      providerThreadId: request.providerThreadId,
+                      providerTurnId: request.providerTurnId,
+                    })
+                  : request.subagent !== undefined && outcome === undefined
+                    ? Effect.void
+                    : threads.dispatch({
+                        type: "thread.background-work.settle",
+                        commandId: CommandId.make(`${effect.id}:background-work-settled`),
+                        ...(request.subagent === undefined || outcome === undefined
+                          ? {}
+                          : {
+                              subagent: {
+                                id: request.subagent.id,
+                                stoppedAt: DateTime.makeUnsafe(effect.createdAt),
+                                outcome,
+                              },
+                            }),
+                        threadId: effect.threadId,
+                        providerThreadId: request.providerThreadId,
+                        providerTurnId: request.providerTurnId,
+                      }),
+              ),
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationEffectExecutionError({
+                    effectId: effect.id,
+                    effectType: request.type,
+                    cause,
+                  }),
+              ),
+            );
+        }
+        case "provider-turn.steer":
+          return providerTurnControl
+            .steer({
+              threadId: effect.threadId,
+              providerSessionId: effect.request.providerSessionId,
+              providerThreadId: effect.request.providerThreadId,
+              providerTurnId: effect.request.providerTurnId,
+              messageId: effect.request.messageId,
+              ...(effect.request.modelSelection === undefined
+                ? {}
+                : { modelSelection: effect.request.modelSelection }),
+            })
+            .pipe(
+              Effect.tap(() =>
+                Effect.gen(function* () {
+                  if (effect.request.type !== "provider-turn.steer") return;
+                  const messageId = effect.request.messageId;
+                  const projection = yield* threads.getThreadRecords(
+                    effect.threadId,
+                    ["messages", "runs"],
+                    { messageIds: [effect.request.messageId] },
+                  );
+                  const message = projection.messages.find((row) => row.id === messageId);
+                  if (message?.delegatedCompletion === undefined) return;
+                  yield* threads.dispatch({
+                    type: "notification.delivery.accept",
+                    commandId: CommandId.make(`command:mailbox-accepted:${effect.id}`),
+                    threadId: effect.threadId,
+                    messageId: message.id,
+                  });
+                }),
+              ),
+              Effect.catch((error) =>
+                Effect.gen(function* () {
+                  if (
+                    !isProviderTurnControlError(error) ||
+                    (!error.turnCompleted && !error.steerDeclined) ||
+                    effect.request.type !== "provider-turn.steer"
+                  ) {
+                    return yield* error;
+                  }
+                  const projection = yield* threads.getThreadRecords(
+                    effect.threadId,
+                    ["messages", "runs"],
+                    { messageIds: [effect.request.messageId] },
+                  );
+                  const messageId = effect.request.messageId;
+                  const message = projection.messages.find((item) => item.id === messageId);
+                  const run = projection.runs.find((item) => item.id === message?.runId);
+                  if (message === undefined || run === undefined) return yield* error;
+                  // Notifications must be queued messages.
+                  const queued =
+                    message.delegatedCompletion !== undefined ||
+                    message.notification !== undefined ||
+                    error.steerDeclined === true;
+                  // Reuse message ids and receipts so retries cannot duplicate messages or follow-ups.
+                  yield* threads
+                    .dispatch({
+                      type: "message.dispatch",
+                      commandId: CommandId.make(`command:steer-follow-up:${effect.id}`),
+                      threadId: effect.threadId,
+                      messageId: message.id,
+                      ...(error.steerDeclined ? { steerFollowUpOfRunId: run.id } : {}),
+                      ...(error.steerDeclined &&
+                      effect.request.steerFollowUpAfterRunOrdinal !== undefined
+                        ? {
+                            steerFollowUpAfterRunOrdinal:
+                              effect.request.steerFollowUpAfterRunOrdinal,
+                          }
+                        : {}),
+                      text: message.text,
+                      ...(message.context ? { context: message.context } : {}),
+                      attachments: message.attachments,
+                      ...(error.steerDeclined && effect.request.modelSelection !== undefined
+                        ? { modelSelection: effect.request.modelSelection }
+                        : message.delegatedCompletion === undefined
+                          ? {}
+                          : { modelSelection: run.modelSelection }),
+                      dispatchMode: {
+                        type: queued ? "queue_after_active" : "start_immediately",
+                      },
+                      createdBy: message.createdBy,
+                      creationSource: message.creationSource,
+                      ...(message.delegatedCompletion === undefined
+                        ? {}
+                        : { delegatedCompletion: message.delegatedCompletion }),
+                      ...(message.notification === undefined
+                        ? {}
+                        : { notification: message.notification }),
+                      ...(message.scheduledTaskId === undefined
+                        ? {}
+                        : { scheduledTaskId: message.scheduledTaskId }),
+                      ...(message.senderThreadId === undefined
+                        ? {}
+                        : { senderThreadId: message.senderThreadId }),
+                      ...(message.linkedSender === undefined
+                        ? {}
+                        : { linkedSender: message.linkedSender }),
+                    })
+                    .pipe(
+                      // A disabled instance cannot retry this completed turn; its result stands.
+                      Effect.catchTags({
+                        ThreadManagementProviderInstanceDisabledError: (disabledError) =>
+                          Effect.logInfo(
+                            "orchestration-v2.effect-worker.steer-follow-up-disabled",
+                            {
+                              threadId: effect.threadId,
+                              messageId: message.id,
+                              projectId: disabledError.projectId,
+                              instanceId: disabledError.instanceId,
+                            },
+                          ),
+                      }),
+                    );
+                }),
               ),
               Effect.mapError(
                 (cause) =>
@@ -374,281 +567,30 @@ export const layerExecutor: Layer.Layer<
                   }),
               ),
             );
-          }
-          case "provider-session.detach":
-            return providerSessions
-              .detach({
-                providerSessionId: effect.request.providerSessionId,
-                threadId: effect.threadId,
-                ...(effect.request.detail === undefined ? {} : { detail: effect.request.detail }),
-                ...(effect.request.revokeMcpCredential === undefined
-                  ? {}
-                  : { revokeMcpCredential: effect.request.revokeMcpCredential }),
-              })
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new OrchestrationEffectExecutionError({
-                      effectId: effect.id,
-                      effectType: effect.request.type,
-                      cause,
-                    }),
-                ),
-              );
-          case "provider-session.apply-model-selection":
-            return providerTurnControl
-              .applyModelSelection({
-                threadId: effect.threadId,
-                providerSessionId: effect.request.providerSessionId,
-                providerThreadId: effect.request.providerThreadId,
-                modelSelection: effect.request.modelSelection,
-              })
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new OrchestrationEffectExecutionError({
-                      effectId: effect.id,
-                      effectType: effect.request.type,
-                      cause,
-                    }),
-                ),
-              );
-          case "provider-turn.start":
-            return providerTurnStart
-              .start({ threadId: effect.threadId, runId: effect.request.runId, willRetry })
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new OrchestrationEffectExecutionError({
-                      effectId: effect.id,
-                      effectType: effect.request.type,
-                      cause,
-                    }),
-                ),
-              );
-          case "provider-turn.interrupt": {
-            const request = effect.request;
-            return providerTurnControl
-              .interrupt({
-                threadId: effect.threadId,
-                providerSessionId: request.providerSessionId,
-                providerThreadId: request.providerThreadId,
-                providerTurnId: request.providerTurnId,
-                ...(request.subagent === undefined
-                  ? {}
-                  : {
-                      subagent: {
-                        ...request.subagent,
-                        requestedAt: DateTime.makeUnsafe(effect.createdAt),
-                      },
-                    }),
-              })
-              .pipe(
-                Effect.tapError((cause) =>
-                  request.subagent === undefined
-                    ? Effect.void
-                    : Effect.logWarning("orchestration-v2.subagent-stop-failed", {
-                        effectId: effect.id,
-                        cause,
-                      }),
-                ),
-                Effect.map((outcome) => ({ unresponsive: false, outcome }) as const),
-                // Settling here would end the run while the agent may still be running; the
-                // user decides with Force stop instead.
-                Effect.catchIf(
-                  (cause) => request.subagent === undefined && cause.unresponsive === true,
-                  () => Effect.succeed({ unresponsive: true, outcome: undefined } as const),
-                ),
-                Effect.catchIf(
-                  (cause) =>
-                    request.subagent === undefined &&
-                    isNonRetryableProviderTurnControlFailure(
-                      request.type,
-                      Cause.pretty(Cause.fail(cause)),
-                    ),
-                  () => Effect.succeed({ unresponsive: false, outcome: undefined } as const),
-                ),
-                Effect.andThen(({ unresponsive, outcome }) =>
-                  unresponsive
-                    ? threads.dispatch({
-                        type: "thread.interrupt.unresponsive",
-                        commandId: CommandId.make(`${effect.id}:unresponsive`),
-                        threadId: effect.threadId,
-                        providerThreadId: request.providerThreadId,
-                        providerTurnId: request.providerTurnId,
-                      })
-                    : request.subagent !== undefined && outcome === undefined
-                      ? Effect.void
-                      : threads.dispatch({
-                          type: "thread.background-work.settle",
-                          commandId: CommandId.make(`${effect.id}:background-work-settled`),
-                          ...(request.subagent === undefined || outcome === undefined
-                            ? {}
-                            : {
-                                subagent: {
-                                  id: request.subagent.id,
-                                  stoppedAt: DateTime.makeUnsafe(effect.createdAt),
-                                  outcome,
-                                },
-                              }),
-                          threadId: effect.threadId,
-                          providerThreadId: request.providerThreadId,
-                          providerTurnId: request.providerTurnId,
-                        }),
-                ),
-                Effect.mapError(
-                  (cause) =>
-                    new OrchestrationEffectExecutionError({
-                      effectId: effect.id,
-                      effectType: request.type,
-                      cause,
-                    }),
-                ),
-              );
-          }
-          case "provider-turn.steer":
-            return providerTurnControl
-              .steer({
-                threadId: effect.threadId,
-                providerSessionId: effect.request.providerSessionId,
-                providerThreadId: effect.request.providerThreadId,
-                providerTurnId: effect.request.providerTurnId,
-                messageId: effect.request.messageId,
-                ...(effect.request.modelSelection === undefined
-                  ? {}
-                  : { modelSelection: effect.request.modelSelection }),
-              })
-              .pipe(
-                Effect.tap(() =>
-                  Effect.gen(function* () {
-                    if (effect.request.type !== "provider-turn.steer") return;
-                    const messageId = effect.request.messageId;
-                    const projection = yield* threads.getThreadRecords(
-                      effect.threadId,
-                      ["messages", "runs"],
-                      { messageIds: [effect.request.messageId] },
-                    );
-                    const message = projection.messages.find((row) => row.id === messageId);
-                    if (message?.delegatedCompletion === undefined) return;
-                    yield* threads.dispatch({
-                      type: "notification.delivery.accept",
-                      commandId: CommandId.make(`command:mailbox-accepted:${effect.id}`),
+        case "provider-turn.restart":
+          return providerTurnControl
+            .interruptAndAwaitTerminal({
+              threadId: effect.threadId,
+              providerSessionId: effect.request.providerSessionId,
+              providerThreadId: effect.request.providerThreadId,
+              providerTurnId: effect.request.providerTurnId,
+              interruptedAttemptId: effect.request.interruptedAttemptId,
+              ...(effect.request.sessionTransition?.type === "replace"
+                ? {
+                    replacementProviderSessionId:
+                      effect.request.sessionTransition.replacementProviderSessionId,
+                  }
+                : {}),
+            })
+            .pipe(
+              Effect.andThen(
+                effect.request.sessionTransition?.type === "replace"
+                  ? providerSessions.detach({
+                      providerSessionId: effect.request.providerSessionId,
                       threadId: effect.threadId,
-                      messageId: message.id,
-                    });
-                  }),
-                ),
-                Effect.catch((error) =>
-                  Effect.gen(function* () {
-                    if (
-                      !isProviderTurnControlError(error) ||
-                      (!error.turnCompleted && !error.steerDeclined) ||
-                      effect.request.type !== "provider-turn.steer"
-                    ) {
-                      return yield* error;
-                    }
-                    const projection = yield* threads.getThreadRecords(
-                      effect.threadId,
-                      ["messages", "runs"],
-                      { messageIds: [effect.request.messageId] },
-                    );
-                    const messageId = effect.request.messageId;
-                    const message = projection.messages.find((item) => item.id === messageId);
-                    const run = projection.runs.find((item) => item.id === message?.runId);
-                    if (message === undefined || run === undefined) return yield* error;
-                    // Notifications must be queued messages.
-                    const queued =
-                      message.delegatedCompletion !== undefined ||
-                      message.notification !== undefined ||
-                      error.steerDeclined === true;
-                    // Reuse message ids and receipts so retries cannot duplicate messages or follow-ups.
-                    yield* threads
-                      .dispatch({
-                        type: "message.dispatch",
-                        commandId: CommandId.make(`command:steer-follow-up:${effect.id}`),
-                        threadId: effect.threadId,
-                        messageId: message.id,
-                        ...(error.steerDeclined ? { steerFollowUpOfRunId: run.id } : {}),
-                        ...(error.steerDeclined &&
-                        effect.request.steerFollowUpAfterRunOrdinal !== undefined
-                          ? {
-                              steerFollowUpAfterRunOrdinal:
-                                effect.request.steerFollowUpAfterRunOrdinal,
-                            }
-                          : {}),
-                        text: message.text,
-                        ...(message.context ? { context: message.context } : {}),
-                        attachments: message.attachments,
-                        ...(error.steerDeclined && effect.request.modelSelection !== undefined
-                          ? { modelSelection: effect.request.modelSelection }
-                          : message.delegatedCompletion === undefined
-                            ? {}
-                            : { modelSelection: run.modelSelection }),
-                        dispatchMode: {
-                          type: queued ? "queue_after_active" : "start_immediately",
-                        },
-                        createdBy: message.createdBy,
-                        creationSource: message.creationSource,
-                        ...(message.delegatedCompletion === undefined
-                          ? {}
-                          : { delegatedCompletion: message.delegatedCompletion }),
-                        ...(message.notification === undefined
-                          ? {}
-                          : { notification: message.notification }),
-                        ...(message.scheduledTaskId === undefined
-                          ? {}
-                          : { scheduledTaskId: message.scheduledTaskId }),
-                        ...(message.senderThreadId === undefined
-                          ? {}
-                          : { senderThreadId: message.senderThreadId }),
-                        ...(message.linkedSender === undefined
-                          ? {}
-                          : { linkedSender: message.linkedSender }),
-                      })
-                      .pipe(
-                        // A disabled instance cannot retry this completed turn; its result stands.
-                        Effect.catchTags({
-                          ThreadManagementProviderInstanceDisabledError: (disabledError) =>
-                            Effect.logInfo(
-                              "orchestration-v2.effect-worker.steer-follow-up-disabled",
-                              {
-                                threadId: effect.threadId,
-                                messageId: message.id,
-                                projectId: disabledError.projectId,
-                                instanceId: disabledError.instanceId,
-                              },
-                            ),
-                        }),
-                      );
-                  }),
-                ),
-                Effect.mapError(
-                  (cause) =>
-                    new OrchestrationEffectExecutionError({
-                      effectId: effect.id,
-                      effectType: effect.request.type,
-                      cause,
-                    }),
-                ),
-              );
-          case "provider-turn.restart":
-            return providerTurnControl
-              .interruptAndAwaitTerminal({
-                threadId: effect.threadId,
-                providerSessionId: effect.request.providerSessionId,
-                providerThreadId: effect.request.providerThreadId,
-                providerTurnId: effect.request.providerTurnId,
-                interruptedAttemptId: effect.request.interruptedAttemptId,
-                ...(effect.request.sessionTransition?.type === "replace"
-                  ? {
-                      replacementProviderSessionId:
-                        effect.request.sessionTransition.replacementProviderSessionId,
-                    }
-                  : {}),
-              })
-              .pipe(
-                Effect.andThen(
-                  effect.request.sessionTransition?.type === "replace"
+                      detail: "Selection change requires a provider session restart.",
+                    })
+                  : effect.request.sessionTransition?.type === "detach"
                     ? providerSessions.detach({
                         providerSessionId: effect.request.providerSessionId,
                         threadId: effect.threadId,
@@ -711,62 +653,7 @@ export const layerExecutor: Layer.Layer<
                             cause: recordCause,
                           }),
                         ),
-                ),
-                Effect.mapError(
-                  (cause) =>
-                    new OrchestrationEffectExecutionError({
-                      effectId: effect.id,
-                      effectType: effect.request.type,
-                      cause,
-                    }),
-                ),
-              );
-          case "checkpoint.capture":
-            return runFinalization
-              .finalize({
-                threadId: effect.threadId,
-                runId: effect.request.runId,
-                scopeId: effect.request.scopeId,
-              })
-              .pipe(
-                // Completion bookkeeping must survive a missed live run update, including capture retries.
-                Effect.andThen(
-                  threads.recoverDelegatedTask(effect.threadId, {
-                    completedRunId: effect.request.runId,
-                  }),
-                ),
-                Effect.mapError(
-                  (cause) =>
-                    new OrchestrationEffectExecutionError({
-                      effectId: effect.id,
-                      effectType: effect.request.type,
-                      cause,
-                    }),
-                ),
-              );
-          case "scheduled-tasks.cleanup":
-            return resourceCleanup.cleanupScheduledTasks(effect.threadId).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new OrchestrationEffectExecutionError({
-                    effectId: effect.id,
-                    effectType: effect.request.type,
-                    cause,
-                  }),
-              ),
-            );
-          // Archive and delete queue this one per-thread teardown, so it also releases the
-          // thread's device claims; the devices stay booted for other threads.
-          case "terminal.cleanup":
-            return Effect.partition(
-              [
-                resourceCleanup.cleanupTerminals(effect.threadId),
-                resourceCleanup.cleanupDevices(effect.threadId),
-              ],
-              (cleanup) => cleanup,
-            ).pipe(
-              Effect.flatMap(([, [failure]]) =>
-                failure === undefined ? Effect.void : Effect.fail(failure),
+                      ),
               ),
               Effect.mapError(
                 (cause) =>
@@ -777,62 +664,6 @@ export const layerExecutor: Layer.Layer<
                   }),
               ),
             );
-          case "preview.cleanup":
-            return resourceCleanup.cleanupPreviews(effect.threadId).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new OrchestrationEffectExecutionError({
-                    effectId: effect.id,
-                    effectType: effect.request.type,
-                    cause,
-                  }),
-              ),
-            );
-          case "attachment.cleanup":
-            return resourceCleanup.cleanupAttachments(effect.request.attachmentIds).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new OrchestrationEffectExecutionError({
-                    effectId: effect.id,
-                    effectType: effect.request.type,
-                    cause,
-                  }),
-              ),
-            );
-          case "thread-title.generate":
-            return threadTitleRegeneration
-              .execute({
-                threadId: effect.threadId,
-                requestId: effect.commandId,
-                kind: effect.request.kind,
-              })
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new OrchestrationEffectExecutionError({
-                      effectId: effect.id,
-                      effectType: effect.request.type,
-                      cause,
-                    }),
-                ),
-              );
-          case "delegated-tasks.stop":
-            return threads
-              .stopDelegatedTasks({
-                threadId: effect.threadId,
-                commandId: effect.commandId,
-                reason: effect.request.reason,
-              })
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new OrchestrationEffectExecutionError({
-                      effectId: effect.id,
-                      effectType: effect.request.type,
-                      cause,
-                    }),
-                ),
-              );
         }
         case "provider-thread.rollback":
           return checkpointRollback
@@ -886,6 +717,12 @@ export const layerExecutor: Layer.Layer<
               scopeId: effect.request.scopeId,
             })
             .pipe(
+              // Completion bookkeeping must survive a missed live run update, including capture retries.
+              Effect.andThen(
+                threads.recoverDelegatedTask(effect.threadId, {
+                  completedRunId: effect.request.runId,
+                }),
+              ),
               Effect.mapError(
                 (cause) =>
                   new OrchestrationEffectExecutionError({
@@ -906,8 +743,19 @@ export const layerExecutor: Layer.Layer<
                 }),
             ),
           );
+        // Archive and delete queue this one per-thread teardown, so it also releases the
+        // thread's device claims; the devices stay booted for other threads.
         case "terminal.cleanup":
-          return resourceCleanup.cleanupTerminals(effect.threadId).pipe(
+          return Effect.partition(
+            [
+              resourceCleanup.cleanupTerminals(effect.threadId),
+              resourceCleanup.cleanupDevices(effect.threadId),
+            ],
+            (cleanup) => cleanup,
+          ).pipe(
+            Effect.flatMap(([, [failure]]) =>
+              failure === undefined ? Effect.void : Effect.fail(failure),
+            ),
             Effect.mapError(
               (cause) =>
                 new OrchestrationEffectExecutionError({
@@ -988,6 +836,7 @@ export const layerExecutor: Layer.Layer<
     };
     // Managed threads require a fresh exact admission; delayed native control is suppressed.
     const managedControlTypes: Record<string, true> = {
+      "provider-session.apply-model-selection": true,
       "provider-turn.steer": true,
       "provider-turn.restart": true,
       "provider-runtime.continue": true,

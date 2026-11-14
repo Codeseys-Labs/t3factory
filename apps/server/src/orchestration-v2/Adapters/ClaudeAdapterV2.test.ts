@@ -198,13 +198,6 @@ const CLAUDE_TEST_RUNTIME_POLICY = ProviderAdapter.ProviderAdapterV2RuntimePolic
   cwd: "/workspace",
 });
 
-// Search the text itself: JSON escaping doubles the backslashes in Windows paths.
-function promptText(content: SDKUserMessage["message"]["content"]) {
-  return typeof content === "string"
-    ? content
-    : content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
-}
-
 function makeClaudeTestAppThread(input: {
   readonly threadId: ThreadId;
   readonly providerThread: OrchestrationV2ProviderThread;
@@ -4748,7 +4741,6 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           cwd = CLAUDE_TEST_RUNTIME_POLICY.cwd,
           environment?: NodeJS.ProcessEnv,
           launchArgs = "",
-          platform: NodeJS.Platform = "linux",
         ) =>
           Effect.scoped(
             Effect.gen(function* () {
@@ -4774,7 +4766,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               const settings = harness.getOpenedOptions()?.settings;
               return typeof settings === "object" ? settings.env?.ENABLE_TOOL_SEARCH : undefined;
             }),
-          ).pipe(Effect.provideService(HostProcess.Platform, platform));
+          );
         assert.equal(yield* openedToolSearch('{"env":{"ENABLE_TOOL_SEARCH":"auto"}}'), "true");
         assert.isUndefined(yield* openedToolSearch('{"env":{"ENABLE_TOOL_SEARCH":"false"}}'));
         assert.isUndefined(yield* openedToolSearch("{}"));

@@ -201,7 +201,6 @@ export function scheduleFromDraft(draft: ScheduleDraft): ScheduledTaskUpsertSche
 type Workspace = "worktree" | "root" | "existing_worktree";
 export type ScheduledTaskDraft = {
   readonly task: ScheduledTask | null;
-  readonly threadId: ThreadId | null;
   readonly title: string;
   readonly prompt: string;
   readonly projectId: ProjectId | null;
@@ -296,7 +295,6 @@ export function createDraft(
 ): ScheduledTaskDraft {
   return {
     task: null,
-    threadId: null,
     title: "",
     prompt: "",
     projectId,
@@ -329,7 +327,6 @@ export function createFactoryDraft(
 export function editDraft(task: ScheduledTask): ScheduledTaskDraft {
   return {
     task,
-    threadId: task.threadId,
     title: task.title,
     prompt: task.prompt,
     projectId: task.projectId,

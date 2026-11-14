@@ -11,6 +11,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { vi } from "vite-plus/test";
 
 import * as ProcessRunner from "../processRunner.ts";
@@ -30,6 +31,9 @@ const git = (cwd: string, args: ReadonlyArray<string>) =>
 
 it.effect("refines a supplied origin independently of the cached upstream identity", () =>
   Effect.gen(function* () {
+    const cwd = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped({
+      prefix: "t3-repository-identity-refine-",
+    });
     const refined: RepositoryIdentity[] = [];
     const resolver = yield* RepositoryIdentityResolver.make({
       refine: (identity) => {
@@ -37,7 +41,7 @@ it.effect("refines a supplied origin independently of the cached upstream identi
         return Effect.succeed({ ...identity, provider: SourceControlProviderKind.make("gitlab") });
       },
     });
-    const primary = yield* resolver.resolve("/repo");
+    const primary = yield* resolver.resolve(cwd);
     const origin = yield* resolver.resolveRemote({
       rootPath: "/repo",
       remoteName: "origin",
@@ -52,13 +56,13 @@ it.effect("refines a supplied origin independently of the cached upstream identi
         remoteUrl: "forge.example:Me/Sub/Project.git",
       },
       rootPath: "/repo",
-      displayName: "me/sub/project",
-      owner: "me",
-      name: "project",
+      displayName: "Me/Sub/Project",
+      owner: "Me",
+      name: "Project",
       provider: SourceControlProviderKind.make("gitlab"),
     });
     expect(refined.map((identity) => identity.locator.remoteName)).toEqual(["upstream", "origin"]);
-    expect(yield* resolver.resolve("/repo")).toEqual(primary);
+    expect(yield* resolver.resolve(cwd)).toEqual(primary);
   }).pipe(
     Effect.provideService(ProcessRunner.ProcessRunner, {
       run: ({ args }) =>
@@ -66,7 +70,7 @@ it.effect("refines a supplied origin independently of the cached upstream identi
           code: ChildProcessSpawner.ExitCode(0),
           stdout: args.includes("--show-toplevel")
             ? "/repo\n"
-            : "upstream git@forge.example:team/project.git (fetch)\n",
+            : "upstream\tgit@forge.example:team/project.git (fetch)\n",
           stderr: "",
           timedOut: false,
           stdoutTruncated: false,
@@ -75,6 +79,7 @@ it.effect("refines a supplied origin independently of the cached upstream identi
           stderrInvalidUtf8: false,
         }),
     }),
+    Effect.provide(NodeServices.layer),
   ),
 );
 
@@ -105,7 +110,9 @@ it.effect("retains the remote's detected identity when refinement fails", () =>
         remoteUrl: "/local/project",
       }),
     ).toBeNull();
-  }).pipe(Effect.provide(Layer.mock(ProcessRunner.ProcessRunner)({}))),
+  }).pipe(
+    Effect.provide(Layer.mergeAll(Layer.mock(ProcessRunner.ProcessRunner)({}), NodeServices.layer)),
+  ),
 );
 
 it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {

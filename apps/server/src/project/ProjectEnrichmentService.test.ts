@@ -270,6 +270,7 @@ it.effect(
       const resolveCalls = yield* Ref.make(0);
       const layerMetadata = Layer.merge(
         Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+          resolveRemote: () => Effect.succeed(null),
           resolve: (workspaceRoot) =>
             Effect.gen(function* () {
               if ((yield* Ref.updateAndGet(resolveCalls, (count) => count + 1)) > 1) {
@@ -322,6 +323,7 @@ it.effect("does not let a lookup invalidated mid-flight replace a newer last ide
     const resolveCalls = yield* Ref.make(0);
     const layerMetadata = Layer.merge(
       Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+        resolveRemote: () => Effect.succeed(null),
         resolve: (workspaceRoot) =>
           Effect.gen(function* () {
             const call = yield* Ref.updateAndGet(resolveCalls, (count) => count + 1);
@@ -362,6 +364,7 @@ it.effect("keeps a lookup's identity when another root is invalidated mid-flight
     const release = yield* Deferred.make<void>();
     const layerMetadata = Layer.merge(
       Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+        resolveRemote: () => Effect.succeed(null),
         resolve: (workspaceRoot) =>
           Deferred.succeed(started, undefined).pipe(
             Effect.andThen(Deferred.await(release)),

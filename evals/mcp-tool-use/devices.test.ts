@@ -1,9 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodeZlib from "node:zlib";
+import * as NodePath from "@effect/platform-node/NodePath";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as Layer from "effect/Layer";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -103,7 +103,10 @@ it.effect("answers device calls over the case's POSIX world even with Windows ho
     const elsewhere = yield* tools.call("device_open", { hostId: "local", deviceId: IPHONE });
     assert.isTrue(elsewhere.isError);
     assert.include(elsewhere.text, IPHONE);
-  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, NodePath.layerWin32)),
+  ),
 );
 
 it.effect("lists the boot state T3 left a device in", () =>

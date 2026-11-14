@@ -15180,11 +15180,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       if (shell !== null) yield* refuseAboveDispatchModeLimit(command, threadId, shell);
     }
 
+    yield* factoryLifecycle.guardCommand(command).pipe(mapDispatchError(command));
+    const managedStop =
+      command.type === "thread.stop" ||
+      command.type === "run.interrupt" ||
+      command.type === "queued-run.cancel"
+        ? yield* factoryLifecycle
+            .binding({ threadId: command.threadId })
+            .pipe(mapDispatchError(command))
+        : null;
     const plan = yield* dispatchOnce(command, sideChatIds).pipe(
       Effect.tap((planned) => refuseAboveRuntimeModeCeiling(command, planned.events)),
       Effect.filterOrFail(
         (planned) =>
           planned.events.length > 0 ||
+          managedStop !== null ||
           isUnobservedAcknowledgement(command) ||
           command.type === "thread.background-work.settle" ||
           // A stale visit changes no read state.
@@ -15261,7 +15271,67 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ),
     );
 
-    if (plan.events.length === 0 && plan.effects.length === 0 && cancelledTask === undefined) {
+    // Managed stop effects plan with the command's own events in one commit.
+    let plannedStopEffects: ReadonlyArray<PendingOrchestrationEffectV2> = plan.effects;
+    if (
+      command.type === "thread.stop" ||
+      command.type === "run.interrupt" ||
+      command.type === "queued-run.cancel"
+    ) {
+      const owner = managedStop;
+      const authority = yield* FactoryExecutionLifecycle.FactoryNativeAuthority;
+      const extra: Array<PendingOrchestrationEffectV2> = [];
+      if (owner !== null && authority !== owner.runAttemptId) {
+        extra.push({
+          id: `effect:${command.commandId}:factory.execution.stop:${owner.runAttemptId}`,
+          commandId: command.commandId,
+          threadId: command.threadId,
+          request: {
+            type: "factory.execution.stop",
+            runId: owner.runId,
+            runAttemptId: owner.runAttemptId,
+            nativeInterruptPlanned: true,
+          },
+        });
+      }
+      if (owner !== null) {
+        const native = yield* projectionStore
+          .getThreadRecords(command.threadId, ["runs", "attempts", "nodes"])
+          .pipe(mapDispatchError(command));
+        const run = native.runs.find((run) => run.id === owner.runId);
+        const attempt = native.attempts.find((attempt) => attempt.id === owner.runAttemptId);
+        const node = native.nodes.find((node) => node.id === run?.rootNodeId);
+        if (
+          run?.activeAttemptId === owner.runAttemptId &&
+          attempt !== undefined &&
+          node?.checkpointScopeId != null
+        ) {
+          extra.push({
+            id: `effect:factory.execution.finalize:${owner.runAttemptId}`,
+            commandId: CommandId.make(
+              `command:effect:factory.execution.finalize:${owner.runAttemptId}`,
+            ),
+            threadId: owner.threadId,
+            request: {
+              type: "factory.execution.finalize",
+              runId: owner.runId,
+              runAttemptId: owner.runAttemptId,
+              scopeId: node.checkpointScopeId,
+              captureGeneration: 1,
+              providerThreadId: attempt.providerThreadId,
+              driver: owner.driver,
+              providerInstanceId: owner.spec.modelSelection.instanceId,
+            },
+          });
+        }
+      }
+      plannedStopEffects = extra.length === 0 ? plan.effects : [...plan.effects, ...extra];
+    }
+    if (
+      plan.events.length === 0 &&
+      plannedStopEffects.length === 0 &&
+      cancelledTask === undefined
+    ) {
       // A settle that ended nothing still records its receipt: a replayed Stop
       // effect then finds it instead of settling work that appeared since.
       const { resultSequence, inserted } = yield* Effect.gen(function* () {
@@ -15308,7 +15378,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const committed = yield* eventSink
       .commitCommand({
         commandId: command.commandId,
-        events: plan.events,
         threadId: commandThreadId(command),
         commandType: command.type,
         acceptedAt,
@@ -15325,7 +15394,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                   payload: cancelledTask,
                 }).pipe(mapDispatchError(command)),
               ],
-        effects: plan.effects,
+        effects: plannedStopEffects,
         ...(plan.cancelUnsettledEffects === undefined
           ? {}
           : { cancelUnsettledEffects: plan.cancelUnsettledEffects }),

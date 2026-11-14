@@ -83,10 +83,75 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("keeps Work reads, including source prerequisites, on orchestration read scope", () => {
+    for (const method of [
+      WS_METHODS.factoryListWork,
+      WS_METHODS.factoryReadWork,
+      WS_METHODS.factoryReadWorkHistory,
+      WS_METHODS.factoryReadWorkPrerequisites,
+      WS_METHODS.factoryReadPlan,
+      WS_METHODS.factoryListPlans,
+      WS_METHODS.factoryReadPlanHistory,
+      WS_METHODS.factoryListTasks,
+      WS_METHODS.factoryCountTasks,
+      WS_METHODS.factoryReadTask,
+      WS_METHODS.factoryReadTaskResult,
+      WS_METHODS.factoryReadTaskActivity,
+      WS_METHODS.factoryFindTaskByThread,
+      WS_METHODS.factoryPreviewTaskAssignee,
+      WS_METHODS.factorySubscribeTaskChanges,
+      WS_METHODS.factoryListAgentProfiles,
+      WS_METHODS.factoryReadTaskPlanProposal,
+      WS_METHODS.factoryListIntakeSources,
+      WS_METHODS.factoryListIntakeRules,
+      WS_METHODS.factoryPreviewIntakeRule,
+      WS_METHODS.factoryListIntakeArrivals,
+      WS_METHODS.factorySubscribeIntakeChanges,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+    }
+  });
+
   it("lets thread readers observe and refresh checkout branches", () => {
     for (const method of [WS_METHODS.subscribeVcsBranch, WS_METHODS.vcsRefreshBranch]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
     }
+  });
+
+  it("keeps task changes behind operate scope and intake sources, which fetch a URL, behind settings write", () => {
+    for (const method of [
+      WS_METHODS.factoryCreateTask,
+      WS_METHODS.factoryUpdateTask,
+      WS_METHODS.factoryStartTask,
+      WS_METHODS.factoryStopTask,
+      WS_METHODS.factoryRetryTask,
+      WS_METHODS.factoryAcceptTaskResult,
+      WS_METHODS.factoryRequestTaskChanges,
+      WS_METHODS.factoryReopenTask,
+      WS_METHODS.factoryCheckTaskResult,
+      WS_METHODS.factoryAddTaskComment,
+      WS_METHODS.factorySaveAgentProfile,
+      WS_METHODS.factoryDeleteAgentProfile,
+      WS_METHODS.factoryRequestTaskBreakdown,
+      WS_METHODS.factoryUpdateTaskPlanProposal,
+      WS_METHODS.factoryResolveTaskPlanProposal,
+      WS_METHODS.factorySaveIntakeRule,
+      WS_METHODS.factoryDeleteIntakeRule,
+      WS_METHODS.factoryResolveIntakeArrival,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
+    }
+    for (const method of [
+      WS_METHODS.factorySaveIntakeSource,
+      WS_METHODS.factoryDeleteIntakeSource,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthSettingsWriteScope);
+    }
+  });
+
+  it("keeps publishing and merging a task result behind source-control write, apart from accepting", () => {
+    for (const method of [WS_METHODS.factoryPublishTaskResult, WS_METHODS.factoryMergeTaskResult])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthSourceControlWriteScope);
   });
 
   it("rejects unknown RPC method names", () => {

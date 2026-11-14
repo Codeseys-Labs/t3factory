@@ -3,6 +3,7 @@ import {
   CheckpointId,
   CheckpointScopeId,
   CommandId,
+  MessageId,
   NodeId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -108,8 +109,8 @@ function layerExecutorFor(input: {
       ProviderTurnControlService.ProviderTurnControlServiceV2,
       ProviderTurnControlService.ProviderTurnControlServiceV2.of({
         interrupt: input.interrupt ?? (() => Effect.void),
-        steer: () => Effect.void,
-        applyModelSelection: () => Effect.void,
+        steer: () => record("steer"),
+        applyModelSelection: () => record("apply-model-selection"),
         interruptAndAwaitTerminal: (request) =>
           record(
             request.replacementProviderSessionId === undefined
@@ -738,5 +739,45 @@ it.effect.each([
         "complete",
         "observe:native-final/1",
       ]);
+    }),
+);
+
+it.effect.each(["provider-turn.steer", "provider-session.apply-model-selection"] as const)(
+  "a factory-managed thread suppresses delayed native control: %s",
+  (type) =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const events = yield* Ref.make<ReadonlyArray<string>>([]);
+      const modelSelection = { instanceId: ProviderInstanceId.make("codex"), model: "gpt-6-luna" };
+      const layer = layerExecutorFor({
+        events,
+        lifecycle: {
+          binding: () =>
+            Effect.succeed({
+              driver: ProviderDriverKind.make("codex"),
+              spec: { modelSelection },
+            } as FactoryExecutionBinding),
+        },
+      });
+      const exit = yield* Effect.gen(function* () {
+        const executor = yield* EffectWorker.OrchestrationEffectExecutorV2;
+        return yield* Effect.exit(
+          executor.execute({
+            ...restartEffect(now, { type: "detach" }),
+            request:
+              type === "provider-turn.steer"
+                ? {
+                    type,
+                    providerSessionId: oldSessionId,
+                    providerThreadId,
+                    providerTurnId,
+                    messageId: MessageId.make("message:effect-worker-managed-steer"),
+                  }
+                : { type, providerSessionId: oldSessionId, providerThreadId, modelSelection },
+          }),
+        );
+      }).pipe(Effect.provide(layer));
+      assert.isTrue(Exit.isFailure(exit));
+      assert.deepEqual(yield* Ref.get(events), []);
     }),
 );

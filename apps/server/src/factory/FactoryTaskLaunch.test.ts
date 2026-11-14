@@ -2,7 +2,9 @@ import { SourceControlProviderKind } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import { ProjectId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as ProcessRunner from "../processRunner.ts";
 import * as Identities from "../project/RepositoryIdentityResolver.ts";
@@ -78,7 +80,7 @@ it.effect.each([
   ),
 );
 const harness = (origin: string, upstream?: string) => {
-  const remotes = `origin ${origin} (fetch)\n${upstream ? `upstream ${upstream} (fetch)\n` : ""}`;
+  const remotes = `origin\t${origin} (fetch)\n${upstream ? `upstream\t${upstream} (fetch)\n` : ""}`;
   const identities = Layer.effect(
     Identities.RepositoryIdentityResolver,
     Identities.make({
@@ -93,6 +95,14 @@ const harness = (origin: string, upstream?: string) => {
         ),
     }),
   ).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        FileSystem.layerNoop({
+          stat: () => Effect.succeed({ type: "Directory" } as FileSystem.File.Info),
+        }),
+        Path.layer,
+      ),
+    ),
     Layer.provide(
       Layer.succeed(ProcessRunner.ProcessRunner, {
         run: ({ args }) =>

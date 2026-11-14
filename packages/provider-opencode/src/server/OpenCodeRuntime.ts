@@ -1,3 +1,4 @@
+import { OwnedProcess, spawnOwnedProcess } from "@t3tools/shared/ownedProcess";
 import { resolveProviderProbeTimeoutMs } from "@t3tools/provider-core/server/snapshotProbe";
 import * as NodeURL from "node:url";
 

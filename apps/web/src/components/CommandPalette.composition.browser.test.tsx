@@ -129,6 +129,10 @@ vi.mock("../state/query", async (original) => ({
 vi.mock("./settings/useAvailableSettingsSearchItems", () => ({
   useAvailableSettingsSearchItems: () => [],
 }));
+vi.mock("../state/factoryTasks", async (original) => ({
+  ...(await original<typeof import("../state/factoryTasks")>()),
+  useFactoryTasks: (() => ({ owners: [], items: [], more: [] })) as never,
+}));
 
 // The real palette and Base UI input must agree that confirming composition is typing.
 describe.each(["repository", "folder", "destination"] as const)("add-project %s", (step) => {

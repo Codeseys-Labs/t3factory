@@ -557,6 +557,34 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     ),
   );
 
+  it.effect("packages a Factory preview under its own identity with no update feed", () =>
+    Effect.gen(function* () {
+      const factory = yield* createBuildConfig(
+        "win",
+        "zip",
+        "0.0.43",
+        false,
+        false,
+        undefined,
+        undefined,
+        false,
+        "x64",
+        "factory-preview",
+      );
+
+      assert.equal(factory.appId, "io.github.codeseys-labs.t3factory");
+      assert.equal(factory.productName, "T3Factory (Preview)");
+      assert.equal(factory.artifactName, "T3Factory-${version}-${arch}.${ext}");
+      assert.isNull(factory.publish);
+    }).pipe(
+      Effect.provide(
+        ConfigProvider.layer(
+          ConfigProvider.fromEnv({ env: { GITHUB_REPOSITORY: "Codeseys-Labs/t3factory" } }),
+        ),
+      ),
+    ),
+  );
+
   it.effect("names the Electron window class in the Linux desktop entry", () =>
     Effect.gen(function* () {
       const linux = yield* createBuildConfig(
@@ -594,6 +622,21 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       ),
     ),
   );
+
+  it("finds Clerk and relay identity a Factory preview would embed, including aliases", () => {
+    const repoRoot = NodePath.join(import.meta.dirname, "fixtures", "missing-repo-root");
+    const embedded = (baseEnv: Record<string, string>) =>
+      findEmbeddedServiceIdentityVariables(loadRepoEnv({ baseEnv, repoRoot }));
+
+    assert.deepStrictEqual(embedded({ T3CODE_HOME: "/tmp/home" }), []);
+    assert.deepStrictEqual(
+      embedded({
+        VITE_CLERK_PUBLISHABLE_KEY: "pk_live_x",
+        VITE_T3CODE_RELAY_URL: "https://r.test",
+      }),
+      ["T3CODE_CLERK_PUBLISHABLE_KEY", "T3CODE_RELAY_URL"],
+    );
+  });
 
   it.effect("declares Calendar access for hosted commands in macOS builds", () =>
     Effect.gen(function* () {
@@ -1237,7 +1280,6 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
     return Effect.scoped(
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const fixture = yield* makeWindowsPayloadFixture({ copyUnpackedNatives: true });
         yield* validateWindowsPackagedPayload({
           stageDistDir: fixture.stageDistDir,

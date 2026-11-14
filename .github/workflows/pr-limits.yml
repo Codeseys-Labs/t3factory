@@ -7,12 +7,9 @@ name: PR Limits
 # PR_LIMITS_ENFORCE is "true". Until then every run logs what it would do. A
 # sweep reads the variable once when it starts; to stop one, cancel the run.
 
+# T3Factory: inherited trigger neutralized to reusable-only with no caller; it can close PRs by upstream's rules.
 on:
-  pull_request_target:
-    types: [opened, reopened]
-  schedule:
-    - cron: "23 5 * * *"
-  workflow_dispatch:
+  workflow_call:
     inputs:
       dry_run:
         description: Log what the sweep would do without labeling, commenting, or closing.

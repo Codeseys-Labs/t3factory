@@ -169,7 +169,11 @@ const makeHarness = Effect.fn("test.make_self_update_harness")(function* (
     Effect.provideService(HostProcess.Architecture, "x64"),
     Effect.provide(
       Layer.merge(
-        ServerConfig.layer({ ...config, mode: options.mode ?? "web" }),
+        ServerConfig.layer({
+          ...config,
+          mode: options.mode ?? "web",
+          desktopUpdatesDisabled: options.desktopUpdatesDisabled,
+        }),
         ManagedPolicy.layerTest(options.policy),
       ),
     ),

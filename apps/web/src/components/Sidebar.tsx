@@ -120,8 +120,8 @@ import { useOrderWhileOpen } from "../hooks/useOrderWhileOpen";
 import { useProjectPin } from "../hooks/useProjectGroupUpdate";
 import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
-import { registerSettleAndAdvance } from "../settleAndAdvance";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
+import { registerSettleAndAdvance } from "../settleAndAdvance";
 import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useLocalStorage } from "../hooks/useLocalStorage";
@@ -201,6 +201,7 @@ import {
   type SidebarListItem,
   type SidebarSection,
   resolveSidebarRowThreadId,
+  shouldCreateNewThreadInCurrentProject,
 } from "./Sidebar.logic";
 import {
   createSidebarCollisionDetection,
@@ -2941,6 +2942,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
 
   const showJumpHints = useThreadJumpHintsVisible(keybindings, routeThreadRef);
 
+  const taskScope = useTaskScope();
+  const handleNewTaskClick = () => {
+    if (isMobile) setOpenMobile(false);
+    openNewTask(taskScope.single ?? {});
+  };
+  const newTaskShortcutLabel = shortcutLabelForCommand(keybindings, "tasks.new");
   const handleNewThreadClick = (event?: ReactMouseEvent) => {
     if (
       shouldCreateNewThreadInCurrentProject(
@@ -2962,9 +2969,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       return;
     }
     if (isMobile) setOpenMobile(false);
-    openNewTask(taskScope.single ?? {});
+    openCommandPalette({ open: "new-thread-in" });
   };
-
   const newThreadShortcutLabel =
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (shouldCreateNewThreadInCurrentProject(false, scopeGroups.length, projectGroups.length)
@@ -3196,6 +3202,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   projectGroups.length,
                 )
               }
+              scopeLabel={taskScope.label}
+              onNewTask={handleNewTaskClick}
+              newTaskShortcutLabel={newTaskShortcutLabel}
               searchInputRef={threadSearchInputRef}
               searchQuery={threadSearchQuery}
               onSearchQueryChange={(value) => {

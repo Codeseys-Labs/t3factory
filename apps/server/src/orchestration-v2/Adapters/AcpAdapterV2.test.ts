@@ -2411,8 +2411,9 @@ describe("AcpAdapterV2", () => {
 
   it.live.each(["cancelled", "refusal", "error"] as const)(
     "reinjects ACP instructions after protocol compaction, during reinjection, prompt preparation, or while idle (%s)",
-    (stopReason) =>
-      Effect.gen(function* () {
+    (stopReason) => {
+      let owned = 0;
+      return Effect.gen(function* () {
         const {
           runTurn,
           idleSessionUpdate,
@@ -2542,7 +2543,18 @@ describe("AcpAdapterV2", () => {
           yield* runTurn("Continue after the undelivered prompt."),
           "Continue after the undelivered prompt.",
         );
-      }).pipe(Effect.provide(layerTest)),
+        // An attempt owner in context spawns the shared ACP CLI runtime, once per session.
+        assert.equal(owned, 1);
+      }).pipe(
+        Effect.provideService(OwnedProcess, {
+          spawn: (command, native) => {
+            owned++;
+            return native.spawn(command);
+          },
+        }),
+        Effect.provide(layerTest),
+      );
+    },
   );
 
   it.live(

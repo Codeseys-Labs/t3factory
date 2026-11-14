@@ -100,6 +100,7 @@ import { useFabScroll } from "./FabScrollContext";
 import { holdLaunchSplashForHomeRows, settleLaunchSplashHomeRows } from "./home-launch-splash";
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
 import { ThreadListFilters } from "./ThreadListFilters";
+import { TasksEntryRow } from "../tasks/TasksEntryRow";
 import { deriveHomeEmptyState } from "./home-empty-state";
 
 interface HomeScreenProps {
@@ -640,6 +641,11 @@ export function HomeScreen(props: HomeScreenProps) {
             }}
           >
             <View className="w-full max-w-[430px]">
+              {props.catalogState.hasReadyEnvironment ? (
+                <View className="mb-6">
+                  <TasksEntryRow />
+                </View>
+              ) : null}
               <EmptyState
                 title={emptyState.title}
                 detail={emptyState.detail}

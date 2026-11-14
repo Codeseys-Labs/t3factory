@@ -2190,7 +2190,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         let spawns = 0;
         const delegate = yield* ChildProcessSpawner.ChildProcessSpawner;
         const spawner = ChildProcessSpawner.make((command) => {
-          if (!ChildProcess.isStandardCommand(command) || !matches(command.args)) {
+          if (!ChildProcess.isStandardCommand(command) || !matches(command.args.map(String))) {
             return delegate.spawn(command);
           }
           spawns += 1;
@@ -5772,6 +5772,13 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const countingSpawner = ChildProcessSpawner.make((command) =>
           Effect.gen(function* () {
             const args = ChildProcess.isStandardCommand(command) ? command.args.map(String) : [];
+            if (args.includes("--git-common-dir") && !failedCommonDir) {
+              failedCommonDir = true;
+              return makeFailedHandle(
+                "error: .git/config: Permission denied\nfatal: unknown error occurred while reading the configuration files",
+              );
+            }
+            if (args.includes("--git-common-dir")) resolvedCommonDir = true;
             const writesConfig =
               (args.includes("worktree") && args.includes("add") && args.includes("-b")) ||
               (args[0] === "branch" &&

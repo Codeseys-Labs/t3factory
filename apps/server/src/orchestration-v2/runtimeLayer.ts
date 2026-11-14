@@ -207,7 +207,12 @@ const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pip
 
 const layerProviderTurnControlServiceProvided = ProviderTurnControlService.layer.pipe(
   Layer.provide(
-    Layer.mergeAll(layerEventSink, ProjectionStore.layer, layerProviderSessionManagerProvided),
+    Layer.mergeAll(
+      layerEventSink,
+      ProjectionStore.layer,
+      layerFactoryExecutionLifecycle,
+      layerProviderSessionManagerProvided,
+    ),
   ),
 );
 const layerRuntimeRequestServiceProvided = RuntimeRequestService.layer.pipe(
@@ -320,6 +325,7 @@ const layerThreadLaunchProvided = ThreadLaunchService.layer.pipe(
       layerCommandReceiptStoreProvided,
       layerEventSink,
       IdAllocator.layer,
+      layerFactoryExecutionLifecycle,
     ).pipe(Layer.provideMerge(layerProjectService)),
   ),
 );
@@ -375,7 +381,6 @@ const layerFactoryDeliveryProvided = FactoryDeliveryService.layerWithStartupReco
         Layer.provide(
           Layer.mergeAll(
             FactoryKnowledgeStore.layer,
-            layerProjectService,
             layerThreadManagementProvided,
             layerThreadLaunchProvided,
             layerCommandReceiptStoreProvided,
@@ -383,7 +388,6 @@ const layerFactoryDeliveryProvided = FactoryDeliveryService.layerWithStartupReco
           ),
         ),
       ),
-      layerProjectService,
       FactoryAcceptanceService.layer.pipe(
         Layer.provide(Layer.merge(FactoryAcceptanceStore.layer, layerThreadManagementProvided)),
       ),
@@ -454,7 +458,7 @@ export const layerProduction = Layer.mergeAll(
   WorktreeBranchSync.layer.pipe(
     Layer.provide(Layer.merge(layerThreadManagementProvided, ProjectionStore.layer)),
   ),
-  layer,
+  layer.pipe(Layer.provide(layerFactoryDeliveryProvided)),
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
   layerScheduledTaskProvided,

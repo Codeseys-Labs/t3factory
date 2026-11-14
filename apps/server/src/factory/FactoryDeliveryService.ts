@@ -1625,12 +1625,12 @@ const makeService = Effect.gen(function* () {
         pullRequestRef(intent.projectId, intent.repository, intent.remote.number),
         { fresh: true },
       ).pipe(Effect.result);
+      // Commits pushed after Publish do not undo the host's merge; only Merge is pinned to the head.
       if (
         observed._tag === "Success" &&
         observed.success.state === "merged" &&
         intent.baseBranch &&
-        observed.success.baseBranch === intent.baseBranch &&
-        observed.success.headSha === intent.headSha
+        observed.success.baseBranch === intent.baseBranch
       )
         return Option.getOrElse(
           yield* store.recordObservedMerge(intent.id, yield* nowIso),

@@ -147,6 +147,8 @@ const ProjectRow = Schema.Struct({
   workspaceRoot: Schema.String,
   scripts: Schema.NullOr(Schema.String),
   defaultModelSelection: Schema.NullOr(Schema.String),
+  defaultThreadEnvMode: Schema.NullOr(Schema.String),
+  autoPull: Schema.NullOr(Schema.Number),
 });
 const decodeProjectRows = Schema.decodeUnknownEffect(Schema.Array(ProjectRow));
 
@@ -186,8 +188,11 @@ const sourceProjectSettings = (
     const scripts =
       override === undefined ? (Array.isArray(onRow) && onRow.length > 0 ? onRow : null) : override;
     if (scripts !== null) legacy.defaultProjectScripts = scripts;
+    if (row.defaultThreadEnvMode === "local" || row.defaultThreadEnvMode === "worktree")
+      legacy.defaultThreadEnvMode = row.defaultThreadEnvMode;
     const autoPull = own("projectAutoPullOverrides");
     if (autoPull !== undefined) legacy.defaultAutoPull = autoPull;
+    else if (row.autoPull === 1) legacy.defaultAutoPull = true;
     const browserAccess = own("projectAgentBrowserAccessOverrides");
     if (browserAccess !== undefined) legacy.enableAgentBrowserAccess = browserAccess;
   }
@@ -251,10 +256,17 @@ const make = Effect.gen(function* () {
     if (!(yield* fs.exists(dbPath).pipe(Effect.orElseSucceed(() => false)))) return Option.some([]);
     return yield* Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // Only columns every T3 Code version since projects moved to this table has.
+      // The thread mode and auto-pull columns came later; a version without them has neither set.
+      const columns = yield* sql<{
+        readonly name: string;
+      }>`SELECT name FROM pragma_table_info('projection_projects')`;
+      const ifPresent = (column: string) =>
+        sql.literal(columns.some(({ name }) => name === column) ? column : "NULL");
       const rows = yield* sql`
         SELECT project_id AS "projectId", title, workspace_root AS "workspaceRoot",
-          scripts_json AS "scripts", default_model_selection_json AS "defaultModelSelection"
+          scripts_json AS "scripts", default_model_selection_json AS "defaultModelSelection",
+          ${ifPresent("default_thread_env_mode")} AS "defaultThreadEnvMode",
+          ${ifPresent("auto_pull")} AS "autoPull"
         FROM projection_projects
         WHERE deleted_at IS NULL
         ORDER BY created_at ASC, project_id ASC`;

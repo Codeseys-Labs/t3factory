@@ -83,6 +83,8 @@ const writeT3Code = Effect.fn("test.writeT3Code")(function* (
       readonly root: string;
       readonly scripts?: unknown;
       readonly model?: unknown;
+      readonly threadEnvMode?: string;
+      readonly autoPull?: boolean;
     }>;
   },
 ) {
@@ -101,7 +103,8 @@ const writeT3Code = Effect.fn("test.writeT3Code")(function* (
         default_model_selection_json, default_thread_env_mode, auto_pull, favicon_path,
         project_icon_json, scripts_json, created_at, updated_at, deleted_at)
         VALUES (${project.id}, ${project.title}, ${project.root},
-          ${project.model === undefined ? null : JSON.stringify(project.model)}, NULL, 0, NULL, NULL,
+          ${project.model === undefined ? null : JSON.stringify(project.model)},
+          ${project.threadEnvMode ?? null}, ${project.autoPull === true ? 1 : 0}, NULL, NULL,
           ${JSON.stringify(project.scripts ?? [])}, ${at(index)}, ${at(index)}, NULL)`;
   }).pipe(
     Effect.provide(NodeSqliteClient.layer({ filename: path.join(userdata, "statev2.sqlite") })),
@@ -150,8 +153,9 @@ it.effect(
               environment: [{ name: "API_KEY", value: "", sensitive: true, valueRedacted: true }],
             },
           },
-          // T3 Code has not folded project settings yet: the row and the older maps still count.
-          projectAutoPullOverrides: { alpha: true },
+          // T3 Code has not folded project settings yet: the row and the older maps still count,
+          // and a map entry outranks the row.
+          projectAutoPullOverrides: { alpha: false },
           projectSettingsOverrides: {
             alpha: { defaultRuntimeMode: "approval-required", worktreeCleanup: { mode: "off" } },
             beta: { defaultRuntimeMode: "auto" },
@@ -166,8 +170,15 @@ it.effect(
             root: folder("alpha"),
             scripts: [script],
             model: { instanceId: "codex", model: "gpt-5.4-mini" },
+            autoPull: true,
           },
-          { id: "beta", title: "Beta", root: folder("beta") },
+          {
+            id: "beta",
+            title: "Beta",
+            root: folder("beta"),
+            threadEnvMode: "worktree",
+            autoPull: true,
+          },
           { id: "gamma", title: "Gamma", root: folder("gamma") },
           { id: "delta", title: "Delta", root: folder("delta") },
           { id: "scratch", title: "Notes", root: scratch },
@@ -257,10 +268,10 @@ it.effect(
             {
               defaultModelSelection: { instanceId: codex, model: "gpt-5.4-mini" },
               defaultProjectScripts: [script],
-              defaultAutoPull: true,
+              defaultAutoPull: false,
               defaultRuntimeMode: "approval-required",
             },
-            { defaultRuntimeMode: "auto" },
+            { defaultThreadEnvMode: "worktree", defaultAutoPull: true, defaultRuntimeMode: "auto" },
           ],
         );
 
@@ -391,7 +402,7 @@ it.effect(
 );
 
 it.effect(
-  "still offers settings when T3 Code's project table has a shape this version cannot read",
+  "reads an older T3 Code project table, and still offers settings when it cannot read a newer one",
   () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -403,29 +414,35 @@ it.effect(
         path.join(userdata, "settings.json"),
         JSON.stringify({ defaultModelSelection: { instanceId: "codex", model: "gpt-5.4" } }),
       );
-      // A later T3 Code that renamed a column this version selects.
+      const inT3Code = Effect.provide(
+        NodeSqliteClient.layer({ filename: path.join(userdata, "statev2.sqlite") }),
+      );
+      const preview = Effect.flatMap(T3CodeImport.T3CodeImport, (service) => service.preview).pipe(
+        Effect.provide(layerFor({ home, baseDir: { prefix: "t3code-import-factory-" } })),
+        Effect.map((result) =>
+          result.status === "available"
+            ? [
+                result.projectsReadable,
+                result.projects.map((project) => project.projectId),
+                result.settings.map((setting) => setting.key),
+              ]
+            : result,
+        ),
+      );
+      // Before the table had thread mode and auto-pull columns.
       yield* Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* sql`CREATE TABLE projection_projects (project_id TEXT PRIMARY KEY, title TEXT,
-        root_path TEXT, scripts_json TEXT, default_model_selection_json TEXT, created_at TEXT,
+        workspace_root TEXT, scripts_json TEXT, default_model_selection_json TEXT, created_at TEXT,
         deleted_at TEXT)`;
         yield* sql`INSERT INTO projection_projects VALUES ('alpha', 'Alpha', ${home}, '[]', NULL, ${at(0)}, NULL)`;
-      }).pipe(
-        Effect.provide(NodeSqliteClient.layer({ filename: path.join(userdata, "statev2.sqlite") })),
-      );
-      const preview = yield* Effect.flatMap(
-        T3CodeImport.T3CodeImport,
-        (service) => service.preview,
-      ).pipe(Effect.provide(layerFor({ home, baseDir: { prefix: "t3code-import-factory-" } })));
-      assert.deepEqual(
-        preview.status === "available"
-          ? [
-              preview.projectsReadable,
-              preview.projects,
-              preview.settings.map((setting) => setting.key),
-            ]
-          : preview,
-        [false, [], ["defaultModelSelection"]],
-      );
+      }).pipe(inT3Code);
+      assert.deepEqual(yield* preview, [true, ["alpha"], ["defaultModelSelection"]]);
+      // A later T3 Code that renamed a column this version needs.
+      yield* Effect.flatMap(
+        SqlClient.SqlClient,
+        (sql) => sql`ALTER TABLE projection_projects RENAME COLUMN workspace_root TO root_path`,
+      ).pipe(inT3Code);
+      assert.deepEqual(yield* preview, [false, [], ["defaultModelSelection"]]);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );

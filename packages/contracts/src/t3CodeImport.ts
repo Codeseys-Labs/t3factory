@@ -64,14 +64,12 @@ export const T3CodeImportResult = Schema.Struct({
 });
 export type T3CodeImportResult = typeof T3CodeImportResult.Type;
 
+/** T3 Code's own files failing to read is reported in the preview; this is this install's settings. */
 export class T3CodeImportError extends Schema.TaggedError<T3CodeImportError>()(
   "T3CodeImportError",
-  {
-    operation: Schema.Literals(["read-settings", "read-secret"]),
-    cause: Schema.optional(Schema.Defect()),
-  },
+  { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return `Could not import from T3 Code (${this.operation}).`;
+    return "Could not read this environment's settings to plan the import.";
   }
 }

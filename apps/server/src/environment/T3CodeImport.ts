@@ -17,6 +17,7 @@ import {
 } from "@t3tools/contracts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
+import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -25,6 +26,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -241,21 +243,25 @@ const make = Effect.gen(function* () {
     );
   });
 
+  /** None when the file cannot be read or parsed; projects still import. */
   const readSourceSettings = Effect.fn("T3CodeImport.readSourceSettings")(function* (
     settingsPath: string,
   ) {
     if (!(yield* fs.exists(settingsPath).pipe(Effect.orElseSucceed(() => false))))
       return Option.some({});
-    const raw = yield* fs
-      .readFileString(settingsPath)
-      .pipe(
-        Effect.mapError((cause) => new T3CodeImportError({ operation: "read-settings", cause })),
-      );
-    const decoded = decodeRawSettings(raw);
+    const raw = yield* Effect.result(fs.readFileString(settingsPath));
+    if (Result.isFailure(raw)) {
+      yield* Effect.logWarning("could not read T3 Code's settings", { cause: raw.failure });
+      return Option.none();
+    }
+    const decoded = decodeRawSettings(raw.success);
     return Exit.isSuccess(decoded) ? Option.some(decoded.value) : Option.none();
   });
 
-  /** Swaps T3 Code's secret placeholders for the values in its secret store. */
+  /**
+   * Swaps T3 Code's secret placeholders for the values in its secret store. Null when a saved
+   * key exists but cannot be read: importing the entry without it would leave a broken setup.
+   */
   const resolveSecrets = Effect.fn("T3CodeImport.resolveSecrets")(function* (
     secretsDir: string,
     settings: ServerSettings,
@@ -267,15 +273,12 @@ const make = Effect.gen(function* () {
     });
     const values = new Map<string, string>();
     for (const name of names) {
-      const bytes = yield* fs.readFile(path.join(secretsDir, secretFileName(name))).pipe(
-        Effect.asSome,
-        Effect.catch((cause) =>
-          cause.reason._tag === "NotFound"
-            ? Effect.succeedNone
-            : Effect.fail(new T3CodeImportError({ operation: "read-secret", cause })),
-        ),
-      );
-      if (Option.isSome(bytes)) values.set(name, new TextDecoder().decode(bytes.value));
+      const bytes = yield* Effect.result(fs.readFile(path.join(secretsDir, secretFileName(name))));
+      if (Result.isSuccess(bytes)) values.set(name, new TextDecoder().decode(bytes.success));
+      else if (bytes.failure.reason._tag !== "NotFound") {
+        yield* Effect.logWarning("could not read a T3 Code secret", { cause: bytes.failure });
+        return null;
+      }
     }
     const resolved = mapSettingsSecrets(settings, (secret) =>
       secret.redacted ? { value: values.get(secret.secretName) ?? "", redacted: false } : secret,
@@ -355,27 +358,53 @@ const make = Effect.gen(function* () {
       ];
     const source = raw.value;
     const current = yield* settingsService.getSettings.pipe(
-      Effect.mapError((cause) => new T3CodeImportError({ operation: "read-settings", cause })),
+      Effect.mapError((cause) => new T3CodeImportError({ cause })),
     );
     const result: PlannedSetting[] = [];
-    const plain = (key: string, label: string, fragment: unknown, present: boolean) => {
-      const patch = decodePatch(fragment);
+    const plain = (item: {
+      readonly key: string;
+      readonly label: string;
+      readonly setting: keyof ServerSettings & keyof ServerSettingsPatch;
+      readonly value: unknown;
+      /** This install already chose its own value, so T3 Code's is not wanted. */
+      readonly ownValue: boolean;
+    }) => {
+      const patch = decodePatch({ [item.setting]: item.value });
+      // A value equal to the one already here is not new, or every import would "add" it again.
+      const changes =
+        Exit.isSuccess(patch) &&
+        canonical(applyServerSettingsPatch(current, patch.value)[item.setting]) !==
+          canonical(current[item.setting]);
       result.push({
         entry: {
-          key,
-          label,
-          status: present ? "present" : Exit.isSuccess(patch) ? "new" : "unreadable",
+          key: item.key,
+          label: item.label,
+          status: item.ownValue
+            ? "present"
+            : Exit.isFailure(patch)
+              ? "unreadable"
+              : changes
+                ? "new"
+                : "present",
           secrets: 0,
           missingSecrets: 0,
         },
-        write: !present && Exit.isSuccess(patch) ? { kind: "patch", patch: patch.value } : null,
+        write:
+          !item.ownValue && Exit.isSuccess(patch) && changes
+            ? { kind: "patch", patch: patch.value }
+            : null,
       });
     };
 
     for (const key of SCALAR_SETTINGS) {
       if (!(key in source)) continue;
-      const present = canonical(current[key]) !== canonical(DEFAULT_SERVER_SETTINGS[key]);
-      plain(key, humanize(key), { [key]: source[key] }, present);
+      plain({
+        key,
+        label: humanize(key),
+        setting: key,
+        value: source[key],
+        ownValue: canonical(current[key]) !== canonical(DEFAULT_SERVER_SETTINGS[key]),
+      });
     }
 
     // T3 Code's project ids map to the project that holds the same folder here.
@@ -396,12 +425,13 @@ const make = Effect.gen(function* () {
         const targetId = targetIds.get(sourceId);
         const project = planned.find((entry) => entry.entry.projectId === targetId);
         if (targetId === undefined || project === undefined) continue;
-        plain(
-          `${key}/${targetId}`,
-          `${label}: ${project.entry.title}`,
-          { [key]: { [targetId]: value } },
-          Object.hasOwn(current[key], targetId),
-        );
+        plain({
+          key: `${key}/${targetId}`,
+          label: `${label}: ${project.entry.title}`,
+          setting: key,
+          value: { [targetId]: value },
+          ownValue: Object.hasOwn(current[key], targetId),
+        });
       }
     }
 
@@ -411,12 +441,13 @@ const make = Effect.gen(function* () {
       const entries = decodeEntries(source[key]);
       if (Option.isNone(entries)) continue;
       for (const [id, value] of Object.entries(entries.value))
-        plain(
-          `${key}/${id}`,
-          `${label}: ${id}`,
-          { [key]: { [id]: value } },
-          Object.hasOwn(current[key], id),
-        );
+        plain({
+          key: `${key}/${id}`,
+          label: `${label}: ${id}`,
+          setting: key,
+          value: { [id]: value },
+          ownValue: Object.hasOwn(current[key], id),
+        });
     }
 
     for (const [key, label] of Object.entries(SECRET_MAP_SETTINGS) as Array<
@@ -425,25 +456,29 @@ const make = Effect.gen(function* () {
       const entries = decodeEntries(source[key]);
       if (Option.isNone(entries)) continue;
       for (const [id, value] of Object.entries(entries.value)) {
-        const itemKey = `${key}/${id}`;
-        const itemLabel = `${label}: ${id}`;
-        const fragment = { [key]: { [id]: value } };
-        const decoded = decodePatch(fragment);
+        const item = { key: `${key}/${id}`, label: `${label}: ${id}` };
+        const ownValue = Object.hasOwn(current[key], id);
+        const decoded = decodePatch({ [key]: { [id]: value } });
         const single =
-          Exit.isFailure(decoded) || Object.hasOwn(current[key], id)
-            ? null
-            : singleSecretSetting(key, decoded.value);
+          Exit.isFailure(decoded) || ownValue ? null : singleSecretSetting(key, decoded.value);
         if (single === null) {
-          plain(itemKey, itemLabel, fragment, Object.hasOwn(current[key], id));
+          plain({ ...item, setting: key, value: { [id]: value }, ownValue });
           continue;
         }
-        const { resolved, secrets, missingSecrets } = yield* resolveSecrets(secretsDir, single);
+        const secrets = yield* resolveSecrets(secretsDir, single);
+        if (secrets === null) {
+          result.push({
+            entry: { ...item, status: "unreadable", secrets: 0, missingSecrets: 0 },
+            write: null,
+          });
+          continue;
+        }
+        const { resolved } = secrets;
         const entry: T3CodeImportSetting = {
-          key: itemKey,
-          label: itemLabel,
+          ...item,
           status: "new",
-          secrets,
-          missingSecrets,
+          secrets: secrets.secrets,
+          missingSecrets: secrets.missingSecrets,
         };
         if (key !== "providerInstances") {
           result.push({ entry, write: { kind: "patch", patch: { [key]: resolved[key] } } });
@@ -463,7 +498,8 @@ const make = Effect.gen(function* () {
     return result;
   });
 
-  const plan = Effect.gen(function* () {
+  /** `settings: false` reads no settings or secrets, so a problem there cannot block projects. */
+  const plan = Effect.fn("T3CodeImport.plan")(function* (options: { readonly settings: boolean }) {
     if (sourceHome === null || source === null)
       return {
         status: "unavailable",
@@ -480,18 +516,23 @@ const make = Effect.gen(function* () {
     const read = yield* readSourceProjects(source.dbPath);
     const rows = Option.getOrElse(read, () => []);
     const plannedProjects = yield* planProjects(sourceHome, rows);
-    const raw = yield* readSourceSettings(source.settingsPath);
-    const plannedSettings = yield* planSettings(source.secretsDir, raw, rows, plannedProjects);
     return {
       status: "available",
       source: sourceHome,
       projectsReadable: Option.isSome(read),
       projects: plannedProjects,
-      settings: plannedSettings,
+      settings: options.settings
+        ? yield* planSettings(
+            source.secretsDir,
+            yield* readSourceSettings(source.settingsPath),
+            rows,
+            plannedProjects,
+          )
+        : [],
     } satisfies Plan;
-  }).pipe(Effect.withSpan("T3CodeImport.plan"));
+  });
 
-  const preview: T3CodeImport["Service"]["preview"] = plan.pipe(
+  const preview: T3CodeImport["Service"]["preview"] = plan({ settings: true }).pipe(
     Effect.map((planned): T3CodeImportPreview =>
       planned.status === "unavailable"
         ? planned.preview
@@ -512,11 +553,9 @@ const make = Effect.gen(function* () {
       let projectsAdded = 0;
       let settingsAdded = 0;
       let secretsCopied = 0;
-      const first = yield* plan;
-      if (first.status === "unavailable")
-        return { projectsAdded, settingsAdded, secretsCopied, failed };
       if (input.projects) {
-        for (const project of first.projects) {
+        const planned = yield* plan({ settings: false });
+        for (const project of planned.status === "available" ? planned.projects : []) {
           if (project.entry.status !== "new") continue;
           const created = yield* crypto.randomUUIDv4().pipe(
             Effect.flatMap((uuid) =>
@@ -533,32 +572,30 @@ const make = Effect.gen(function* () {
             ),
             Effect.result,
           );
-          if (created._tag === "Success") projectsAdded += 1;
+          if (Result.isSuccess(created)) projectsAdded += 1;
           else
             failed.push({ key: `project/${project.entry.projectId}`, label: project.entry.title });
         }
       }
       if (input.settings) {
-        // Planned again so settings of projects added above follow them.
-        const second = input.projects ? yield* plan : first;
-        if (second.status === "available") {
-          for (const setting of second.settings) {
-            if (setting.write === null || setting.entry.status !== "new") continue;
-            const { write } = setting;
-            const written = yield* (
-              write.kind === "provider"
-                ? settingsService.updateProviderInstance({
-                    operation: "create",
-                    instanceId: write.instanceId,
-                    instance: write.instance,
-                  })
-                : settingsService.updateSettings(write.patch)
-            ).pipe(Effect.result);
-            if (written._tag === "Success") {
-              settingsAdded += 1;
-              secretsCopied += setting.entry.secrets;
-            } else failed.push({ key: setting.entry.key, label: setting.entry.label });
-          }
+        // Planned after the projects above exist, so their own settings follow them.
+        const planned = yield* plan({ settings: true });
+        for (const setting of planned.status === "available" ? planned.settings : []) {
+          if (setting.write === null || setting.entry.status !== "new") continue;
+          const { write } = setting;
+          const written = yield* (
+            write.kind === "provider"
+              ? settingsService.updateProviderInstance({
+                  operation: "create",
+                  instanceId: write.instanceId,
+                  instance: write.instance,
+                })
+              : settingsService.updateSettings(write.patch)
+          ).pipe(Effect.result);
+          if (Result.isSuccess(written)) {
+            settingsAdded += 1;
+            secretsCopied += setting.entry.secrets;
+          } else failed.push({ key: setting.entry.key, label: setting.entry.label });
         }
       }
       return { projectsAdded, settingsAdded, secretsCopied, failed };

@@ -130,11 +130,17 @@ it.effect(
         settings: {
           defaultModelSelection: { instanceId: "codex", model: "gpt-5.4" },
           branchNamePrefix: "t3",
+          // Already the value here: importing it would change nothing.
+          removeAgentCreditsOnMerge: false,
           // Points at T3 Code's own worktrees; never imported.
           worktreesDirectory: path.join(home, ".t3", "worktrees"),
           providerInstances: {
             codex: { driver: "codex", enabled: false },
             omp: {
+              driver: "acpRegistry",
+              environment: [{ name: "API_KEY", value: "", sensitive: true, valueRedacted: true }],
+            },
+            broken: {
               driver: "acpRegistry",
               environment: [{ name: "API_KEY", value: "", sensitive: true, valueRedacted: true }],
             },
@@ -154,6 +160,10 @@ it.effect(
           { id: "scratch", title: "Notes", root: scratch },
         ],
       });
+      // A saved key that exists but cannot be read: a directory where its file should be.
+      yield* fs.makeDirectory(
+        path.join(home, ".t3", "userdata", "secrets", `${envSecretName("broken", "API_KEY")}.bin`),
+      );
 
       yield* Effect.gen(function* () {
         const projects = yield* ProjectService.ProjectService;
@@ -194,10 +204,13 @@ it.effect(
           [
             ["defaultModelSelection", "new", 0],
             ["branchNamePrefix", "present", 0],
+            ["removeAgentCreditsOnMerge", "present", 0],
             ["projectSettingsOverrides/alpha", "new", 0],
             ["projectSettingsOverrides/beta-here", "new", 0],
             ["providerInstances/codex", "present", 0],
             ["providerInstances/omp", "new", 1],
+            // Left out rather than imported without its key; the rest still imports.
+            ["providerInstances/broken", "unreadable", 0],
           ],
         );
 
@@ -218,6 +231,7 @@ it.effect(
         assert.equal(after.branchNamePrefix, "factory");
         assert.equal(after.worktreesDirectory, DEFAULT_SERVER_SETTINGS.worktreesDirectory);
         assert.equal(after.providerInstances[codex]?.enabled, undefined);
+        assert.isUndefined(after.providerInstances[ProviderInstanceId.make("broken")]);
         assert.deepEqual(after.providerInstances[ProviderInstanceId.make("omp")]?.environment, [
           { name: "API_KEY", value: "sk-imported", sensitive: true },
         ]);

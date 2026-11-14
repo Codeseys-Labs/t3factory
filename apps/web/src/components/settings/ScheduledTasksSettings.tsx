@@ -1710,11 +1710,14 @@ function ScheduledTaskEditorForm({
             draft.baseModelSelection.model === selection.model
           ? draft.baseModelSelection
           : selection;
+    // A bound task runs in its thread's workspace, so an empty hidden checkout choice becomes root.
+    const existingWorktreePath = draft.existingWorktreePath.trim();
     const workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy =
-      draft.workspaceMode === "root"
+      draft.workspaceMode === "root" ||
+      (draft.workspaceMode === "existing_worktree" && !existingWorktreePath)
         ? { type: "root" }
         : draft.workspaceMode === "existing_worktree"
-          ? { type: "existing_worktree", worktreePath: draft.existingWorktreePath.trim() }
+          ? { type: "existing_worktree", worktreePath: existingWorktreePath }
           : {
               type: "worktree",
               baseRef: draft.baseRef.trim() || "main",

@@ -1,17 +1,25 @@
 import { describe, expect, it } from "vite-plus/test";
+import * as Schema from "effect/Schema";
 import {
   DEFAULT_SERVER_SETTINGS,
+  OrchestrationV2ThreadLaunchWorkspaceStrategy,
   type ServerConfig,
   ProviderDriverKind,
   ProviderInstanceId,
   ProjectId,
+  ThreadId,
 } from "@t3tools/contracts";
 import {
+  createDraft,
+  moveDraftToThread,
   scheduledTaskDefaultModel,
   DEFAULT_SCHEDULE,
   scheduleDraftForTask,
   scheduleFromDraft,
+  workspaceStrategyFromDraft,
 } from "./scheduledTaskDraft";
+
+const isWorkspaceStrategy = Schema.is(OrchestrationV2ThreadLaunchWorkspaceStrategy);
 
 describe("scheduleDraftForTask", () => {
   it("opens legacy sub-minute schedules at the writable minimum", () => {
@@ -206,4 +214,17 @@ it("rejects dedupe keys without valid request placeholders", () => {
   expect(
     scheduleFromDraft({ ...DEFAULT_SCHEDULE, mode: "webhook", coalesceKey: "{{body.bad" }),
   ).toBeNull();
+});
+
+it("sends a valid workspace for a bound task whose hidden checkout path is empty", () => {
+  const projectId = ProjectId.make("project-1");
+  const bound = moveDraftToThread(
+    { ...createDraft(projectId, null), workspace: "existing_worktree", checkoutPath: " " },
+    { id: ThreadId.make("thread-1"), projectId },
+  );
+  expect(isWorkspaceStrategy(workspaceStrategyFromDraft(bound))).toBe(true);
+  expect(workspaceStrategyFromDraft({ ...bound, checkoutPath: " C:/work/checkout " })).toEqual({
+    type: "existing_worktree",
+    worktreePath: "C:/work/checkout",
+  });
 });

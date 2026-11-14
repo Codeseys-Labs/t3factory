@@ -7,6 +7,7 @@ import type {
   RuntimeMode,
   ScheduledTask,
   ScheduledTaskThreadMode,
+  ScheduledTaskUpsertInput,
   ScheduledTaskUpsertSchedule,
   ScheduledTaskWebhookSignature,
   ThreadId,
@@ -266,6 +267,24 @@ export function moveDraftToThread(
     threadId: thread.id,
     projectId: thread.projectId,
     threadMode: draft.threadMode === "new_thread" ? "continue" : draft.threadMode,
+  };
+}
+
+/** A bound task runs in its thread's workspace, so an empty hidden checkout choice becomes `root`. */
+export function workspaceStrategyFromDraft(
+  draft: ScheduledTaskDraft,
+): ScheduledTaskUpsertInput["workspaceStrategy"] {
+  const checkoutPath = draft.checkoutPath.trim();
+  if (draft.workspace === "root" || (draft.workspace === "existing_worktree" && !checkoutPath)) {
+    return { type: "root" };
+  }
+  if (draft.workspace === "existing_worktree") {
+    return { type: "existing_worktree", worktreePath: checkoutPath };
+  }
+  return {
+    type: "worktree",
+    baseRef: draft.baseRef.trim() || "main",
+    startFromOrigin: draft.startFromOrigin,
   };
 }
 

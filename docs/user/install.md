@@ -211,7 +211,9 @@ doesn't yet:
   pull request preferences, and each imported project's own settings.
 
 Import only adds what is missing. It never changes or removes anything T3 Factory already
-has, so you can run it again whenever you add something in T3 Code. Threads stay in T3 Code.
+has, so you can run it again whenever you add something in T3 Code. T3 Code threads stay in
+T3 Code; to continue recent Codex and Claude conversations, open `/welcome` and import projects,
+which reads those agents' own history ([Welcome wizard](./welcome-wizard.md#import-your-projects)).
 Worktree locations, cleanup rules, remote access and device hosts are not imported; set them in
 each app.
 

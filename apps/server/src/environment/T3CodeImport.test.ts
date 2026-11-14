@@ -270,3 +270,43 @@ it.effect(
       });
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+it.effect(
+  "still offers settings when T3 Code's project table has a shape this version cannot read",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-import-home-" });
+      const userdata = path.join(home, ".t3", "userdata");
+      yield* fs.makeDirectory(userdata, { recursive: true });
+      yield* fs.writeFileString(
+        path.join(userdata, "settings.json"),
+        JSON.stringify({ defaultModelSelection: { instanceId: "codex", model: "gpt-5.4" } }),
+      );
+      // A later T3 Code that renamed a column this version selects.
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`CREATE TABLE projection_projects (project_id TEXT PRIMARY KEY, title TEXT,
+        root_path TEXT, scripts_json TEXT, default_model_selection_json TEXT, created_at TEXT,
+        deleted_at TEXT)`;
+        yield* sql`INSERT INTO projection_projects VALUES ('alpha', 'Alpha', ${home}, '[]', NULL, ${at(0)}, NULL)`;
+      }).pipe(
+        Effect.provide(NodeSqliteClient.layer({ filename: path.join(userdata, "statev2.sqlite") })),
+      );
+      const preview = yield* Effect.flatMap(
+        T3CodeImport.T3CodeImport,
+        (service) => service.preview,
+      ).pipe(Effect.provide(layerFor({ home, baseDir: { prefix: "t3code-import-factory-" } })));
+      assert.deepEqual(
+        preview.status === "available"
+          ? [
+              preview.projectsReadable,
+              preview.projects,
+              preview.settings.map((setting) => setting.key),
+            ]
+          : preview,
+        [false, [], ["defaultModelSelection"]],
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);

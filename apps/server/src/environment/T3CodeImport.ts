@@ -195,6 +195,7 @@ type Plan =
   | {
       readonly status: "available";
       readonly source: string;
+      readonly projectsReadable: boolean;
       readonly projects: ReadonlyArray<PlannedProject>;
       readonly settings: ReadonlyArray<PlannedSetting>;
     };
@@ -214,10 +215,11 @@ const make = Effect.gen(function* () {
       ? null
       : yield* ServerConfig.deriveServerPaths(sourceHome, undefined, { baseDirIsExplicit: true });
 
+  /** None when the database has a shape this version cannot read; settings still import. */
   const readSourceProjects = Effect.fn("T3CodeImport.readSourceProjects")(function* (
     dbPath: string,
   ) {
-    if (!(yield* fs.exists(dbPath).pipe(Effect.orElseSucceed(() => false)))) return [];
+    if (!(yield* fs.exists(dbPath).pipe(Effect.orElseSucceed(() => false)))) return Option.some([]);
     return yield* Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       // Only columns every T3 Code version since projects moved to this table has.
@@ -230,7 +232,12 @@ const make = Effect.gen(function* () {
       return yield* decodeProjectRows(rows);
     }).pipe(
       Effect.provide(NodeSqliteClient.layer({ filename: dbPath, readonly: true })),
-      Effect.mapError((cause) => new T3CodeImportError({ operation: "read-projects", cause })),
+      Effect.asSome,
+      Effect.catch((cause) =>
+        Effect.logWarning("could not read T3 Code's projects", { cause }).pipe(
+          Effect.as(Option.none()),
+        ),
+      ),
     );
   });
 
@@ -470,13 +477,15 @@ const make = Effect.gen(function* () {
         status: "unavailable",
         preview: { status: "unavailable", source: sourceHome, reason: "not-found" },
       } satisfies Plan;
-    const rows = yield* readSourceProjects(source.dbPath);
+    const read = yield* readSourceProjects(source.dbPath);
+    const rows = Option.getOrElse(read, () => []);
     const plannedProjects = yield* planProjects(sourceHome, rows);
     const raw = yield* readSourceSettings(source.settingsPath);
     const plannedSettings = yield* planSettings(source.secretsDir, raw, rows, plannedProjects);
     return {
       status: "available",
       source: sourceHome,
+      projectsReadable: Option.isSome(read),
       projects: plannedProjects,
       settings: plannedSettings,
     } satisfies Plan;
@@ -489,6 +498,7 @@ const make = Effect.gen(function* () {
         : {
             status: "available",
             source: planned.source,
+            projectsReadable: planned.projectsReadable,
             projects: planned.projects.map((project) => project.entry),
             settings: planned.settings.map((setting) => setting.entry),
           },

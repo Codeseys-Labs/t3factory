@@ -187,6 +187,11 @@ function T3CodeImportDialog({
                     detail: project.workspaceRoot,
                   }))}
                   notes={[
+                    ...(state.preview.projectsReadable
+                      ? []
+                      : [
+                          "T3 Code's project list is from a newer version this app cannot read yet",
+                        ]),
                     ...countNote(state.preview.projects, "present", "already here"),
                     ...countNote(
                       state.preview.projects,

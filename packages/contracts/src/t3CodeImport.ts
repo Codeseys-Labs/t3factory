@@ -35,6 +35,8 @@ export const T3CodeImportPreview = Schema.Union([
   Schema.Struct({
     status: Schema.Literal("available"),
     source: Schema.String,
+    /** False when T3 Code's database is from a version whose project list this one cannot read. */
+    projectsReadable: Schema.Boolean,
     projects: Schema.Array(T3CodeImportProject),
     settings: Schema.Array(T3CodeImportSetting),
   }),
@@ -65,7 +67,7 @@ export type T3CodeImportResult = typeof T3CodeImportResult.Type;
 export class T3CodeImportError extends Schema.TaggedError<T3CodeImportError>()(
   "T3CodeImportError",
   {
-    operation: Schema.Literals(["read-settings", "read-projects", "read-secret", "write-settings"]),
+    operation: Schema.Literals(["read-settings", "read-secret"]),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {

@@ -8,7 +8,11 @@ import * as Scope from "effect/Scope";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import type * as CommandLine from "effect/process/CommandLine";
-import { revealCommandWord, type OwnedProcessSpawner } from "@t3tools/shared/ownedProcess";
+import {
+  redactIfAnyRedacted,
+  revealCommandWord,
+  type OwnedProcessSpawner,
+} from "@t3tools/shared/ownedProcess";
 import type { OwnedProcessGroup } from "./OwnedProcess.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
@@ -277,7 +281,7 @@ exit 125
               "-NoProfile",
               "-NonInteractive",
               "-EncodedCommand",
-              Buffer.from(script, "utf16le").toString("base64"),
+              redactIfAnyRedacted(command.args, Buffer.from(script, "utf16le").toString("base64")),
             ],
             { ...command.options, shell: false },
           );

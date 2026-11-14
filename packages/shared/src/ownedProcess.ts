@@ -11,6 +11,12 @@ import type * as CommandLine from "effect/process/CommandLine";
 export const revealCommandWord = (word: CommandLine.Word): string =>
   Redacted.isRedacted(word) ? Redacted.value(word) : word;
 
+// A string built from several words stays redacted when any of them was.
+export const redactIfAnyRedacted = (
+  words: ReadonlyArray<CommandLine.Word>,
+  value: string,
+): CommandLine.Word => (words.some(Redacted.isRedacted) ? Redacted.make(value) : value);
+
 export interface OwnedProcessSpawner {
   readonly spawn: (
     command: ChildProcess.Command,

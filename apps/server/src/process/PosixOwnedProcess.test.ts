@@ -4,11 +4,13 @@ import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as PlatformError from "effect/PlatformError";
+import * as Redacted from "effect/Redacted";
 import * as Scope from "effect/Scope";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import * as CommandLine from "effect/process/CommandLine";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { makePosixOwnedProcess, PosixCgroupController } from "./PosixOwnedProcess.ts";
 import { ownedWriterPlatformRefusal, makeOwnedProcess } from "./OwnedProcess.ts";
@@ -140,6 +142,35 @@ it.effect.each([
         "PlatformError",
       );
       assert.equal(fake.commands.length, 1);
+    }).pipe(Effect.scoped),
+);
+
+it.effect.each([{ shell: false }, { shell: true }] as const)(
+  "hands the native spawner redacted arguments still redacted (shell $shell)",
+  ({ shell }) =>
+    Effect.gen(function* () {
+      const secret = "s3cr3t-arg";
+      const fake = fixture();
+      const owner = yield* makePosixOwnedProcess().pipe(
+        Effect.provideService(HostProcess.Platform, "linux"),
+        Effect.provideService(PosixCgroupController, { create: () => fake.lease }),
+      );
+      yield* owner.spawner.spawn(
+        ChildProcess.make(process.execPath, ["plain", Redacted.make(secret)], {
+          shell: shell ? process.execPath : false,
+        }),
+        fake.native,
+      );
+      const command = fake.commands[0];
+      assert.equal(command?._tag, "StandardCommand");
+      if (command?._tag !== "StandardCommand") return;
+      assert.notInclude(CommandLine.display([command.command, ...command.args]), secret);
+      assert.isTrue(
+        command.args.some(
+          (arg) => Redacted.isRedacted(arg) && Redacted.value(arg).includes(secret),
+        ),
+      );
+      assert.isFalse(command.args.some((arg) => typeof arg === "string" && arg.includes(secret)));
     }).pipe(Effect.scoped),
 );
 

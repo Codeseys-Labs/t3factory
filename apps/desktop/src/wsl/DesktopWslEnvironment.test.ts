@@ -102,7 +102,8 @@ describe.skipIf(posixShellRunner === null)("WSL runtime install script (executed
   const fixtures: Array<string> = [];
 
   afterAll(() => {
-    for (const work of fixtures) runShell(`set -eu\nrm -rf ${sh(work)}`);
+    // One shell for all fixtures: on Windows each runShell is a wsl.exe start.
+    if (fixtures.length > 0) runShell(`set -eu\nrm -rf ${fixtures.map(sh).join(" ")}`);
     fixtures.length = 0;
   });
 

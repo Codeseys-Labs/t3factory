@@ -426,13 +426,26 @@ const make = Effect.gen(function* () {
       });
     };
 
+    // Older T3 Code versions kept the idle compaction mode in `compactIdleThreads`.
+    const legacyCompaction = decodePatch({ compactIdleThreads: source.compactIdleThreads });
+    const scalars: Readonly<Record<string, unknown>> =
+      "idleCompaction" in source ||
+      Exit.isFailure(legacyCompaction) ||
+      legacyCompaction.value.compactIdleThreads === undefined
+        ? source
+        : {
+            ...source,
+            idleCompaction: globalIdleCompaction({
+              compactIdleThreads: legacyCompaction.value.compactIdleThreads,
+            }),
+          };
     for (const key of SCALAR_SETTINGS) {
-      if (!(key in source)) continue;
+      if (!(key in scalars)) continue;
       plain({
         key,
         label: humanize(key),
         setting: key,
-        value: source[key],
+        value: scalars[key],
         ownValue: (here) => canonical(here[key]) !== canonical(DEFAULTS[key]),
       });
     }

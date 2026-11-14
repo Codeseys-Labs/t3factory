@@ -159,7 +159,7 @@ function T3CodeImportDialog({
 
   return (
     <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
-      <DialogPopup className="max-w-lg">
+      <DialogPopup>
         <DialogHeader>
           <DialogTitle>Import from T3 Code</DialogTitle>
           <DialogDescription>
@@ -171,7 +171,7 @@ function T3CodeImportDialog({
             {result ? <ImportResult result={result} /> : null}
             {state.kind === "loading" ? (
               <p className="flex items-center gap-2 text-muted-foreground">
-                <Spinner className="size-4" />
+                <Spinner size="md" />
                 Reading T3 Code's data
               </p>
             ) : state.kind === "failed" ? (
@@ -246,7 +246,7 @@ function T3CodeImportDialog({
             Close
           </Button>
           <Button onClick={onImport} disabled={!canImport}>
-            {importing ? <Spinner className="size-4" /> : null}
+            {importing ? <Spinner size="md" /> : null}
             Import
           </Button>
         </DialogFooter>

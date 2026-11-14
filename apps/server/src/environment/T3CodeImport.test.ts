@@ -139,7 +139,8 @@ it.effect(
           branchNamePrefix: "t3",
           // Already the value here: importing it would change nothing.
           removeAgentCreditsOnMerge: false,
-          idleCompaction: "off",
+          // An older T3 Code keeps the idle compaction mode in this switch.
+          compactIdleThreads: true,
           // Points at T3 Code's own worktrees; never imported.
           worktreesDirectory: path.join(home, ".t3", "worktrees"),
           providerInstances: {
@@ -251,7 +252,7 @@ it.effect(
         const after = yield* settings.getSettings;
         assert.deepEqual(after.defaultModelSelection, { instanceId: codex, model: "gpt-5.4" });
         assert.equal(after.branchNamePrefix, "factory");
-        assert.equal(after.idleCompaction, "off");
+        assert.equal(after.idleCompaction, "beforeCacheExpires");
         assert.equal(after.worktreesDirectory, DEFAULT_SERVER_SETTINGS.worktreesDirectory);
         assert.equal(after.providerInstances[codex]?.enabled, undefined);
         assert.isUndefined(after.providerInstances[ProviderInstanceId.make("broken")]);

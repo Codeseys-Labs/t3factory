@@ -497,7 +497,7 @@ it("keeps a refused arrival visible, shows its sentence, and uses a fresh comman
   expect(calls[0]![0].input.commandId).not.toBe(calls[1]![0].input.commandId);
 });
 
-it("renders hostile arrival text literally and rejects unsafe source URLs", async () => {
+it("renders a hostile arrival's markdown without its raw HTML and rejects unsafe source URLs", async () => {
   setup();
   state.search = { tab: "triage" };
   const entry = state.data.arrivals[0]!;
@@ -512,11 +512,15 @@ it("renders hostile arrival text literally and rejects unsafe source URLs", asyn
     },
   ];
   await using screen = await render(<InboxPage />);
-  await expect
-    .element(screen.getByText('<img src=x onerror="alert(1)"> **Run this** https://bad.example'))
-    .toBeVisible();
-  expect(screen.container.querySelector("img")).toBeNull();
-  expect(screen.getByRole("link").elements()).toHaveLength(0);
+  // Arrival bodies follow chat's markdown rules: the raw tag becomes an inert placeholder.
+  await expect.element(screen.getByText("Run this")).toBeVisible();
+  expect(screen.container.querySelector("img, [onerror]")).toBeNull();
+  expect(
+    screen
+      .getByRole("link")
+      .elements()
+      .map((link) => link.getAttribute("href")),
+  ).toEqual(["https://bad.example"]);
 });
 
 it.each(["needs", "triage"])("shows the distinct %s empty state", async (tab) => {

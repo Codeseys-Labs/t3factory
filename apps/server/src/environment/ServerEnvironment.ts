@@ -24,6 +24,7 @@ import { databaseMigrationHead } from "../persistence/databaseMigrationHead.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
 import { detectServerEnvironmentMachineKind } from "./ServerEnvironmentMachine.ts";
+import { separateT3CodeHome } from "./t3CodeHome.ts";
 
 export class ServerEnvironmentIdPersistenceError extends Schema.TaggedError<ServerEnvironmentIdPersistenceError>()(
   "ServerEnvironmentIdPersistenceError",
@@ -194,6 +195,7 @@ export const make = Effect.gen(function* () {
   const label = yield* resolveServerEnvironmentLabel({ cwdBaseName });
   const machine = yield* detectServerEnvironmentMachineKind();
   const launcher = yield* resolveServiceLauncherMode();
+  const t3CodeImport = (yield* separateT3CodeHome(serverConfig.baseDir)) !== null;
   const serverSelfUpdate = resolveServerSelfUpdateCapability({
     desktopManaged: serverConfig.mode === "desktop",
     desktopUpdatesDisabled: serverConfig.desktopUpdatesDisabled,
@@ -247,6 +249,7 @@ export const make = Effect.gen(function* () {
       threadAutoSettlement: true,
       storageCleanup: true,
       storageCleanupRun: true,
+      ...(t3CodeImport ? { t3CodeImport: true } : {}),
       databaseStorage: true,
       otlpEndpointCheck: true,
       projectWorktreeCleanup: true,

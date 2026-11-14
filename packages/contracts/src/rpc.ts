@@ -560,6 +560,12 @@ import {
   TextGeneratorError,
 } from "./settings.ts";
 import {
+  T3CodeImportError,
+  T3CodeImportInput,
+  T3CodeImportPreview,
+  T3CodeImportResult,
+} from "./t3CodeImport.ts";
+import {
   ScheduledTaskDeleteInput,
   ScheduledTaskDeleteResult,
   ScheduledTaskError,
@@ -806,6 +812,8 @@ export const WS_METHODS = {
   serverGetStorageCleanupReport: "server.getStorageCleanupReport",
   serverGetDatabaseStorage: "server.getDatabaseStorage",
   serverReclaimDatabaseSpace: "server.reclaimDatabaseSpace",
+  serverPreviewT3CodeImport: "server.previewT3CodeImport",
+  serverImportFromT3Code: "server.importFromT3Code",
   peerLinksList: "peerLinks.list",
   peerLinksLink: "peerLinks.link",
   peerLinksUnlink: "peerLinks.unlink",
@@ -1126,6 +1134,18 @@ const WsServerGetDatabaseStorageRpc = Rpc.make(WS_METHODS.serverGetDatabaseStora
 const WsServerReclaimDatabaseSpaceRpc = Rpc.make(WS_METHODS.serverReclaimDatabaseSpace, {
   payload: Schema.Struct({}),
   error: Schema.Union([DatabaseReclaimError, EnvironmentAuthorizationError]),
+});
+
+const WsServerPreviewT3CodeImportRpc = Rpc.make(WS_METHODS.serverPreviewT3CodeImport, {
+  payload: Schema.Struct({}),
+  success: T3CodeImportPreview,
+  error: Schema.Union([T3CodeImportError, EnvironmentAuthorizationError]),
+});
+
+const WsServerImportFromT3CodeRpc = Rpc.make(WS_METHODS.serverImportFromT3Code, {
+  payload: T3CodeImportInput,
+  success: T3CodeImportResult,
+  error: Schema.Union([T3CodeImportError, EnvironmentAuthorizationError]),
 });
 
 const WsPeerLinksListRpc = Rpc.make(WS_METHODS.peerLinksList, {
@@ -3032,6 +3052,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetStorageCleanupReportRpc,
   WsServerGetDatabaseStorageRpc,
   WsServerReclaimDatabaseSpaceRpc,
+  WsServerPreviewT3CodeImportRpc,
+  WsServerImportFromT3CodeRpc,
   WsServerUpdateSettingsRpc,
   WsPeerLinksListRpc,
   WsPeerLinksLinkRpc,

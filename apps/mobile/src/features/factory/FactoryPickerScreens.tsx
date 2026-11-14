@@ -44,6 +44,7 @@ export function FactoryModelPickerRouteScreen() {
     <ThreadSettingsPickerScreen
       environmentId={selection.environmentId}
       projectId={selection.projectId}
+      cwd={null}
       providerGroups={providerGroups}
       selectedModel={launch.modelSelection}
       // Factory launches seed their prompts on the server, not in this picker.

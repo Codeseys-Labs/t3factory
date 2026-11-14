@@ -3,7 +3,8 @@ import { StackActions, useNavigation } from "@react-navigation/native";
 import type { FactoryTaskSummary } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
-import { Platform, RefreshControl, View } from "react-native";
+import { Platform, View } from "react-native";
+import { RefreshControl } from "../../components/ui/RefreshControl";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
@@ -165,7 +166,7 @@ export function TasksListScreen(
   };
   return (
     <View className="flex-1 bg-screen">
-      <AppBar title={props.title} onBack={() => navigation.goBack()} sidebar={false} />
+      <AppBar title={props.title} onBack={() => navigation.goBack()} />
       <TasksListBody {...props} />
       <TasksTabBar
         selected={props.tab}

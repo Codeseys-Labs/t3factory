@@ -6,20 +6,25 @@
  * README.md for how to run it and add cases.
  */
 import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
 import * as NodeUtil from "node:util";
 import * as NodeVM from "node:vm";
 import * as NodeZlib from "node:zlib";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as PlatformNodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   ComposerContextRecord,
   DeviceOperationError,
   DeviceSummary,
   OrchestratorMcpTaskRole,
+  PreviewAutomationError,
+  PreviewAutomationUnavailableError,
   ProviderInstanceId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -35,15 +40,24 @@ import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 import { taskPrompt } from "../../apps/server/src/mcp/delegatedTaskModes.ts";
 import * as McpInvocationContext from "../../apps/server/src/mcp/McpInvocationContext.ts";
 import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSchema.ts";
-import { EnvironmentId, ORCHESTRATOR_MCP_RUNNING_TASK_NEXT, ThreadId } from "@t3tools/contracts";
+import * as Contracts from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ORCHESTRATOR_MCP_RUNNING_TASK_NEXT,
+  PullRequestState,
+  ThreadId,
+} from "@t3tools/contracts";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import { buildCodexAdditionalContext } from "../../apps/server/src/provider/CodexDeveloperInstructions.ts";
+import { makeSideChatContext } from "../../apps/server/src/orchestration-v2/ContextHandoffService.ts";
+import { withInlineContext } from "../../apps/server/src/orchestration-v2/ContextHandoffDelivery.ts";
 import { AttachmentToolkit } from "../../apps/server/src/mcp/toolkits/attachment/tools.ts";
 import { DeviceToolkit } from "../../apps/server/src/mcp/toolkits/device/tools.ts";
 import { EnvironmentToolkit } from "../../apps/server/src/mcp/toolkits/environment/tools.ts";
 import { FactoryToolkit } from "../../apps/server/src/mcp/toolkits/factory/tools.ts";
 import { HtmlToolkit } from "../../apps/server/src/mcp/toolkits/html/tools.ts";
+import { MessageToolkit } from "../../apps/server/src/mcp/toolkits/message/tools.ts";
 import { OrchestratorToolkit } from "../../apps/server/src/mcp/toolkits/orchestrator/tools.ts";
 import { PreviewToolkit } from "../../apps/server/src/mcp/toolkits/preview/tools.ts";
 import { PreviewControlsToolkit } from "../../apps/server/src/mcp/toolkits/previewControls/tools.ts";
@@ -52,6 +66,7 @@ import {
   CHILD_PULL_REQUEST_REPORT_NEXT,
   PullRequestsToolkit,
 } from "../../apps/server/src/mcp/toolkits/pullRequests/tools.ts";
+import { ThemeToolkit } from "../../apps/server/src/mcp/toolkits/theme/tools.ts";
 import { ThreadToolkit } from "../../apps/server/src/mcp/toolkits/thread/tools.ts";
 import { WorktreeToolkit } from "../../apps/server/src/mcp/toolkits/worktree/tools.ts";
 import {
@@ -61,7 +76,9 @@ import {
 import { proxyConfig } from "../shared/proxy.ts";
 import { planningPrompt, usablePlanningSubmission } from "./factory-planning.ts";
 import { changeRequestsCreatedBy } from "../../apps/server/src/orchestration-v2/PullRequestSyncReactor.ts";
+import { type BackgroundWait, makeBackgroundWait } from "./backgroundWait.ts";
 import { DeviceExpect, gradeDevice } from "./device-grading.ts";
+import { FileLinksExpect, gradeFileLinks } from "./file-link-grading.ts";
 import {
   AGENT_DEVICE_SHELL,
   deviceFailure,
@@ -70,6 +87,15 @@ import {
   launcherHelp,
   makeDeviceTools,
 } from "./devices.ts";
+import {
+  argvForm,
+  gradeSecret,
+  scriptsBefore,
+  UNKNOWN_SCRIPT,
+  scriptSources,
+  SecretExpect,
+  secretDiagnostics,
+} from "./secret-grading.ts";
 /** Agent models by id, with the display name a harness gives them. */
 const MODELS = {
   "claude-haiku-5-5": "Haiku 5.5",
@@ -91,6 +117,10 @@ const PRICES = {
   "claude-opus-5-5": { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 },
 };
 type PricedModel = keyof typeof PRICES;
+/** GPT models that can play the shell through CLIProxyAPI, when no Anthropic key is at hand. */
+const PROXY_SHELL_MODELS = ["gpt-6-luna", "gpt-6.1-terra"] as const;
+const isProxyShellModel = (model: string) =>
+  (PROXY_SHELL_MODELS as ReadonlyArray<string>).includes(model);
 const isPricedModel = (model: string): model is PricedModel => Object.hasOwn(PRICES, model);
 type EvalProvider = "direct" | "openrouter";
 type Proxy = { readonly url: string; readonly headers: Readonly<Record<string, string>> };
@@ -112,7 +142,8 @@ export const evalModels = (provider: EvalProvider, model?: string, shellModel?: 
   const agent = model ?? "claude-sonnet-5-5";
   const shell = shellModel ?? "claude-haiku-5-5";
   if (!Object.hasOwn(MODELS, agent)) throw new Error(`Unknown direct model: ${agent}`);
-  if (!isPricedModel(shell)) throw new Error(`Unknown direct shell model: ${shell}`);
+  if (!isPricedModel(shell) && !isProxyShellModel(shell))
+    throw new Error(`Unknown direct shell model: ${shell}`);
   return { model: agent, shellModel: shell };
 };
 
@@ -124,6 +155,23 @@ export const redactModelError = (message: string, secrets: ReadonlyArray<string>
 const T3_PREFIX = "mcp__t3-code__";
 const RUNTIME_MARKER = "<runtime_info>";
 const TOOL_LOADED = "Tool loaded.";
+
+class EvalToolCallError extends Schema.TaggedError<EvalToolCallError>()("EvalToolCallError", {
+  tool: Schema.String,
+  cause: Schema.Defect(),
+}) {
+  override get message(): string {
+    return `The ${this.tool} tool call failed.`;
+  }
+}
+
+class EvalModelError extends Schema.TaggedError<EvalModelError>()("EvalModelError", {
+  cause: Schema.Defect(),
+}) {
+  override get message(): string {
+    return this.cause instanceof Error ? this.cause.message : String(this.cause);
+  }
+}
 const DEFERRED_LIST =
   /(The following deferred tools are now available via ToolSearch\.[^\n]*\n)((?:[^\n]+\n)*)/;
 const MODEL_LINE = /You are powered by the model named .+?\. The exact model ID is [\w./:-]+\./;
@@ -160,6 +208,8 @@ export type SampleRun = {
   readonly finalText?: string;
   /** PRs linked to the thread when the sample ends, by the agent or by T3. */
   readonly linked?: ReadonlyArray<string>;
+  /** The thread's working directory, which chat resolves relative file pills against. */
+  readonly cwd?: string;
   /** The `agent-device` commands T3's device_open returned, prior turns included. */
   readonly launchers?: ReadonlyArray<string>;
 };
@@ -169,13 +219,19 @@ const Rest = [Schema.Record(Schema.String, Schema.Unknown)] as const;
 const PriorToolCall = Schema.Struct({
   tool: Schema.String,
   input: Schema.Unknown,
-  /** For a device tool, `"default"` runs the call on the world's devices for T3's result. */
+  /**
+   * For a device tool or t3_background_wait, `"default"` runs the call on the world's devices or
+   * background tasks for T3's result.
+   */
   result: Schema.Unknown,
+  /** Repository-relative file whose current contents supply this tool result. */
+  resultFile: Schema.optional(Schema.String),
 });
 
 /**
  * One expected call. Unless `exactArgs` is true, `args` match partially: `~text` is a
- * case-insensitive substring, `"<=N"` / `">=N"` bound a number, and keys may be dotted paths.
+ * case-insensitive substring, `"<=N"` / `">=N"` bound a number, `null` matches a missing key,
+ * and keys may be dotted paths.
  */
 const McpToolUseCall = Schema.Struct({
   tool: Schema.String,
@@ -189,6 +245,8 @@ const McpToolUseExpect = Schema.Struct({
   /** Each entry needs one matching call. */
   calls: Schema.optional(Schema.Array(McpToolUseCall)),
   taskPlanning: Schema.optional(Schema.Boolean),
+  /** Each entry matches a different call, and no call matches two entries; tool names are exact. */
+  distinctCalls: Schema.optional(Schema.Array(McpToolUseCall)),
   /** No call may match any entry. */
   callsMustNot: Schema.optional(Schema.Array(McpToolUseCall)),
   notCalls: Schema.optional(Schema.Array(Schema.String)),
@@ -198,20 +256,43 @@ const McpToolUseExpect = Schema.Struct({
   orderedCalls: Schema.optional(Schema.Array(McpToolUseCall)),
   minCalls: Schema.optional(Schema.Record(Schema.String, Schema.Number)),
   maxCalls: Schema.optional(Schema.Record(Schema.String, Schema.Number)),
+  /**
+   * One `args`-style value per new top-level thread the agent asks for, by `t3_thread_launch` or a
+   * `create_threads` entry. Each matches a different thread's request; no other thread is asked for.
+   */
+  newThreads: Schema.optional(Schema.Array(Schema.Unknown)),
   /** The last step with tool calls includes this tool, then the turn ends. */
   endsTurnAfter: Schema.optional(Schema.String),
-  /** Regexes that no shell command may match. */
+  /**
+   * Regexes that no shell command may match. A command also carries the source of the scripts it
+   * runs that the agent wrote earlier in the sample.
+   */
   shellMustNot: Schema.optional(Schema.Array(Schema.String)),
+  /** Regexes that some shell command must match, each. */
+  shellMust: Schema.optional(Schema.Array(Schema.String)),
   /** Case-sensitive regexes on the agent's visible text. */
   textMust: Schema.optional(Schema.Array(Schema.String)),
   textMustNot: Schema.optional(Schema.Array(Schema.String)),
-  /** Regexes on the completed final answer only; interim text earns no credit. */
+  /**
+   * Regexes on the final answer: the last response's text, once the turn ended. Each passes on
+   * the raw text or on it with link URLs and bold/code delimiters stripped.
+   */
   finalTextMust: Schema.optional(Schema.Array(Schema.String)),
+  /** Regexes the final answer, with link URLs and bold/code delimiters stripped, must not match. */
   finalTextMustNot: Schema.optional(Schema.Array(Schema.String)),
   /** Each entry matches a PR URL linked at the end, as `args` values match. */
   linked: Schema.optional(Schema.Array(Schema.String)),
+  /** The PR numbers linked at the end, exactly. */
+  linkedNumbers: Schema.optional(Schema.Array(Schema.Number)),
   /** Device manager checks: child briefs, simulator UI over the shell, failures, recordings. */
   device: Schema.optional(DeviceExpect),
+  /**
+   * Secret checks: chat asks in text and question tools, where fixture values went, and how the
+   * files request_secret returned were read. See `SecretExpect` in secret-grading.ts.
+   */
+  secret: Schema.optional(SecretExpect),
+  /** File pills in the final answer resolve against the thread cwd to `world.files` entries. */
+  fileLinks: Schema.optional(FileLinksExpect),
 });
 
 /**
@@ -250,10 +331,23 @@ const McpToolUseWorld = Schema.StructWithRest(
     deviceDiscoveryFailures: Schema.optional(Schema.Record(Schema.String, DeviceOperationError)),
     /** false: agent device access is off. T3 denies every device call and drops its device text. */
     deviceAgentAccess: Schema.optional(Schema.Boolean),
+    /** false: agent browser access is off. T3 denies every preview call and drops its browser text. */
+    browserAgentAccess: Schema.optional(Schema.Boolean),
     /** Every capture reaches T3 with adb screencap's warning ahead of the PNG: T3 reports 0×0. */
     deviceInvalidCapture: Schema.optional(Schema.Boolean),
     /** Devices another thread's agent-device session holds, by device id: that thread's id. */
     deviceOwners: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+    /**
+     * Task IDs of the background commands and Monitors still running on the agent's Claude
+     * session. With them, T3's own t3_background_wait handler answers from this world.
+     */
+    backgroundTasks: Schema.optional(Schema.Array(Schema.String)),
+    /** PRs already linked to the thread, with the state T3 last saw. */
+    linkedPullRequests: Schema.optional(
+      Schema.Array(
+        Schema.Struct({ number: Schema.Number, state: PullRequestState, title: Schema.String }),
+      ),
+    ),
   }),
   Rest,
 );
@@ -288,7 +382,9 @@ export const McpToolUseCase = Schema.Struct({
     world: Schema.optional(McpToolUseWorld),
     /**
      * Canned tool results by bare name, T3 or native. `"default"` uses the runner's result. For a
-     * device tool, a T3 `DeviceError` (`{"_tag": ..., "cause": null}`) fails it inside T3.
+     * device tool, a T3 `DeviceError` (`{"_tag": ..., "cause": null}`) fails it inside T3; for a
+     * preview tool, a `PreviewAutomationError` fails it with that error's message. A
+     * `{"$sequence": [...]}` mock answers its nth call with the nth result, then repeats the last.
      */
     mocks: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
     /** Argument-selected results. Exactly one row must match; never fall back to `mocks`. */
@@ -308,7 +404,12 @@ export const McpToolUseCase = Schema.Struct({
     shellMocks: Schema.optional(
       Schema.Array(Schema.Struct({ match: Schema.String, output: Schema.String })),
     ),
+    /** The thread is a side chat's first turn: T3 puts the parent's digest ahead of `prompt`. */
+    sideChat: Schema.optional(
+      Schema.Struct({ parentThreadId: Schema.String, digest: Schema.Array(Schema.String) }),
+    ),
   }),
+  /** Empty to resume a top-level thread without side-chat context after its last tool result. */
   prompt: Schema.String,
   /** Records for the context chips `prompt` links, projected as T3 sends them. */
   promptContext: Schema.optional(Schema.Struct({ records: Schema.Array(ComposerContextRecord) })),
@@ -403,6 +504,8 @@ const CODEX_NAMES: Readonly<Record<string, string>> = {
   shell: "Bash",
   spawn_agent: "Agent",
   apply_patch: "Edit",
+  request_user_input: "AskUserQuestion",
+  request_user_input_async: "AskUserQuestion",
   write_stdin: "write_stdin",
   web__run: "WebFetch",
 };
@@ -412,12 +515,15 @@ export const normalizeToolName = (name: string) => {
     ? bare.slice(T3_PREFIX.length)
     : (CODEX_NAMES[bare] ?? bare.slice(bare.lastIndexOf("_") + 1));
 };
-export const normalizeToolInput = (name: string, input: unknown) =>
-  normalizeToolName(name) === "Bash" && isRecord(input)
+export const normalizeToolInput = (name: string, input: unknown) => {
+  const decode = t3InputDecoders.get(normalizeToolName(name));
+  if (decode !== undefined) return Option.getOrElse(decode(input), () => input);
+  return normalizeToolName(name) === "Bash" && isRecord(input)
     ? { ...input, command: input.command ?? input.cmd }
     : typeof input === "string" && normalizeToolName(name) === "Edit"
       ? { patch: input }
       : input;
+};
 
 // McpHttpServer advertises each tool's JSON schema, and Claude Code passes the MCP name,
 // description, and schema through unchanged.
@@ -427,12 +533,14 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
   AttachmentToolkit,
   ProjectToolkit,
   EnvironmentToolkit,
+  ThemeToolkit,
   PreviewControlsToolkit,
   WorktreeToolkit,
   PullRequestsToolkit,
   PreviewToolkit,
   DeviceToolkit,
   HtmlToolkit,
+  MessageToolkit,
 ]
   .flatMap((toolkit): ReadonlyArray<Tool.Any> => Object.values(toolkit.tools))
   .concat(
@@ -452,11 +560,28 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
       ].includes(tool.name),
     ),
   );
+// McpHttpServer decodes arguments with each tool's JSON codec, which drops undeclared keys.
+const t3InputDecoders = new Map(
+  t3SourceTools.map((tool) => [
+    tool.name,
+    Schema.decodeUnknownOption(
+      Schema.toCodecJson(tool.parametersSchema as Schema.Codec<unknown, unknown>),
+    ),
+  ]),
+);
 const t3Tools: ReadonlyArray<ApiTool> = t3SourceTools.map((tool) => ({
   name: `${T3_PREFIX}${tool.name}`,
   description: Tool.getDescription(tool) ?? "",
   input_schema: advertisedJsonSchema(tool),
 }));
+// T3 gates these on the `preview` capability, which agent browser access decides.
+const PREVIEW_TOOLS = new Set(
+  [PreviewToolkit, PreviewControlsToolkit].flatMap((toolkit) =>
+    Object.values(toolkit.tools).map((tool: Tool.Any) => tool.name),
+  ),
+);
+const decodePreviewError = Schema.decodeUnknownOption(PreviewAutomationError);
+const previewFailure = (mock: unknown) => Option.getOrUndefined(decodePreviewError(mock));
 const enabledWhen = (predicate: () => boolean) =>
   new Set(
     t3SourceTools
@@ -465,6 +590,26 @@ const enabledWhen = (predicate: () => boolean) =>
       )
       .map((tool) => `${T3_PREFIX}${tool.name}`),
   );
+// Claude Code loads a tool whose `_meta` sets anthropic/alwaysLoad up front instead of deferring it.
+const alwaysLoaded = new Set(
+  t3SourceTools
+    .filter((tool) => {
+      const meta = Context.getOrUndefined(tool.annotations, Tool.Meta);
+      return meta !== undefined && meta["anthropic/alwaysLoad"] === true;
+    })
+    .map((tool) => `${T3_PREFIX}${tool.name}`),
+);
+// Refs whose request_secret takes `value` save a secret the user already pasted, with no card.
+export const savesPastedSecrets = t3Tools.some(
+  (tool) =>
+    tool.name === `${T3_PREFIX}request_secret` &&
+    isRecord(tool.input_schema) &&
+    isRecord(tool.input_schema.properties) &&
+    "value" in tool.input_schema.properties,
+);
+/** A request_secret call that hands T3 a pasted secret, on a ref that takes one. */
+const pastedSecret = (name: string, input: Readonly<Record<string, unknown>>) =>
+  savesPastedSecrets && name === "request_secret" && typeof input.value === "string";
 // T3 does not offer these to a delegated child, so its harness never lists them.
 const hiddenFromSubagents = enabledWhen(McpInvocationContext.hiddenFromSubagents);
 // The Linked environments beta starts off, and T3 lists its tools only while it is on.
@@ -477,13 +622,15 @@ const visibleT3Tools = (options: { readonly subagent?: boolean; readonly links?:
   );
 
 /**
- * T3's Claude Code options for an eval thread: its system prompt append and its hooks. `device` says
- * whether the thread holds the `device` capability, as agent device access decides.
+ * T3's Claude Code options for an eval thread: its system prompt append and its hooks. `device` and
+ * `browser` say whether the thread holds the `device` and `preview` capabilities, as agent device
+ * and browser access decide.
  */
-const claudeQueryOptions = (model: Model, device = true) => {
-  // Refs whose device text follows the capability read deviceToolsAvailable; older ones ignore it.
+const claudeQueryOptions = (model: Model, device = true, browser = true) => {
+  // Refs whose text follows a capability read its flag; older ones ignore it.
   const input: Parameters<typeof makeClaudeQueryOptions>[0] & {
     readonly deviceToolsAvailable?: boolean;
+    readonly browserToolsAvailable?: boolean;
   } = {
     modelSelection: { instanceId: ProviderInstanceId.make(CLAUDE_PROVIDER), model },
     nativeThreadId: "mcp-tool-use-eval",
@@ -491,13 +638,14 @@ const claudeQueryOptions = (model: Model, device = true) => {
     cwd: null,
     mcpServers: { "t3-code": { type: "http", url: "http://127.0.0.1/mcp" } },
     deviceToolsAvailable: device,
+    browserToolsAvailable: browser,
   };
   return makeClaudeQueryOptions(input);
 };
 
 /** Text T3 appends to Claude Code's system prompt. Delegated children get the same text. */
-export const t3SystemAppend = (model: Model, device = true) => {
-  const { systemPrompt } = claudeQueryOptions(model, device);
+export const t3SystemAppend = (model: Model, device = true, browser = true) => {
+  const { systemPrompt } = claudeQueryOptions(model, device, browser);
   if (isRecord(systemPrompt) && systemPrompt.type === "preset" && systemPrompt.append) {
     return systemPrompt.append;
   }
@@ -508,8 +656,8 @@ export const t3SystemAppend = (model: Model, device = true) => {
  * The context T3's SubagentStart hooks give a native subagent, which gets none of the append.
  * Empty when T3 registers no such hook.
  */
-export const t3SubagentContext = async (model: Model, device = true) => {
-  const hooks = (claudeQueryOptions(model, device).hooks?.SubagentStart ?? []).flatMap(
+export const t3SubagentContext = async (model: Model, device = true, browser = true) => {
+  const hooks = (claudeQueryOptions(model, device, browser).hooks?.SubagentStart ?? []).flatMap(
     (m) => m.hooks,
   );
   const input = {
@@ -584,6 +732,8 @@ export const buildBase = (
     readonly nativeSubagent?: boolean;
     /** false: the thread has no agent device access, so T3's text leaves devices out. */
     readonly deviceAccess?: boolean;
+    /** false: the thread has no agent browser access, so T3's text leaves the browser out. */
+    readonly browserAccess?: boolean;
   },
 ) => {
   const t3 = visibleT3Tools(options);
@@ -600,9 +750,16 @@ export const buildBase = (
     throw new Error(`The template needs one ${RUNTIME_MARKER} block and a deferred tool list.`);
   }
   const nativeDeferred = deferredList.split("\n").filter((name) => name && !isT3Name(name));
-  const names = [...nativeDeferred, ...t3.map((tool) => tool.name)].toSorted().join("\n");
+  const names = [
+    ...nativeDeferred,
+    ...t3.filter((tool) => !alwaysLoaded.has(tool.name)).map((tool) => tool.name),
+  ]
+    .toSorted()
+    .join("\n");
   const { model } = options;
-  const append = options.nativeSubagent ? "" : t3SystemAppend(model, options.deviceAccess);
+  const append = options.nativeSubagent
+    ? ""
+    : t3SystemAppend(model, options.deviceAccess, options.browserAccess);
   const name = Object.hasOwn(MODELS, model) ? MODELS[model as keyof typeof MODELS] : model;
   const modelLine = `You are powered by the model named ${name}. The exact model ID is ${model}.`;
   const joined = systemTexts.join("\n");
@@ -643,7 +800,10 @@ export const buildBase = (
       platform: /Platform: (\w+)/.exec(joined)?.[1] ?? "linux",
       date: /Today's date is ([\d-]+)/.exec(reminders.join("\n"))?.[1],
     },
-    nativeTools: template.tools.filter((tool) => !isT3Name(tool.name)),
+    nativeTools: [
+      ...template.tools.filter((tool) => !isT3Name(tool.name)),
+      ...t3.filter((tool) => alwaysLoaded.has(tool.name)),
+    ],
     /** Tools ToolSearch loads: T3 tools from source, and native tools the template only names. */
     t3,
     deferred: [...t3, ...nativeDeferred.map((name) => ({ name, ...nativeSchema(name) }))],
@@ -667,6 +827,8 @@ const buildCodexBase = (
     readonly links?: boolean;
     /** false: the thread has no agent device access, so T3's text leaves devices out. */
     readonly deviceAccess?: boolean;
+    /** false: the thread has no agent browser access, so T3's text leaves the browser out. */
+    readonly browserAccess?: boolean;
   },
 ): Base => {
   const t3 = visibleT3Tools(options);
@@ -702,7 +864,7 @@ const buildCodexBase = (
   });
   const context = buildCodexAdditionalContext(
     { model: options.model, reasoningEffort: effort },
-    { browser: true, device: options.deviceAccess ?? true },
+    { browser: options.browserAccess ?? true, device: options.deviceAccess ?? true },
   );
   input.push(
     ...Object.entries(context).map(([key, entry]) => message(`<${key}>${entry.value}</${key}>`)),
@@ -789,7 +951,8 @@ const createdPullRequests = ({ tool, input, output }: ShellEntry) =>
     : [];
 /**
  * One sample's state. ToolSearch adds loaded schemas to `tools`, like Claude Code. `shell` is the
- * history the simulator keeps consistent with; `linked` and `nextTask` do the same for T3 results.
+ * history the simulator keeps consistent with; `linked`, `nextTask` and `threads` do the same for
+ * T3 results.
  */
 type Sample = {
   readonly testCase: McpToolUseCase;
@@ -801,10 +964,21 @@ type Sample = {
   readonly linked: Set<string>;
   readonly codeStore: Record<string, unknown>;
   nextTask: number;
+  /** Threads the agent launched in this sample, by id, so reading one shows its own brief. */
+  readonly threads: Map<string, { readonly title: string; readonly brief: string }>;
+  /** Files T3's request_secret saved in this sample, in call order. */
+  readonly secretFiles: Array<string>;
+  secretRequests: number;
   /** T3's device tools, once `withDevices` builds them for a world with devices. */
   devices?: DeviceTools;
   /** T3's results for prior device calls whose case result is "default". */
   readonly priorResults: Map<unknown, string>;
+  /** Prior calls whose T3 result is an error, so the agent sees it as one. */
+  readonly priorErrors: Set<unknown>;
+  /** T3's t3_background_wait, once `withBackgroundWait` builds it for `world.backgroundTasks`. */
+  backgroundWait?: BackgroundWait;
+  /** Calls so far per mocked tool, for mocks that answer in sequence. */
+  readonly mockCalls: Map<string, number>;
 };
 
 const SHELL_TOOLS = new Set(["Bash", "Read", "Edit", "Write", "WebFetch"]);
@@ -813,11 +987,22 @@ export const makeSample = (testCase: McpToolUseCase, base: Base): Sample => {
   const prior = testCase.setup.priorTurns ?? [];
   const priorCalls = prior.flatMap((turn) => turn.toolCalls ?? []);
   const repo = testCase.setup.world?.repo ?? "acme/app";
-  const urls = priorCalls.flatMap((call) =>
-    ["link_pull_request", "watch_pull_request"].includes(call.tool) && isRecord(call.input)
-      ? [pullRequest(repo, call.input).url]
-      : [],
-  );
+  const urls = [
+    ...(testCase.setup.world?.linkedPullRequests ?? []).map(
+      ({ number }) => pullRequest(repo, { number }).url,
+    ),
+    ...priorCalls.flatMap((call) =>
+      ["link_pull_request", "watch_pull_request"].includes(call.tool) && isRecord(call.input)
+        ? [pullRequest(repo, call.input).url]
+        : call.tool === "link_pull_requests" &&
+            isRecord(call.input) &&
+            Array.isArray(call.input.urls)
+          ? call.input.urls
+              .filter((url) => PULL_REQUEST_URL.test(valueText(url)))
+              .map((url) => pullRequest(repo, { url }).url)
+          : [],
+    ),
+  ];
   const taskNumbers = [...valueText(prior).matchAll(/task-(\d+)/g)].map((match) =>
     Number(match[1]),
   );
@@ -834,8 +1019,21 @@ export const makeSample = (testCase: McpToolUseCase, base: Base): Sample => {
     linked: new Set([...urls, ...shell.flatMap(createdPullRequests)]),
     codeStore: {},
     nextTask: Math.max(0, ...taskNumbers) + 1,
+    threads: new Map(),
+    secretFiles: [],
+    secretRequests: 0,
     priorResults: new Map(),
+    priorErrors: new Set(),
+    mockCalls: new Map(),
   };
+};
+
+/** A `{"$sequence": [...]}` mock answers its nth call with the nth result, then repeats the last. */
+const nextMock = (sample: Sample, name: string, mock: unknown) => {
+  if (!isRecord(mock) || !Array.isArray(mock.$sequence) || mock.$sequence.length === 0) return mock;
+  const n = sample.mockCalls.get(name) ?? 0;
+  sample.mockCalls.set(name, n + 1);
+  return mock.$sequence[Math.min(n, mock.$sequence.length - 1)];
 };
 
 /**
@@ -854,6 +1052,25 @@ export const withDevices = Effect.fn("evaluateMcpToolUse.withDevices")(function*
   for (const call of (sample.testCase.setup.priorTurns ?? []).flatMap((t) => t.toolCalls ?? [])) {
     if (call.result !== "default" || !isDeviceTool(call.tool)) continue;
     sample.priorResults.set(call, (yield* sample.devices.call(call.tool, call.input)).text);
+  }
+});
+
+/**
+ * Builds T3's t3_background_wait for a world with background tasks, and answers prior waits whose
+ * result is "default" with T3's result.
+ */
+export const withBackgroundWait = Effect.fn("evaluateMcpToolUse.withBackgroundWait")(function* (
+  sample: Sample,
+) {
+  const running = sample.testCase.setup.world?.backgroundTasks;
+  if (running === undefined) return;
+  const backgroundWait = yield* makeBackgroundWait(running);
+  sample.backgroundWait = backgroundWait;
+  for (const call of (sample.testCase.setup.priorTurns ?? []).flatMap((t) => t.toolCalls ?? [])) {
+    if (call.result !== "default" || call.tool !== "t3_background_wait") continue;
+    const result = yield* backgroundWait(call.input);
+    sample.priorResults.set(call, result.text);
+    if (result.isError) sample.priorErrors.add(call);
   }
 });
 
@@ -916,6 +1133,19 @@ export const buildMessages = (sample: Sample) => {
     else messages[messages.length - 1] = { role, content: [...last.content, ...blocks] };
   };
   const { role, context, delegateRole, priorTurns = [] } = testCase.setup;
+  const sideChat = testCase.setup.sideChat;
+  if (testCase.prompt === "" && (role !== "top" || sideChat !== undefined)) {
+    throw new Error(
+      `${testCase.id}: Empty-prompt replay requires a top-level thread without side-chat context.`,
+    );
+  }
+  const sideChatContext =
+    sideChat === undefined
+      ? undefined
+      : makeSideChatContext({
+          parentThreadId: ThreadId.make(sideChat.parentThreadId),
+          digest: sideChat.digest,
+        });
   const native = role === "native-subagent";
   const notes = [
     native
@@ -931,8 +1161,13 @@ export const buildMessages = (sample: Sample) => {
     const calls = (turn.toolCalls ?? []).map((call) => {
       const tool = findTool(base, call.tool);
       if (tool === undefined) throw new Error(`${testCase.id}: unknown prior tool ${call.tool}.`);
-      if (call.result === "default" && isDeviceTool(call.tool) && !sample.priorResults.has(call)) {
-        throw new Error(`${testCase.id}: prior ${call.tool} needs T3's result; run withDevices.`);
+      const builder = isDeviceTool(call.tool)
+        ? "withDevices"
+        : call.tool === "t3_background_wait"
+          ? "withBackgroundWait"
+          : undefined;
+      if (call.result === "default" && builder && !sample.priorResults.has(call)) {
+        throw new Error(`${testCase.id}: prior ${call.tool} needs T3's result; run ${builder}.`);
       }
       return { ...call, id: `toolu_prior_${nextId++}`, name: tool.name, tool, prior: call };
     });
@@ -954,16 +1189,20 @@ export const buildMessages = (sample: Sample) => {
         normalizeToolName(tool.name) === "orchestrator_capabilities"
           ? capabilities(sample, result)
           : (sample.priorResults.get(prior) ?? result);
-      push("user", toolResult(id, replayed));
+      const answer = toolResult(id, replayed);
+      push("user", sample.priorErrors.has(prior) ? { ...answer, is_error: true } : answer);
     }
     if (turn.text) push(turn.role, text(turn.text));
   }
-  const prompt =
+  const userText =
     testCase.promptContext === undefined
       ? testCase.prompt
       : projectComposerContextForProvider({ text: testCase.prompt, ...testCase.promptContext });
+  const prompt =
+    sideChatContext === undefined ? userText : withInlineContext(sideChatContext, userText);
   const childPrompt = () => taskPrompt({ task: prompt, role: delegateRole });
-  push("user", text(role === "delegated-child" ? childPrompt() : prompt));
+  if (testCase.prompt !== "")
+    push("user", text(role === "delegated-child" ? childPrompt() : prompt));
   // Claude Code gives a subagent its SubagentStart hooks' context as a reminder after the task.
   if (native && base.subagentContext) {
     push("user", reminder(`SubagentStart hook additional context: ${base.subagentContext}`));
@@ -978,7 +1217,7 @@ const codexModel = (id: string) => ({ id, options: [{ id: "reasoningEffort", val
 const PROVIDERS = [
   {
     providerInstanceId: "claudeAgent",
-    models: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-haiku-5-5"].map(
+    models: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-2", "claude-haiku-5-5"].map(
       claudeModel,
     ),
   },
@@ -1009,6 +1248,8 @@ const DEFAULT_THREAD = {
 const HTML_RENDERED =
   "Shown to the reader above your reply. Don't mention or describe the page; reply with only what it doesn't already say.";
 
+const PULL_REQUEST_URL = /\/pull\/\d+\/?$/;
+
 /** Pull request identity from a `url` or `repository` plus `number` input, like T3's results. */
 const pullRequest = (repo: string, input: Readonly<Record<string, unknown>>) => {
   const url = typeof input.url === "string" ? input.url : "";
@@ -1023,10 +1264,51 @@ const pullRequest = (repo: string, input: Readonly<Record<string, unknown>>) => 
   };
 };
 
+/** A linked PR as `list_thread_pull_requests` shows it. Links made in the sample are open. */
+const linkedEntry = (sample: Sample, url: string) => {
+  const pr = pullRequest(sample.repo, { url });
+  const seeded = sample.testCase.setup.world?.linkedPullRequests?.find(
+    ({ number }) => number === pr.number && pr.repository === sample.repo,
+  );
+  return { ...pr, state: seeded?.state ?? "open", title: seeded?.title ?? null };
+};
+
 /** A believable T3 result for a tool the case does not mock. */
-const t3Default = (sample: Sample, name: string, input: Readonly<Record<string, unknown>>) => {
+export const t3Default = (
+  sample: Sample,
+  name: string,
+  input: Readonly<Record<string, unknown>>,
+) => {
   const pr = () => pullRequest(sample.repo, input);
+  const newThread = (request: unknown, brief: unknown) => {
+    const n = sample.nextTask++;
+    const title =
+      isRecord(request) && typeof request.title === "string" ? request.title : "New thread";
+    const text = typeof brief === "string" ? brief.trim() : "";
+    sample.threads.set(uuid(n), { title, brief: text });
+    return {
+      threadId: uuid(n),
+      title,
+      ...(text ? { runId: `run-${n}`, status: "starting" } : { status: "idle" }),
+    };
+  };
   switch (name) {
+    case "t3_thread_launch":
+      return newThread(input, input.message);
+    case "create_threads":
+      return {
+        threads: (Array.isArray(input.threads) ? input.threads : []).map((request) => {
+          const target = isRecord(request) && isRecord(request.target) ? request.target : {};
+          return {
+            ...newThread(request, isRecord(request) ? request.prompt : undefined),
+            createdBy: "agent",
+            creationSource: "mcp",
+            providerInstanceId:
+              target.providerInstanceId ?? (sample.base.codex ? "codex" : "claudeAgent"),
+            model: target.model ?? sample.base.model,
+          };
+        }),
+      };
     case "orchestrator_capabilities":
       return {
         inheritedProviderInstanceId: "claudeAgent",
@@ -1066,34 +1348,93 @@ const t3Default = (sample: Sample, name: string, input: Readonly<Record<string, 
       sample.linked.add(pr().url);
       return { ...pr(), alreadyLinked };
     }
+    case "link_pull_requests": {
+      const urls = Array.isArray(input.urls) ? input.urls.map(valueText) : [];
+      const invalidUrls = urls.filter((url) => !PULL_REQUEST_URL.test(url));
+      const targets = [...new Set(urls.filter((url) => PULL_REQUEST_URL.test(url)))].map((url) =>
+        pullRequest(sample.repo, { url }),
+      );
+      const fresh = targets.filter(({ url }) => !sample.linked.has(url));
+      for (const { url } of targets) sample.linked.add(url);
+      const byRepository = (prs: ReadonlyArray<ReturnType<typeof pullRequest>>) =>
+        [...Map.groupBy(prs, (pr) => pr.repository).values()].map((group) => ({
+          host: "github.com",
+          repository: group[0]!.repository,
+          numbers: group.map((pr) => pr.number),
+        }));
+      return {
+        linked: byRepository(fresh),
+        alreadyLinked: byRepository(targets.filter((pr) => !fresh.includes(pr))),
+        linkedCount: targets.length,
+        ...(invalidUrls.length > 0 ? { invalidUrls } : {}),
+      };
+    }
     case "request_secret": {
-      // T3 names both a ref and a file with 32 hex characters, and keeps files in its secrets dir.
-      const id = "5f0c9e2a7b4d4183a6e1c8d2b9f07a64";
+      // T3 names a ref and a file with 32 hex characters, new for each request, in its secrets dir.
+      const id = NodeCrypto.createHash("sha256")
+        .update(`${sample.testCase.id}:${sample.secretRequests++}`)
+        .digest("hex")
+        .slice(0, 32);
       const home =
         /^\/(?:home|Users)\/[^/]+/.exec(sample.base.environment.cwd)?.[0] ?? "/home/user";
-      return input.delivery === "file"
+      return input.delivery === "file" || pastedSecret(name, input)
         ? { status: "saved", file: `${home}/.t3/userdata/secrets/files/${id}` }
         : { status: "saved", secretRef: `secret-ref:${id}` };
     }
     case "unlink_pull_request":
       return { ...pr(), wasLinked: sample.linked.delete(pr().url) };
+    case "unlink_pull_requests": {
+      const states = Array.isArray(input.states) ? input.states : [];
+      const unlinked = [...sample.linked]
+        .map((url) => linkedEntry(sample, url))
+        .filter((entry) => states.includes(entry.state));
+      for (const { url } of unlinked) sample.linked.delete(url);
+      const groups = Map.groupBy(unlinked, (entry) => `${entry.repository}/${entry.state}`);
+      return {
+        unlinked: [...groups.values()].map((entries) => ({
+          host: "github.com",
+          repository: entries[0]!.repository,
+          state: entries[0]!.state,
+          numbers: entries.map((entry) => entry.number),
+        })),
+        unlinkedCount: unlinked.length,
+        remaining: sample.linked.size,
+      };
+    }
     case "watch_pull_request":
       sample.linked.add(pr().url);
       return { ...pr(), watching: true, wasWatching: false };
     case "unwatch_pull_request":
       return { ...pr(), watching: false, wasWatching: true };
-    case "list_thread_pull_requests":
+    case "list_thread_pull_requests": {
+      const states = Array.isArray(input.states) ? input.states : undefined;
+      const matching = [...sample.linked]
+        .map((url) => ({ ...linkedEntry(sample, url), source: "agent", watching: false }))
+        .filter((entry) => states === undefined || states.includes(entry.state));
+      const start = Number(valueText(input.cursor)) || 0;
+      const end = start + 50;
       return {
-        pullRequests: [...sample.linked].map((url) => ({
-          ...pullRequest(sample.repo, { url }),
-          source: "agent",
-          watching: false,
-          state: "open",
-        })),
+        pullRequests: matching.slice(start, end),
         chains: [],
+        nextCursor: end < matching.length ? String(end) : null,
       };
+    }
     case "t3_thread_read": {
       const threadId = valueText(input.threadId);
+      const launched = sample.threads.get(threadId);
+      if (launched !== undefined) {
+        const items = launched.brief
+          ? [{ position: 1, createdBy: "agent", creationSource: "mcp", text: launched.brief }]
+          : [];
+        const thread = {
+          threadId,
+          title: launched.title,
+          createdBy: "agent",
+          creationSource: "mcp",
+          status: launched.brief ? "running" : "idle",
+        };
+        return { thread, items, nextPosition: items.length + 1, hasMore: false };
+      }
       const { title, status, items } = DEFAULT_THREAD;
       return { thread: { threadId, title, status }, items, nextPosition: 3, hasMore: false };
     }
@@ -1121,6 +1462,12 @@ const t3Default = (sample: Sample, name: string, input: Readonly<Record<string, 
 /** The machine the fake threads live on. */
 const EVAL_ENVIRONMENT_ID = EnvironmentId.make("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee");
 
+// The note T3 adds when a secret card ends unsaved, on refs that have one (looked up by name so
+// the runner still builds on refs without it).
+const unsavedSecretNote = (Contracts as Record<string, unknown>).SECRET_REQUEST_UNSAVED_NOTE as
+  | Readonly<Record<string, string>>
+  | undefined;
+
 /** Fields T3 adds to real thread and task results, applied to mocks and defaults alike. */
 const withProductFields = (name: string, value: unknown, child: boolean): unknown => {
   if (!isRecord(value)) return value;
@@ -1130,16 +1477,20 @@ const withProductFields = (name: string, value: unknown, child: boolean): unknow
     return typeof id === "string"
       ? {
           ...thread,
-          link: formatThreadLink({
-            environmentId: EVAL_ENVIRONMENT_ID,
-            threadId: ThreadId.make(id),
-          }),
+          link: formatThreadLink(
+            { environmentId: EVAL_ENVIRONMENT_ID, threadId: ThreadId.make(id) },
+            typeof thread.title === "string" ? thread.title : undefined,
+          ),
         }
       : thread;
   };
   const listed = (key: string) =>
     Array.isArray(value[key]) ? { ...value, [key]: value[key].map((item) => linked(item)) } : value;
   switch (name) {
+    case "request_secret": {
+      const note = typeof value.status === "string" ? unsavedSecretNote?.[value.status] : undefined;
+      return note === undefined || value.note !== undefined ? value : { ...value, note };
+    }
     case "delegate_task":
     case "task_status": {
       const task = linked(value, "childThreadId") as Record<string, unknown>;
@@ -1158,6 +1509,7 @@ const withProductFields = (name: string, value: unknown, child: boolean): unknow
     case "t3_thread_search":
       return listed("matches");
     case "link_pull_request":
+    case "link_pull_requests":
       return child ? { ...value, next: CHILD_PULL_REQUEST_REPORT_NEXT } : value;
     default:
       return value;
@@ -1228,6 +1580,28 @@ const decodeShellReply = Schema.decodeUnknownOption(Schema.fromJsonString(ShellR
 const callText = ({ tool, input }: Omit<ShellEntry, "output">) =>
   `<call>${tool} ${valueText(input)}</call>`;
 
+/**
+ * Absolute paths the case's context or files name exist, wherever the template's working
+ * directory is. Without this the simulator denies a checkout the agent was told to work in.
+ */
+export const namedPathsLine = ({ setup }: McpToolUseCase) => {
+  const absolute = /(?:^|[\s(`'"])((?:\/home|\/Users|\/tmp)\/[^\s`'",;:)]+)/g;
+  const fromContext = [...(setup.context ?? "").matchAll(absolute)].flatMap(([, path]) =>
+    path ? [path] : [],
+  );
+  const fromFiles = Object.keys(isRecord(setup.world?.files) ? setup.world.files : {}).filter(
+    (path) => path.startsWith("/"),
+  );
+  const paths = [
+    ...new Set([...fromContext, ...fromFiles].map((path) => path.replace(/[.]+$/, ""))),
+  ];
+  return paths.length > 0
+    ? [
+        `These paths exist on this machine, with the contents the world gives: ${paths.join(", ")}. The working directory above is only where the shell starts; the agent may cd into them.`,
+      ]
+    : [];
+};
+
 /** The simulator's request: the machine, this sample's earlier calls, then the new call. */
 export const shellRequest = (sample: Sample, call: Omit<ShellEntry, "output">, model: string) => {
   const { testCase, base, repo, shell, devices } = sample;
@@ -1248,8 +1622,14 @@ export const shellRequest = (sample: Sample, call: Omit<ShellEntry, "output">, m
           "T3's device_screenshot gets each capture with adb screencap's multi-display warning ahead of the PNG, so it reports 0×0. agent-device's own screenshot finds the PNG and is unaffected.",
         ]
       : []),
+    ...(sample.secretFiles.length > 0
+      ? [
+          `T3's request_secret saved these files in this sample: ${sample.secretFiles.join(", ")}. Each exists, is readable only by the user, and holds exactly the value the user gave, typed into T3's private card or pasted in chat and saved by the agent, the right one for the task, with no trailing newline. A program that reads it, as in "$(cat <file>)", < <file> or a --*-file flag, gets that value. What appears in the output is whatever that program prints: one that prints or logs its input shows the value. No other file in that directory exists.`,
+        ]
+      : []),
     ...(context ? [`The agent was told: ${context}`] : []),
     `The agent's task: ${testCase.prompt}`,
+    ...namedPathsLine(testCase),
   ];
   const history = shell.map((entry) => `${callText(entry)}\n<output>\n${entry.output}\n</output>`);
   return {
@@ -1269,6 +1649,22 @@ export const shellRequest = (sample: Sample, call: Omit<ShellEntry, "output">, m
     ],
   };
 };
+
+/** The same simulator request in Responses form, for a GPT shell model through the proxy. */
+export const shellResponsesRequest = (body: ReturnType<typeof shellRequest>) => ({
+  model: body.model,
+  stream: true,
+  store: false,
+  reasoning: { effort: "low" },
+  instructions: body.system,
+  text: {
+    format: { type: "json_schema", name: "shell_reply", schema: SHELL_REPLY_SCHEMA, strict: true },
+  },
+  input: body.messages.map((message) => ({
+    role: message.role,
+    content: message.content.map((block) => ({ type: "input_text", text: block.text })),
+  })),
+});
 
 /** The tool output in the simulator's JSON reply, or its raw text if that is not JSON. */
 export const shellOutput = (content: ReadonlyArray<Block>) => {
@@ -1314,11 +1710,9 @@ const simulate = Effect.fn("evaluateMcpToolUse.simulate")(function* (
   let output = typeof command === "string" ? cannedOutput(sample, command) : undefined;
   if (output === undefined) {
     const body = shellRequest(sample, call, config.shellModel);
-    const response = yield* callModel(
-      config.apiKey,
-      body,
-      config.apiKey ? undefined : config.proxy,
-    );
+    const response = isProxyShellModel(config.shellModel)
+      ? yield* callCodex(config, shellResponsesRequest(body))
+      : yield* callModel(config.apiKey, body, config.apiKey ? undefined : config.proxy);
     addUsage(sample.shellUsage, response.usage);
     recordModel(sample.shellUsage, response.model);
     output = shellOutput(response.content);
@@ -1330,8 +1724,13 @@ const simulate = Effect.fn("evaluateMcpToolUse.simulate")(function* (
   return output;
 });
 
+/** Tells the shell simulator about a file request_secret saved, so it exists for later commands. */
+const savedSecretFile = (sample: Sample, result: unknown) => {
+  if (isRecord(result) && typeof result.file === "string") sample.secretFiles.push(result.file);
+};
+
 /** The result for one tool call. */
-const answerToolCall = Effect.fn("evaluateMcpToolUse.answerToolCall")(function* (
+export const answerToolCall = Effect.fn("evaluateMcpToolUse.answerToolCall")(function* (
   sample: Sample,
   config: Config,
   call: typeof ToolUse.Type,
@@ -1360,6 +1759,16 @@ const answerToolCall = Effect.fn("evaluateMcpToolUse.answerToolCall")(function* 
     if (found.length === 0) return toolResult(call.id, "No matching deferred tools found");
     return loadTools(tools, call.id, found);
   }
+  // T3 refuses a page call without exactly one source before any mocked result.
+  const sources = [input.html, input.path].filter(
+    (source) => source !== undefined && source !== null,
+  );
+  if (isPageTool(name) && (sources.length !== 1 || typeof sources[0] !== "string")) {
+    return failed("Pass exactly one of html or path.");
+  }
+  if (isPageTool(name) && typeof input.path === "string" && !input.path.startsWith("/")) {
+    return failed(`${input.path} is not a readable HTML document. Pass an absolute path.`);
+  }
   const responses = testCase.setup.mockResponses?.[name];
   const selected = responses?.filter((response) =>
     matchesArgs(response, response.exactArgs ? call.input : input),
@@ -1372,7 +1781,21 @@ const answerToolCall = Effect.fn("evaluateMcpToolUse.answerToolCall")(function* 
         `Expected one mock response for ${name} ${valueText(input)}; matched ${selected.length}.`,
       ),
     );
-  const mock = selected === undefined ? testCase.setup.mocks?.[name] : selected[0]!.result;
+  const mock =
+    selected === undefined
+      ? nextMock(sample, name, testCase.setup.mocks?.[name])
+      : selected[0]!.result;
+  if (isT3Name(call.name) && PREVIEW_TOOLS.has(name)) {
+    if (testCase.setup.world?.browserAgentAccess === false)
+      return failed(
+        new PreviewAutomationUnavailableError({
+          capability: "preview",
+          environmentId: EVAL_ENVIRONMENT_ID,
+        }).message,
+      );
+    const previewError = previewFailure(mock);
+    if (previewError !== undefined) return failed(previewError.message);
+  }
   // T3 answers device calls from the world. A mock that is a T3 device error fails inside T3.
   const failure = deviceFailure(mock);
   const fromWorld = mock === undefined || mock === "default" || failure !== undefined;
@@ -1380,19 +1803,27 @@ const answerToolCall = Effect.fn("evaluateMcpToolUse.answerToolCall")(function* 
     const result = yield* sample.devices.call(name, input, failure);
     return result.isError ? failed(result.text) : toolResult(call.id, result.text);
   }
-  if (mock !== undefined && mock !== "default")
+  if (sample.backgroundWait && isT3Name(call.name) && name === "t3_background_wait" && fromWorld) {
+    const result = yield* sample.backgroundWait(input);
+    return result.isError ? failed(result.text) : toolResult(call.id, result.text);
+  }
+  // A pasted secret is saved without a card, so a mocked card outcome does not apply.
+  if (mock !== undefined && mock !== "default" && !pastedSecret(name, input)) {
+    if (name === "request_secret") savedSecretFile(sample, mock);
     return toolResult(
       call.id,
       name === "orchestrator_capabilities"
         ? capabilities(sample, mock)
         : withProductFields(name, mock, testCase.setup.role === "delegated-child"),
     );
+  }
   if (isT3Name(call.name)) {
     // T3 refuses a watch from a delegated child.
     if (name === "watch_pull_request" && testCase.setup.role === "delegated-child") {
       return failed(SUBAGENT_WATCH_ERROR);
     }
     const value = t3Default(sample, name, input);
+    if (name === "request_secret") savedSecretFile(sample, value);
     return toolResult(
       call.id,
       name === "orchestrator_capabilities"
@@ -1413,8 +1844,12 @@ const answerToolCall = Effect.fn("evaluateMcpToolUse.answerToolCall")(function* 
 });
 
 const BOUND = /^([<>]=)(-?\d+(?:\.\d+)?)$/;
-/** Partial match: `~text` is a case-insensitive substring, `<=N` / `>=N` bound a number. */
+/**
+ * Partial match: `~text` is a case-insensitive substring, `<=N` / `>=N` bound a number, and `null`
+ * matches a missing or null value.
+ */
 const matches = (expected: unknown, actual: unknown): boolean => {
+  if (expected === null) return actual === undefined || actual === null;
   const bound = typeof expected === "string" ? BOUND.exec(expected) : null;
   if (bound !== null) {
     const limit = Number(bound[2]);
@@ -1444,6 +1879,35 @@ const matchesArgs = (
     ? NodeUtil.isDeepStrictEqual(args, input === undefined ? {} : input)
     : matches(args, input);
 
+/** Each new top-level thread request in a run; a failed call created nothing. */
+const newThreadRequests = (calls: ReadonlyArray<Call>) =>
+  calls.flatMap((call): ReadonlyArray<{ request: unknown; brief: unknown }> => {
+    if (call.failed === true || !isRecord(call.input)) return [];
+    if (call.tool === "t3_thread_launch")
+      return [{ request: call.input, brief: call.input.message }];
+    if (call.tool !== "create_threads" || !Array.isArray(call.input.threads)) return [];
+    return call.input.threads.map((request: unknown) => ({
+      request,
+      brief: isRecord(request) ? request.prompt : undefined,
+    }));
+  });
+
+/** Whether every expected value can take a different request it matches. */
+const matchesDistinct = (
+  expected: ReadonlyArray<unknown>,
+  requests: ReturnType<typeof newThreadRequests>,
+  taken: ReadonlySet<number> = new Set(),
+): boolean => {
+  const [first, ...rest] = expected;
+  if (expected.length === 0) return true;
+  return requests.some(
+    ({ request, brief }, i) =>
+      !taken.has(i) &&
+      matches(first, typeof first === "string" ? brief : request) &&
+      matchesDistinct(rest, requests, new Set([...taken, i])),
+  );
+};
+
 /** delegate_task takes `target.options` as an object or `[{id, value}]`. Grade both as an object. */
 const withOptionsObject = (input: unknown) => {
   if (!isRecord(input) || !isRecord(input.target) || !Array.isArray(input.target.options)) {
@@ -1457,29 +1921,110 @@ const withOptionsObject = (input: unknown) => {
   return { ...input, target: { ...input.target, options } };
 };
 
-export const gradeSample = (expect: McpToolUseCase["expect"], run: SampleRun) => {
+/** What the user wrote in the case's thread: its context, prior user turns and the prompt. */
+/** `world.files` keys: paths relative to the thread cwd, or absolute. */
+export const worldFilePaths = ({ setup }: Pick<McpToolUseCase, "setup">) =>
+  Object.keys(isRecord(setup.world?.files) ? setup.world.files : {});
+
+export const pastedText = ({ prompt, setup }: Pick<McpToolUseCase, "prompt" | "setup">) =>
+  [
+    setup.context ?? "",
+    ...(setup.priorTurns ?? []).flatMap((turn) => (turn.role === "user" ? [turn.text ?? ""] : [])),
+    prompt,
+  ].join("\n");
+
+const isPageTool = (tool: string) => tool === "html_preview" || tool === "html_render";
+
+/** `page` is the HTML a page tool shows: its inline `html`, or the file the agent wrote at `path`. */
+const withPage = (tool: string, input: unknown, files: ReadonlyMap<string, string>) => {
+  if (!isPageTool(tool) || !isRecord(input)) return input;
+  const path = valueText(input.path);
+  // A patch may name the file relative to the agent's working directory. When written files that
+  // could be this one differ, the page is unknown, so page checks fail rather than grade a stale copy.
+  const written = [...files].filter(
+    ([file]) =>
+      file === path ||
+      (!file.startsWith("/") && path.endsWith(`/${file.replace(/^(?:\.\/)+/, "")}`)),
+  );
+  const pages = new Set(written.map(([, page]) => page));
+  const page =
+    typeof input.html === "string"
+      ? input.html
+      : pages.size === 1 && !pages.has(UNKNOWN_SCRIPT)
+        ? written[0]![1]
+        : undefined;
+  // The grader derives `page`; a call cannot supply its own.
+  return { ...input, page };
+};
+
+/** `pasted` is the thread's user text (`pastedText`), for request_secret's `value`. */
+export const gradeSample = (
+  expect: McpToolUseCase["expect"],
+  run: SampleRun,
+  pasted = "",
+  worldFiles: ReadonlyArray<string> = [],
+) => {
   const checks: Array<{ readonly check: string; readonly pass: boolean }> = [];
   const add = (check: string, pass: boolean) => checks.push({ check, pass });
-  const calls = run.calls;
   if (expect.taskPlanning)
     add(
       "usablePlanningSubmission",
-      calls.some(
+      run.calls.some(
         (call) => call.tool === "factory_propose_subtasks" && usablePlanningSubmission(call.input),
       ),
     );
-  if (calls.some((call) => call.failed && call.output?.startsWith("EvalFixtureMismatch:")))
+  if (run.calls.some((call) => call.failed && call.output?.startsWith("EvalFixtureMismatch:")))
     add("fixtureArguments", false);
-  const count = (tool: string) => calls.filter((call) => call.tool === tool).length;
-  // `tool` may list alternatives, as in "link_pull_request|watch_pull_request".
-  const matchesCall = (expected: McpToolUseCall, call: Call) =>
+  const written = scriptsBefore(run.calls, true);
+  // A refused page call showed nothing, so it neither previews nor renders, and no file stands in
+  // for its page. Inline HTML it sent still counts against callsMustNot.
+  const attempted = run.calls.map((call, index) => ({
+    ...call,
+    rawInput: call.input,
+    input: withPage(
+      call.tool,
+      withOptionsObject(call.input),
+      call.failed ? new Map() : written[index]!,
+    ),
+  }));
+  const calls = attempted.filter((call) => !(call.failed && isPageTool(call.tool)));
+  // `tool` may list alternatives, as in "link_pull_request|watch_pull_request"; counts add up.
+  const count = (tool: string) =>
+    calls.filter((call) => tool.split("|").includes(call.tool)).length;
+  const matchesCall = (expected: McpToolUseCall, call: (typeof calls)[number]) =>
     expected.tool.split("|").includes(call.tool) &&
-    matchesArgs(expected, expected.exactArgs ? call.input : withOptionsObject(call.input));
-  const found = (expected: McpToolUseCall) => calls.some((call) => matchesCall(expected, call));
+    matchesArgs(expected, expected.exactArgs ? call.rawInput : call.input);
+  const found = (expected: McpToolUseCall, among = calls) =>
+    among.some((call) => matchesCall(expected, call));
   const label = ({ tool, args }: McpToolUseCall) => (args ? `${tool} ${valueText(args)}` : tool);
   for (const call of expect.calls ?? []) add(`calls ${label(call)}`, found(call));
-  for (const call of expect.callsMustNot ?? []) add(`callsMustNot ${label(call)}`, !found(call));
-  for (const tool of expect.notCalls ?? []) add(`notCalls ${tool}`, count(tool) === 0);
+  if (expect.distinctCalls !== undefined) {
+    const expected = expect.distinctCalls.map(({ tool, args }) => ({ tool, input: args ?? {} }));
+    add(
+      "distinctCalls",
+      calls.every((call) => expected.filter((entry) => matches(entry, call)).length <= 1) &&
+        matchesDistinct(
+          expected,
+          calls.map((request) => ({ request, brief: "" })),
+        ),
+    );
+  }
+  for (const call of expect.callsMustNot ?? [])
+    add(`callsMustNot ${label(call)}`, !found(call, attempted));
+  // A page check must not pass because the grader never saw the file a path call shows.
+  const pageTools = [...(expect.calls ?? []), ...(expect.callsMustNot ?? [])].flatMap((call) =>
+    call.args?.page === undefined ? [] : call.tool.split("|"),
+  );
+  for (const call of calls)
+    if (
+      pageTools.includes(call.tool) &&
+      isRecord(call.input) &&
+      call.input.path !== undefined &&
+      call.input.page === undefined
+    )
+      add(`page known ${call.tool} ${valueText(call.input.path)}`, false);
+  for (const tool of expect.notCalls ?? [])
+    add(`notCalls ${tool}`, !attempted.some((call) => call.tool === tool));
   if (expect.order !== undefined) {
     const firsts = expect.order.map((tool) => calls.findIndex((call) => call.tool === tool));
     const inOrder = firsts.every((at, i) => at > (firsts[i - 1] ?? -1));
@@ -1504,19 +2049,36 @@ export const gradeSample = (expect: McpToolUseCase["expect"], run: SampleRun) =>
     add(`minCalls ${t} >= ${n}`, count(t) >= n);
   for (const [t, n] of Object.entries(expect.maxCalls ?? {}))
     add(`maxCalls ${t} <= ${n}`, count(t) <= n);
+  if (expect.newThreads !== undefined) {
+    const requests = newThreadRequests(calls);
+    add(
+      `newThreads ${valueText(expect.newThreads)}`,
+      requests.length === expect.newThreads.length && matchesDistinct(expect.newThreads, requests),
+    );
+  }
   if (expect.endsTurnAfter !== undefined) {
     const lastStep = Math.max(-1, ...calls.map((call) => call.step));
     const last = calls.filter((call) => call.step === lastStep).map((call) => call.tool);
     const ended = run.stopReason === "end_turn" && last.includes(expect.endsTurnAfter);
     add(`endsTurnAfter ${expect.endsTurnAfter}`, ended);
   }
-  // Bash and Monitor both take a shell `command`.
-  const shell = calls.flatMap((call) =>
-    isRecord(call.input) && typeof call.input.command === "string" ? [call.input.command] : [],
+  // Bash and Monitor both take a shell `command`. Shell checks also read, one by one, the scripts
+  // the agent wrote and a command ran: `node run.mjs signup.mjs` after a Write of signup.mjs.
+  const sources = scriptSources(calls);
+  const shell = calls.flatMap((call, i) =>
+    isRecord(call.input) && typeof call.input.command === "string"
+      ? [call.input.command, ...(sources[i] ?? [])]
+      : [],
   );
   const test = (pattern: string, value: string) => new RegExp(pattern).test(value);
   for (const p of expect.shellMustNot ?? [])
     add(`shellMustNot /${p}/`, !shell.some((c) => test(p, c)));
+  // A positive check also reads argv lists as command lines: spawnSync('pnpm', ['exec', …]).
+  for (const p of expect.shellMust ?? [])
+    add(
+      `shellMust /${p}/`,
+      shell.some((c) => test(p, c) || test(p, argvForm(c))),
+    );
   for (const p of expect.textMust ?? []) add(`textMust /${p}/`, test(p, run.text));
   for (const p of expect.textMustNot ?? []) add(`textMustNot /${p}/`, !test(p, run.text));
   const completed = run.stopReason === "end_turn" && run.finalText !== undefined;
@@ -1524,20 +2086,43 @@ export const gradeSample = (expect: McpToolUseCase["expect"], run: SampleRun) =>
     .replace(/\[([^\]]+)\]\([^\s)]+\)/g, "$1")
     .replace(/\*\*|__|`/g, "");
   for (const p of expect.finalTextMust ?? [])
-    add(`finalTextMust /${p}/`, completed && test(p, finalText));
+    add(`finalTextMust /${p}/`, completed && (test(p, run.finalText ?? "") || test(p, finalText)));
   for (const p of expect.finalTextMustNot ?? [])
     add(`finalTextMustNot /${p}/`, completed && !test(p, finalText));
   const isLinked = (url: string) => (run.linked ?? []).some((at) => matches(url, at));
   for (const url of expect.linked ?? []) add(`linked ${url}`, isLinked(url));
+  if (expect.linkedNumbers !== undefined) {
+    const numbers = (run.linked ?? []).map((url) => Number(/(\d+)\/?$/.exec(url)?.[1]));
+    const exact = valueText(numbers.toSorted((a, b) => a - b));
+    add("linkedNumbers", exact === valueText(expect.linkedNumbers.toSorted((a, b) => a - b)));
+  }
   checks.push(...gradeDevice(expect.device, run));
+  checks.push(
+    ...gradeFileLinks(
+      expect.fileLinks,
+      run.stopReason === "end_turn" ? run.finalText : undefined,
+      run.cwd,
+      worldFiles,
+    ),
+  );
+  checks.push(...gradeSecret(expect.secret, run, pasted));
   return checks;
 };
 
 // Checks that can only go from pass to fail as a sample goes on.
-const SETTLED = /^(fixtureArguments$|(notCalls|callsMustNot|shellMustNot|maxCalls|textMustNot) )/;
+const SETTLED =
+  /^(?:fixtureArguments$|(?:notCalls|callsMustNot|shellMustNot|maxCalls|textMustNot) |secret\.(?:chatAsk|askTools|values|fileUse|noCardDemand|afterDecline) )/;
 /** True once the sample has failed for good, so the rest of it cannot change the result. */
-export const failedEarly = (expect: McpToolUseCase["expect"], run: SampleRun) =>
-  gradeSample(expect, run).some((check) => !check.pass && SETTLED.test(check.check));
+export const failedEarly = (expect: McpToolUseCase["expect"], run: SampleRun, pasted = "") =>
+  gradeSample(
+    expect,
+    // A page call T3 has not answered yet may still be refused, so it is graded once it settles.
+    {
+      ...run,
+      calls: run.calls.filter((call) => !isPageTool(call.tool) || call.failed !== undefined),
+    },
+    pasted,
+  ).some((check) => !check.pass && SETTLED.test(check.check));
 
 const requestBody = ({ base, tools }: Sample, effort: string, messages: unknown) => ({
   model: base.model,
@@ -1566,6 +2151,7 @@ const codexRequest = (base: Base, input: ReadonlyArray<Block>) => ({
   input: [...(base.codex?.input ?? []), ...input],
 });
 
+// @effect-diagnostics-next-line extendsNativeError:off - a throw sentinel inside the model code bridge's promises.
 class ModelCodeError extends Error {}
 
 /** The bridge only accepts serialized data. Model code never receives host objects/functions. */
@@ -1779,6 +2365,7 @@ export const runSample = Effect.fn("evaluateMcpToolUse.runSample")(function* (
 ) {
   const sample = { ...makeSample(testCase, base), shellUsage: spent.shellUsage };
   yield* withDevices(sample);
+  yield* withBackgroundWait(sample);
   const runPromise = Effect.runPromiseWith(yield* Effect.context<HttpClient.HttpClient>());
   const messages = buildMessages(sample);
   const input = base.codex ? codexMessages(messages) : undefined;
@@ -1795,7 +2382,11 @@ export const runSample = Effect.fn("evaluateMcpToolUse.runSample")(function* (
   for (let step = 0; step < maxSteps; step++) {
     const response = input
       ? yield* callCodex(config, codexRequest(base, input))
-      : yield* callModel(config.apiKey, requestBody(sample, config.effort, messages), config.proxy);
+      : yield* callModel(
+          config.apiKey,
+          requestBody(sample, config.effort, messages),
+          config.apiKey ? undefined : config.proxy,
+        );
     addUsage(usage, response.usage);
     recordModel(usage, "model" in response ? response.model : undefined);
     if ("raw" in response) {
@@ -1812,7 +2403,13 @@ export const runSample = Effect.fn("evaluateMcpToolUse.runSample")(function* (
       finalText = texts.join("\n\n");
       break;
     }
-    if (failedEarly(testCase.expect, { calls, text: said.join("\n\n"), stopReason })) {
+    if (
+      failedEarly(
+        testCase.expect,
+        { calls, text: said.join("\n\n"), stopReason },
+        pastedText(testCase),
+      )
+    ) {
       stopReason = "failed_early";
       break;
     }
@@ -1854,41 +2451,50 @@ export const runSample = Effect.fn("evaluateMcpToolUse.runSample")(function* (
             runPromise,
           );
         };
-        return yield* Effect.tryPromise(async () => {
-          let output;
-          try {
-            output =
-              use.name === "exec"
-                ? await executeCodex(
-                    valueText(use.input),
-                    codexCatalog(base),
-                    answer,
-                    sample.codeStore,
-                  )
-                : await answer(use.name, use.input, false);
-          } catch (cause) {
-            if (!(cause instanceof ModelCodeError)) throw cause;
-            output = `ModelCodeError: ${cause.message}`;
-            if (own) {
-              own.failed = true;
-              own.output = output;
+        return yield* Effect.tryPromise({
+          try: async () => {
+            let output;
+            try {
+              output =
+                use.name === "exec"
+                  ? await executeCodex(
+                      valueText(use.input),
+                      codexCatalog(base),
+                      answer,
+                      sample.codeStore,
+                    )
+                  : await answer(use.name, use.input, false);
+            } catch (cause) {
+              if (!(cause instanceof ModelCodeError)) throw cause;
+              output = `ModelCodeError: ${cause.message}`;
+              if (own) {
+                own.failed = true;
+                own.output = output;
+              }
             }
-          }
-          const item = {
-            type: use.name === "exec" ? "custom_tool_call_output" : "function_call_output",
-            call_id: use.id,
-            output: valueText(output),
-          };
-          input.push(item);
-          transcript.push(item);
-          return toolResult(use.id, output);
+            const item = {
+              type: use.name === "exec" ? "custom_tool_call_output" : "function_call_output",
+              call_id: use.id,
+              output: valueText(output),
+            };
+            input.push(item);
+            transcript.push(item);
+            return toolResult(use.id, output);
+          },
+          catch: (cause) => new EvalToolCallError({ tool: use.name, cause }),
         });
       }),
     );
     // Claude Code adds this text after a ToolSearch that loaded tools.
     const loaded = results.some((result) => Array.isArray(result.content));
     messages.push({ role: "user", content: [...results, ...(loaded ? [text(TOOL_LOADED)] : [])] });
-    if (failedEarly(testCase.expect, { calls, text: said.join("\n\n"), stopReason })) {
+    if (
+      failedEarly(
+        testCase.expect,
+        { calls, text: said.join("\n\n"), stopReason },
+        pastedText(testCase),
+      )
+    ) {
       stopReason = "failed_early";
       break;
     }
@@ -1899,6 +2505,7 @@ export const runSample = Effect.fn("evaluateMcpToolUse.runSample")(function* (
     text: said.join("\n\n"),
     stopReason,
     finalText,
+    cwd: base.environment.cwd,
     linked: [...sample.linked],
     ...(sample.devices ? { launchers: [...sample.devices.launchers] } : {}),
     usage,
@@ -1999,7 +2606,7 @@ export const summarize = (
     openrouter
       ? "- Cost: OpenRouter API-reported amounts below; partial coverage is not a total run cost."
       : codex
-        ? "- Cost: not applicable (subscription through proxy)."
+        ? "- Cost: the agent is not priced. `vibeproxy` in `~/.codex/config.toml` may use a subscription or bill an API key per token; agent tokens are below."
         : `- Estimated cost $${cost.toFixed(2)}, $${(cost / rows.length).toFixed(3)} per sample.`,
     `- Agent tokens: ${agent.tokens}${openrouter ? `; OpenRouter cost ${reported("usage")}.` : codex ? "." : ` ($${agent.cost.toFixed(2)}).`}`,
     `- Shell simulator (${options.shellModel}) tokens: ${shell.tokens}${openrouter ? `; OpenRouter cost ${reported("shellUsage")}.` : ` (API-price estimate $${shell.cost.toFixed(2)}).`}`,
@@ -2111,9 +2718,10 @@ const main = Effect.gen(function* () {
     },
   });
   const decoded = yield* decodeFlags({ template: "", ...values });
-  const models = yield* Effect.try(() =>
-    evalModels(decoded.provider, decoded.model, decoded["shell-model"]),
-  );
+  const models = yield* Effect.try({
+    try: () => evalModels(decoded.provider, decoded.model, decoded["shell-model"]),
+    catch: (cause) => new EvalModelError({ cause }),
+  });
   const flags = { ...decoded, model: models.model, "shell-model": models.shellModel };
   if (flags.context) {
     process.stdout.write(`${t3ContextReport(flags.model)}\n`);
@@ -2146,12 +2754,35 @@ const main = Effect.gen(function* () {
   const wanted = flags.case?.flatMap((ids) => ids.split(","));
   const codex = isCodex(flags.model);
   const harness = codex ? "codex" : "claude";
-  const selected = cases.filter(
+  const selectedCases = cases.filter(
     ({ id, setup }) =>
       (wanted === undefined || wanted.includes(id)) &&
       (setup.harness === undefined || setup.harness === harness),
   );
-  if (selected.length === 0) return yield* Effect.die(new Error("No case matches --case."));
+  if (selectedCases.length === 0) return yield* Effect.die(new Error("No case matches --case."));
+  const selected = yield* Effect.forEach(selectedCases, (testCase) =>
+    Effect.gen(function* () {
+      const priorTurns = yield* Effect.forEach(testCase.setup.priorTurns ?? [], (turn) =>
+        Effect.gen(function* () {
+          const toolCalls = yield* Effect.forEach(turn.toolCalls ?? [], (call) =>
+            call.resultFile === undefined
+              ? Effect.succeed(call)
+              : fs
+                  .readFileString(path.resolve(import.meta.dirname, "../..", call.resultFile))
+                  .pipe(Effect.map((result) => ({ ...call, result }))),
+          );
+          return { ...turn, toolCalls };
+        }),
+      );
+      return {
+        ...testCase,
+        setup: {
+          ...testCase.setup,
+          priorTurns,
+        },
+      };
+    }),
+  );
   // Trimmed captures without user data ship beside the cases. `--template` also takes a raw
   // CLIProxyAPI capture.
   const templatePath =
@@ -2165,6 +2796,7 @@ const main = Effect.gen(function* () {
   const buildFor = (
     role: McpToolUseCase["setup"]["role"],
     deviceAccess: boolean,
+    browserAccess: boolean,
     links: boolean,
   ): Effect.Effect<Base, Schema.SchemaError> =>
     codex
@@ -2177,6 +2809,7 @@ const main = Effect.gen(function* () {
               subagent: role === "delegated-child",
               links,
               deviceAccess,
+              browserAccess,
             }),
           ),
         )
@@ -2189,28 +2822,30 @@ const main = Effect.gen(function* () {
               nativeSubagent: role === "native-subagent",
               links,
               deviceAccess,
+              browserAccess,
             });
             return role === "native-subagent"
-              ? Effect.promise(() => t3SubagentContext(flags.model, deviceAccess)).pipe(
-                  Effect.map((subagentContext): Base => ({ ...built, subagentContext })),
-                )
+              ? Effect.promise(() =>
+                  t3SubagentContext(flags.model, deviceAccess, browserAccess),
+                ).pipe(Effect.map((subagentContext): Base => ({ ...built, subagentContext })))
               : Effect.succeed(built);
           }),
         );
   // Codex has no native subagents; its cases with that role run as top-level threads.
   const baseKey = ({ setup }: McpToolUseCase) =>
-    `${codex && setup.role === "native-subagent" ? "top" : setup.role}:${setup.world?.deviceAgentAccess !== false}:${setup.linkedEnvironments === true}`;
-  const base = yield* buildFor("top", true, false);
-  const bases = new Map<string, Base>([["top:true:false", base]]);
+    `${codex && setup.role === "native-subagent" ? "top" : setup.role}:${setup.world?.deviceAgentAccess !== false}:${setup.world?.browserAgentAccess !== false}:${setup.linkedEnvironments === true}`;
+  const base = yield* buildFor("top", true, true, false);
+  const bases = new Map<string, Base>([["top:true:true:false", base]]);
   for (const testCase of selected) {
     const key = baseKey(testCase);
     if (bases.has(key)) continue;
-    const [role = "top", access, links] = key.split(":") as [
+    const [role = "top", device, browser, links] = key.split(":") as [
       McpToolUseCase["setup"]["role"],
       string,
       string,
+      string,
     ];
-    bases.set(key, yield* buildFor(role, access === "true", links === "true"));
+    bases.set(key, yield* buildFor(role, device === "true", browser === "true", links === "true"));
   }
   const baseFor = (testCase: McpToolUseCase) => bases.get(baseKey(testCase)) ?? base;
   const effort = flags.effort ?? base.codex?.reasoning.effort ?? "high";
@@ -2218,7 +2853,7 @@ const main = Effect.gen(function* () {
     // One JSON line per case. Without --case this also checks that every case builds.
     for (const testCase of selected) {
       const sample = makeSample(testCase, baseFor(testCase));
-      yield* Effect.scoped(withDevices(sample));
+      yield* Effect.scoped(Effect.andThen(withDevices(sample), withBackgroundWait(sample)));
       const messages = buildMessages(sample);
       const body = sample.base.codex
         ? codexRequest(sample.base, codexMessages(messages))
@@ -2229,7 +2864,7 @@ const main = Effect.gen(function* () {
   }
   const openrouter = flags.provider === "openrouter";
   const keyName = openrouter ? "OPENROUTER_API_KEY" : "ANTHROPIC_API_KEY";
-  const key = process.env[keyName] ?? "";
+  const key = yield* Config.String(keyName).pipe(Config.withDefault(""));
   const apiKey = openrouter ? "" : key;
   const out = flags.out;
   if ((!key && (openrouter || !codex)) || out === undefined) {
@@ -2244,12 +2879,19 @@ const main = Effect.gen(function* () {
     const catalog = yield* response.json.pipe(
       Effect.flatMap(Schema.decodeUnknownEffect(OpenRouterCatalog)),
     );
-    yield* Effect.try(() => validateOpenRouterModels(catalog, flags.model, flags["shell-model"]));
+    yield* Effect.try({
+      try: () => validateOpenRouterModels(catalog, flags.model, flags["shell-model"]),
+      catch: (cause) => new EvalModelError({ cause }),
+    });
   }
   const config: Config = {
     apiKey,
     model: flags.model,
-    ...(openrouter ? { proxy: openRouterProxy(key) } : codex ? { proxy: proxyConfig() } : {}),
+    ...(openrouter
+      ? { proxy: openRouterProxy(key) }
+      : codex || !isPricedModel(flags["shell-model"])
+        ? { proxy: proxyConfig() }
+        : {}),
     effort,
     maxSteps: flags["max-steps"] ?? (codex ? 10 : 6),
     shellModel: flags["shell-model"],
@@ -2264,11 +2906,16 @@ const main = Effect.gen(function* () {
   // Only a case that passed every baseline sample can stop a run; flaky ones are just reported.
   const passedBefore = (id: string) => baseline.get(id) === 1;
   // Before the paid runs, so a missing git cannot lose their results.
-  const commit = yield* Effect.try(() =>
-    NodeChildProcess.execFileSync("git", ["describe", "--always", "--dirty"], {
-      encoding: "utf8",
-    }).trim(),
-  ).pipe(Effect.orElseSucceed(() => "unknown"));
+  const commit = yield* Effect.sync(() =>
+    Option.getOrElse(
+      Option.liftThrowable(() =>
+        NodeChildProcess.execFileSync("git", ["describe", "--always", "--dirty"], {
+          encoding: "utf8",
+        }).trim(),
+      )(),
+      () => "unknown",
+    ),
+  );
   const inFlight = yield* Semaphore.make(flags.concurrency);
   const runOne = (testCase: McpToolUseCase) => {
     const { id, kind, pattern } = testCase;
@@ -2298,8 +2945,21 @@ const main = Effect.gen(function* () {
           error: redactModelError(Cause.pretty(cause), privateValues),
         }),
         onSuccess: (sample) => {
-          const checks = gradeSample(testCase.expect, sample);
-          return { ...identity, pass: checks.every((check) => check.pass), checks, ...sample };
+          const checks = gradeSample(
+            testCase.expect,
+            sample,
+            pastedText(testCase),
+            worldFilePaths(testCase),
+          );
+          const { secret } = testCase.expect;
+          return {
+            ...identity,
+            pass: checks.every((check) => check.pass),
+            checks,
+            // Not graded: how the agent handled a secret it needed, for a person reading the run.
+            ...(secret ? { secret: secretDiagnostics(sample, secret) } : {}),
+            ...sample,
+          };
         },
       }),
       Effect.tap((row) =>
@@ -2368,7 +3028,9 @@ const main = Effect.gen(function* () {
 
 if (import.meta.main) {
   main.pipe(
-    Effect.provide(Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer)),
+    Effect.provide(
+      Layer.mergeAll(NodeServices.layer, PlatformNodeCrypto.layer, FetchHttpClient.layer),
+    ),
     NodeRuntime.runMain,
   );
 }

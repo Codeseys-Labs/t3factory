@@ -1,9 +1,15 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type * as PlatformError from "effect/PlatformError";
+import * as Redacted from "effect/Redacted";
 import type * as Scope from "effect/Scope";
 import type * as ChildProcess from "effect/process/ChildProcess";
 import type * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import type * as CommandLine from "effect/process/CommandLine";
+
+// Owned spawners build the real command line themselves, so they reveal what Effect redacts.
+export const revealCommandWord = (word: CommandLine.Word): string =>
+  Redacted.isRedacted(word) ? Redacted.value(word) : word;
 
 export interface OwnedProcessSpawner {
   readonly spawn: (

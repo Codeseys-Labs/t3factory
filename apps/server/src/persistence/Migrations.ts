@@ -1,6 +1,11 @@
 import * as Migrator from "effect/sql/Migrator";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
+import {
+  DATABASE_MIGRATION_PROGRESS_MESSAGE,
+  DATABASE_MIGRATIONS_FINISHED_MESSAGE,
+  DATABASE_MIGRATIONS_STARTED_MESSAGE,
+} from "@t3tools/shared/databaseMigrationLog";
 import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
 
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
@@ -76,6 +81,22 @@ import Migration0070 from "./Migrations/070_PeerLinks.ts";
 import Migration0071 from "./Migrations/071_PeerLinkFence.ts";
 import Migration0072 from "./Migrations/072_WaitingLinkRequestIndex.ts";
 import Migration0073 from "./Migrations/073_ActiveTurnItemIndexes.ts";
+import Migration0074 from "./Migrations/074_ExcludeAttachmentPlaceholdersFromSearch.ts";
+import Migration0075 from "./Migrations/075_SubagentDeliveryState.ts";
+import Migration0076 from "./Migrations/076_ProjectionProjectsPinArchive.ts";
+import Migration0077 from "./Migrations/077_RepairBooleanSettledOverride.ts";
+import Migration0078 from "./Migrations/078_DropOrchestrationEventCorrelationIndex.ts";
+import Migration0079 from "./Migrations/079_DelegatedRecoveryIndexes.ts";
+import Migration0080 from "./Migrations/080_ScheduledTaskThreadMode.ts";
+import Migration0081 from "./Migrations/081_ProjectionMessageSearchText.ts";
+import Migration0082 from "./Migrations/082_TurnItemConversationIndex.ts";
+import Migration0083 from "./Migrations/083_CommandReadIndexes.ts";
+import Migration0084 from "./Migrations/084_LastExecutedRunIndex.ts";
+import Migration0085 from "./Migrations/085_TurnItemCounts.ts";
+import Migration0086 from "./Migrations/086_QueuedTurnInputIndex.ts";
+import Migration0087 from "./Migrations/087_ProjectionProjectsCustomTitle.ts";
+import Migration0088 from "./Migrations/088_TurnItemTypeStatusIndex.ts";
+import Migration0089 from "./Migrations/089_ShellThreadReadIndexes.ts";
 import Migration0193 from "./Migrations/193_FactoryIssueLaunches.ts";
 import Migration0194 from "./Migrations/194_ProjectCoordinators.ts";
 import Migration0195 from "./Migrations/195_FactoryFeeds.ts";
@@ -172,6 +193,22 @@ const migrationEntries = [
   [71, "PeerLinkFence", Migration0071],
   [72, "WaitingLinkRequestIndex", Migration0072],
   [73, "ActiveTurnItemIndexes", Migration0073],
+  [74, "ExcludeAttachmentPlaceholdersFromSearch", Migration0074],
+  [75, "SubagentDeliveryState", Migration0075],
+  [76, "ProjectionProjectsPinArchive", Migration0076],
+  [77, "RepairBooleanSettledOverride", Migration0077],
+  [78, "DropOrchestrationEventCorrelationIndex", Migration0078],
+  [79, "DelegatedRecoveryIndexes", Migration0079],
+  [80, "ScheduledTaskThreadMode", Migration0080],
+  [81, "ProjectionMessageSearchText", Migration0081],
+  [82, "TurnItemConversationIndex", Migration0082],
+  [83, "CommandReadIndexes", Migration0083],
+  [84, "LastExecutedRunIndex", Migration0084],
+  [85, "TurnItemCounts", Migration0085],
+  [86, "QueuedTurnInputIndex", Migration0086],
+  [87, "ProjectionProjectsCustomTitle", Migration0087],
+  [88, "TurnItemTypeStatusIndex", Migration0088],
+  [89, "ShellThreadReadIndexes", Migration0089],
   [193, "FactoryIssueLaunches", Migration0193],
   [194, "ProjectCoordinators", Migration0194],
   [195, "FactoryFeeds", Migration0195],
@@ -206,6 +243,79 @@ const makeMigrationLoader = (throughId?: number) =>
   );
 
 const FIRST_V2_MIGRATION_ID = 55;
+// Factory ids sit above upstream's so a sync never reuses one; upstream ids added since sit below.
+const FIRST_FACTORY_MIGRATION_ID = 193;
+// The pre-sync Factory build recorded 193-199 at 69-75.
+const LEGACY_FACTORY_ID_OFFSET = 124;
+
+type MigrationRow = { readonly id: number; readonly name: string };
+
+const isManifestRow = (row: MigrationRow) =>
+  migrationEntries.some(([id, name]) => id === row.id && name === row.name);
+
+const isLegacyFactoryRow = (row: MigrationRow) =>
+  row.id >= 69 &&
+  row.id <= 75 &&
+  isManifestRow({ id: row.id + LEGACY_FACTORY_ID_OFFSET, name: row.name });
+
+const includesFactory = (throughId?: number) =>
+  throughId === undefined || throughId >= FIRST_FACTORY_MIGRATION_ID;
+
+/**
+ * The migrator never runs an id below the highest recorded, so a history holding Factory ids would
+ * skip every upstream migration a sync adds. Startup translates the pre-sync 69-75 Factory ids and
+ * installs each unrecorded upstream V2 migration first. Null when it refuses to rewrite the history.
+ */
+function reconciledFactoryHistory(recorded: ReadonlyArray<MigrationRow>) {
+  const legacy = recorded.filter(isLegacyFactoryRow);
+  const translated = recorded.map((row) =>
+    isLegacyFactoryRow(row) ? { id: row.id + LEGACY_FACTORY_ID_OFFSET, name: row.name } : row,
+  );
+  const recordedIds = new Set(translated.map((row) => row.id));
+  if (
+    legacy.length > 0 &&
+    (recordedIds.size !== translated.length || !translated.every(isManifestRow))
+  ) {
+    return null;
+  }
+  const isFactory = translated.some(
+    (row) => row.id >= FIRST_FACTORY_MIGRATION_ID && isManifestRow(row),
+  );
+  const install = migrationEntries.filter(
+    ([id]) =>
+      isFactory &&
+      id >= FIRST_V2_MIGRATION_ID &&
+      id < FIRST_FACTORY_MIGRATION_ID &&
+      !recordedIds.has(id),
+  );
+  return {
+    legacy,
+    install,
+    history: [...translated, ...install.map(([id, name]) => ({ id, name }))],
+  };
+}
+
+export function skippedV2Migrations(
+  history: ReadonlyArray<MigrationRow>,
+  throughId?: number,
+): string[] {
+  // Startup reconciles Factory history before this check, so check what it will see.
+  const reconciled = includesFactory(throughId) ? reconciledFactoryHistory(history) : { history };
+  if (reconciled === null) return ["an unrecognized legacy Factory migration history"];
+  const recorded = reconciled.history;
+  const latestRecordedId = Math.max(0, ...recorded.map((row) => row.id));
+  const recordedNames = new Map(recorded.map((row) => [row.id, row.name]));
+  return migrationManifest.flatMap(([id, name]) => {
+    if (
+      id < FIRST_V2_MIGRATION_ID ||
+      id > latestRecordedId ||
+      (throughId !== undefined && id > throughId)
+    )
+      return [];
+    const recordedName = recordedNames.get(id);
+    return recordedName === name ? [] : [`${id}_${name} (recorded: ${recordedName ?? "nothing"})`];
+  });
+}
 
 // Migrators skip ids up to the highest recorded; reject collisions that would skip V2 schema.
 const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function* (
@@ -220,19 +330,11 @@ const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function*
     readonly migration_id: number;
     readonly name: string;
   }>`SELECT migration_id, name FROM effect_sql_migrations`;
+  const skipped = skippedV2Migrations(
+    recorded.map((row) => ({ id: row.migration_id, name: row.name })),
+    throughId,
+  );
   const latestRecordedId = Math.max(0, ...recorded.map((row) => row.migration_id));
-  const recordedNames = new Map(recorded.map((row) => [row.migration_id, row.name]));
-  const skipped = migrationEntries.flatMap(([id, name]) => {
-    if (
-      id < FIRST_V2_MIGRATION_ID ||
-      id > latestRecordedId ||
-      (throughId !== undefined && id > throughId)
-    )
-      return [];
-    const recordedName = recordedNames.get(id);
-    if (recordedName === name) return [];
-    return [`${id}_${name} (recorded: ${recordedName ?? "nothing"})`];
-  });
   if (skipped.length === 0) return;
   return yield* new Migrator.MigrationError({
     kind: "BadState",
@@ -240,68 +342,49 @@ const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function*
   });
 });
 
-// The pre-sync Factory build used 69-75; translate only that exact history, atomically
-// installing upstream's missing 69-73 before the migrator's highest-id guard runs.
+// One transaction, so a failed install leaves the history as it was and the next start retries.
 const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(function* (
   throughId?: number,
 ) {
-  if (throughId !== undefined && throughId < 193) return [];
+  if (!includesFactory(throughId)) return [];
   const sql = yield* SqlClient.SqlClient;
   return yield* sql.withTransaction(
     Effect.gen(function* () {
-      const tables =
-        yield* sql`SELECT name FROM sqlite_master WHERE name = 'effect_sql_migrations'`;
+      const tables = yield* sql`
+        SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+      `;
       if (tables.length === 0) return [];
-      const recorded = yield* sql<{ readonly migration_id: number; readonly name: string }>`
-      SELECT migration_id, name FROM effect_sql_migrations
-    `;
-      const legacy = migrationEntries.filter(([id]) => id >= 193 && id <= 199);
-      if (
-        !recorded.some((row) =>
-          legacy.some(([id, name]) => row.migration_id === id - 124 && row.name === name),
-        )
-      )
-        return [];
-      const translated = new Map<number, string>();
-      for (const row of recorded) {
-        const entry = legacy.find(
-          ([id, name]) => row.migration_id === id - 124 && row.name === name,
+      const rows = yield* sql<{ readonly migration_id: number; readonly name: string }>`
+        SELECT migration_id, name FROM effect_sql_migrations
+      `;
+      const recorded = rows.map((row) => ({ id: row.migration_id, name: row.name }));
+      const reconciled = reconciledFactoryHistory(recorded);
+      if (reconciled === null) {
+        return yield* new Migrator.MigrationError({
+          kind: "BadState",
+          message:
+            "Unrecognized or mixed legacy Factory migration history; refusing to rewrite it.",
+        });
+      }
+      // assertV2MigrationsCanRun reports a history that would still skip migrations, unchanged.
+      if (skippedV2Migrations(recorded, throughId).length > 0) return [];
+      for (const row of reconciled.legacy) {
+        yield* sql`UPDATE effect_sql_migrations SET migration_id = ${row.id + LEGACY_FACTORY_ID_OFFSET} WHERE migration_id = ${row.id} AND name = ${row.name}`;
+      }
+      const executed: Array<readonly [id: number, name: string]> = [];
+      for (const [index, [id, name, migration]] of reconciled.install.entries()) {
+        yield* Effect.log(DATABASE_MIGRATION_PROGRESS_MESSAGE).pipe(
+          Effect.annotateLogs({
+            migration: `${id}_${name}`,
+            progress: `${index + 1} of ${reconciled.install.length}`,
+          }),
         );
-        const id = entry?.[0] ?? row.migration_id;
-        if (
-          translated.has(id) ||
-          !migrationEntries.some(([expectedId, name]) => expectedId === id && name === row.name)
-        ) {
-          return yield* new Migrator.MigrationError({
-            kind: "BadState",
-            message:
-              "Unrecognized or mixed legacy Factory migration history; refusing to rewrite it.",
-          });
-        }
-        translated.set(id, row.name);
-      }
-      const latest = Math.max(...translated.keys());
-      for (const [id, name] of migrationEntries) {
-        if (id < FIRST_V2_MIGRATION_ID || id > latest || (id >= 69 && id <= 73)) continue;
-        if (translated.get(id) !== name) {
-          return yield* new Migrator.MigrationError({
-            kind: "BadState",
-            message: `Incomplete legacy Factory migration history: missing ${id}_${name}.`,
-          });
-        }
-      }
-      for (const [id, name] of legacy) {
-        yield* sql`UPDATE effect_sql_migrations SET migration_id = ${id} WHERE migration_id = ${id - 124} AND name = ${name}`;
-      }
-      const executed: Array<readonly [number, string]> = [];
-      for (const [id, name, migration] of migrationEntries) {
-        if (id < 69 || id > 73 || translated.has(id)) continue;
         yield* Effect.mapError(
           migration,
           (cause: unknown) =>
             new Migrator.MigrationError({
               kind: "Failed",
-              message: `Failed to install ${id}_${name} while upgrading legacy Factory history.`,
+              message: `Failed to install ${id}_${name} while upgrading Factory migration history.`,
               cause,
             }),
         );
@@ -313,6 +396,33 @@ const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(funct
   );
 });
 
+const latestMigrationId = Math.max(...migrationEntries.map(([id]) => id));
+
+// Mirrors the Migrator, which runs only ids above the highest recorded, plus the V2-preview and
+// Factory reconciliations.
+export const hasPendingMigrations = Effect.fn("hasPendingMigrations")(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const tables = yield* sql`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+  `;
+  if (tables.length === 0) return true;
+  const rows = yield* sql<{ readonly latestId: number | null; readonly previewRows: number }>`
+    SELECT
+      MAX(migration_id) AS latestId,
+      SUM(name = 'OrchestrationV2' AND migration_id IN (53, 54)) AS previewRows
+    FROM effect_sql_migrations
+  `;
+  const row = rows[0];
+  if ((row?.latestId ?? 0) < latestMigrationId || (row?.previewRows ?? 0) > 0) return true;
+  const recorded = yield* sql<{ readonly migration_id: number; readonly name: string }>`
+    SELECT migration_id, name FROM effect_sql_migrations
+  `;
+  const reconciled = reconciledFactoryHistory(
+    recorded.map((entry) => ({ id: entry.migration_id, name: entry.name })),
+  );
+  return reconciled === null || reconciled.legacy.length > 0 || reconciled.install.length > 0;
+});
+
 const run = Migrator.make({});
 
 export interface RunMigrationsOptions {
@@ -322,6 +432,8 @@ export interface RunMigrationsOptions {
 export const runMigrations = Effect.fn("runMigrations")(function* ({
   toMigrationInclusive,
 }: RunMigrationsOptions = {}) {
+  // The desktop waits past its readiness budget until the finished line follows this one.
+  if (yield* hasPendingMigrations()) yield* Effect.log(DATABASE_MIGRATIONS_STARTED_MESSAGE);
   const includesV2 =
     toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
   const previewMigrations = includesV2 ? yield* reconcileV2PreviewMigration() : [];
@@ -331,17 +443,43 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
   if (includesV2) {
     yield* assertV2MigrationsCanRun(toMigrationInclusive);
   }
-  const executedMigrations = [
+  const sql = yield* SqlClient.SqlClient;
+  const ledger = yield* sql`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+  `;
+  const [latest] =
+    ledger.length === 0
+      ? []
+      : yield* sql<{
+          readonly id: number | null;
+        }>`SELECT MAX(migration_id) AS id FROM effect_sql_migrations`;
+  const latestRecordedId = latest?.id ?? 0;
+  const pending = migrationEntries.filter(
+    ([id]) =>
+      id > latestRecordedId && (toMigrationInclusive === undefined || id <= toMigrationInclusive),
+  );
+  // One transaction per migration: an index build on a large database can take minutes, and a
+  // restart then resumes after the last finished migration instead of rolling all of them back.
+  const executedMigrations: Array<readonly [id: number, name: string]> = [
     ...previewMigrations,
     ...factoryMigrations,
-    ...(yield* run({ loader: makeMigrationLoader(toMigrationInclusive) })),
   ];
+  for (const [index, [id, name]] of pending.entries()) {
+    if (latestRecordedId > 0) {
+      yield* Effect.log(DATABASE_MIGRATION_PROGRESS_MESSAGE).pipe(
+        Effect.annotateLogs({
+          migration: `${id}_${name}`,
+          progress: `${index + 1} of ${pending.length}`,
+        }),
+      );
+    }
+    executedMigrations.push(...(yield* run({ loader: makeMigrationLoader(id) })));
+  }
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
   yield* migrations.length === 0
     ? Effect.logDebug("Database schema is current")
-    : Effect.log("Migrations ran successfully").pipe(Effect.annotateLogs({ migrations }));
+    : Effect.log(DATABASE_MIGRATIONS_FINISHED_MESSAGE).pipe(Effect.annotateLogs({ migrations }));
 
-  const sql = yield* SqlClient.SqlClient;
   const recorded = yield* sql<{
     readonly migration_id: number;
     readonly name: string;

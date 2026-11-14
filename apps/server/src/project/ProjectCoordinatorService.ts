@@ -15,7 +15,7 @@ import {
 } from "@t3tools/contracts";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -58,7 +58,7 @@ const make = Effect.gen(function* () {
   const threads = yield* Threads.ThreadManagementService;
   const launcher = yield* ThreadLaunch.ThreadLaunchService;
   const receipts = yield* Receipts.CommandReceiptStoreV2;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const locks = yield* KeyedLock.make<ProjectCoordinator["projectId"]>();
 
   const owner = Effect.fn("ProjectCoordinatorService.owner")(function* (
@@ -320,7 +320,7 @@ const make = Effect.gen(function* () {
           return yield* new ProjectCoordinatorError({ reason: "binding-changed" });
         }
         yield* assertModes(input);
-        const attempt = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+        const attempt = yield* random.uuidV4();
         const intent: Bindings.ProjectCoordinatorIntent = {
           projectId: input.projectId,
           workspaceRoot: project.workspaceRoot,

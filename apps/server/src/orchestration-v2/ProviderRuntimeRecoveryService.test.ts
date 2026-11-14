@@ -1,7 +1,13 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it, vi } from "@effect/vitest";
 import {
+  AuthSessionId,
+  AuthOrchestrationOperateScope,
+  CommandId,
+  EnvironmentId,
   MessageId,
   NodeId,
+  ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderSessionId,
@@ -12,12 +18,21 @@ import {
   RuntimeRequestId,
   ThreadId,
   TurnItemId,
+  type FactoryExecutionBinding,
+  type FactoryExecutionGrant,
+  type FactoryPlanSnapshot,
   type OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as SqlError from "effect/sql/SqlError";
 
 import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
+import * as AuthSessions from "../persistence/AuthSessions.ts";
+import * as FactoryExecutionStore from "../persistence/FactoryExecutionStore.ts";
+import * as Sqlite from "../persistence/Sqlite.ts";
 import * as EffectWorker from "./EffectWorker.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
@@ -26,6 +41,226 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderRuntimeRecovery from "./ProviderRuntimeRecoveryService.ts";
 import * as ServerSettings from "../serverSettings.ts";
+
+it.effect("preserves Factory shutdown settlement when a later thread rolls back", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const before = [ThreadId.make("before-1"), ThreadId.make("before-2")];
+    const managedThreadId = ThreadId.make("managed-shutdown");
+    const after = Array.from({ length: 33 }, (_, index) => ThreadId.make(`after-${index}`));
+    const threadIds = [...before, managedThreadId, ...after];
+    const binding: FactoryExecutionBinding = {
+      selection: {
+        ref: {
+          environmentId: EnvironmentId.make("local"),
+          projectId: ProjectId.make("shutdown-project"),
+          rootId: "shutdown-plan",
+        },
+        revision: 1,
+        taskId: "root",
+      },
+      grantVersion: 1,
+      taskVersion: 1,
+      commandId: CommandId.make("admit-shutdown"),
+      threadId: managedThreadId,
+      runId: RunId.make("shutdown-run"),
+      runAttemptId: RunAttemptId.make("shutdown-attempt"),
+      driver: ProviderDriverKind.make("codex"),
+      spec: {
+        taskId: "root",
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "luna" },
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        workspaceStrategy: { type: "root" },
+        setup: "deny",
+        output: { slot: "draft", kind: "sealed-draft" },
+      },
+      inputDigest: "a".repeat(64),
+      inputText: "Shutdown recovery",
+      prerequisites: [],
+      admittedAt: "2026-11-05T00:00:00.000Z",
+      stopRequested: false,
+      quiescent: false,
+    };
+    const { ref } = binding.selection;
+    const at = binding.admittedAt;
+    const plan: FactoryPlanSnapshot = {
+      ref,
+      revision: 1,
+      tasks: [
+        {
+          id: "root",
+          parentId: null,
+          title: "Shutdown",
+          context: "",
+          order: 0,
+          retired: false,
+        },
+      ],
+      edges: [],
+      workContexts: [],
+      editorThreadIds: [],
+      createdAt: at,
+      updatedAt: at,
+    };
+    const grant: FactoryExecutionGrant = {
+      ref,
+      revision: 1,
+      version: 1,
+      issuerSessionId: "shutdown-human",
+      issuedAt: at,
+      revokedAt: null,
+      policy: {
+        version: 1,
+        requesterThreadIds: [],
+        tasks: [binding.spec],
+        edges: [],
+        maxAttempts: 1,
+        maxRetriesPerTask: 0,
+        maxConcurrent: 1,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        requiredCapabilities: [],
+      },
+    };
+    yield* sql`INSERT INTO projection_projects(project_id,title,workspace_root,scripts_json,created_at,updated_at) VALUES (${ref.projectId},'Shutdown','/local','[]',${at},${at})`;
+    yield* sql`INSERT INTO factory_plan_heads(root_id,project_id,revision,snapshot_json,summary_json) VALUES (${ref.rootId},${ref.projectId},1,${JSON.stringify(plan)},'{}')`;
+    yield* sql`INSERT INTO factory_execution_grants(root_id,version,grant_json) VALUES (${ref.rootId},1,${JSON.stringify(grant)})`;
+    yield* sql`INSERT INTO factory_execution_bindings(attempt_id,run_id,thread_id,root_id,revision,task_id,grant_version,binding_json) VALUES (${binding.runAttemptId},${binding.runId},${binding.threadId},${ref.rootId},1,'root',1,${JSON.stringify(binding)})`;
+    yield* (yield* AuthSessions.AuthSessionRepository).create({
+      sessionId: AuthSessionId.make(grant.issuerSessionId),
+      subject: "human",
+      scopes: [AuthOrchestrationOperateScope],
+      method: "browser-session-cookie",
+      client: {
+        label: null,
+        ipAddress: null,
+        userAgent: null,
+        deviceType: "unknown",
+        os: null,
+        browser: null,
+      },
+      issuedAt: DateTime.makeUnsafe(at),
+      expiresAt: DateTime.makeUnsafe(grant.policy.expiresAt),
+    });
+    const lifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
+    yield* lifecycle.runPhase({ ...binding, phase: "session" }, Effect.void);
+    const store = yield* FactoryExecutionStore.FactoryExecutionStore;
+    assert.deepEqual(
+      yield* sql`SELECT observation FROM factory_execution_phases WHERE attempt_id = ${binding.runAttemptId}`,
+      [{ observation: "claimed" }],
+    );
+    let failProjection = true;
+    const visited: ThreadId[] = [];
+    const batches: ThreadId[][] = [];
+    let currentBatch: ThreadId[] | undefined;
+    const failure = new ProjectionStore.ProjectionStoreReadError({
+      threadId: ThreadId.make("after-1"),
+      cause: new Error("later shutdown projection failed"),
+    });
+    const recovery = yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService.pipe(
+      Effect.provide(
+        ProviderRuntimeRecovery.layer.pipe(
+          Layer.provide(ServerSettings.layerTest()),
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(FactoryExecutionLifecycle.FactoryExecutionLifecycle, lifecycle),
+              Layer.mock(ProjectionStore.ProjectionStoreV2)({
+                getRecoveryThreadIds: () => Effect.succeed(threadIds),
+                getRuntimeRecoveryProjection: (threadId) =>
+                  Effect.gen(function* () {
+                    visited.push(threadId);
+                    currentBatch?.push(threadId);
+                    if (failProjection && threadId === after[1]) return yield* failure;
+                    return {
+                      thread: { id: threadId },
+                      runtimeRequests: [],
+                      providerSessions: [],
+                      providerThreads: [],
+                      runs: [],
+                      attempts: [],
+                      providerTurns: [],
+                      messages: [],
+                      turnItems: [],
+                      subagents: [],
+                      nodes: [],
+                    } as unknown as OrchestrationV2ThreadProjection;
+                  }),
+              }),
+              Layer.mock(EventSink.EventSinkV2)({
+                withProviderBatch: (effect) =>
+                  Effect.gen(function* () {
+                    currentBatch = [];
+                    batches.push(currentBatch);
+                    return yield* sql.withTransaction(effect).pipe(
+                      Effect.mapError((cause) =>
+                        SqlError.isSqlError(cause)
+                          ? new EventSink.EventSinkWriteError({ eventCount: 0, cause })
+                          : cause,
+                      ),
+                      Effect.ensuring(
+                        Effect.sync(() => {
+                          currentBatch = undefined;
+                        }),
+                      ),
+                    );
+                  }),
+              }),
+              IdAllocator.layer,
+              Layer.mock(EffectOutbox.EffectOutboxV2)({
+                cancelUnsettled: () => Effect.succeed([]),
+                reconcileAfterProcessLoss: Effect.succeed({ requeued: 0, cancelled: 0 }),
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+    const error = yield* recovery.reconcile("shutdown").pipe(Effect.flip);
+    assert.equal(error.operation, "read-projections");
+    assert.equal(error.threadId, after[1]);
+    assert.strictEqual(error.cause, failure);
+    assert.deepEqual(visited, [...before, managedThreadId, ...after.slice(0, 2)]);
+    assert.deepEqual(
+      {
+        stopRequested: (yield* store.getBinding(binding.runAttemptId)).stopRequested,
+        phases:
+          yield* sql`SELECT phase, observation FROM factory_execution_phases WHERE attempt_id = ${binding.runAttemptId}`,
+      },
+      { stopRequested: true, phases: [{ phase: "session", observation: "quiescent" }] },
+    );
+    assert.deepEqual(batches, [before, after.slice(0, 2)]);
+    failProjection = false;
+    visited.length = 0;
+    batches.length = 0;
+    yield* recovery.reconcile("shutdown");
+    assert.deepEqual(visited, threadIds);
+    assert.deepEqual(batches, [before, after.slice(0, 32), after.slice(32)]);
+    assert.isTrue(yield* lifecycle.complete(binding));
+    assert.isTrue((yield* store.getBinding(binding.runAttemptId)).quiescent);
+  }).pipe(
+    Effect.provide(
+      Layer.mergeAll(
+        FactoryExecutionLifecycle.layer.pipe(
+          Layer.provide(NodeCrypto.layer),
+          Layer.provide(
+            Layer.succeed(FactoryExecutionLifecycle.FactoryOwnedProcessFactory, {
+              make: () =>
+                Effect.succeed({
+                  awaitRootExits: Effect.void,
+                  spawner: { spawn: () => Effect.die("Recovery must not spawn a process") },
+                  quiesce: () => Effect.succeed(true),
+                }),
+            }),
+          ),
+        ),
+        AuthSessions.layer,
+      ).pipe(
+        Layer.provideMerge(FactoryExecutionStore.layer),
+        Layer.provideMerge(Sqlite.layerMemory),
+      ),
+    ),
+  ),
+);
 
 it.effect(
   "terminalizes the orphaned run of a quiescent managed binding after factory recovery",

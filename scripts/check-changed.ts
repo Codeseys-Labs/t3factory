@@ -191,8 +191,10 @@ const CODE = /\.(?:[cm]?[jt]sx?|astro)$/;
 const TEST = /\.test\.[cm]?[jt]sx?$/;
 // CI runs the .github/scripts tests with `node --test`; vitest passes a failing node:test file.
 const NODE_TEST = /^\.github[/\\]scripts[/\\]/;
+// Beside-file tests are joined with the host separator; on Windows the same file would
+// otherwise appear in both spellings and run twice when the list splits into commands.
 export const splitTests = (tests: Iterable<string>) => {
-  const all = [...tests];
+  const all = [...new Set([...tests].map((file) => file.replaceAll("\\", "/")))];
   return {
     vitestTests: all.filter((file) => !NODE_TEST.test(file)),
     nodeTests: all.filter((file) => NODE_TEST.test(file)),

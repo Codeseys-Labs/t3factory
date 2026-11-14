@@ -914,19 +914,20 @@ const makeService = Effect.gen(function* () {
         );
         const { repository } = destination;
         const issue = input.publish.closes;
-        const issuePath =
-          issue !== null &&
-          issue.provider === repository.provider &&
-          (repository.provider === "github" || repository.provider === "gitlab") &&
-          issue.canonicalKey.toLowerCase().startsWith(`${repository.host.toLowerCase()}/`)
-            ? issue.canonicalKey.slice(repository.host.length + 1)
-            : null;
+        // Canonical keys are `hostname/path`; `repository.host` can also carry an HTTPS port.
+        const hostPrefix = repository.canonicalKey.slice(
+          0,
+          repository.canonicalKey.indexOf("/") + 1,
+        );
         const closing =
-          issue === null || issuePath === null
+          issue === null ||
+          issue.provider !== repository.provider ||
+          (repository.provider !== "github" && repository.provider !== "gitlab") ||
+          !issue.canonicalKey.toLowerCase().startsWith(hostPrefix.toLowerCase())
             ? null
             : issue.canonicalKey.toLowerCase() === repository.canonicalKey.toLowerCase()
               ? `Closes #${issue.number}`
-              : `Closes ${issuePath}#${issue.number}`;
+              : `Closes ${issue.canonicalKey.slice(hostPrefix.length)}#${issue.number}`;
         const payload: FactoryDeliveryPublishPayload = {
           title: input.publish.title,
           body: closing === null ? input.publish.body : `${closing}\n\n${input.publish.body}`,

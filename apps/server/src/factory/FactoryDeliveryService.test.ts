@@ -399,7 +399,11 @@ const harness = (
         }),
       resolveRemote: () =>
         Effect.succeed({
-          canonicalKey: state.origin.replace("https://", "").replace(/\.git$/, ""),
+          // Like the real resolver, the canonical key keeps the hostname but not an HTTPS port.
+          canonicalKey: state.origin
+            .replace("https://", "")
+            .replace(/:\d+\//, "/")
+            .replace(/\.git$/, ""),
           provider: SourceControlProviderKind.make("github"),
           locator: { source: "git-remote", remoteName: "origin", remoteUrl: state.origin },
         }),
@@ -1646,19 +1650,27 @@ it.effect.each([
     canonicalKey: "github.com/owner/tracker",
     body: "Closes owner/tracker#7",
   },
+  // The canonical key names the host without the port its HTTPS origin uses.
+  {
+    name: "behind an HTTPS port",
+    origin: "https://github.example.com:8443/owner/repo.git",
+    canonicalKey: "github.example.com/owner/repo",
+    body: "Closes #7",
+  },
   // `owner/repo#7` here would name an issue on the pull request's host, not this one.
   { name: "on another host", canonicalKey: "github.example.com/owner/repo", body: null },
-])("a task publication closes the issue it came from $name", ({ canonicalKey, body }) => {
-  const { layer } = harness();
+])("a task publication closes the issue it came from $name", (row) => {
+  const { state, layer } = harness();
+  if (row.origin !== undefined) state.origin = row.origin;
   return Effect.gen(function* () {
     const publish = yield* grantTaskResult("publish-pr", "publish", Effect.void, taskBranch, {
       provider: "github",
-      canonicalKey,
+      canonicalKey: row.canonicalKey,
       number: 7,
     });
     assert.equal(
       "body" in publish.payload ? publish.payload.body : null,
-      body === null ? "Task T-36" : `${body}\n\nTask T-36`,
+      row.body === null ? "Task T-36" : `${row.body}\n\nTask T-36`,
     );
   }).pipe(Effect.provide(layer));
 });

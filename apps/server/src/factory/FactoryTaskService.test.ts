@@ -119,9 +119,11 @@ const git = Layer.mock(Processes.ProcessRunner)({
       stdout:
         input.args[0] === "rev-parse"
           ? `${projectHead}\n`
-          : input.args[4] === input.args[5]
-            ? ""
-            : "180\t20\tsrc/board.ts\u00004\t0\tsrc/card.ts\u0000",
+          : input.args[0] === "log"
+            ? "fix(board): cards keep their width\n"
+            : input.args[4] === input.args[5]
+              ? ""
+              : "180\t20\tsrc/board.ts\u00004\t0\tsrc/card.ts\u0000",
       stderr: "",
       code: ChildProcessSpawner.ExitCode(0),
       timedOut: false,
@@ -156,6 +158,7 @@ class DeliveryProbe extends Context.Service<
   {
     readonly grants: Array<string>;
     readonly baseRefs: Array<string | null>;
+    readonly closes: Array<Delivery.FactoryCommitGrant["publish"]["closes"]>;
     readonly checks: Array<string>;
     found: Omit<DeliveryStore.FactoryDeliverySettlement, "updatedAt">;
   }
@@ -177,6 +180,8 @@ const deliveries = Layer.effect(
         Effect.gen(function* () {
           probe.grants.push(input.kind);
           probe.baseRefs.push(input.baseRef);
+          const { closes, ...publish } = input.publish;
+          if (input.kind === "publish-pr") probe.closes.push(closes);
           if (
             input.kind === "merge-pr" &&
             Option.getOrUndefined(yield* store.getLive(input.originKey, "publish-pr"))?.status !==
@@ -204,7 +209,7 @@ const deliveries = Layer.effect(
               headSha: input.headSha,
               payload:
                 input.kind === "publish-pr"
-                  ? { ...input.publish, draft: false }
+                  ? { ...publish, draft: false }
                   : { mergeMethod: "merge" },
               payloadDigest: "d".repeat(64),
               grantedBy: environmentId,
@@ -240,6 +245,7 @@ const deliveries = Layer.effect(
         Effect.sync(() => ({
           grants: [],
           baseRefs: [],
+          closes: [],
           checks: [],
           found: { status: "unknown" as const, failure: null },
         })),
@@ -1679,7 +1685,7 @@ it.effect(
   () =>
     scenario(
       Effect.gen(function* () {
-        const { sql, tasks, create, start, finish, until } = yield* harness;
+        const { sql, tasks, start, finish, until } = yield* harness;
         const store = yield* DeliveryStore.FactoryDeliveryStore;
         const probe = yield* DeliveryProbe;
         const reason = <A>(effect: Effect.Effect<A, FactoryTaskError>) =>
@@ -1687,7 +1693,26 @@ it.effect(
             Effect.flip,
             Effect.map((error) => error.reason),
           );
-        const task = yield* create("Audio ring demo", { lane: "ready" });
+        const task = (yield* tasks.create(
+          {
+            commandId: command("create-from-issue"),
+            projectId,
+            title: "Audio ring demo",
+            description: "Operator note: the demo laptop is mine, do not mention it.",
+            lane: "ready",
+          },
+          human,
+          {
+            source: {
+              kind: "issue",
+              label: "GitHub #7",
+              url: "https://github.com/owner/repo/issues/7",
+              key: "github:github.com/owner/repo#7",
+              workRef: null,
+            },
+            ruleName: null,
+          },
+        )).task;
         const deliver = (
           kind: "publish" | "merge",
           name: string,
@@ -1700,7 +1725,11 @@ it.effect(
           }>`SELECT id FROM factory_delivery_intents WHERE request_command_id = ${`factory-task:${name.startsWith("merge") ? "merge-pr" : "publish-pr"}:${name}`}`.pipe(
             Effect.map((rows) => rows[0]!.id),
           );
-        yield* finish((yield* start(task)).run!, "sealed");
+        yield* finish(
+          (yield* start(task)).run!,
+          "sealed",
+          "The ring now wraps at its capacity.\n\n`vp test run ring.test.ts` passes 4 of 4.",
+        );
         yield* until(task, (current) => current.status === "in-review");
 
         // Accepting is not publishing: nothing goes out before it, and only a person sends it.
@@ -1719,12 +1748,21 @@ it.effect(
         assert.isTrue((yield* deliver("publish", "publish")).replayed);
         assert.equal(yield* reason(deliver("publish", "publish-again")), "delivery-active");
         assert.deepEqual(probe.grants, ["merge-pr", "publish-pr", "publish-pr"]);
+        // Delivery words the closing reference against the repository it publishes to.
+        assert.deepEqual(probe.closes[0], {
+          provider: "github",
+          canonicalKey: "github.com/owner/repo",
+          number: 7,
+        });
         const publishId = yield* intentOf("publish");
         assert.deepEqual(
-          yield* sql`SELECT json_extract(payload_json, '$.headBranch') AS branch, head_sha AS head FROM factory_delivery_intents WHERE id = ${publishId}`,
+          yield* sql`SELECT json_extract(payload_json, '$.headBranch') AS branch, json_extract(payload_json, '$.title') AS title, json_extract(payload_json, '$.body') AS body, head_sha AS head FROM factory_delivery_intents WHERE id = ${publishId}`,
           [
             {
               branch: `t3/T-1-rev1-${executionDigest([environmentId, projectId, task.ref.rootId, task.ref.taskId]).slice(0, 32)}/audio-ring-demo`,
+              // The result's one commit names the pull request; its report, not the brief, is the body.
+              title: "fix(board): cards keep their width",
+              body: "The ring now wraps at its capacity.\n\n`vp test run ring.test.ts` passes 4 of 4.\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_",
               head: resultCommit,
             },
           ],

@@ -1,6 +1,7 @@
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
 /**
@@ -14,12 +15,19 @@ export const separateT3CodeHome = Effect.fn("t3CodeHome.separateT3CodeHome")(fun
   const path = yield* Path.Path;
   const platform = yield* HostProcess.Platform;
   const home = path.join(yield* HostProcess.HomeDirectory, ".t3");
-  // The real path settles symlinks and, on case-insensitive volumes, spelling. A folder that does
-  // not exist yet keeps its given path: it cannot be the folder this server already runs in.
+  // The volume and file id settle symlinks and, on case-insensitive volumes, spelling: Node's
+  // realpath answers with the spelling it was asked. A folder that does not exist yet has no id
+  // and keeps its path: it cannot be the folder this server already runs in.
   const [homeKey, baseKey] = yield* Effect.forEach([home, baseDir], (directory) =>
-    fs.realPath(directory).pipe(
-      Effect.orElseSucceed(() => path.resolve(directory)),
-      Effect.map((real) => (platform === "win32" ? real.toLowerCase() : real)),
+    fs.stat(directory).pipe(
+      Effect.map((info) => Option.map(info.ino, (ino) => `id:${info.dev}:${ino}`)),
+      Effect.orElseSucceed(() => Option.none<string>()),
+      Effect.map(
+        Option.getOrElse(() => {
+          const resolved = path.resolve(directory);
+          return platform === "win32" ? resolved.toLowerCase() : resolved;
+        }),
+      ),
     ),
   );
   return homeKey === baseKey ? null : home;

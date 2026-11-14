@@ -208,7 +208,8 @@ doesn't yet:
 
 - **Projects** whose folders still exist. A project you removed in T3 Factory stays removed.
 - **Settings**: provider setups (with their saved keys), default models and modes, branch and
-  pull request preferences, and each imported project's own settings.
+  pull request preferences, and each imported project's own settings, such as its scripts and
+  default model.
 
 Import only adds what is missing. It never changes or removes anything T3 Factory already
 has, so you can run it again whenever you add something in T3 Code. T3 Code threads stay in

@@ -12,6 +12,7 @@ import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
+  AuthProvidersManageScope,
   AuthSettingsWriteScope,
   AuthSourceControlWriteScope,
   CommandId,
@@ -144,6 +145,41 @@ describe("command permissions", () => {
         yield* check.authorize(registry, env);
       }),
     ),
+  );
+
+  it.effect(
+    "reviews a T3 Code import with the settings grant, and runs it only with the provider and project grants too",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registry = yield* setup;
+          const review = createCommandPermissions(runtime, WS_METHODS.serverPreviewT3CodeImport);
+          const run = createCommandPermissions(runtime, WS_METHODS.serverImportFromT3Code);
+          const allowed = () => [
+            registry.get(review.permissionAtom(env)),
+            registry.get(run.permissionAtom(env)),
+          ];
+          const hold = (scopes: NonNullable<AuthSessionState["permissions"]>) =>
+            registry.set(
+              sessions(env),
+              AsyncResult.success({ ...grant(false), scopes, permissions: scopes }),
+            );
+          hold([AuthProvidersManageScope, AuthOrchestrationOperateScope]);
+          expect(allowed()).toEqual([false, false]);
+          expect((yield* review.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+            "EnvironmentAuthorizationError",
+          );
+          hold([AuthSettingsWriteScope]);
+          expect(allowed()).toEqual([true, false]);
+          yield* review.authorize(registry, env);
+          expect((yield* run.authorize(registry, env).pipe(Effect.flip))._tag).toBe(
+            "EnvironmentAuthorizationError",
+          );
+          hold([AuthSettingsWriteScope, AuthProvidersManageScope, AuthOrchestrationOperateScope]);
+          expect(allowed()).toEqual([true, true]);
+          yield* run.authorize(registry, env);
+        }),
+      ),
   );
 
   it.effect.each([

@@ -1,9 +1,9 @@
 import {
   CommandId,
   DEFAULT_SERVER_SETTINGS,
-  ModelSelection,
+  globalIdleCompaction,
   ProjectId,
-  ProjectScript,
+  ProjectSettingsOverrides,
   ServerSettingsPatch,
   T3CodeImportError,
   type ProviderInstanceConfig,
@@ -14,6 +14,7 @@ import {
   type T3CodeImportProject,
   type T3CodeImportResult,
   type T3CodeImportSetting,
+  withIdleCompaction,
 } from "@t3tools/contracts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
@@ -90,13 +91,10 @@ const SCALAR_SETTINGS = [
   "addProjectBaseDirectory",
 ] as const satisfies ReadonlyArray<keyof ServerSettings & keyof ServerSettingsPatch>;
 
-// Keyed by T3 Code's project id; they follow their project to the id it has here.
-const PROJECT_SETTINGS = {
-  projectSettingsOverrides: "Project settings",
-  projectScriptOverrides: "Project scripts",
-  projectAutoPullOverrides: "Auto-pull",
-  projectAgentBrowserAccessOverrides: "Agent browser access",
-} as const satisfies Partial<Record<keyof ServerSettings & keyof ServerSettingsPatch, string>>;
+// A project's own settings follow the same list, so cleanup rules stay behind there too.
+const PROJECT_SETTINGS = new Set<string>(
+  SCALAR_SETTINGS.filter((key) => key in ProjectSettingsOverrides.fields),
+);
 
 const PLAIN_MAP_SETTINGS = {
   usagePriceOverrides: "Price override",
@@ -142,12 +140,7 @@ const singleSecretSetting = (
 const RawSettings = fromLenientJson(Schema.Record(Schema.String, Schema.Unknown));
 const decodeRawSettings = Schema.decodeUnknownExit(RawSettings);
 const decodePatch = Schema.decodeUnknownExit(ServerSettingsPatch);
-const decodeScripts = Schema.decodeUnknownOption(
-  Schema.fromJsonString(Schema.Array(ProjectScript)),
-);
-const decodeModelSelection = Schema.decodeUnknownOption(
-  Schema.fromJsonString(Schema.NullOr(ModelSelection)),
-);
+const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
 const ProjectRow = Schema.Struct({
   projectId: ProjectId,
   title: Schema.String,
@@ -168,19 +161,53 @@ const canonical = (value: unknown): string =>
       : inner,
   ) ?? "undefined";
 
+/** As the settings service reports them: the idle compaction mode has no stored default. */
+const effective = (settings: ServerSettings): ServerSettings =>
+  withIdleCompaction(settings, globalIdleCompaction(settings));
+const DEFAULTS = effective(DEFAULT_SERVER_SETTINGS);
+
+/**
+ * T3 Code's settings for one project, from wherever its version keeps them. Before it folds
+ * them into its settings file they sit on the project row and in three older maps; afterwards
+ * those are stale copies, and reading them would bring back what the user reset.
+ */
+const sourceProjectSettings = (
+  source: Readonly<Record<string, unknown>>,
+  row: typeof ProjectRow.Type,
+): Readonly<Record<string, unknown>> => {
+  const own = (key: string) => Option.getOrUndefined(decodeEntries(source[key]))?.[row.projectId];
+  const legacy: Record<string, unknown> = {};
+  if (source.projectSettingsFolded !== true) {
+    const model = Option.getOrNull(decodeJson(row.defaultModelSelection ?? "null"));
+    if (model !== null) legacy.defaultModelSelection = model;
+    // A null script override reset the project to the machine's scripts.
+    const override = own("projectScriptOverrides");
+    const onRow = Option.getOrNull(decodeJson(row.scripts ?? "[]"));
+    const scripts =
+      override === undefined ? (Array.isArray(onRow) && onRow.length > 0 ? onRow : null) : override;
+    if (scripts !== null) legacy.defaultProjectScripts = scripts;
+    const autoPull = own("projectAutoPullOverrides");
+    if (autoPull !== undefined) legacy.defaultAutoPull = autoPull;
+    const browserAccess = own("projectAgentBrowserAccessOverrides");
+    if (browserAccess !== undefined) legacy.enableAgentBrowserAccess = browserAccess;
+  }
+  const stored = Option.getOrElse(decodeEntries(own("projectSettingsOverrides")), () => ({}));
+  return Object.fromEntries(
+    Object.entries({ ...legacy, ...stored }).filter(([key]) => PROJECT_SETTINGS.has(key)),
+  );
+};
+
 const humanize = (key: string) => {
   const words = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
-interface PlannedProject {
-  readonly entry: T3CodeImportProject;
-  readonly scripts: ReadonlyArray<ProjectScript> | undefined;
-  readonly defaultModelSelection: ModelSelection | null | undefined;
-}
-
 type SettingWrite =
-  | { readonly kind: "patch"; readonly patch: ServerSettingsPatch }
+  | {
+      readonly kind: "patch";
+      /** Asked under the settings lock: null once this install has a value of its own. */
+      readonly patch: (stored: ServerSettings) => ServerSettingsPatch | null;
+    }
   | {
       readonly kind: "provider";
       readonly instanceId: ProviderInstanceId;
@@ -198,7 +225,7 @@ type Plan =
       readonly status: "available";
       readonly source: string;
       readonly projectsReadable: boolean;
-      readonly projects: ReadonlyArray<PlannedProject>;
+      readonly projects: ReadonlyArray<T3CodeImportProject>;
       readonly settings: ReadonlyArray<PlannedSetting>;
     };
 
@@ -294,7 +321,7 @@ const make = Effect.gen(function* () {
       const relative = path.relative(sourceHome, root);
       return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
     };
-    const planned: PlannedProject[] = [];
+    const planned: T3CodeImportProject[] = [];
     for (const row of rows) {
       // Scratch projects and other folders T3 Code manages itself stay with T3 Code.
       if (inside(row.workspaceRoot)) continue;
@@ -318,20 +345,11 @@ const make = Effect.gen(function* () {
               ))
             ? "new"
             : "missing-folder";
-      const scripts = row.scripts === null ? Option.none() : decodeScripts(row.scripts);
-      const model =
-        row.defaultModelSelection === null
-          ? Option.none()
-          : decodeModelSelection(row.defaultModelSelection);
       planned.push({
-        entry: {
-          projectId: Option.isSome(atRoot) ? atRoot.value.id : row.projectId,
-          title: row.title,
-          workspaceRoot: row.workspaceRoot,
-          status,
-        },
-        scripts: Option.getOrUndefined(scripts),
-        defaultModelSelection: Option.getOrUndefined(model),
+        projectId: Option.isSome(atRoot) ? atRoot.value.id : row.projectId,
+        title: row.title,
+        workspaceRoot: row.workspaceRoot,
+        status,
       });
     }
     return planned;
@@ -341,7 +359,7 @@ const make = Effect.gen(function* () {
     secretsDir: string,
     raw: Option.Option<Readonly<Record<string, unknown>>>,
     sourceProjects: ReadonlyArray<typeof ProjectRow.Type>,
-    planned: ReadonlyArray<PlannedProject>,
+    planned: ReadonlyArray<T3CodeImportProject>,
   ) {
     if (Option.isNone(raw))
       return [
@@ -367,32 +385,32 @@ const make = Effect.gen(function* () {
       readonly setting: keyof ServerSettings & keyof ServerSettingsPatch;
       readonly value: unknown;
       /** This install already chose its own value, so T3 Code's is not wanted. */
-      readonly ownValue: boolean;
+      readonly ownValue: (here: ServerSettings) => boolean;
     }) => {
-      const patch = decodePatch({ [item.setting]: item.value });
-      // A value equal to the one already here is not new, or every import would "add" it again.
-      const changes =
-        Exit.isSuccess(patch) &&
-        canonical(applyServerSettingsPatch(current, patch.value)[item.setting]) !==
-          canonical(current[item.setting]);
+      const decoded = decodePatch({ [item.setting]: item.value });
+      // Null also when the value here is already this one, or every import would "add" it again.
+      const missing = (stored: ServerSettings) => {
+        const here = effective(stored);
+        if (Exit.isFailure(decoded) || item.ownValue(here)) return null;
+        const next = applyServerSettingsPatch(here, decoded.value);
+        return canonical(next[item.setting]) === canonical(here[item.setting])
+          ? null
+          : decoded.value;
+      };
       result.push({
         entry: {
           key: item.key,
           label: item.label,
-          status: item.ownValue
-            ? "present"
-            : Exit.isFailure(patch)
-              ? "unreadable"
-              : changes
-                ? "new"
+          status:
+            missing(current) !== null
+              ? "new"
+              : Exit.isFailure(decoded) && !item.ownValue(effective(current))
+                ? "unreadable"
                 : "present",
           secrets: 0,
           missingSecrets: 0,
         },
-        write:
-          !item.ownValue && Exit.isSuccess(patch) && changes
-            ? { kind: "patch", patch: patch.value }
-            : null,
+        write: { kind: "patch", patch: missing },
       });
     };
 
@@ -403,36 +421,25 @@ const make = Effect.gen(function* () {
         label: humanize(key),
         setting: key,
         value: source[key],
-        ownValue: canonical(current[key]) !== canonical(DEFAULT_SERVER_SETTINGS[key]),
+        ownValue: (here) => canonical(here[key]) !== canonical(DEFAULTS[key]),
       });
     }
 
-    // T3 Code's project ids map to the project that holds the same folder here.
-    const targetIds = new Map<string, ProjectId>();
-    for (const project of planned) {
-      if (project.entry.status !== "present" && project.entry.status !== "new") continue;
-      const sourceRow = sourceProjects.find(
-        (row) => row.workspaceRoot === project.entry.workspaceRoot,
-      );
-      if (sourceRow !== undefined) targetIds.set(sourceRow.projectId, project.entry.projectId);
-    }
-    for (const [key, label] of Object.entries(PROJECT_SETTINGS) as Array<
-      [keyof typeof PROJECT_SETTINGS, string]
-    >) {
-      const entries = decodeEntries(source[key]);
-      if (Option.isNone(entries)) continue;
-      for (const [sourceId, value] of Object.entries(entries.value)) {
-        const targetId = targetIds.get(sourceId);
-        const project = planned.find((entry) => entry.entry.projectId === targetId);
-        if (targetId === undefined || project === undefined) continue;
-        plain({
-          key: `${key}/${targetId}`,
-          label: `${label}: ${project.entry.title}`,
-          setting: key,
-          value: { [targetId]: value },
-          ownValue: Object.hasOwn(current[key], targetId),
-        });
-      }
+    for (const row of sourceProjects) {
+      // T3 Code's project ids map to the project that holds the same folder here.
+      const target = planned.find((project) => project.workspaceRoot === row.workspaceRoot);
+      if (target === undefined || (target.status !== "present" && target.status !== "new"))
+        continue;
+      const value = sourceProjectSettings(source, row);
+      if (Object.keys(value).length === 0) continue;
+      const targetId = target.projectId;
+      plain({
+        key: `projectSettingsOverrides/${targetId}`,
+        label: `Project settings: ${target.title}`,
+        setting: "projectSettingsOverrides",
+        value: { [targetId]: value },
+        ownValue: (here) => Object.hasOwn(here.projectSettingsOverrides, targetId),
+      });
     }
 
     for (const [key, label] of Object.entries(PLAIN_MAP_SETTINGS) as Array<
@@ -446,7 +453,7 @@ const make = Effect.gen(function* () {
           label: `${label}: ${id}`,
           setting: key,
           value: { [id]: value },
-          ownValue: Object.hasOwn(current[key], id),
+          ownValue: (here) => Object.hasOwn(here[key], id),
         });
     }
 
@@ -457,10 +464,12 @@ const make = Effect.gen(function* () {
       if (Option.isNone(entries)) continue;
       for (const [id, value] of Object.entries(entries.value)) {
         const item = { key: `${key}/${id}`, label: `${label}: ${id}` };
-        const ownValue = Object.hasOwn(current[key], id);
+        const ownValue = (here: ServerSettings) => Object.hasOwn(here[key], id);
         const decoded = decodePatch({ [key]: { [id]: value } });
         const single =
-          Exit.isFailure(decoded) || ownValue ? null : singleSecretSetting(key, decoded.value);
+          Exit.isFailure(decoded) || ownValue(current)
+            ? null
+            : singleSecretSetting(key, decoded.value);
         if (single === null) {
           plain({ ...item, setting: key, value: { [id]: value }, ownValue });
           continue;
@@ -481,7 +490,13 @@ const make = Effect.gen(function* () {
           missingSecrets: secrets.missingSecrets,
         };
         if (key !== "providerInstances") {
-          result.push({ entry, write: { kind: "patch", patch: { [key]: resolved[key] } } });
+          result.push({
+            entry,
+            write: {
+              kind: "patch",
+              patch: (stored) => (ownValue(stored) ? null : { [key]: resolved[key] }),
+            },
+          });
           continue;
         }
         const instanceId = decodeInstanceId(id);
@@ -540,12 +555,32 @@ const make = Effect.gen(function* () {
             status: "available",
             source: planned.source,
             projectsReadable: planned.projectsReadable,
-            projects: planned.projects.map((project) => project.entry),
+            projects: planned.projects,
             settings: planned.settings.map((setting) => setting.entry),
           },
     ),
     Effect.withSpan("T3CodeImport.preview"),
   );
+
+  /** False when this install got its own value after the plan; nothing was changed then. */
+  const writeSetting = Effect.fn("T3CodeImport.writeSetting")(function* (write: SettingWrite) {
+    if (write.kind === "provider") {
+      // Fails rather than replaces when the instance exists by now.
+      yield* settingsService.updateProviderInstance({
+        operation: "create",
+        instanceId: write.instanceId,
+        instance: write.instance,
+      });
+      return true;
+    }
+    let added = false;
+    yield* settingsService.updateSettingsWith((stored) => {
+      const patch = write.patch(stored);
+      added = patch !== null;
+      return patch ?? {};
+    });
+    return added;
+  });
 
   const apply: T3CodeImport["Service"]["apply"] = Effect.fn("T3CodeImport.apply")(
     function* (input) {
@@ -556,25 +591,20 @@ const make = Effect.gen(function* () {
       if (input.projects) {
         const planned = yield* plan({ settings: false });
         for (const project of planned.status === "available" ? planned.projects : []) {
-          if (project.entry.status !== "new") continue;
+          if (project.status !== "new") continue;
           const created = yield* crypto.randomUUIDv4().pipe(
             Effect.flatMap((uuid) =>
               projects.create({
                 commandId: CommandId.make(`t3code-import:${uuid}`),
-                projectId: project.entry.projectId,
-                title: project.entry.title,
-                workspaceRoot: project.entry.workspaceRoot,
-                ...(project.scripts === undefined ? {} : { scripts: project.scripts }),
-                ...(project.defaultModelSelection === undefined
-                  ? {}
-                  : { defaultModelSelection: project.defaultModelSelection }),
+                projectId: project.projectId,
+                title: project.title,
+                workspaceRoot: project.workspaceRoot,
               }),
             ),
             Effect.result,
           );
           if (Result.isSuccess(created)) projectsAdded += 1;
-          else
-            failed.push({ key: `project/${project.entry.projectId}`, label: project.entry.title });
+          else failed.push({ key: `project/${project.projectId}`, label: project.title });
         }
       }
       if (input.settings) {
@@ -582,20 +612,13 @@ const make = Effect.gen(function* () {
         const planned = yield* plan({ settings: true });
         for (const setting of planned.status === "available" ? planned.settings : []) {
           if (setting.write === null || setting.entry.status !== "new") continue;
-          const { write } = setting;
-          const written = yield* (
-            write.kind === "provider"
-              ? settingsService.updateProviderInstance({
-                  operation: "create",
-                  instanceId: write.instanceId,
-                  instance: write.instance,
-                })
-              : settingsService.updateSettings(write.patch)
-          ).pipe(Effect.result);
-          if (Result.isSuccess(written)) {
+          const written = yield* Effect.result(writeSetting(setting.write));
+          if (Result.isFailure(written))
+            failed.push({ key: setting.entry.key, label: setting.entry.label });
+          else if (written.success) {
             settingsAdded += 1;
             secretsCopied += setting.entry.secrets;
-          } else failed.push({ key: setting.entry.key, label: setting.entry.label });
+          }
         }
       }
       return { projectsAdded, settingsAdded, secretsCopied, failed };

@@ -203,6 +203,11 @@ export class ServerSettingsService extends Context.Service<
       patch: ServerSettingsPatch,
     ) => Effect.Effect<ServerSettings, ServerSettingsError>;
 
+    /** Like `updateSettings`, with the patch decided from the stored settings under the write lock. */
+    readonly updateSettingsWith: (
+      patch: (current: ServerSettings) => ServerSettingsPatch,
+    ) => Effect.Effect<ServerSettings, ServerSettingsError>;
+
     readonly updateProviderInstance: (
       mutation: ProviderInstanceMutation,
       patch?: ServerSettingsPatch,
@@ -259,6 +264,10 @@ const makeTest = Effect.fn("serverSettings.makeTest")(function* (
     updateSettings: (patch) =>
       updateTestSettings((currentSettings) =>
         Effect.succeed(applyServerSettingsPatch(currentSettings, patch)),
+      ),
+    updateSettingsWith: (patch) =>
+      updateTestSettings((currentSettings) =>
+        Effect.succeed(applyServerSettingsPatch(currentSettings, patch(currentSettings))),
       ),
     updateProviderInstance: (mutation, patch = {}) =>
       updateTestSettings((currentSettings) =>
@@ -1198,6 +1207,10 @@ const make = Effect.gen(function* () {
     updateSettings: (patch) =>
       updateAndPersistSettings((current) =>
         Effect.succeed(applyServerSettingsPatch(current, patch)),
+      ),
+    updateSettingsWith: (patch) =>
+      updateAndPersistSettings((current) =>
+        Effect.succeed(applyServerSettingsPatch(current, patch(current))),
       ),
     updateProviderInstance: (mutation, patch = {}) =>
       updateAndPersistSettings((current) =>

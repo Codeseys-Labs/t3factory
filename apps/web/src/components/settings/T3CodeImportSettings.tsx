@@ -58,6 +58,9 @@ function T3CodeImportRow({ environmentId }: { readonly environmentId: Environmen
   });
   const runImport = useAtomCommand(serverEnvironment.importFromT3Code);
   const allowed = useAtomValue(serverEnvironment.importFromT3Code.permissionAtom(environmentId));
+  const canReview = useAtomValue(
+    serverEnvironment.previewT3CodeImport.permissionAtom(environmentId),
+  );
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<PreviewState>({ kind: "loading" });
   const [includeProjects, setIncludeProjects] = useState(true);
@@ -93,9 +96,13 @@ function T3CodeImportRow({ environmentId }: { readonly environmentId: Environmen
     <>
       <SettingsRow
         {...searchableSetting("import-from-t3code")}
-        description="Bring projects, provider setups and settings over from T3 Code on this machine. Run it again whenever you like: it only adds what is missing here and never changes or removes anything."
+        description={
+          canReview
+            ? "Bring projects, provider setups and settings over from T3 Code on this machine. Run it again whenever you like: it only adds what is missing here and never changes or removes anything."
+            : "Reviewing what T3 Code has on this machine needs permission to change settings on this environment."
+        }
         control={
-          <Button size="sm" variant="outline" onClick={openDialog}>
+          <Button size="sm" variant="outline" disabled={!canReview} onClick={openDialog}>
             Review import
           </Button>
         }

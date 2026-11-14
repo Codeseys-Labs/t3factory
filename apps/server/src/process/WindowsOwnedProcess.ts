@@ -7,7 +7,12 @@ import * as PlatformError from "effect/PlatformError";
 import * as Scope from "effect/Scope";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
-import type { OwnedProcessSpawner } from "@t3tools/shared/ownedProcess";
+import type * as CommandLine from "effect/process/CommandLine";
+import {
+  redactIfAnyRedacted,
+  revealCommandWord,
+  type OwnedProcessSpawner,
+} from "@t3tools/shared/ownedProcess";
 import type { OwnedProcessGroup } from "./OwnedProcess.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
@@ -114,7 +119,8 @@ public static class T3OwnedJob {
   }
 }`;
 
-function quoteWindowsArgument(value: string): string {
+function quoteWindowsArgument(word: CommandLine.Word): string {
+  const value = revealCommandWord(word);
   return `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/g, "$1$1")}"`;
 }
 
@@ -275,7 +281,7 @@ exit 125
               "-NoProfile",
               "-NonInteractive",
               "-EncodedCommand",
-              Buffer.from(script, "utf16le").toString("base64"),
+              redactIfAnyRedacted(command.args, Buffer.from(script, "utf16le").toString("base64")),
             ],
             { ...command.options, shell: false },
           );

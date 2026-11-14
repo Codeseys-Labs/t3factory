@@ -1,7 +1,8 @@
-import { FolderPlusIcon, SearchIcon, PlusIcon, XIcon } from "lucide-react";
+import { FolderPlusIcon, PlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -13,10 +14,14 @@ import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export interface SidebarThreadHeaderProps {
-  searchFieldRef?: RefObject<HTMLDivElement | null>;
   hasProjects: boolean;
   projectScope: ReactNode;
   onNewProject: () => void;
+  onNewThread: (event: ReactMouseEvent) => void;
+  newThreadDisabled: boolean;
+  newThreadShortcutLabel: string | null | undefined;
+  newThreadInProjectShortcutLabel: string | null | undefined;
+  showNewThreadInProjectHint: boolean;
   scopeLabel: string;
   onNewTask: () => void;
   newTaskShortcutLabel: string | null | undefined;
@@ -31,10 +36,14 @@ export interface SidebarThreadHeaderProps {
 }
 
 export function SidebarThreadHeader({
-  searchFieldRef,
   hasProjects,
   projectScope,
   onNewProject,
+  onNewThread,
+  newThreadDisabled,
+  newThreadShortcutLabel,
+  newThreadInProjectShortcutLabel,
+  showNewThreadInProjectHint,
   scopeLabel,
   onNewTask,
   newTaskShortcutLabel,
@@ -50,6 +59,9 @@ export function SidebarThreadHeader({
   const resultsVisible = isSearching && searchResultCount > 0;
   // Shrinking results can remove the active option; never leave aria-activedescendant pointing at it.
   const activeResultExists = resultsVisible && activeSearchResultIndex < searchResultCount;
+  const newThreadLabel = newThreadShortcutLabel
+    ? `New thread (${newThreadShortcutLabel})`
+    : "New thread";
   return (
     <div className="flex flex-col gap-2">
       <div className="flex h-8 items-center gap-1">
@@ -63,16 +75,33 @@ export function SidebarThreadHeader({
         <SidebarHeaderIconButton label="Add project" onClick={onNewProject}>
           <FolderPlusIcon />
         </SidebarHeaderIconButton>
+        <SidebarHeaderIconButton
+          label="New thread"
+          tooltip={
+            showNewThreadInProjectHint ? (
+              <span className="flex flex-col gap-0.5">
+                <span>{newThreadLabel}</span>
+                <span className="text-muted-foreground">
+                  New thread in current project: Shift+click
+                  {newThreadInProjectShortcutLabel ? ` (${newThreadInProjectShortcutLabel})` : ""}
+                </span>
+              </span>
+            ) : (
+              newThreadLabel
+            )
+          }
+          disabled={newThreadDisabled}
+          onClick={onNewThread}
+        >
+          <SquarePenIcon />
+        </SidebarHeaderIconButton>
       </div>
       <Button variant="outline" size="sm" className="w-full" onClick={onNewTask}>
         <PlusIcon />
         New task
         {newTaskShortcutLabel ? <Kbd>{newTaskShortcutLabel}</Kbd> : null}
       </Button>
-      <div
-        ref={searchFieldRef}
-        className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70"
-      >
+      <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70">
         <SearchIcon className="size-4 shrink-0 text-(--sidebar-icon-color)" />
         <SidebarInput
           ref={searchInputRef}

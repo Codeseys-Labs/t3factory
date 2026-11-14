@@ -1,6 +1,7 @@
 import { resolveEnvironmentMachineKind } from "@t3tools/contracts";
+import { fileBasename } from "@t3tools/shared/path";
 import { useLocation } from "@tanstack/react-router";
-import { CheckIcon, ChevronDownIcon, LayersIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, FolderIcon, LayersIcon } from "lucide-react";
 import { Fragment, useState, type ReactNode } from "react";
 
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
@@ -29,13 +30,17 @@ import {
 import { useOptionalSettingsScope } from "./SettingsScopeContext";
 import { resolveSettingsScope, type SettingsScopeSearch } from "./settingsScope";
 import {
+  ALL_CHECKOUTS_VALUE,
   ALL_ENVIRONMENTS_VALUE,
   ALL_PROJECTS_VALUE,
   environmentAxisValue,
   projectAxisValue,
   projectScopeMenuGroups,
+  selectCheckoutAxis,
   selectEnvironmentAxis,
   selectProjectAxis,
+  settingsScopeCheckoutChoices,
+  settingsScopeCheckoutLabel,
   settingsScopeEnvironmentAddress,
   settingsScopeEnvironmentLabel,
   settingsScopeEnvironmentLabels,
@@ -49,7 +54,7 @@ export const SETTINGS_DEVICE_ONLY_PATHS: ReadonlySet<string> = new Set([
   "/settings/diffs",
   "/settings/snap-shot",
   "/settings/connections",
-  // Network access and authorized clients belong to the environment serving this app.
+  // Access picks its environment on the page itself.
   "/settings/access",
   "/settings/about",
 ]);
@@ -304,6 +309,45 @@ function EnvironmentScopeMenu({
   );
 }
 
+function CheckoutScopeMenu({ value, groups, onChange }: SettingsScopeMenuProps) {
+  const group = groups.find((candidate) => candidate.projectKey === value.project);
+  const checkouts = group ? settingsScopeCheckoutChoices(group, value) : [];
+  if (checkouts.length === 0) return null;
+  const selected = checkouts.find((member) => member.physicalProjectKey === value.checkout);
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <span className="shrink-0">in</span>
+      <ScopeMenu
+        ariaLabel="Checkout scope"
+        icon={<FolderIcon aria-hidden className="size-3.5 shrink-0" />}
+        label={
+          selected
+            ? settingsScopeCheckoutLabel(selected, checkouts)
+            : value.checkout
+              ? "Unavailable checkout"
+              : "All checkouts"
+        }
+        value={value.checkout ?? ALL_CHECKOUTS_VALUE}
+        onChange={(next) =>
+          onChange(
+            selectCheckoutAxis(
+              value,
+              checkouts.find((member) => member.physicalProjectKey === next) ?? null,
+            ),
+          )
+        }
+        searchLabel="Search checkouts"
+        allOption={{ value: ALL_CHECKOUTS_VALUE, label: "All checkouts" }}
+        options={checkouts.map((member) => ({
+          value: member.physicalProjectKey,
+          label: fileBasename(member.workspaceRoot),
+          secondary: member.workspaceRoot,
+        }))}
+      />
+    </span>
+  );
+}
+
 function ProjectScopeMenu({ value, groups, environments, onChange }: SettingsScopeMenuProps) {
   const selected = groups.find((group) => group.projectKey === value.project);
   const projects = projectScopeMenuGroups(groups, value).map((group) => ({
@@ -325,75 +369,21 @@ function ProjectScopeMenu({ value, groups, environments, onChange }: SettingsSco
             other.group.projectKey !== group.projectKey &&
             other.group.displayName === group.displayName,
         );
+        const location =
+          sameName.length === 0
+            ? environments.length > 1
+              ? group.workspaceRoot
+              : ""
+            : sameName.some((other) => other.machines === machines)
+              ? `${machines} · ${group.workspaceRoot}`
+              : machines;
         return {
           value: group.projectKey,
           label: group.displayName,
-          secondary:
-            sameName.length === 0
-              ? environments.length > 1
-                ? group.workspaceRoot
-                : ""
-              : sameName.some((other) => other.machines === machines)
-                ? `${machines} · ${group.workspaceRoot}`
-                : machines,
+          secondary: group.archived ? ["Archived", location].filter(Boolean).join(" · ") : location,
           icon: <ProjectFavicon project={group} className="size-3.5 shrink-0" />,
         };
       })}
     />
-  );
-}
-
-function CheckoutScopeMenu({ value, groups, environments, onChange }: SettingsScopeMenuProps) {
-  const group = groups.find((candidate) => candidate.projectKey === value.project);
-  if (!value.checkout && (!group || group.memberProjects.length < 2)) return null;
-  const resolved = resolveSettingsScope(value, groups, environments);
-  const selected = resolved.kind === "checkout" ? resolved.checkout : null;
-  const members =
-    group?.memberProjects.filter(
-      (member) => value.machine === undefined || member.environmentId === value.machine,
-    ) ?? [];
-  return (
-    <span className="flex min-w-0 items-center gap-1.5">
-      <span className="shrink-0">in</span>
-      <ScopeMenu
-        ariaLabel="Checkout scope"
-        icon={null}
-        label={
-          selected?.workspaceRoot ?? (value.checkout ? "Unavailable checkout" : "All checkouts")
-        }
-        value={value.checkout ?? "all"}
-        onChange={(next) => {
-          if (next === "all") {
-            onChange({
-              ...(value.project === undefined ? {} : { project: value.project }),
-              ...(value.machine === undefined ? {} : { machine: value.machine }),
-            });
-            return;
-          }
-          const member = members.find((candidate) => candidate.physicalProjectKey === next);
-          if (!group || !member) return;
-          onChange({
-            project: group.projectKey,
-            machine: member.environmentId,
-            checkout: member.physicalProjectKey,
-          });
-        }}
-        searchLabel="Search checkouts"
-        allOption={{ value: "all", label: "All checkouts" }}
-        options={members.map((member) => {
-          const environment = environments.find(
-            (candidate) => candidate.environmentId === member.environmentId,
-          );
-          return {
-            value: member.physicalProjectKey,
-            label: member.workspaceRoot,
-            secondary: environment
-              ? settingsScopeEnvironmentLabel(environment, environments)
-              : (member.environmentLabel ?? member.environmentId),
-            offline: environment?.connection.phase !== "connected",
-          };
-        })}
-      />
-    </span>
   );
 }

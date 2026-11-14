@@ -18,7 +18,7 @@ import {
 } from "@t3tools/contracts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as Effect from "effect/Effect";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as DateTime from "effect/DateTime";
 import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
@@ -194,7 +194,6 @@ const makeHarness = Effect.fn("ResearchTest.harness")(function* (origin: string)
       },
     }),
     Layer.mock(GitWorkflow.GitWorkflowService)({
-      isRepository: () => Effect.succeed(false),
       hasCommit: () => Effect.succeed(true),
       createWorktree: ({ refName }) =>
         fs.makeTempDirectory({ directory: root }).pipe(
@@ -227,6 +226,7 @@ const makeHarness = Effect.fn("ResearchTest.harness")(function* (origin: string)
     Layer.provide(
       Layer.mergeAll(
         projects,
+        orchestrator,
         folders,
         threads,
         receipts,
@@ -338,8 +338,8 @@ it.effect(
         assert.equal(c2.disposition, "evaluator-changed");
         assert.equal(c1.disposition, "acceptable");
         assert.equal(c1.metricValue, 0.95);
-        const expectedHash = yield* (yield* Crypto.Crypto)
-          .digest("SHA-256", new TextEncoder().encode("measurement\nval_bpb: 0.950000\n"))
+        const expectedHash = yield* (yield* Digest.Digest)
+          .digest(Digest.sha256, new TextEncoder().encode("measurement\nval_bpb: 0.950000\n"))
           .pipe(Effect.map(Hex.encode), Effect.orDie);
         assert.equal(c1.artifacts[0]?.sha256, expectedHash);
         yield* writeLog(R.threadId, "changed\nval_bpb: 0.100000\n");
@@ -694,8 +694,8 @@ it.effect("an overlong cited line is an invalid citation and is never retained",
         lineText: null,
         retention: "digest-only",
         bytes: bytes.byteLength,
-        sha256: yield* (yield* Crypto.Crypto)
-          .digest("SHA-256", bytes)
+        sha256: yield* (yield* Digest.Digest)
+          .digest(Digest.sha256, bytes)
           .pipe(Effect.map(Hex.encode), Effect.orDie),
       });
       const sql = yield* SqlClient.SqlClient;

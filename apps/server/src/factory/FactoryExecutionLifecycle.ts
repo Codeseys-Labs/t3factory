@@ -17,7 +17,7 @@ import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as FactoryExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import { makeOwnedProcess } from "../process/OwnedProcess.ts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Schema from "effect/Schema";
 const isFactoryExecutionError = Schema.is(FactoryExecutionError);
 
@@ -79,7 +79,7 @@ export class FactoryExecutionLifecycle extends Context.Service<
 
 const make = Effect.gen(function* () {
   const store = yield* FactoryExecutionStore.FactoryExecutionStore;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const processFactory = yield* FactoryOwnedProcessFactory;
   const platform = yield* HostProcess.Platform;
   const owners = new Map<
@@ -190,7 +190,7 @@ const make = Effect.gen(function* () {
         return yield* new FactoryExecutionError({ reason: "task-conflict" });
       return yield* work;
     }
-    const claimantId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const claimantId = yield* random.uuidV4();
     return yield* Effect.uninterruptibleMask((restore) =>
       Effect.gen(function* () {
         const claim = yield* store.claimPhase({

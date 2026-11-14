@@ -1102,9 +1102,10 @@ it.effect.each(["merged", "open", "closed", "head-moved", "base-moved", "unreada
       if (outcome === "base-moved") state.pr.baseBranch = "other";
       if (outcome === "unreadable") state.read = "fail";
       const merged = yield* service.reconcile({ projectId, intentId: granted.id });
+      // Commits pushed to the pull request after Publish do not make its merge any less real.
       assert.deepEqual(merged.remote, {
         ...pullRequest,
-        ...(outcome === "merged" ? { merged: true } : {}),
+        ...(outcome === "merged" || outcome === "head-moved" ? { merged: true } : {}),
       });
       assert.equal(merged.status, "confirmed");
       assert.deepEqual(state.calls, calls);

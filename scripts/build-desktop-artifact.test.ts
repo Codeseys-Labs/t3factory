@@ -603,6 +603,17 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     }),
   );
 
+  it.effect("runs an after-pack hook on every platform but Windows", () =>
+    Effect.gen(function* () {
+      const config = (platform: "linux" | "mac" | "win", target: string) =>
+        createBuildConfig(platform, target, "0.0.33", false, false, undefined, undefined);
+
+      assert.isString((yield* config("linux", "AppImage")).afterPack);
+      assert.isString((yield* config("mac", "dmg")).afterPack);
+      assert.notProperty(yield* config("win", "nsis"), "afterPack");
+    }),
+  );
+
   it.effect("names updatable AppImages without a version and apart per channel", () =>
     Effect.gen(function* () {
       const appImageName = (version: string) =>

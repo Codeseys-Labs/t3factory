@@ -2868,7 +2868,16 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
 ) {
   const factoryPreview = distribution === "factory-preview";
   const buildConfig: Record<string, unknown> = {
-    afterPack: (yield* Path.Path).join(yield* RepoRoot, "scripts/prepare-server-compile-cache.cjs"),
+    // Upstream packages Windows from Linux, where this hook skips itself. On a Windows host its
+    // 23 cache files would push the payload past WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT.
+    ...(platform === "win"
+      ? {}
+      : {
+          afterPack: (yield* Path.Path).join(
+            yield* RepoRoot,
+            "scripts/prepare-server-compile-cache.cjs",
+          ),
+        }),
     appId: factoryPreview ? FACTORY_PREVIEW_IDENTITY.appId : DESKTOP_APP_ID,
     productName: resolveDesktopProductName(version, distribution),
     artifactName: factoryPreview

@@ -678,7 +678,8 @@ then reuses it for later launches of the same update.
 Windows keeps JavaScript and package metadata inside `app.asar` and unpacks only
 native libraries and helper executables. Avoid enabling whole-package smart
 unpacking: each loose file adds work to NSIS installation and counts against
-the payload limit.
+the payload limit. For the same reason Windows packages carry no prepared server
+bytecode cache, on any build host: its files would count against that limit.
 
 The artifact builder rejects a Windows package when any of these invariants
 break:

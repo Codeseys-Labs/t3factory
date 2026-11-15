@@ -80,6 +80,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.factoryStartTask]: "factory",
   [WS_METHODS.factoryStopTask]: "factory",
   [WS_METHODS.factoryRetryTask]: "factory",
+  [WS_METHODS.factoryRetryTaskCapture]: "factory",
   [WS_METHODS.factoryAcceptTaskResult]: "factory",
   [WS_METHODS.factoryPublishTaskResult]: "factory",
   [WS_METHODS.factoryMergeTaskResult]: "factory",

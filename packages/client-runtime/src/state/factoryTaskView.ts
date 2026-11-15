@@ -5,6 +5,7 @@ import type {
   FactoryTaskLane,
   FactoryTaskRef,
   FactoryTaskResult,
+  FactoryTaskRun,
   FactoryTaskStatus,
   FactoryTaskSummary,
   RuntimeRequestId,
@@ -342,6 +343,7 @@ export interface FactoryTaskBannerAction {
     | "request-changes"
     | "retry"
     | "reassign"
+    | "save-again"
     | "stop"
     | "reopen"
     | "break-down"
@@ -419,6 +421,21 @@ function presentDelivery(result: FactoryTaskResult) {
     };
   return { title: null, detail: failed, action: { kind: "publish" as const, label: "Publish" } };
 }
+/**
+ * What a person can do about a task's failed or held work run. A held run refuses Retry and
+ * Reassign; only one whose result could not be saved can move, by saving it again.
+ */
+export function presentFactoryTaskRunRecovery(
+  run: Pick<FactoryTaskRun, "state" | "captureFailed"> | null,
+): readonly FactoryTaskBannerAction[] {
+  if (run?.state !== "held")
+    return [
+      { kind: "retry", label: "Retry" },
+      { kind: "reassign", label: "Reassign" },
+    ];
+  return run.captureFailed ? [{ kind: "save-again", label: "Save again" }] : [];
+}
+
 export function presentFactoryTaskBanner(input: {
   readonly task: FactoryTaskSummary;
   readonly attention: readonly FactoryTaskNeed[];
@@ -489,15 +506,18 @@ export function presentFactoryTaskBanner(input: {
       action("break-down", "Break down"),
       null,
     );
-  if (need?.reason === "failed")
+  if (need?.reason === "failed") {
+    const [primary = null, secondary = null] = presentFactoryTaskRunRecovery(task.run);
+    const outcome = task.run?.state === "held" ? "" : " failed";
     return banner(
       "failed",
       "danger",
-      `Run ${task.run?.ordinal ?? ""} failed${task.run?.note ? `: ${task.run.note}` : ""}`,
+      `Run ${task.run?.ordinal ?? ""}${outcome}${task.run?.note ? `: ${task.run.note}` : ""}`,
       input.runDetail ?? need.detail,
-      action("retry", "Retry"),
-      action("reassign", "Reassign"),
+      primary,
+      secondary,
     );
+  }
   // Retry is refused while the run is live, so Stop comes first; the Stopped banner offers Retry.
   if (need?.reason === "lost")
     return banner(

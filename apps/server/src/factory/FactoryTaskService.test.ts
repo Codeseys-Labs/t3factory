@@ -4,10 +4,12 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   AuthOrchestrationOperateScope,
   AuthSessionId,
+  CheckpointScopeId,
   CommandId,
   EnvironmentId,
   EventId,
   MessageId,
+  NodeId,
   FactoryDeliveryError,
   FactoryWorkError,
   ProjectId,
@@ -1675,6 +1677,85 @@ it.effect(
             entry.event.type === "run-ended" ? [[entry.event.ordinal, entry.event.outcome]] : [],
           ),
           [[1, "stopped"]],
+        );
+      }),
+    ),
+);
+
+it.effect(
+  "a run held because its result could not be saved says so, and Save again puts the same run back to work",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, start, summary, attemptOf } = yield* harness;
+        const sink = yield* EventSink.EventSinkV2;
+        const task = yield* create("Index the archive", { lane: "ready" });
+        const run = (yield* start(task)).run!;
+        const saveAgain = (name: string) =>
+          tasks.retryCapture({ commandId: command(name), ref: task.ref }, human);
+        assert.equal(
+          (yield* saveAgain("save-running").pipe(Effect.flip)).reason,
+          "invalid-transition",
+        );
+
+        // The turn ended and its capture failed: every writer is gone, but nothing was kept.
+        const attemptId = yield* attemptOf(run);
+        yield* sql`UPDATE orchestration_v2_projection_runs SET status = 'completed', payload_json = json_set(payload_json, '$.status', 'completed') WHERE run_id = ${run.runId}`;
+        yield* sql`UPDATE factory_execution_bindings SET stop_requested = 1 WHERE attempt_id = ${attemptId}`;
+        yield* sql`UPDATE orchestration_v2_effect_outbox SET status = 'succeeded' WHERE thread_id = ${run.threadId}`;
+        for (const phase of ["turn", "capture"])
+          yield* sql`INSERT INTO factory_execution_phases(attempt_id, phase, claimant_id, observation, detail) VALUES (${attemptId}, ${phase}, 'worker', 'quiescent', '')`;
+        yield* sink.write({
+          events: [
+            {
+              id: EventId.make("scope:root"),
+              type: "checkpoint-scope.created",
+              threadId: run.threadId,
+              occurredAt: DateTime.makeUnsafe(at),
+              payload: {
+                id: CheckpointScopeId.make("scope:root"),
+                threadId: run.threadId,
+                runId: run.runId,
+                nodeId: NodeId.make("node:root"),
+                parentScopeId: null,
+                providerThreadId: null,
+                kind: "root_run",
+                ordinalWithinParent: 0,
+                advancesAppRunCount: true,
+                cwd: "/task-project",
+                createdAt: DateTime.makeUnsafe(at),
+              },
+            },
+          ],
+        });
+        const held = yield* summary(task);
+        assert.deepEqual(
+          [held.run?.state, held.run?.note, held.run?.captureFailed, held.attention[0]?.detail],
+          ["held", "The result could not be saved", true, "The result could not be saved"],
+        );
+        assert.equal(
+          (yield* tasks
+            .retry(
+              { commandId: command("retry-held"), ref: task.ref, expectedVersion: held.version },
+              human,
+            )
+            .pipe(Effect.flip)).reason,
+          "run-active",
+        );
+
+        const saved = (yield* saveAgain("save")).task;
+        assert.deepEqual(
+          [saved.run?.ordinal, saved.run?.state, saved.run?.captureFailed, saved.attention],
+          [1, "running", undefined, []],
+        );
+        assert.deepEqual(
+          yield* sql`SELECT json_extract(payload_json, '$.captureGeneration') AS generation FROM orchestration_v2_effect_outbox WHERE thread_id = ${run.threadId} AND effect_type = 'factory.execution.finalize' AND status = 'pending'`,
+          [{ generation: 2 }],
+        );
+        assert.isTrue((yield* saveAgain("save")).replayed);
+        assert.equal(
+          (yield* saveAgain("save-twice").pipe(Effect.flip)).reason,
+          "invalid-transition",
         );
       }),
     ),

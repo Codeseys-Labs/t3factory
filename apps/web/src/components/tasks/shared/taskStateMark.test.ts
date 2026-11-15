@@ -104,6 +104,14 @@ describe("taskErrorMessage", () => {
     },
     {
       error: new FactoryTaskError({
+        reason: "invalid-transition",
+        detail: "This run's result is no longer waiting to be saved.",
+      }),
+      task: fixture("T-29"),
+      text: "This run's result is no longer waiting to be saved.",
+    },
+    {
+      error: new FactoryTaskError({
         reason: "unsupported-capability",
         detail:
           "Task runs require a writable delegated cgroup v2 with cgroup.kill on this Linux machine.",

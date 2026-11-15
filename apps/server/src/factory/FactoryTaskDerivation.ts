@@ -21,6 +21,8 @@ interface WorkRunFacts {
   readonly effectsPending: boolean;
   /** The provider session the run's attempt ran on is recorded as stopped or errored. */
   readonly sessionEnded: boolean;
+  /** Every phase settled after the capture, yet nothing was kept for the current capture. */
+  readonly captureFailed: boolean;
 }
 
 const INTERRUPTED = new Set(["interrupted", "cancelled", "rolled_back"]);
@@ -31,6 +33,8 @@ export function workRunState(facts: WorkRunFacts): {
   readonly note: string | null;
   /** Still running, but no agent is left to end it; only a person's Stop moves it. */
   readonly lost?: true;
+  /** Held only because its result could not be saved; saving it again can move it. */
+  readonly captureFailed?: true;
 } {
   const interrupted = facts.stopByPerson || INTERRUPTED.has(facts.nativeStatus ?? "");
   if (facts.quiescent) {
@@ -45,7 +49,9 @@ export function workRunState(facts: WorkRunFacts): {
       : { state: "running", note: null };
   // The run ended or was told to stop. With no effect left to finish it, it waits on a person.
   if (!facts.effectsPending)
-    return { state: "held", note: "Waiting for the run's processes to exit" };
+    return facts.captureFailed
+      ? { state: "held", note: "The result could not be saved", captureFailed: true }
+      : { state: "held", note: "Waiting for the run's processes to exit" };
   return { state: interrupted ? "stopping" : "running", note: null };
 }
 

@@ -80,6 +80,7 @@ export function taskErrorMessage(
     if (
       (error.reason === "delivery-refused" ||
         error.reason === "run-active" ||
+        error.reason === "invalid-transition" ||
         error.reason === "unsupported-capability") &&
       error.detail
     )

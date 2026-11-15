@@ -50,6 +50,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.factoryStartTask]: AuthOrchestrationOperateScope,
   [WS_METHODS.factoryStopTask]: AuthOrchestrationOperateScope,
   [WS_METHODS.factoryRetryTask]: AuthOrchestrationOperateScope,
+  [WS_METHODS.factoryRetryTaskCapture]: AuthOrchestrationOperateScope,
   [WS_METHODS.factoryAcceptTaskResult]: AuthOrchestrationOperateScope,
   [WS_METHODS.factoryRequestTaskChanges]: AuthOrchestrationOperateScope,
   [WS_METHODS.factoryReopenTask]: AuthOrchestrationOperateScope,

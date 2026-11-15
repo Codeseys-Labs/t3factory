@@ -142,6 +142,8 @@ export const FactoryTaskRun = Schema.Struct({
   endedAt: Schema.NullOr(IsoDateTime),
   // Bounded reason for held or failed, such as `Tests failed on attempt 2`. Never raw output.
   note: Schema.NullOr(ShortText),
+  // A held run whose agent finished but whose result could not be saved. Saving again can move it.
+  captureFailed: Schema.optionalKey(Schema.Literal(true)),
 });
 export type FactoryTaskRun = typeof FactoryTaskRun.Type;
 
@@ -396,6 +398,12 @@ export const FactoryTaskRetryInput = Schema.Struct({
   setup: Schema.optional(FactoryAgentSetup),
 });
 export type FactoryTaskRetryInput = typeof FactoryTaskRetryInput.Type;
+/** Tries again to save the result of the task's held run, keeping the agent's work. */
+export const FactoryTaskRetryCaptureInput = Schema.Struct({
+  commandId: CommandId,
+  ref: FactoryTaskRef,
+});
+export type FactoryTaskRetryCaptureInput = typeof FactoryTaskRetryCaptureInput.Type;
 /** Accepting records a review of one result revision. It publishes nothing. */
 export const FactoryTaskAcceptInput = Schema.Struct({
   commandId: CommandId,

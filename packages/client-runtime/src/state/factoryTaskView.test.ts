@@ -244,6 +244,27 @@ describe("task presentation", () => {
     });
     expect([planned.primary?.kind, planned.secondary?.kind]).toEqual(["retry", "reassign"]);
   });
+  it("offers Save again, never Retry or Reassign, on a held run whose result could not be saved", () => {
+    const failed = task("T-29");
+    const held = (run: Partial<NonNullable<FactoryTaskSummary["run"]>>) => {
+      const banner = presentFactoryTaskBanner({
+        task: { ...failed, run: { ...failed.run!, state: "held", ...run } },
+        attention: state("T-29").attention,
+        assigneeLabel: "Agent",
+      });
+      return [banner.title, banner.primary, banner.secondary];
+    };
+    expect(held({ note: "The result could not be saved", captureFailed: true })).toEqual([
+      "Run 2: The result could not be saved",
+      { kind: "save-again", label: "Save again" },
+      null,
+    ]);
+    expect(held({ note: "Waiting for the run's processes to exit" })).toEqual([
+      "Run 2: Waiting for the run's processes to exit",
+      null,
+      null,
+    ]);
+  });
   it.each([
     ["C1", "T-43", "backlog", "start", null],
     ["C2", "T-38.3", "blocked", "open-task", null],

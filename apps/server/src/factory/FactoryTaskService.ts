@@ -17,6 +17,7 @@ import {
   FactoryTaskRequestChangesInput,
   FactoryTaskResultReadInput,
   FactoryTaskRetryInput,
+  FactoryTaskRetryCaptureInput,
   FactoryTaskStartInput,
   FactoryTaskStopInput,
   FactoryTaskUpdateInput,
@@ -129,6 +130,11 @@ export class FactoryTaskService extends Context.Service<
       input: FactoryTaskRetryInput,
       actor: FactoryPlanActor,
     ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
+    /** Saves again the result of a run held because its capture failed. */
+    readonly retryCapture: (
+      input: FactoryTaskRetryCaptureInput,
+      actor: FactoryPlanActor,
+    ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
     readonly accept: (
       input: FactoryTaskAcceptInput,
       actor: FactoryPlanActor,
@@ -239,6 +245,7 @@ const decodeUpdate = Schema.decodeEffect(FactoryTaskUpdateInput);
 const decodeStart = Schema.decodeEffect(FactoryTaskStartInput);
 const decodeStop = Schema.decodeEffect(FactoryTaskStopInput);
 const decodeRetry = Schema.decodeEffect(FactoryTaskRetryInput);
+const decodeRetryCapture = Schema.decodeEffect(FactoryTaskRetryCaptureInput);
 const decodeAccept = Schema.decodeEffect(FactoryTaskAcceptInput);
 const decodeRequestChanges = Schema.decodeEffect(FactoryTaskRequestChangesInput);
 const decodeReopen = Schema.decodeEffect(FactoryTaskReopenInput);
@@ -332,6 +339,23 @@ const executionError = (error: FactoryExecutionError) => {
   });
 };
 
+const NOTHING_TO_SAVE = "This run's result is no longer waiting to be saved.";
+/** Save again's refusals in plain words; the shared mapping would ask to stop a run. */
+const captureRefusal = (error: FactoryExecutionError) => {
+  const refused = (reason: FactoryTaskError["reason"], detail: string) =>
+    new FactoryTaskError({ reason, detail, cause: error });
+  switch (error.reason) {
+    case "not-quiescent":
+      return refused("run-active", "The run is still finishing. Try again when it stops.");
+    case "task-conflict":
+      return refused("invalid-transition", NOTHING_TO_SAVE);
+    case "budget-exhausted":
+      return refused("invalid-transition", "This run's result was tried too many times.");
+    default:
+      return executionError(error);
+  }
+};
+
 /** Plain words for what stopped a Publish or Merge; the client shows `detail` as it is. */
 const deliveryRefusal = (error: FactoryDeliveryError): FactoryTaskError => {
   const as = (reason: FactoryTaskError["reason"]) => new FactoryTaskError({ reason, cause: error });
@@ -401,6 +425,7 @@ const plainRun = (run: Tasks.TaskRunRow): FactoryTaskRun => ({
   startedAt: run.startedAt,
   endedAt: run.endedAt,
   note: run.note,
+  ...(run.captureFailed ? { captureFailed: true } : {}),
 });
 const firstLine = (text: string) =>
   text
@@ -1467,6 +1492,39 @@ const make = Effect.gen(function* () {
     },
   );
 
+  const retryCapture: FactoryTaskService["Service"]["retryCapture"] = Effect.fn(
+    "FactoryTaskService.retryCapture",
+  )(function* (raw, actor) {
+    yield* requireHuman(actor);
+    const input = yield* decodeRetryCapture(raw).pipe(Effect.mapError(invalid));
+    const command = yield* begin("retryCapture", input.commandId, actor, input);
+    if (command.replayed) return yield* replay(input.ref);
+    const { task } = yield* requireTask(input.ref);
+    const latest = task.runs.findLast((entry) => entry.purpose === "work");
+    if (latest === undefined) return yield* refuse("no-run");
+    if (latest.captureFailed !== true || latest.attemptId === null || latest.planRevision === null)
+      return yield* new FactoryTaskError({ reason: "invalid-transition", detail: NOTHING_TO_SAVE });
+    yield* executions
+      .retryCapture(
+        {
+          commandId: derived(input.commandId, "capture"),
+          selection: {
+            ref: planRef(task.row),
+            revision: latest.planRevision,
+            taskId: task.row.taskId,
+          },
+          runId: latest.runId,
+          runAttemptId: latest.attemptId,
+          expectedResultId: latest.latestResultId,
+        },
+        actor,
+      )
+      .pipe(Effect.mapError(captureRefusal));
+    yield* transact(command.record(task.row));
+    yield* sync(task.row.rootId);
+    return { task: yield* summaryOf(task.row), replayed: false };
+  });
+
   /** A review command names the result it saw; a newer one means the reviewer must look again. */
   const reviewed = Effect.fn("FactoryTaskService.reviewed")(function* (
     task: Tasks.TaskView,
@@ -2178,6 +2236,7 @@ const make = Effect.gen(function* () {
     start,
     stop,
     retry,
+    retryCapture,
     accept,
     requestChanges,
     reopen,

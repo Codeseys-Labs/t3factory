@@ -157,6 +157,8 @@ export function TaskBanner({
         return kit(() => openTaskSetup(task.ref, "retry"), permissions.retry);
       case "retry":
         return kit(() => runAction(() => actions.retry(task)), permissions.retry);
+      case "save-again":
+        return kit(() => runAction(() => actions.saveAgain(task)), permissions.saveAgain);
       case "break-down":
         return kit(() => openTaskSetup(task.ref, "break-down"), permissions.breakDown);
       case "stop":

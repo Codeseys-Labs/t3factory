@@ -417,8 +417,12 @@ jobs:
             node apps/web/node_modules/playwright/cli.js install-deps chromium
           fi
 
+      # Two runs, as upstream's CI splits it: one browser session for the whole suite does not
+      # survive a standard runner.
       - name: Test
-        run: vp run --filter @t3tools/web test
+        run: |
+          vp run --filter @t3tools/web test --shard 1/2
+          vp run --filter @t3tools/web test --shard 2/2
 
       # Browser tests run source modules; this boots the production chunk graph.
       - name: Boot the built web client

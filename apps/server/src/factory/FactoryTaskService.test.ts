@@ -1768,6 +1768,13 @@ it.effect(
           },
           human,
         );
+        // The same command id for another task is another command, crash or not.
+        assert.equal(
+          (yield* tasks
+            .retryCapture({ commandId: command("save"), ref: marker.ref }, human)
+            .pipe(Effect.flip)).reason,
+          "command-conflict",
+        );
         const saved = (yield* saveAgain("save")).task;
         assert.deepEqual(
           [saved.run?.ordinal, saved.run?.state, saved.run?.captureFailed, saved.attention],

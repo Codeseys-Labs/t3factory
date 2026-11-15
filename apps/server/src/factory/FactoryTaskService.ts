@@ -1503,9 +1503,12 @@ const make = Effect.gen(function* () {
     if (command.replayed) return yield* replay(input.ref);
     const { task } = yield* requireTask(input.ref);
     const captureId = derived(input.commandId, "capture");
-    // A command whose retry the engine already took only has to finish recording it.
-    if (!(yield* store.captureRetried(captureId))) {
-      const latest = task.runs.findLast((entry) => entry.purpose === "work");
+    const latest = task.runs.findLast((entry) => entry.purpose === "work");
+    const retried = yield* store.captureRetryAttempt(captureId);
+    // A command whose retry the engine already took only has to finish recording it, for that run.
+    if (retried !== null) {
+      if (latest?.attemptId !== retried) return yield* refuse("command-conflict");
+    } else {
       if (latest === undefined) return yield* refuse("no-run");
       if (
         latest.captureFailed !== true ||

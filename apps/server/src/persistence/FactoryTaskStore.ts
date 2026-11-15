@@ -257,8 +257,10 @@ export class FactoryTaskStore extends Context.Service<
       readonly actor: TaskActor;
     }) => Effect.Effect<void, FactoryTaskError>;
     readonly launched: (commandId: CommandId) => Effect.Effect<boolean, FactoryTaskError>;
-    /** The engine took the capture retry this command id asked for. */
-    readonly captureRetried: (commandId: CommandId) => Effect.Effect<boolean, FactoryTaskError>;
+    /** The attempt whose capture retry the engine took for this command id, if it took one. */
+    readonly captureRetryAttempt: (
+      commandId: CommandId,
+    ) => Effect.Effect<RunAttemptId | null, FactoryTaskError>;
     readonly markStopRequested: (threadId: ThreadId) => Effect.Effect<void, FactoryTaskError>;
     readonly recordPlanningRun: (input: {
       readonly key: TaskKey;
@@ -1207,10 +1209,11 @@ const make = Effect.gen(function* () {
         yield* sql`SELECT attempt_id FROM factory_execution_bindings WHERE json_extract(binding_json, '$.commandId') = ${commandId}`;
       return rows.length > 0;
     }, Effect.mapError(failure)),
-    captureRetried: Effect.fn("FactoryTaskStore.captureRetried")(function* (commandId) {
-      const rows =
-        yield* sql`SELECT attempt_id FROM factory_execution_capture_retries WHERE command_id = ${commandId}`;
-      return rows.length > 0;
+    captureRetryAttempt: Effect.fn("FactoryTaskStore.captureRetryAttempt")(function* (commandId) {
+      const rows = yield* sql<{
+        attemptId: RunAttemptId;
+      }>`SELECT attempt_id AS attemptId FROM factory_execution_capture_retries WHERE command_id = ${commandId}`;
+      return rows[0]?.attemptId ?? null;
     }, Effect.mapError(failure)),
     markStopRequested: Effect.fn("FactoryTaskStore.markStopRequested")(function* (threadId) {
       yield* sql`UPDATE factory_task_runs SET stop_requested = 1 WHERE thread_id = ${threadId}`;

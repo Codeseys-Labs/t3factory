@@ -1,7 +1,9 @@
 import type { FactoryTaskNeed } from "@t3tools/client-runtime/state/factory-task-view";
 import {
+  factoryTaskFailedRun,
   presentFactoryTaskActivity,
   presentFactoryTaskActor,
+  presentFactoryTaskRunRecovery,
 } from "@t3tools/client-runtime/state/factory-task-view";
 import type { FactoryTaskSummary } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
@@ -91,14 +93,15 @@ function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSu
         from={assigneeText(chip)}
       />
     );
-  if (need.reason === "failed")
+  if (need.reason === "failed") {
+    const failedRun = factoryTaskFailedRun(task);
     return (
       <section
-        aria-label="Failed run"
+        aria-label={failedRun?.state === "held" ? "Held run" : "Failed run"}
         className="space-y-4 rounded-lg border border-destructive/32 bg-error-surface p-4"
       >
-        <p className="whitespace-pre-wrap break-words text-sm">{task.run?.note || need.detail}</p>
-        {task.run?.purpose === "planning" && task.run.state === "failed" ? (
+        <p className="whitespace-pre-wrap break-words text-sm">{failedRun?.note || need.detail}</p>
+        {failedRun?.purpose === "planning" && failedRun.state === "failed" ? (
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -109,32 +112,58 @@ function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSu
             </Button>
           </div>
         ) : (
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              disabled={!permissions.retry}
-              onClick={() => openTaskSetup(task.ref, "retry")}
-            >
-              Retry
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!permissions.retry}
-              onClick={() => openTaskSetup(task.ref, "retry")}
-            >
-              Reassign
-            </Button>
-          </div>
+          <RecoverRun task={task} />
         )}
       </section>
     );
+  }
   if (need.reason === "review" || need.reason === "changed")
     return <ReviewResult key={task.result?.revision} task={task} />;
   if (need.reason === "plan") return <ReviewPlan task={task} />;
   if (need.reason === "unconfirmed") return <CheckDelivery need={need} task={task} />;
   if (need.reason === "lost") return <StopLostRun need={need} task={task} />;
   return <p className="text-muted-foreground text-sm">{need.detail}</p>;
+}
+
+/** Retry and Reassign, or Save again for a run held only because its result was not saved. */
+function RecoverRun({ task }: { task: FactoryTaskSummary }) {
+  const actions = useTaskActions();
+  const permissions = useTaskPermissions(task.ref.environmentId);
+  const [busy, setBusy] = useState(false);
+  const recovery = presentFactoryTaskRunRecovery(factoryTaskFailedRun(task));
+  if (recovery.length === 0) return null;
+  if (recovery[0]?.kind === "save-again")
+    return (
+      <Button
+        size="sm"
+        disabled={busy || !permissions.saveAgain}
+        onClick={() => {
+          setBusy(true);
+          void actions.saveAgain(task).then(() => setBusy(false));
+        }}
+      >
+        Save again
+      </Button>
+    );
+  return (
+    <div className="flex gap-2">
+      <Button
+        size="sm"
+        disabled={!permissions.retry}
+        onClick={() => openTaskSetup(task.ref, "retry")}
+      >
+        Retry
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!permissions.retry}
+        onClick={() => openTaskSetup(task.ref, "retry")}
+      >
+        Reassign
+      </Button>
+    </div>
+  );
 }
 
 /** A run that still says running with no agent left to end it. Stop settles it for a Retry. */

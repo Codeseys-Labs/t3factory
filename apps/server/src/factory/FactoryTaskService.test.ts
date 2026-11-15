@@ -4,10 +4,12 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   AuthOrchestrationOperateScope,
   AuthSessionId,
+  CheckpointScopeId,
   CommandId,
   EnvironmentId,
   EventId,
   MessageId,
+  NodeId,
   FactoryDeliveryError,
   FactoryWorkError,
   ProjectId,
@@ -47,6 +49,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
+import * as EffectOutbox from "../orchestration-v2/EffectOutbox.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
@@ -321,6 +324,8 @@ const layerWith = (settings: TestSettings = {}, fileTrusted = true) => {
   const base = Layer.mergeAll(
     dependencies,
     EventSink.layer.pipe(Layer.provide(dependencies)),
+    // The instance the task service listens to, by memoization.
+    EffectOutbox.layer.pipe(Layer.provide(dependencies)),
     NodeCrypto.layer,
     NodeServices.layer,
     IdAllocator.layer,
@@ -1675,6 +1680,172 @@ it.effect(
             entry.event.type === "run-ended" ? [[entry.event.ordinal, entry.event.outcome]] : [],
           ),
           [[1, "stopped"]],
+        );
+      }),
+    ),
+);
+
+it.effect(
+  "a run held because its result could not be saved says so, and Save again puts the same run back to work",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, executions, create, start, summary, attemptOf, changesUntil } =
+          yield* harness;
+        const sink = yield* EventSink.EventSinkV2;
+        const marker = yield* create("Marker");
+        yield* changesUntil(marker.ref.rootId);
+        const task = yield* create("Index the archive", { lane: "ready" });
+        const run = (yield* start(task)).run!;
+        const saveAgain = (name: string) =>
+          tasks.retryCapture({ commandId: command(name), ref: task.ref }, human);
+        assert.equal(
+          (yield* saveAgain("save-running").pipe(Effect.flip)).reason,
+          "invalid-transition",
+        );
+
+        // The turn ended and its capture failed: every writer is gone, but nothing was kept.
+        const attemptId = yield* attemptOf(run);
+        yield* sql`UPDATE orchestration_v2_projection_runs SET status = 'completed', payload_json = json_set(payload_json, '$.status', 'completed') WHERE run_id = ${run.runId}`;
+        yield* sql`UPDATE factory_execution_bindings SET stop_requested = 1 WHERE attempt_id = ${attemptId}`;
+        yield* sql`UPDATE orchestration_v2_effect_outbox SET status = 'succeeded' WHERE thread_id = ${run.threadId}`;
+        for (const phase of ["turn", "capture"])
+          yield* sql`INSERT INTO factory_execution_phases(attempt_id, phase, claimant_id, observation, detail) VALUES (${attemptId}, ${phase}, 'worker', 'quiescent', '')`;
+        yield* sink.write({
+          events: [
+            {
+              id: EventId.make("scope:root"),
+              type: "checkpoint-scope.created",
+              threadId: run.threadId,
+              occurredAt: DateTime.makeUnsafe(at),
+              payload: {
+                id: CheckpointScopeId.make("scope:root"),
+                threadId: run.threadId,
+                runId: run.runId,
+                nodeId: NodeId.make("node:root"),
+                parentScopeId: null,
+                providerThreadId: null,
+                kind: "root_run",
+                ordinalWithinParent: 0,
+                advancesAppRunCount: true,
+                cwd: "/task-project",
+                createdAt: DateTime.makeUnsafe(at),
+              },
+            },
+          ],
+        });
+        const held = yield* summary(task);
+        assert.deepEqual(
+          [held.run?.state, held.run?.note, held.run?.captureFailed, held.attention[0]?.detail],
+          ["held", "The result could not be saved", true, "The result could not be saved"],
+        );
+        assert.equal(
+          (yield* tasks
+            .retry(
+              { commandId: command("retry-held"), ref: task.ref, expectedVersion: held.version },
+              human,
+            )
+            .pipe(Effect.flip)).reason,
+          "run-active",
+        );
+
+        // The process died after the engine took the capture retry and before the task recorded it.
+        const revision = (yield* sql<{
+          revision: number;
+        }>`SELECT revision FROM factory_execution_bindings WHERE attempt_id = ${attemptId}`)[0]!
+          .revision;
+        yield* executions.retryCapture(
+          {
+            commandId: CommandId.make(`factory-task:capture:${command("save")}`),
+            selection: {
+              ref: { environmentId, projectId, rootId: task.ref.rootId },
+              revision,
+              taskId: task.ref.taskId,
+            },
+            runId: run.runId,
+            runAttemptId: attemptId,
+            expectedResultId: null,
+          },
+          human,
+        );
+        // The same command id for another task is another command, crash or not.
+        assert.equal(
+          (yield* tasks
+            .retryCapture({ commandId: command("save"), ref: marker.ref }, human)
+            .pipe(Effect.flip)).reason,
+          "command-conflict",
+        );
+        const saved = (yield* saveAgain("save")).task;
+        assert.deepEqual(
+          [saved.run?.ordinal, saved.run?.state, saved.run?.captureFailed, saved.attention],
+          [1, "running", undefined, []],
+        );
+        assert.deepEqual(
+          yield* sql`SELECT json_extract(payload_json, '$.captureGeneration') AS generation FROM orchestration_v2_effect_outbox WHERE thread_id = ${run.threadId} AND effect_type = 'factory.execution.finalize' AND status = 'pending'`,
+          [{ generation: 2 }],
+        );
+        assert.isTrue((yield* saveAgain("save")).replayed);
+        assert.equal(
+          (yield* saveAgain("save-twice").pipe(Effect.flip)).reason,
+          "invalid-transition",
+        );
+
+        // Every change so far is taken: the marker's notice follows the event that Save again wrote.
+        const eventStore = yield* OrchestrationEventStore.OrchestrationEventStore;
+        yield* eventStore.publishCommitted([
+          yield* eventStore.appendProjectEvent({
+            eventId: EventId.make("marker-execution-updated"),
+            aggregateKind: "project",
+            aggregateId: projectId,
+            occurredAt: at,
+            commandId: command("marker-execution-updated"),
+            causationEventId: null,
+            correlationId: command("marker-execution-updated"),
+            metadata: {},
+            type: "project.factory-execution-updated",
+            payload: {
+              projectId,
+              ref: { environmentId, projectId, rootId: marker.ref.rootId },
+              revision: 1,
+            },
+          }),
+        ]);
+        yield* changesUntil(marker.ref.rootId);
+        // The second capture's process died on Windows and recovery expired its claim; the worker
+        // then gave the finalize up. A subscriber hears it and sees Save again once more.
+        yield* sql`INSERT INTO factory_execution_phases(attempt_id, phase, claimant_id, observation, detail) VALUES (${attemptId}, 'capture', 'worker', 'no-start', '')`;
+        const outbox = yield* EffectOutbox.EffectOutboxV2;
+        const finalize = Option.getOrThrow(yield* outbox.claimNext({ workerId: "worker" }));
+        assert.equal(finalize.request.type, "factory.execution.finalize");
+        assert.isTrue(
+          yield* outbox.fail({
+            effectId: finalize.id,
+            workerId: "worker",
+            error: "capture failed",
+          }),
+        );
+        yield* changesUntil(task.ref.rootId);
+        const heldAgain = yield* summary(task);
+        assert.deepEqual([heldAgain.run?.state, heldAgain.run?.captureFailed], ["held", true]);
+
+        // A breakdown asked for meanwhile becomes the latest run; the held run is still named.
+        yield* tasks.recordPlanningRun({
+          ref: task.ref,
+          threadId: ThreadId.make("thread:planning-after-held"),
+          runId: RunId.make("run:planning-after-held"),
+          setup: setupOf(),
+        });
+        const planned = yield* summary(task);
+        assert.deepEqual(
+          [planned.run?.purpose, planned.failedRun?.ordinal, planned.failedRun?.captureFailed],
+          ["planning", 1, true],
+        );
+        // From the held state Save again asks the engine itself, for the same run.
+        const again = (yield* saveAgain("save-held-again")).task;
+        assert.deepEqual([again.run?.purpose, again.failedRun], ["planning", undefined]);
+        assert.deepEqual(
+          yield* sql`SELECT json_extract(payload_json, '$.captureGeneration') AS generation FROM orchestration_v2_effect_outbox WHERE thread_id = ${run.threadId} AND effect_type = 'factory.execution.finalize' AND status = 'pending'`,
+          [{ generation: 3 }],
         );
       }),
     ),

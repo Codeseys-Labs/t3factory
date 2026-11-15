@@ -112,6 +112,8 @@ export interface TaskRunRow extends FactoryTaskRun {
   readonly planRevision: number | null;
   /** Commit the run's worktree started from. Null for a planning run or one in the project root. */
   readonly baseRef: string | null;
+  /** The attempt's latest kept capture of any generation. Saving again names it. */
+  readonly latestResultId: string | null;
   readonly lost?: true;
 }
 
@@ -255,6 +257,10 @@ export class FactoryTaskStore extends Context.Service<
       readonly actor: TaskActor;
     }) => Effect.Effect<void, FactoryTaskError>;
     readonly launched: (commandId: CommandId) => Effect.Effect<boolean, FactoryTaskError>;
+    /** The attempt whose capture retry the engine took for this command id, if it took one. */
+    readonly captureRetryAttempt: (
+      commandId: CommandId,
+    ) => Effect.Effect<RunAttemptId | null, FactoryTaskError>;
     readonly markStopRequested: (threadId: ThreadId) => Effect.Effect<void, FactoryTaskError>;
     readonly recordPlanningRun: (input: {
       readonly key: TaskKey;
@@ -450,6 +456,8 @@ interface RunRecord {
   outputStatus: "sealed" | "failed" | "held" | null;
   effectsPending: number;
   sessionEnded: number;
+  captureFailed: number;
+  latestResultId: string | null;
 }
 
 const make = Effect.gen(function* () {
@@ -585,8 +593,10 @@ const make = Effect.gen(function* () {
     const records =
       yield* sql<TaskRecord>`SELECT root_id AS rootId, task_id AS taskId, project_id AS projectId, parent_id AS parentId, display_id AS displayId, title, plan_order AS planOrder, retired, type, lane, assignment_json AS assignment, source_json AS source, accepted_revision AS acceptedRevision, status, needs_attention AS needsAttention, assignee_key AS assigneeKey, version, created_at AS createdAt, updated_at AS updatedAt FROM factory_tasks WHERE root_id IN ${sql.in(rootIds)} ORDER BY root_id, plan_order`;
     if (records.length === 0) return views;
+    // `captureFailed` spells the current capture key the way FactoryExecutionStore.captureKey does.
+    // A capture claim reads `no-start` only once recovery expired a claimant that died mid-capture.
     const runRecords =
-      yield* sql<RunRecord>`SELECT r.thread_id AS threadId, r.root_id AS rootId, r.task_id AS taskId, r.ordinal, r.purpose, r.run_id AS runId, r.attempt_id AS attemptId, r.setup_json AS setup, r.profile_id AS profileId, r.started_at AS startedAt, r.stop_requested AS stopRequested, r.ended_at AS endedAt, b.revision AS planRevision, json_extract(b.binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef, b.quiescent, b.stop_requested AS engineStop, json_extract(n.payload_json, '$.status') AS nativeStatus, n.completed_at AS nativeCompletedAt, (SELECT json_extract(o.output_json, '$.status') FROM factory_execution_results o WHERE o.attempt_id = r.attempt_id ORDER BY o.rowid DESC LIMIT 1) AS outputStatus, EXISTS (SELECT 1 FROM orchestration_v2_effect_outbox e WHERE e.thread_id = r.thread_id AND e.status IN ('pending', 'running')) AS effectsPending, EXISTS (SELECT 1 FROM orchestration_v2_projection_run_attempts a JOIN orchestration_v2_projection_provider_threads p ON p.provider_thread_id = a.provider_thread_id JOIN orchestration_v2_projection_provider_sessions s ON s.provider_session_id = p.provider_session_id WHERE a.attempt_id = r.attempt_id AND s.status IN ('stopped', 'error')) AS sessionEnded FROM factory_task_runs r LEFT JOIN factory_execution_bindings b ON b.attempt_id = r.attempt_id LEFT JOIN orchestration_v2_projection_runs n ON n.run_id = r.run_id WHERE r.root_id IN ${sql.in(rootIds)} ORDER BY r.root_id, r.task_id, r.ordinal`;
+      yield* sql<RunRecord>`SELECT r.thread_id AS threadId, r.root_id AS rootId, r.task_id AS taskId, r.ordinal, r.purpose, r.run_id AS runId, r.attempt_id AS attemptId, r.setup_json AS setup, r.profile_id AS profileId, r.started_at AS startedAt, r.stop_requested AS stopRequested, r.ended_at AS endedAt, b.revision AS planRevision, json_extract(b.binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef, b.quiescent, b.stop_requested AS engineStop, json_extract(n.payload_json, '$.status') AS nativeStatus, n.completed_at AS nativeCompletedAt, (SELECT json_extract(o.output_json, '$.status') FROM factory_execution_results o WHERE o.attempt_id = r.attempt_id ORDER BY o.rowid DESC LIMIT 1) AS outputStatus, EXISTS (SELECT 1 FROM orchestration_v2_effect_outbox e WHERE e.thread_id = r.thread_id AND e.status IN ('pending', 'running')) AS effectsPending, EXISTS (SELECT 1 FROM orchestration_v2_projection_run_attempts a JOIN orchestration_v2_projection_provider_threads p ON p.provider_thread_id = a.provider_thread_id JOIN orchestration_v2_projection_provider_sessions s ON s.provider_session_id = p.provider_session_id WHERE a.attempt_id = r.attempt_id AND s.status IN ('stopped', 'error')) AS sessionEnded, (EXISTS (SELECT 1 FROM factory_execution_phases p WHERE p.attempt_id = r.attempt_id AND p.phase = 'capture' AND p.observation IN ('quiescent', 'no-start')) AND NOT EXISTS (SELECT 1 FROM factory_execution_phases p WHERE p.attempt_id = r.attempt_id AND p.observation NOT IN ('quiescent', 'no-start')) AND NOT EXISTS (SELECT 1 FROM factory_execution_results o WHERE o.attempt_id = r.attempt_id AND o.capture_key = 'native-final/' || (1 + (SELECT count(*) FROM factory_execution_capture_retries c WHERE c.attempt_id = r.attempt_id)))) AS captureFailed, (SELECT o.result_id FROM factory_execution_results o WHERE o.attempt_id = r.attempt_id ORDER BY o.rowid DESC LIMIT 1) AS latestResultId FROM factory_task_runs r LEFT JOIN factory_execution_bindings b ON b.attempt_id = r.attempt_id LEFT JOIN orchestration_v2_projection_runs n ON n.run_id = r.run_id WHERE r.root_id IN ${sql.in(rootIds)} ORDER BY r.root_id, r.task_id, r.ordinal`;
     const resultRecords = yield* sql<{
       rootId: string;
       taskId: string;
@@ -663,9 +673,13 @@ const make = Effect.gen(function* () {
       const runsByTask = new Map<string, TaskRunRow[]>();
       for (const record of runRecords) {
         if (record.rootId !== rootId) continue;
-        const { state, note, lost } =
+        const { state, note, lost, captureFailed } =
           record.purpose === "planning"
-            ? { ...planningRunState(record.nativeStatus), lost: undefined }
+            ? {
+                ...planningRunState(record.nativeStatus),
+                lost: undefined,
+                captureFailed: undefined,
+              }
             : workRunState({
                 quiescent: record.quiescent !== 0,
                 engineStop: record.engineStop === 1,
@@ -674,6 +688,7 @@ const make = Effect.gen(function* () {
                 outputStatus: record.outputStatus,
                 effectsPending: record.effectsPending === 1,
                 sessionEnded: record.sessionEnded === 1,
+                captureFailed: record.captureFailed === 1,
               });
         const runs = runsByTask.get(record.taskId) ?? [];
         runs.push({
@@ -690,7 +705,9 @@ const make = Effect.gen(function* () {
           profileId: record.profileId,
           planRevision: record.planRevision,
           baseRef: record.baseRef,
+          latestResultId: record.latestResultId,
           ...(lost ? { lost } : {}),
+          ...(captureFailed ? { captureFailed } : {}),
         });
         runsByTask.set(record.taskId, runs);
       }
@@ -1191,6 +1208,12 @@ const make = Effect.gen(function* () {
       const rows =
         yield* sql`SELECT attempt_id FROM factory_execution_bindings WHERE json_extract(binding_json, '$.commandId') = ${commandId}`;
       return rows.length > 0;
+    }, Effect.mapError(failure)),
+    captureRetryAttempt: Effect.fn("FactoryTaskStore.captureRetryAttempt")(function* (commandId) {
+      const rows = yield* sql<{
+        attemptId: RunAttemptId;
+      }>`SELECT attempt_id AS attemptId FROM factory_execution_capture_retries WHERE command_id = ${commandId}`;
+      return rows[0]?.attemptId ?? null;
     }, Effect.mapError(failure)),
     markStopRequested: Effect.fn("FactoryTaskStore.markStopRequested")(function* (threadId) {
       yield* sql`UPDATE factory_task_runs SET stop_requested = 1 WHERE thread_id = ${threadId}`;

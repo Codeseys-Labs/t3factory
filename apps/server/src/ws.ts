@@ -2916,6 +2916,8 @@ export const layerWsRpc = (
           factoryTasks.stop(input, { kind: "human", sessionId: currentSessionId }),
         [WS_METHODS.factoryRetryTask]: (input) =>
           factoryTasks.retry(input, { kind: "human", sessionId: currentSessionId }),
+        [WS_METHODS.factoryRetryTaskCapture]: (input) =>
+          factoryTasks.retryCapture(input, { kind: "human", sessionId: currentSessionId }),
         [WS_METHODS.factoryAcceptTaskResult]: (input) =>
           factoryTasks.accept(input, { kind: "human", sessionId: currentSessionId }),
         [WS_METHODS.factoryRequestTaskChanges]: (input) =>

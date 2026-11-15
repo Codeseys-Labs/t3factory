@@ -292,10 +292,15 @@ it.effect(
           writes++;
           return Effect.fail(new FactoryTaskError({ reason: "invalid-input" }));
         },
+        [WS_METHODS.factoryRetryTaskCapture]: () => {
+          writes++;
+          return Effect.fail(new FactoryTaskError({ reason: "invalid-input" }));
+        },
       });
       const query = h.tasks.listTasks({ environmentId, input: {} });
       h.registry.mount(query);
       yield* AtomRegistry.getResult(h.registry, query, { suspendOnWaiting: true });
+      expect(h.registry.get(h.tasks.retryTaskCapture.permissionAtom(environmentId))).toBe(true);
       h.registry.set(
         sessions(environmentId),
         AsyncResult.success({
@@ -321,6 +326,14 @@ it.effect(
       };
       const result = yield* Effect.promise(() => h.tasks.createTask.run(h.registry, target));
       expect(result._tag).toBe("Failure");
+      expect(h.registry.get(h.tasks.retryTaskCapture.permissionAtom(environmentId))).toBe(false);
+      const saved = yield* Effect.promise(() =>
+        h.tasks.retryTaskCapture.run(h.registry, {
+          environmentId,
+          input: { commandId: CommandId.make("save-again"), ref: fixtures.tasks[0]!.ref },
+        }),
+      );
+      expect(saved._tag).toBe("Failure");
       expect(writes).toBe(0);
     }),
 );

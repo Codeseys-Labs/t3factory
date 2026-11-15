@@ -411,29 +411,34 @@ describe("workRunState", () => {
     outputStatus: null,
     effectsPending: false,
     sessionEnded: false,
+    captureFailed: false,
   } as const;
+  type Marks = { readonly lost?: true; readonly captureFailed?: true; readonly note?: string };
   const cases: ReadonlyArray<
-    readonly [string, Partial<Parameters<typeof workRunState>[0]>, FactoryTaskRunState, boolean?]
+    readonly [string, Partial<Parameters<typeof workRunState>[0]>, FactoryTaskRunState, Marks?]
   > = [
     ["a run nobody stopped is running", {}, "running"],
-    ["a running run whose agent session ended is lost", { sessionEnded: true }, "running", true],
+    [
+      "a running run whose agent session ended is lost",
+      { sessionEnded: true },
+      "running",
+      { lost: true },
+    ],
     [
       "a waiting run whose agent session ended is lost",
       { sessionEnded: true, nativeStatus: "waiting" },
       "running",
-      true,
+      { lost: true },
     ],
     [
       "a lost run is no longer lost once a person stops it",
       { sessionEnded: true, stopByPerson: true },
       "running",
-      false,
     ],
     [
       "a run still starting is not lost",
       { sessionEnded: true, nativeStatus: "starting" },
       "running",
-      false,
     ],
     [
       "a finished run still being captured is running",
@@ -455,6 +460,18 @@ describe("workRunState", () => {
       "an ended run nothing is finishing is held",
       { engineStop: true, nativeStatus: "completed" },
       "held",
+      { note: "Waiting for the run's processes to exit" },
+    ],
+    [
+      "an ended run whose result could not be saved is held and says so",
+      { engineStop: true, nativeStatus: "completed", captureFailed: true },
+      "held",
+      { captureFailed: true, note: "The result could not be saved" },
+    ],
+    [
+      "a run being saved again is running, not held",
+      { engineStop: true, nativeStatus: "completed", captureFailed: true, effectsPending: true },
+      "running",
     ],
     [
       "a settled run with a kept result is completed",
@@ -478,11 +495,15 @@ describe("workRunState", () => {
     ],
   ];
   const rows = cases.map(
-    ([name, overrides, state, lost = false]) => [name, overrides, state, lost] as const,
+    ([name, overrides, state, marks = {}]) => [name, overrides, state, marks] as const,
   );
-  it.each(rows)("%s", (_name, overrides, state, lost) => {
+  it.each(rows)("%s", (_name, overrides, state, marks) => {
     const outcome = workRunState({ ...base, ...overrides });
-    assert.deepEqual([outcome.state, outcome.lost === true], [state, lost]);
+    assert.deepEqual(
+      [outcome.state, outcome.lost === true, outcome.captureFailed === true],
+      [state, marks.lost === true, marks.captureFailed === true],
+    );
+    if (marks.note !== undefined) assert.equal(outcome.note, marks.note);
   });
 
   it("reads a planning run from its thread", () => {

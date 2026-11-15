@@ -28,10 +28,12 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as Stream from "effect/Stream";
 
 import { forkParked } from "../serverActivation.ts";
 
@@ -304,6 +306,11 @@ export interface EffectOutboxV2Shape {
     readonly workerId: string;
     readonly error: string;
   }) => Effect.Effect<boolean, EffectOutboxError>;
+  /** Effects `fail` gave up on, heard after their row is written. */
+  readonly failures: Stream.Stream<{
+    readonly threadId: ThreadId;
+    readonly type: OrchestrationEffectRequestV2["type"];
+  }>;
   readonly pruneSettled: Effect.Effect<number, EffectOutboxError>;
 }
 
@@ -357,6 +364,10 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
     const available = yield* Queue.dropping<void>(64);
     const cancellationSignals = new Map<string, Deferred.Deferred<void>>();
     const settledSignals = new Map<string, Deferred.Deferred<void>>();
+    const failed = yield* PubSub.unbounded<{
+      readonly threadId: ThreadId;
+      readonly type: OrchestrationEffectRequestV2["type"];
+    }>();
     const signalSettled = (effectIds: ReadonlyArray<string>) =>
       Effect.forEach(
         effectIds,
@@ -722,7 +733,11 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
       fail: Effect.fn("EffectOutbox.fail")(
         function* ({ effectId, workerId, error }) {
           const now = DateTime.formatIso(yield* DateTime.now);
-          const rows = yield* sql<{ readonly effect_id: string }>`
+          const rows = yield* sql<{
+            readonly effect_id: string;
+            readonly thread_id: ThreadId;
+            readonly effect_type: OrchestrationEffectRequestV2["type"];
+          }>`
             UPDATE orchestration_v2_effect_outbox
             SET
               status = 'failed',
@@ -733,12 +748,16 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
             WHERE effect_id = ${effectId}
               AND status = 'running'
               AND lease_owner = ${workerId}
-            RETURNING effect_id
+            RETURNING effect_id, thread_id, effect_type
           `;
           if (rows.length === 1) {
             cancellationSignals.delete(effectId);
             yield* signalSettled([effectId]);
             yield* notifyAvailable();
+            yield* PubSub.publish(failed, {
+              threadId: rows[0]!.thread_id,
+              type: rows[0]!.effect_type,
+            });
           }
           return rows.length === 1;
         },
@@ -749,6 +768,7 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
             ),
           ),
       ),
+      failures: Stream.fromPubSub(failed),
       pruneSettled: Effect.gen(function* () {
         const cutoff = DateTime.formatIso(
           DateTime.subtractDuration(yield* DateTime.now, SETTLED_EFFECT_RETENTION),

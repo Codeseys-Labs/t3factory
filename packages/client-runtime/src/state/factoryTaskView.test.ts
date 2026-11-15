@@ -244,6 +244,47 @@ describe("task presentation", () => {
     });
     expect([planned.primary?.kind, planned.secondary?.kind]).toEqual(["retry", "reassign"]);
   });
+  it("offers Save again, never Retry or Reassign, on a held run whose result could not be saved", () => {
+    const failed = task("T-29");
+    const held = (run: Partial<NonNullable<FactoryTaskSummary["run"]>>) => {
+      const banner = presentFactoryTaskBanner({
+        task: { ...failed, run: { ...failed.run!, state: "held", ...run } },
+        attention: state("T-29").attention,
+        assigneeLabel: "Agent",
+      });
+      return [banner.title, banner.primary, banner.secondary];
+    };
+    expect(held({ note: "The result could not be saved", captureFailed: true })).toEqual([
+      "Run 2: The result could not be saved",
+      { kind: "save-again", label: "Save again" },
+      null,
+    ]);
+    expect(held({ note: "Waiting for the run's processes to exit" })).toEqual([
+      "Run 2: Waiting for the run's processes to exit",
+      null,
+      null,
+    ]);
+    // A planning run started after the held run must not stand in for it.
+    const later = presentFactoryTaskBanner({
+      task: {
+        ...failed,
+        run: { ...failed.run!, ordinal: 3, purpose: "planning", state: "completed", note: null },
+        failedRun: {
+          ...failed.run!,
+          state: "held",
+          note: "The result could not be saved",
+          captureFailed: true,
+        },
+      },
+      attention: state("T-29").attention,
+      assigneeLabel: "Agent",
+    });
+    expect([later.title, later.primary, later.secondary]).toEqual([
+      "Run 2: The result could not be saved",
+      { kind: "save-again", label: "Save again" },
+      null,
+    ]);
+  });
   it.each([
     ["C1", "T-43", "backlog", "start", null],
     ["C2", "T-38.3", "blocked", "open-task", null],

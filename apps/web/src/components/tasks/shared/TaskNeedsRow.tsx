@@ -1,7 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   type FactoryTaskNeed,
+  factoryTaskFailedRun,
   factoryTaskKey,
+  presentFactoryTaskRunRecovery,
 } from "@t3tools/client-runtime/state/factory-task-view";
 import type {
   FactoryTaskDetail,
@@ -70,27 +72,38 @@ function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
     setBusy(true);
     void operation(task).then(() => setBusy(false));
   };
+  const failedRun = task === null ? null : factoryTaskFailedRun(task);
+  const recovery = presentFactoryTaskRunRecovery(failedRun)[0]?.kind;
   const action: KitAction =
-    need.reason === "failed" && task?.run?.purpose === "planning" && task.run.state === "failed"
+    need.reason === "failed" &&
+    task !== null &&
+    failedRun?.purpose === "planning" &&
+    failedRun.state === "failed"
       ? {
           label: "Break down",
           disabled: !permissions.breakDown,
           onClick: () => openTaskSetup(task.ref, "break-down"),
         }
-      : need.reason === "failed"
+      : need.reason === "failed" && recovery === "save-again"
         ? {
-            label: "Retry",
-            disabled: task === null || !permissions.retry || busy,
-            onClick: act(actions.retry),
+            label: "Save again",
+            disabled: task === null || !permissions.saveAgain || busy,
+            onClick: act(actions.saveAgain),
           }
-        : need.reason === "lost"
+        : need.reason === "failed" && recovery === "retry"
           ? {
-              label: "Stop",
-              tone: "danger",
-              disabled: task === null || !permissions.stop || busy,
-              onClick: act(actions.stop),
+              label: "Retry",
+              disabled: task === null || !permissions.retry || busy,
+              onClick: act(actions.retry),
             }
-          : { label: need.reason === "question" ? "Answer" : "Review", onClick: onOpen };
+          : need.reason === "lost"
+            ? {
+                label: "Stop",
+                tone: "danger",
+                disabled: task === null || !permissions.stop || busy,
+                onClick: act(actions.stop),
+              }
+            : { label: need.reason === "question" ? "Answer" : "Review", onClick: onOpen };
   return (
     <Row
       need={need}

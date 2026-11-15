@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   type FactoryTaskBannerAction,
+  factoryTaskFailedRun,
   presentFactoryTaskBanner,
 } from "@t3tools/client-runtime/state/factory-task-view";
 import type {
@@ -90,7 +91,8 @@ export function TaskBanner({
       : NO_PLAN,
   );
 
-  const runLabel = task.run ? presentTaskSetup(task.run.setup, catalog).label : null;
+  const run = need?.reason === "failed" ? factoryTaskFailedRun(task) : task.run;
+  const runLabel = run ? presentTaskSetup(run.setup, catalog).label : null;
   const askFrom = runLabel ?? assigneeText(chip);
   if (
     need &&
@@ -111,8 +113,7 @@ export function TaskBanner({
     checks,
     ...(where
       ? {
-          runDetail:
-            need?.reason === "failed" && task.run ? `Run ${task.run.ordinal} · ${where}` : where,
+          runDetail: need?.reason === "failed" && run ? `Run ${run.ordinal} · ${where}` : where,
         }
       : {}),
   });
@@ -157,6 +158,8 @@ export function TaskBanner({
         return kit(() => openTaskSetup(task.ref, "retry"), permissions.retry);
       case "retry":
         return kit(() => runAction(() => actions.retry(task)), permissions.retry);
+      case "save-again":
+        return kit(() => runAction(() => actions.saveAgain(task)), permissions.saveAgain);
       case "break-down":
         return kit(() => openTaskSetup(task.ref, "break-down"), permissions.breakDown);
       case "stop":

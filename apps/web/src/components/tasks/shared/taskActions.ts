@@ -106,6 +106,13 @@ export function useTaskActions() {
         },
         { task },
       ),
+    saveAgain: (task: FactoryTaskSummary) =>
+      run(
+        factoryTasks.retryTaskCapture,
+        task.ref.environmentId,
+        { commandId: commandId(), ref: task.ref },
+        { task },
+      ),
     accept: (task: FactoryTaskSummary, revision: number) =>
       run(
         factoryTasks.acceptTaskResult,
@@ -182,6 +189,7 @@ export function useTaskPermissions(environmentId: EnvironmentId) {
     start: useAtomValue(factoryTasks.startTask.permissionAtom(environmentId)),
     stop: useAtomValue(factoryTasks.stopTask.permissionAtom(environmentId)),
     retry: useAtomValue(factoryTasks.retryTask.permissionAtom(environmentId)),
+    saveAgain: useAtomValue(factoryTasks.retryTaskCapture.permissionAtom(environmentId)),
     breakDown: useAtomValue(factoryTasks.requestTaskBreakdown.permissionAtom(environmentId)),
     accept: useAtomValue(factoryTasks.acceptTaskResult.permissionAtom(environmentId)),
     requestChanges: useAtomValue(factoryTasks.requestTaskChanges.permissionAtom(environmentId)),

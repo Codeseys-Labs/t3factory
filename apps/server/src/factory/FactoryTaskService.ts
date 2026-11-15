@@ -17,6 +17,7 @@ import {
   FactoryTaskRequestChangesInput,
   FactoryTaskResultReadInput,
   FactoryTaskRetryInput,
+  FactoryTaskRetryCaptureInput,
   FactoryTaskStartInput,
   FactoryTaskStopInput,
   FactoryTaskUpdateInput,
@@ -66,6 +67,7 @@ import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import * as DeliveryStore from "../persistence/FactoryDeliveryStore.ts";
 import * as ExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as Tasks from "../persistence/FactoryTaskStore.ts";
+import * as EffectOutbox from "../orchestration-v2/EffectOutbox.ts";
 import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as Processes from "../processRunner.ts";
@@ -127,6 +129,11 @@ export class FactoryTaskService extends Context.Service<
     ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
     readonly retry: (
       input: FactoryTaskRetryInput,
+      actor: FactoryPlanActor,
+    ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
+    /** Saves again the result of a run held because its capture failed. */
+    readonly retryCapture: (
+      input: FactoryTaskRetryCaptureInput,
       actor: FactoryPlanActor,
     ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
     readonly accept: (
@@ -239,6 +246,7 @@ const decodeUpdate = Schema.decodeEffect(FactoryTaskUpdateInput);
 const decodeStart = Schema.decodeEffect(FactoryTaskStartInput);
 const decodeStop = Schema.decodeEffect(FactoryTaskStopInput);
 const decodeRetry = Schema.decodeEffect(FactoryTaskRetryInput);
+const decodeRetryCapture = Schema.decodeEffect(FactoryTaskRetryCaptureInput);
 const decodeAccept = Schema.decodeEffect(FactoryTaskAcceptInput);
 const decodeRequestChanges = Schema.decodeEffect(FactoryTaskRequestChangesInput);
 const decodeReopen = Schema.decodeEffect(FactoryTaskReopenInput);
@@ -332,6 +340,23 @@ const executionError = (error: FactoryExecutionError) => {
   });
 };
 
+const NOTHING_TO_SAVE = "This run's result is no longer waiting to be saved.";
+/** Save again's refusals in plain words; the shared mapping would ask to stop a run. */
+const captureRefusal = (error: FactoryExecutionError) => {
+  const refused = (reason: FactoryTaskError["reason"], detail: string) =>
+    new FactoryTaskError({ reason, detail, cause: error });
+  switch (error.reason) {
+    case "not-quiescent":
+      return refused("run-active", "The run is still finishing. Try again when it stops.");
+    case "task-conflict":
+      return refused("invalid-transition", NOTHING_TO_SAVE);
+    case "budget-exhausted":
+      return refused("invalid-transition", "This run's result was tried too many times.");
+    default:
+      return executionError(error);
+  }
+};
+
 /** Plain words for what stopped a Publish or Merge; the client shows `detail` as it is. */
 const deliveryRefusal = (error: FactoryDeliveryError): FactoryTaskError => {
   const as = (reason: FactoryTaskError["reason"]) => new FactoryTaskError({ reason, cause: error });
@@ -401,6 +426,7 @@ const plainRun = (run: Tasks.TaskRunRow): FactoryTaskRun => ({
   startedAt: run.startedAt,
   endedAt: run.endedAt,
   note: run.note,
+  ...(run.captureFailed ? { captureFailed: true } : {}),
 });
 const firstLine = (text: string) =>
   text
@@ -434,6 +460,7 @@ const make = Effect.gen(function* () {
   const work = yield* Work.FactoryWorkService;
   const executions = yield* Executions.FactoryExecutionService;
   const executionStore = yield* ExecutionStore.FactoryExecutionStore;
+  const outbox = yield* EffectOutbox.EffectOutboxV2;
   const projections = yield* Projections.ProjectionStoreV2;
   const events = yield* OrchestrationEventStore.OrchestrationEventStore;
   const settings = yield* ServerSettings.ServerSettingsService;
@@ -477,6 +504,12 @@ const make = Effect.gen(function* () {
 
   const summarize = (root: Tasks.RootView, view: Tasks.TaskView): FactoryTaskSummary => {
     const parent = view.row.parentId === null ? undefined : root.tasks.get(view.row.parentId);
+    const latest = view.runs.at(-1);
+    const work = view.runs.findLast((entry) => entry.purpose === "work");
+    const failedRun =
+      work !== undefined && work !== latest && (work.state === "failed" || work.state === "held")
+        ? work
+        : undefined;
     return {
       ref: {
         environmentId,
@@ -499,7 +532,8 @@ const make = Effect.gen(function* () {
         .filter((blocker) => unfinished(blocker.status))
         .slice(0, 8),
       progress: view.derived.progress,
-      run: view.runs.length === 0 ? null : plainRun(view.runs.at(-1)!),
+      run: latest === undefined ? null : plainRun(latest),
+      ...(failedRun ? { failedRun: plainRun(failedRun) } : {}),
       liveRuns: view.derived.liveRuns,
       attention: view.derived.attention,
       result: view.derived.result,
@@ -1467,6 +1501,53 @@ const make = Effect.gen(function* () {
     },
   );
 
+  const retryCapture: FactoryTaskService["Service"]["retryCapture"] = Effect.fn(
+    "FactoryTaskService.retryCapture",
+  )(function* (raw, actor) {
+    yield* requireHuman(actor);
+    const input = yield* decodeRetryCapture(raw).pipe(Effect.mapError(invalid));
+    const command = yield* begin("retryCapture", input.commandId, actor, input);
+    if (command.replayed) return yield* replay(input.ref);
+    const { task } = yield* requireTask(input.ref);
+    const captureId = derived(input.commandId, "capture");
+    const latest = task.runs.findLast((entry) => entry.purpose === "work");
+    const retried = yield* store.captureRetryAttempt(captureId);
+    // A command whose retry the engine already took only has to finish recording it, for that run.
+    if (retried !== null) {
+      if (latest?.attemptId !== retried) return yield* refuse("command-conflict");
+    } else {
+      if (latest === undefined) return yield* refuse("no-run");
+      if (
+        latest.captureFailed !== true ||
+        latest.attemptId === null ||
+        latest.planRevision === null
+      )
+        return yield* new FactoryTaskError({
+          reason: "invalid-transition",
+          detail: NOTHING_TO_SAVE,
+        });
+      yield* executions
+        .retryCapture(
+          {
+            commandId: captureId,
+            selection: {
+              ref: planRef(task.row),
+              revision: latest.planRevision,
+              taskId: task.row.taskId,
+            },
+            runId: latest.runId,
+            runAttemptId: latest.attemptId,
+            expectedResultId: latest.latestResultId,
+          },
+          actor,
+        )
+        .pipe(Effect.mapError(captureRefusal));
+    }
+    yield* transact(command.record(task.row));
+    yield* sync(task.row.rootId);
+    return { task: yield* summaryOf(task.row), replayed: false };
+  });
+
   /** A review command names the result it saw; a newer one means the reviewer must look again. */
   const reviewed = Effect.fn("FactoryTaskService.reviewed")(function* (
     task: Tasks.TaskView,
@@ -2156,6 +2237,20 @@ const make = Effect.gen(function* () {
     ),
     Effect.forkScoped,
   );
+  // A capture that fails without keeping a result settles nothing, so no settlement above is heard.
+  yield* outbox.failures.pipe(
+    Stream.runForEach((failure) =>
+      failure.type === "factory.execution.finalize"
+        ? quietly(
+            Effect.gen(function* () {
+              const key = yield* store.taskOfThread(failure.threadId);
+              if (key !== null) yield* sync(key.rootId);
+            }),
+          )
+        : Effect.void,
+    ),
+    Effect.forkScoped,
+  );
   yield* deliveryStore.changes.pipe(
     Stream.runForEach((originKey) => {
       const task = parseTaskResultOriginKey(originKey);
@@ -2178,6 +2273,7 @@ const make = Effect.gen(function* () {
     start,
     stop,
     retry,
+    retryCapture,
     accept,
     requestChanges,
     reopen,
@@ -2197,5 +2293,7 @@ const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(FactoryTaskService, make).pipe(
-  Layer.provide(Layer.mergeAll(Changes.layer, Tasks.layer, ExecutionStore.layer)),
+  Layer.provide(
+    Layer.mergeAll(Changes.layer, Tasks.layer, ExecutionStore.layer, EffectOutbox.layer),
+  ),
 );

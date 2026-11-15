@@ -98,18 +98,20 @@ specific to a sync:
 
 Upstream does not run its tests on Windows, so some of its tests fail only there. They go in
 `packages/shared/src/testing/windowsQuarantine.json`, which a test setup file applies on Windows
-only. Each entry names an issue and a reason. Never list a test the fork added, and do not edit
-upstream's test files to make them pass on Windows. Linux runs every case, so a hang or failure on
-the hosted lanes is real and blocks the merge.
+only. That setup file is loaded by the root test configuration (server and the packages that
+borrow it) and by desktop's. Web, mobile and client-runtime have their own setup lists; add the
+file there before listing one of their tests. Each entry names an issue and a reason. Never list a
+test the fork added, and do not edit upstream's test files to make them pass on Windows. Linux runs
+every case, so a hang or failure on the hosted lanes is real and blocks the merge.
 
 ## Land it
 
-1. Check that the default branch has not moved:
+1. Check that the default branch has not moved: `git fetch origin`, then
    `git merge-base --is-ancestor origin/feat/t3factory HEAD`. If it has, merge it into the sync
    branch and validate again. The receipt belongs to one commit.
 2. Merge with `gh pr merge <n> --merge --match-head-commit <sha>`. If the command reports an
    error, read the pull request's state before trying again: the merge may have happened.
-3. Confirm the default branch now holds exactly what was validated:
+3. Confirm the default branch now holds exactly what was validated: `git fetch origin`, then
    `git diff --quiet <validated sha> origin/feat/t3factory`.
 4. Retarget every pull request stacked on the sync branch to the default branch, and read each
    one's base back. Deleting a branch closes the pull requests based on it.
@@ -129,7 +131,8 @@ the hosted lanes is real and blocks the merge.
   commands directly.
 - **A shared test setup file that used the global `URL`.** A test file can run in a DOM
   environment, which replaces `URL`; `fileURLToPath` then rejects it and the file fails to load on
-  every host. Derive paths from `import.meta.url` with `node:path`.
+  every host. Pass the `import.meta.url` string straight to `fileURLToPath` from `node:url`, and
+  build paths from the result with `node:path`.
 - **The hosted web test lane lost its browser** when the suite grew by a third in one sync. The lane
   now runs the suite in two halves. If upstream changes how its own CI splits the web tests, check
   the lane again.

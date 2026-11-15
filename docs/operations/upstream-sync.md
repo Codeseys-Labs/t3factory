@@ -136,6 +136,11 @@ the hosted lanes is real and blocks the merge.
 - **Packaging on Windows ran a hook upstream never runs there.** Upstream packages Windows from
   Linux, where its after-pack hooks skip themselves. A hook that looks cross-platform can be
   untested on a Windows host. Upstream's release log shows what it actually ships.
+- **A vendored file with a 192-character path held every task run** on Windows clones that do not
+  set `core.longpaths` ([#142](https://github.com/Codeseys-Labs/t3factory/issues/142)). No test
+  could see it: the server test setup turns long paths on for every git child. After a sync, read
+  the longest tracked path, `git ls-files | awk '{ print length($0) }' | sort -n | tail -1`, and
+  run one task in the built preview before calling the sync done.
 - **A test install under `%TEMP%` lost its files overnight**, including its database and the
   `.git` folder of its repository clone. Keep test installs and database backups out of temporary
   folders.

@@ -113,10 +113,10 @@ the open PR limit.
 
 ### Leave the review bots to us
 
-CodeRabbit reviews every PR by itself once it is marked ready for review; it skips drafts. A second
-bot, Greptile, costs credits for each review, and a maintainer asks it when a PR needs a second
-look. Do not ask either bot for a review. Push your review fixes together, not one commit at a time,
-so they are reviewed once.
+CodeRabbit reviews every PR against the default branch by itself once it is marked ready for review;
+it skips drafts. A second bot, Greptile, costs credits for each review, and a maintainer asks it when
+a PR needs a second look. Do not ask either bot for a review. Push your review fixes together, not
+one commit at a time, so they are reviewed once.
 
 ## Bans
 

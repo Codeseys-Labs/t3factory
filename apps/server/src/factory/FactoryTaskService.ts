@@ -504,6 +504,12 @@ const make = Effect.gen(function* () {
 
   const summarize = (root: Tasks.RootView, view: Tasks.TaskView): FactoryTaskSummary => {
     const parent = view.row.parentId === null ? undefined : root.tasks.get(view.row.parentId);
+    const latest = view.runs.at(-1);
+    const work = view.runs.findLast((entry) => entry.purpose === "work");
+    const failedRun =
+      work !== undefined && work !== latest && (work.state === "failed" || work.state === "held")
+        ? work
+        : undefined;
     return {
       ref: {
         environmentId,
@@ -526,7 +532,8 @@ const make = Effect.gen(function* () {
         .filter((blocker) => unfinished(blocker.status))
         .slice(0, 8),
       progress: view.derived.progress,
-      run: view.runs.length === 0 ? null : plainRun(view.runs.at(-1)!),
+      run: latest === undefined ? null : plainRun(latest),
+      ...(failedRun ? { failedRun: plainRun(failedRun) } : {}),
       liveRuns: view.derived.liveRuns,
       attention: view.derived.attention,
       result: view.derived.result,

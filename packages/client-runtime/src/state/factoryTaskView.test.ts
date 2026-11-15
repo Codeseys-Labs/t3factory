@@ -264,6 +264,26 @@ describe("task presentation", () => {
       null,
       null,
     ]);
+    // A planning run started after the held run must not stand in for it.
+    const later = presentFactoryTaskBanner({
+      task: {
+        ...failed,
+        run: { ...failed.run!, ordinal: 3, purpose: "planning", state: "completed", note: null },
+        failedRun: {
+          ...failed.run!,
+          state: "held",
+          note: "The result could not be saved",
+          captureFailed: true,
+        },
+      },
+      attention: state("T-29").attention,
+      assigneeLabel: "Agent",
+    });
+    expect([later.title, later.primary, later.secondary]).toEqual([
+      "Run 2: The result could not be saved",
+      { kind: "save-again", label: "Save again" },
+      null,
+    ]);
   });
   it.each([
     ["C1", "T-43", "backlog", "start", null],

@@ -1,5 +1,6 @@
 import type { FactoryTaskNeed } from "@t3tools/client-runtime/state/factory-task-view";
 import {
+  factoryTaskFailedRun,
   presentFactoryTaskActivity,
   presentFactoryTaskActor,
   presentFactoryTaskRunRecovery,
@@ -92,14 +93,15 @@ function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSu
         from={assigneeText(chip)}
       />
     );
-  if (need.reason === "failed")
+  if (need.reason === "failed") {
+    const failedRun = factoryTaskFailedRun(task);
     return (
       <section
-        aria-label={task.run?.state === "held" ? "Held run" : "Failed run"}
+        aria-label={failedRun?.state === "held" ? "Held run" : "Failed run"}
         className="space-y-4 rounded-lg border border-destructive/32 bg-error-surface p-4"
       >
-        <p className="whitespace-pre-wrap break-words text-sm">{task.run?.note || need.detail}</p>
-        {task.run?.purpose === "planning" && task.run.state === "failed" ? (
+        <p className="whitespace-pre-wrap break-words text-sm">{failedRun?.note || need.detail}</p>
+        {failedRun?.purpose === "planning" && failedRun.state === "failed" ? (
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -114,6 +116,7 @@ function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSu
         )}
       </section>
     );
+  }
   if (need.reason === "review" || need.reason === "changed")
     return <ReviewResult key={task.result?.revision} task={task} />;
   if (need.reason === "plan") return <ReviewPlan task={task} />;
@@ -127,7 +130,7 @@ function RecoverRun({ task }: { task: FactoryTaskSummary }) {
   const actions = useTaskActions();
   const permissions = useTaskPermissions(task.ref.environmentId);
   const [busy, setBusy] = useState(false);
-  const recovery = presentFactoryTaskRunRecovery(task.run);
+  const recovery = presentFactoryTaskRunRecovery(factoryTaskFailedRun(task));
   if (recovery.length === 0) return null;
   if (recovery[0]?.kind === "save-again")
     return (

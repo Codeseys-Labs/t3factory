@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   type FactoryTaskNeed,
+  factoryTaskFailedRun,
   factoryTaskKey,
   presentFactoryTaskRunRecovery,
 } from "@t3tools/client-runtime/state/factory-task-view";
@@ -71,9 +72,13 @@ function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
     setBusy(true);
     void operation(task).then(() => setBusy(false));
   };
-  const recovery = presentFactoryTaskRunRecovery(task?.run ?? null)[0]?.kind;
+  const failedRun = task === null ? null : factoryTaskFailedRun(task);
+  const recovery = presentFactoryTaskRunRecovery(failedRun)[0]?.kind;
   const action: KitAction =
-    need.reason === "failed" && task?.run?.purpose === "planning" && task.run.state === "failed"
+    need.reason === "failed" &&
+    task !== null &&
+    failedRun?.purpose === "planning" &&
+    failedRun.state === "failed"
       ? {
           label: "Break down",
           disabled: !permissions.breakDown,

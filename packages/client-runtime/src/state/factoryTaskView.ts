@@ -436,6 +436,10 @@ export function presentFactoryTaskRunRecovery(
   return run.captureFailed ? [{ kind: "save-again", label: "Save again" }] : [];
 }
 
+/** The run a task's `failed` need speaks of: a planning run that came later does not stand in. */
+export const factoryTaskFailedRun = (task: Pick<FactoryTaskSummary, "run" | "failedRun">) =>
+  task.failedRun ?? task.run;
+
 export function presentFactoryTaskBanner(input: {
   readonly task: FactoryTaskSummary;
   readonly attention: readonly FactoryTaskNeed[];
@@ -497,7 +501,12 @@ export function presentFactoryTaskBanner(input: {
         need.ref.taskId,
       ),
     );
-  if (need?.reason === "failed" && task.run?.purpose === "planning" && task.run.state === "failed")
+  const failedRun = factoryTaskFailedRun(task);
+  if (
+    need?.reason === "failed" &&
+    failedRun?.purpose === "planning" &&
+    failedRun.state === "failed"
+  )
     return banner(
       "failed",
       "danger",
@@ -507,12 +516,12 @@ export function presentFactoryTaskBanner(input: {
       null,
     );
   if (need?.reason === "failed") {
-    const [primary = null, secondary = null] = presentFactoryTaskRunRecovery(task.run);
-    const outcome = task.run?.state === "held" ? "" : " failed";
+    const [primary = null, secondary = null] = presentFactoryTaskRunRecovery(failedRun);
+    const outcome = failedRun?.state === "held" ? "" : " failed";
     return banner(
       "failed",
       "danger",
-      `Run ${task.run?.ordinal ?? ""}${outcome}${task.run?.note ? `: ${task.run.note}` : ""}`,
+      `Run ${failedRun?.ordinal ?? ""}${outcome}${failedRun?.note ? `: ${failedRun.note}` : ""}`,
       input.runDetail ?? need.detail,
       primary,
       secondary,

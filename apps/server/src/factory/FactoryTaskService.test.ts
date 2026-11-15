@@ -1827,6 +1827,26 @@ it.effect(
         yield* changesUntil(task.ref.rootId);
         const heldAgain = yield* summary(task);
         assert.deepEqual([heldAgain.run?.state, heldAgain.run?.captureFailed], ["held", true]);
+
+        // A breakdown asked for meanwhile becomes the latest run; the held run is still named.
+        yield* tasks.recordPlanningRun({
+          ref: task.ref,
+          threadId: ThreadId.make("thread:planning-after-held"),
+          runId: RunId.make("run:planning-after-held"),
+          setup: setupOf(),
+        });
+        const planned = yield* summary(task);
+        assert.deepEqual(
+          [planned.run?.purpose, planned.failedRun?.ordinal, planned.failedRun?.captureFailed],
+          ["planning", 1, true],
+        );
+        // From the held state Save again asks the engine itself, for the same run.
+        const again = (yield* saveAgain("save-held-again")).task;
+        assert.deepEqual([again.run?.purpose, again.failedRun], ["planning", undefined]);
+        assert.deepEqual(
+          yield* sql`SELECT json_extract(payload_json, '$.captureGeneration') AS generation FROM orchestration_v2_effect_outbox WHERE thread_id = ${run.threadId} AND effect_type = 'factory.execution.finalize' AND status = 'pending'`,
+          [{ generation: 3 }],
+        );
       }),
     ),
 );

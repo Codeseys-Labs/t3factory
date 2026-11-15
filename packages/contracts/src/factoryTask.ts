@@ -249,6 +249,9 @@ export const FactoryTaskSummary = Schema.Struct({
   // Direct sub-tasks, canceled ones left out. Null when there are none.
   progress: Schema.NullOr(Schema.Struct({ done: NonNegativeInt, total: PositiveInt })),
   run: Schema.NullOr(FactoryTaskRun),
+  // The latest work run, when it failed or is held and a planning run came after it. A `failed`
+  // need speaks of this run, not of `run`.
+  failedRun: Schema.optionalKey(FactoryTaskRun),
   liveRuns: Schema.Array(FactoryTaskLiveRun).check(Schema.isMaxLength(16)),
   // Most urgent first. Holds this task's reasons and its sub-tasks'.
   attention: Schema.Array(FactoryTaskAttention).check(Schema.isMaxLength(16)),

@@ -49,6 +49,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
+import * as EffectOutbox from "../orchestration-v2/EffectOutbox.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
@@ -323,6 +324,8 @@ const layerWith = (settings: TestSettings = {}, fileTrusted = true) => {
   const base = Layer.mergeAll(
     dependencies,
     EventSink.layer.pipe(Layer.provide(dependencies)),
+    // The instance the task service listens to, by memoization.
+    EffectOutbox.layer.pipe(Layer.provide(dependencies)),
     NodeCrypto.layer,
     NodeServices.layer,
     IdAllocator.layer,
@@ -1687,8 +1690,11 @@ it.effect(
   () =>
     scenario(
       Effect.gen(function* () {
-        const { sql, tasks, create, start, summary, attemptOf } = yield* harness;
+        const { sql, tasks, executions, create, start, summary, attemptOf, changesUntil } =
+          yield* harness;
         const sink = yield* EventSink.EventSinkV2;
+        const marker = yield* create("Marker");
+        yield* changesUntil(marker.ref.rootId);
         const task = yield* create("Index the archive", { lane: "ready" });
         const run = (yield* start(task)).run!;
         const saveAgain = (name: string) =>
@@ -1743,6 +1749,25 @@ it.effect(
           "run-active",
         );
 
+        // The process died after the engine took the capture retry and before the task recorded it.
+        const revision = (yield* sql<{
+          revision: number;
+        }>`SELECT revision FROM factory_execution_bindings WHERE attempt_id = ${attemptId}`)[0]!
+          .revision;
+        yield* executions.retryCapture(
+          {
+            commandId: CommandId.make(`factory-task:capture:${command("save")}`),
+            selection: {
+              ref: { environmentId, projectId, rootId: task.ref.rootId },
+              revision,
+              taskId: task.ref.taskId,
+            },
+            runId: run.runId,
+            runAttemptId: attemptId,
+            expectedResultId: null,
+          },
+          human,
+        );
         const saved = (yield* saveAgain("save")).task;
         assert.deepEqual(
           [saved.run?.ordinal, saved.run?.state, saved.run?.captureFailed, saved.attention],
@@ -1757,6 +1782,44 @@ it.effect(
           (yield* saveAgain("save-twice").pipe(Effect.flip)).reason,
           "invalid-transition",
         );
+
+        // Every change so far is taken: the marker's notice follows the event that Save again wrote.
+        const eventStore = yield* OrchestrationEventStore.OrchestrationEventStore;
+        yield* eventStore.publishCommitted([
+          yield* eventStore.appendProjectEvent({
+            eventId: EventId.make("marker-execution-updated"),
+            aggregateKind: "project",
+            aggregateId: projectId,
+            occurredAt: at,
+            commandId: command("marker-execution-updated"),
+            causationEventId: null,
+            correlationId: command("marker-execution-updated"),
+            metadata: {},
+            type: "project.factory-execution-updated",
+            payload: {
+              projectId,
+              ref: { environmentId, projectId, rootId: marker.ref.rootId },
+              revision: 1,
+            },
+          }),
+        ]);
+        yield* changesUntil(marker.ref.rootId);
+        // The second capture's process died on Windows and recovery expired its claim; the worker
+        // then gave the finalize up. A subscriber hears it and sees Save again once more.
+        yield* sql`INSERT INTO factory_execution_phases(attempt_id, phase, claimant_id, observation, detail) VALUES (${attemptId}, 'capture', 'worker', 'no-start', '')`;
+        const outbox = yield* EffectOutbox.EffectOutboxV2;
+        const finalize = Option.getOrThrow(yield* outbox.claimNext({ workerId: "worker" }));
+        assert.equal(finalize.request.type, "factory.execution.finalize");
+        assert.isTrue(
+          yield* outbox.fail({
+            effectId: finalize.id,
+            workerId: "worker",
+            error: "capture failed",
+          }),
+        );
+        yield* changesUntil(task.ref.rootId);
+        const heldAgain = yield* summary(task);
+        assert.deepEqual([heldAgain.run?.state, heldAgain.run?.captureFailed], ["held", true]);
       }),
     ),
 );

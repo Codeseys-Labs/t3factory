@@ -67,6 +67,7 @@ import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import * as DeliveryStore from "../persistence/FactoryDeliveryStore.ts";
 import * as ExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as Tasks from "../persistence/FactoryTaskStore.ts";
+import * as EffectOutbox from "../orchestration-v2/EffectOutbox.ts";
 import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as Processes from "../processRunner.ts";
@@ -459,6 +460,7 @@ const make = Effect.gen(function* () {
   const work = yield* Work.FactoryWorkService;
   const executions = yield* Executions.FactoryExecutionService;
   const executionStore = yield* ExecutionStore.FactoryExecutionStore;
+  const outbox = yield* EffectOutbox.EffectOutboxV2;
   const projections = yield* Projections.ProjectionStoreV2;
   const events = yield* OrchestrationEventStore.OrchestrationEventStore;
   const settings = yield* ServerSettings.ServerSettingsService;
@@ -1500,26 +1502,37 @@ const make = Effect.gen(function* () {
     const command = yield* begin("retryCapture", input.commandId, actor, input);
     if (command.replayed) return yield* replay(input.ref);
     const { task } = yield* requireTask(input.ref);
-    const latest = task.runs.findLast((entry) => entry.purpose === "work");
-    if (latest === undefined) return yield* refuse("no-run");
-    if (latest.captureFailed !== true || latest.attemptId === null || latest.planRevision === null)
-      return yield* new FactoryTaskError({ reason: "invalid-transition", detail: NOTHING_TO_SAVE });
-    yield* executions
-      .retryCapture(
-        {
-          commandId: derived(input.commandId, "capture"),
-          selection: {
-            ref: planRef(task.row),
-            revision: latest.planRevision,
-            taskId: task.row.taskId,
-          },
-          runId: latest.runId,
-          runAttemptId: latest.attemptId,
-          expectedResultId: latest.latestResultId,
-        },
-        actor,
+    const captureId = derived(input.commandId, "capture");
+    // A command whose retry the engine already took only has to finish recording it.
+    if (!(yield* store.captureRetried(captureId))) {
+      const latest = task.runs.findLast((entry) => entry.purpose === "work");
+      if (latest === undefined) return yield* refuse("no-run");
+      if (
+        latest.captureFailed !== true ||
+        latest.attemptId === null ||
+        latest.planRevision === null
       )
-      .pipe(Effect.mapError(captureRefusal));
+        return yield* new FactoryTaskError({
+          reason: "invalid-transition",
+          detail: NOTHING_TO_SAVE,
+        });
+      yield* executions
+        .retryCapture(
+          {
+            commandId: captureId,
+            selection: {
+              ref: planRef(task.row),
+              revision: latest.planRevision,
+              taskId: task.row.taskId,
+            },
+            runId: latest.runId,
+            runAttemptId: latest.attemptId,
+            expectedResultId: latest.latestResultId,
+          },
+          actor,
+        )
+        .pipe(Effect.mapError(captureRefusal));
+    }
     yield* transact(command.record(task.row));
     yield* sync(task.row.rootId);
     return { task: yield* summaryOf(task.row), replayed: false };
@@ -2214,6 +2227,20 @@ const make = Effect.gen(function* () {
     ),
     Effect.forkScoped,
   );
+  // A capture that fails without keeping a result settles nothing, so no settlement above is heard.
+  yield* outbox.failures.pipe(
+    Stream.runForEach((failure) =>
+      failure.type === "factory.execution.finalize"
+        ? quietly(
+            Effect.gen(function* () {
+              const key = yield* store.taskOfThread(failure.threadId);
+              if (key !== null) yield* sync(key.rootId);
+            }),
+          )
+        : Effect.void,
+    ),
+    Effect.forkScoped,
+  );
   yield* deliveryStore.changes.pipe(
     Stream.runForEach((originKey) => {
       const task = parseTaskResultOriginKey(originKey);
@@ -2256,5 +2283,7 @@ const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(FactoryTaskService, make).pipe(
-  Layer.provide(Layer.mergeAll(Changes.layer, Tasks.layer, ExecutionStore.layer)),
+  Layer.provide(
+    Layer.mergeAll(Changes.layer, Tasks.layer, ExecutionStore.layer, EffectOutbox.layer),
+  ),
 );

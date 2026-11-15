@@ -15180,7 +15180,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       if (shell !== null) yield* refuseAboveDispatchModeLimit(command, threadId, shell);
     }
 
-    yield* factoryLifecycle.guardCommand(command).pipe(mapDispatchError(command));
+    const isStopCommand =
+      command.type === "thread.stop" ||
+      command.type === "run.interrupt" ||
+      command.type === "queued-run.cancel";
+    if (!isStopCommand) {
+      yield* factoryLifecycle.guardCommand(command).pipe(mapDispatchError(command));
+    }
     const managedStop =
       command.type === "thread.stop" ||
       command.type === "run.interrupt" ||
@@ -15270,6 +15276,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }),
       ),
     );
+
+    if (isStopCommand) {
+      yield* factoryLifecycle.guardCommand(command).pipe(mapDispatchError(command));
+    }
 
     // Managed stop effects plan with the command's own events in one commit.
     let plannedStopEffects: ReadonlyArray<PendingOrchestrationEffectV2> = plan.effects;

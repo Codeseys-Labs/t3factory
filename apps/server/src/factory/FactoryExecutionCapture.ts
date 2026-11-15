@@ -13,6 +13,8 @@ import { canonicalExecutionJson, executionDigest } from "./FactoryExecutionDiges
 import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 
 const SHA = /^[a-f0-9]{40,64}$/;
+// Git for Windows refuses a checkout path past 260 characters without this; elsewhere it is ignored.
+const LONG_PATHS = ["-c", "core.longpaths=true"];
 // The identity T3's own checkpoint commits carry, for a repository that configures none.
 const T3_IDENTITY = ["-c", "user.name=T3 Code", "-c", "user.email=t3code@users.noreply.github.com"];
 
@@ -34,7 +36,7 @@ export const codeResultCommit = Effect.fn("FactoryExecutionCapture.codeResultCom
       processes
         .run({
           command: "git",
-          args,
+          args: [...LONG_PATHS, ...args],
           cwd: input.cwd,
           maxOutputBytes: 64 * 1024,
           outputMode: "error",
@@ -121,7 +123,13 @@ const make = Effect.gen(function* () {
     args: ReadonlyArray<string>,
   ) {
     const result = yield* processes
-      .run({ command: "git", args, cwd, maxOutputBytes: 1024 * 1024, outputMode: "error" })
+      .run({
+        command: "git",
+        args: [...LONG_PATHS, ...args],
+        cwd,
+        maxOutputBytes: 1024 * 1024,
+        outputMode: "error",
+      })
       .pipe(Effect.mapError(failure));
     if (
       result.code !== 0 ||
@@ -189,7 +197,7 @@ const make = Effect.gen(function* () {
       const existing = yield* processes
         .run({
           command: "git",
-          args: ["rev-parse", "--verify", retainedRef],
+          args: [...LONG_PATHS, "rev-parse", "--verify", retainedRef],
           cwd: scope.cwd,
           maxOutputBytes: 256,
         })

@@ -109,6 +109,15 @@ days with no activity, it is closed.
 Vouched contributors in [.github/VOUCHED.td](.github/VOUCHED.td) are exempt from this rule and from
 the open PR limit.
 
+<a id="review-bots"></a>
+
+### Leave the review bots to us
+
+CodeRabbit reviews every PR against the default branch by itself once it is marked ready for review;
+it skips drafts. A second bot, Greptile, costs credits for each review, and a maintainer asks it when
+a PR needs a second look. Do not ask either bot for a review. Push your review fixes together, not
+one commit at a time, so they are reviewed once.
+
 ## Bans
 
 - If we decide that you spam us with automation, you will be banned.

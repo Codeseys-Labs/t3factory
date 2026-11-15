@@ -99,10 +99,11 @@ specific to a sync:
 Upstream does not run its tests on Windows, so some of its tests fail only there. They go in
 `packages/shared/src/testing/windowsQuarantine.json`, which a test setup file applies on Windows
 only. That setup file is loaded by the root test configuration (server and the packages that
-borrow it) and by desktop's. Web, mobile and client-runtime have their own setup lists; add the
-file there before listing one of their tests. Each entry names an issue and a reason. Never list a
-test the fork added, and do not edit upstream's test files to make them pass on Windows. Linux runs
-every case, so a hang or failure on the hosted lanes is real and blocks the merge.
+borrow it) and by desktop's unit project. Desktop's DOM project, web, mobile and client-runtime
+have their own setup lists; add the file there before listing one of their tests. Each entry names
+an issue and a reason. Never list a test the fork added, and do not edit upstream's test files to
+make them pass on Windows. Linux runs every case, so a hang or failure on the hosted lanes is real
+and blocks the merge.
 
 ## Land it
 

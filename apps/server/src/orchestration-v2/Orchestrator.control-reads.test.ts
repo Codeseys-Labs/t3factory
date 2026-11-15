@@ -3052,3 +3052,115 @@ it.effect("a running provider-turn update reads only the thread's queued and run
     );
   }),
 );
+
+it.effect("rejected queued cancellation leaves managed running binding unstopped", () => {
+  const threadId = ThreadId.make(`thread:managed-question-cancel-rejected`);
+  const projectId = ProjectId.make(`project:managed-question-cancel-rejected`);
+  let binding: FactoryExecutionBinding = {
+    selection: {
+      ref: { environmentId: EnvironmentId.make("local"), projectId, rootId: "plan" },
+      revision: 1,
+      taskId: "question",
+    },
+    grantVersion: 1,
+    taskVersion: 1,
+    commandId: CommandId.make(`admit:managed-question-cancel-rejected`),
+    threadId,
+    runId: RunId.make(`run:managed-question-cancel-rejected`),
+    runAttemptId: RunAttemptId.make(`attempt:managed-question-cancel-rejected`),
+    driver: adapter.driver,
+    spec: {
+      taskId: "question",
+      modelSelection,
+      runtimeMode: "approval-required",
+      interactionMode: "default",
+      workspaceStrategy: { type: "root" },
+      setup: "deny",
+      output: { slot: "draft", kind: "sealed-draft" },
+    },
+    inputDigest: "a".repeat(64),
+    inputText: "Frozen question",
+    prerequisites: [],
+    admittedAt: "2026-11-05T00:00:00.000Z",
+    stopRequested: false,
+    quiescent: false,
+  };
+  let managed = false;
+  const factoryLifecycleLayer = FactoryExecutionLifecycle.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        NodeCrypto.layer,
+        Layer.mock(FactoryExecutionStore.FactoryExecutionStore)({
+          requestNativeStop: () =>
+            Effect.sync(() => {
+              binding = { ...binding, stopRequested: true };
+            }),
+          findNativeBinding: (input) =>
+            Effect.succeed(managed && input.threadId === threadId ? binding : null),
+        }),
+      ),
+    ),
+  );
+  const layerManagedQuestion = Layer.mergeAll(
+    layerDatabase,
+    ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
+    EffectOutbox.layer.pipe(Layer.provide(layerDatabase)),
+    ProviderReplayHarness.layerWithRegistry(
+      { name: `managed-question-cancel-rejected` },
+      ProviderAdapterRegistry.layerFromAdapters([adapter]),
+      { databaseLayer: layerDatabase, runEffectWorker: false, factoryLifecycleLayer },
+    ),
+  );
+
+  return Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const now = yield* DateTime.now;
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make(`create:managed-question-cancel-rejected`),
+      threadId,
+      projectId,
+      title: "Managed question",
+      modelSelection,
+      runtimeMode: "approval-required",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    yield* orchestrator.dispatch({
+      type: "message.dispatch",
+      commandId: CommandId.make("send-managed"),
+      threadId,
+      messageId: MessageId.make("managed-message"),
+      text: "work",
+      attachments: [],
+      dispatchMode: { type: "defer_start" },
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const run = (yield* orchestrator.getThreadProjection(threadId)).runs[0]!;
+    binding = { ...binding, runId: run.id };
+    yield* projections.apply({
+      id: EventId.make("managed-running"),
+      type: "run.updated",
+      threadId,
+      runId: binding.runId,
+      occurredAt: now,
+      payload: { ...run, id: binding.runId, status: "running", queuePosition: null },
+    });
+    managed = true;
+    const result = yield* orchestrator
+      .dispatch({
+        type: "queued-run.cancel",
+        commandId: CommandId.make("rejected-managed-cancel"),
+        threadId,
+        runId: binding.runId,
+      })
+      .pipe(Effect.result);
+    assert.ok(Result.isFailure(result));
+    assert.equal(binding.stopRequested, false);
+  }).pipe(Effect.provide(layerManagedQuestion));
+});

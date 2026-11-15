@@ -107,8 +107,13 @@ the hosted lanes is real and blocks the merge.
 1. Check that the default branch has not moved:
    `git merge-base --is-ancestor origin/feat/t3factory HEAD`. If it has, merge it into the sync
    branch and validate again. The receipt belongs to one commit.
-2. Merge with `gh pr merge <n> --merge --match-head-commit <sha>`.
-3. If a preview is built from this sync, build it from the validated commit with the sync branch
+2. Merge with `gh pr merge <n> --merge --match-head-commit <sha>`. If the command reports an
+   error, read the pull request's state before trying again: the merge may have happened.
+3. Confirm the default branch now holds exactly what was validated:
+   `git diff --quiet <validated sha> origin/feat/t3factory`.
+4. Retarget every pull request stacked on the sync branch to the default branch, and read each
+   one's base back. Deleting a branch closes the pull requests based on it.
+5. If a preview is built from this sync, build it from the validated commit with the sync branch
    as its ref, and keep that branch until the build finishes. The build refuses a commit or ref
    that the validation did not name.
 
@@ -131,5 +136,8 @@ the hosted lanes is real and blocks the merge.
 - **Packaging on Windows ran a hook upstream never runs there.** Upstream packages Windows from
   Linux, where its after-pack hooks skip themselves. A hook that looks cross-platform can be
   untested on a Windows host. Upstream's release log shows what it actually ships.
+- **A test install under `%TEMP%` lost its files overnight**, including its database and the
+  `.git` folder of its repository clone. Keep test installs and database backups out of temporary
+  folders.
 - **Factory migrations.** Read [#132](https://github.com/Codeseys-Labs/t3factory/issues/132) before
   a sync that brings upstream migrations.

@@ -156,7 +156,9 @@ For mobile verification, a missing or outdated native client is an install step,
 - UI changes need before/after images. Motion or timing needs a short video.
 - Upload PR evidence to GitHub. Never commit PR-only screenshots or assets such as `.github/pr-assets/`.
 - One request is one PR. Split it only when the maintainer asks. Outside contributions follow the stricter [one problem per PR](CONTRIBUTING.md#one-problem) rule.
-- When babysitting: call `watch_pull_request` and end your turn. T3 Code wakes you on checks, comments, or conflicts. Do not poll or sleep. Verify each bot finding against the source, fix real ones, dismiss false positives with a written reason. Stay quiet when nothing is new. Stop when the bots are green on the latest commit.
+- CodeRabbit is the always-on reviewer. It reviews every non-draft PR against the default branch by itself, and every later push. Batch review fixes into one push so it reviews them once.
+- Greptile costs a credit per review, so `greptile.json` turns its automatic reviews off and it runs only when asked (`@greptileai please review.`). Ask at most once per PR, after CodeRabbit's findings are fixed and at the head you mean to merge, and only when the PR needs a second reviewer: it changes orchestration, persistence or migrations, auth or permissions, process containment, or delivery; or CodeRabbit could not review it (too large, not against the default branch, rate limited). If Greptile is out of credits, say so in the PR and do not wait for it.
+- When babysitting: call `watch_pull_request` and end your turn. T3 Code wakes you on checks, comments, or conflicts. Do not poll or sleep. Verify each bot finding against the source, fix real ones, dismiss false positives with a written reason. Stay quiet when nothing is new. Stop when CodeRabbit is green on the latest commit and every bot finding is answered.
 
 ## Documentation
 

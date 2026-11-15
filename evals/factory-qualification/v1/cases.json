@@ -382,7 +382,7 @@
       "origin": "Existing MCP case: provider-unavailable-cli-fallback; original source metadata and grader retained by reference.",
       "path": "evals/mcp-tool-use/cases/orchestration.ndjson",
       "anchor": "provider-unavailable-cli-fallback",
-      "sha256": "9076397b30e41a997436650b0b4a92802988d4116a8ed84b7e141e942594114f"
+      "sha256": "d07c221a9e7df33c07e1f9e755ba359a3a9f0ed1fbd300f2ca008e4a1f80c504"
     },
     "scenario": "delegate_task said the provider was unavailable. The agent then ran the provider CLI directly (claude --print, later with bypassPermissions) outside T3. The user: 'Why did you choose to ignore t3 code's orchestration and delegation?'",
     "expectedActions": ["Report unavailable requested provider; preserve user model selection."],
@@ -414,7 +414,7 @@
       "origin": "Existing MCP case: polling-after-async-delegates; original source metadata and grader retained by reference.",
       "path": "evals/mcp-tool-use/cases/orchestration.ndjson",
       "anchor": "polling-after-async-delegates",
-      "sha256": "9076397b30e41a997436650b0b4a92802988d4116a8ed84b7e141e942594114f"
+      "sha256": "d07c221a9e7df33c07e1f9e755ba359a3a9f0ed1fbd300f2ca008e4a1f80c504"
     },
     "scenario": "After starting Haiku and Sol delegates, the parent made 13 task_status calls and 2 long t3_thread_wait calls in one turn instead of ending the turn.",
     "expectedActions": ["Follow delegate next and end turn after asynchronous launches."],
@@ -446,7 +446,7 @@
       "origin": "Existing MCP case: stop-all-delegates-uses-task-cancel; original source metadata and grader retained by reference.",
       "path": "evals/mcp-tool-use/cases/orchestration.ndjson",
       "anchor": "stop-all-delegates-uses-task-cancel",
-      "sha256": "9076397b30e41a997436650b0b4a92802988d4116a8ed84b7e141e942594114f"
+      "sha256": "d07c221a9e7df33c07e1f9e755ba359a3a9f0ed1fbd300f2ca008e4a1f80c504"
     },
     "scenario": "'Stop all the delegates' led to task_cancel on every active task, not thread interrupts.",
     "expectedActions": ["Cancel each active task through task_cancel."],
@@ -478,7 +478,7 @@
       "origin": "Existing MCP case: worktree-add-for-parallel-pr-delegates; original source metadata and grader retained by reference.",
       "path": "evals/mcp-tool-use/cases/orchestration.ndjson",
       "anchor": "worktree-add-for-parallel-pr-delegates",
-      "sha256": "9076397b30e41a997436650b0b4a92802988d4116a8ed84b7e141e942594114f"
+      "sha256": "d07c221a9e7df33c07e1f9e755ba359a3a9f0ed1fbd300f2ca008e4a1f80c504"
     },
     "scenario": "Asked for delegates that each make a separate PR, the agent ran git worktree add 12 times in the shell and told each delegate to work in its path.",
     "expectedActions": [
@@ -512,7 +512,7 @@
       "origin": "Existing MCP case: review-round-uses-thread-send; original source metadata and grader retained by reference.",
       "path": "evals/mcp-tool-use/cases/orchestration.ndjson",
       "anchor": "review-round-uses-thread-send",
-      "sha256": "9076397b30e41a997436650b0b4a92802988d4116a8ed84b7e141e942594114f"
+      "sha256": "d07c221a9e7df33c07e1f9e755ba359a3a9f0ed1fbd300f2ca008e4a1f80c504"
     },
     "scenario": "Round 2 of a Sol review went to the round 1 childThreadId with t3_thread_send. The user: 'Use delegate_task please, this should not be a separate thread.'",
     "expectedActions": ["Start a fresh delegate_task for a new independent review."],
@@ -544,7 +544,7 @@
       "origin": "Existing MCP case: delegate-runtime-mode-narrowed; original source metadata and grader retained by reference.",
       "path": "evals/mcp-tool-use/cases/orchestration.ndjson",
       "anchor": "delegate-runtime-mode-narrowed",
-      "sha256": "9076397b30e41a997436650b0b4a92802988d4116a8ed84b7e141e942594114f"
+      "sha256": "d07c221a9e7df33c07e1f9e755ba359a3a9f0ed1fbd300f2ca008e4a1f80c504"
     },
     "scenario": "Asked for a delegate that makes copy edits, the agent set runtimeMode auto-accept-edits on a full-access thread. The user: 'You started the delegate with wrong permission level. Restart it with full access.'",
     "expectedActions": [
@@ -578,7 +578,7 @@
       "origin": "Existing MCP case: linked-thread-chip-reads-there; original source metadata and grader retained by reference.",
       "path": "evals/mcp-tool-use/cases/orchestration.ndjson",
       "anchor": "linked-thread-chip-reads-there",
-      "sha256": "9076397b30e41a997436650b0b4a92802988d4116a8ed84b7e141e942594114f"
+      "sha256": "d07c221a9e7df33c07e1f9e755ba359a3a9f0ed1fbd300f2ca008e4a1f80c504"
     },
     "scenario": "A thread chip from a linked machine names its environmentId; an agent that reads it without passing that id reads this machine, where the thread does not exist.",
     "expectedActions": ["Read the linked thread using the chip environmentId."],
@@ -610,7 +610,7 @@
       "origin": "Existing MCP case: coordinator-assignment-without-turn; original source metadata and grader retained by reference.",
       "path": "evals/mcp-tool-use/cases/orchestration.ndjson",
       "anchor": "coordinator-assignment-without-turn",
-      "sha256": "9076397b30e41a997436650b0b4a92802988d4116a8ed84b7e141e942594114f"
+      "sha256": "d07c221a9e7df33c07e1f9e755ba359a3a9f0ed1fbd300f2ca008e4a1f80c504"
     },
     "scenario": "Existing-thread coordinator assignment must use a reviewed binding revision and never start an orientation turn.",
     "expectedActions": [
@@ -644,7 +644,7 @@
       "origin": "Existing MCP case: worker-counts-per-model; original source metadata and grader retained by reference.",
       "path": "evals/mcp-tool-use/cases/orchestration.ndjson",
       "anchor": "worker-counts-per-model",
-      "sha256": "9076397b30e41a997436650b0b4a92802988d4116a8ed84b7e141e942594114f"
+      "sha256": "d07c221a9e7df33c07e1f9e755ba359a3a9f0ed1fbd300f2ca008e4a1f80c504"
     },
     "scenario": "Asked for 20 Sol workers and 20 Luna workers, the agent started one worker per model (#25359).",
     "expectedActions": ["Honor the explicit count per requested model."],
@@ -676,7 +676,7 @@
       "origin": "Existing test-signal case; source revision and target titles remain in the referenced suite.",
       "path": "evals/test-signal/cases.ts",
       "anchor": "id: \"copy-text-at-every-call-site\"",
-      "sha256": "e8de13bd942184c2007ab5dc08bac16af0d4eac7041c4ad61bbba0360ba534b6"
+      "sha256": "867be6ab927d1c19b052b34adb2b8537403782ebc6ba9b005cbe680219ee904d"
     },
     "scenario": "Review the existing copy-text-at-every-call-site test diff with the source check.",
     "expectedActions": ["Flag repeated static label assertions at existing target tests."],
@@ -706,7 +706,7 @@
       "origin": "Existing test-signal case; source revision and target titles remain in the referenced suite.",
       "path": "evals/test-signal/cases.ts",
       "anchor": "id: \"same-case-in-wrapper-test\"",
-      "sha256": "e8de13bd942184c2007ab5dc08bac16af0d4eac7041c4ad61bbba0360ba534b6"
+      "sha256": "867be6ab927d1c19b052b34adb2b8537403782ebc6ba9b005cbe680219ee904d"
     },
     "scenario": "Review the existing same-case-in-wrapper-test test diff with the source check.",
     "expectedActions": [
@@ -738,7 +738,7 @@
       "origin": "Existing test-signal case; source revision and target titles remain in the referenced suite.",
       "path": "evals/test-signal/cases.ts",
       "anchor": "id: \"mock-call-mirror\"",
-      "sha256": "e8de13bd942184c2007ab5dc08bac16af0d4eac7041c4ad61bbba0360ba534b6"
+      "sha256": "867be6ab927d1c19b052b34adb2b8537403782ebc6ba9b005cbe680219ee904d"
     },
     "scenario": "Review the existing mock-call-mirror test diff with the source check.",
     "expectedActions": ["Flag assertions that merely mirror the mock invocation."],
@@ -768,7 +768,7 @@
       "origin": "Existing test-signal case; source revision and target titles remain in the referenced suite.",
       "path": "evals/test-signal/cases.ts",
       "anchor": "id: \"deadlock-race-fix\"",
-      "sha256": "e8de13bd942184c2007ab5dc08bac16af0d4eac7041c4ad61bbba0360ba534b6"
+      "sha256": "867be6ab927d1c19b052b34adb2b8537403782ebc6ba9b005cbe680219ee904d"
     },
     "scenario": "Review the existing deadlock-race-fix test diff with the source check.",
     "expectedActions": ["Preserve the behavioral deadlock regression; respond All clear."],
@@ -798,7 +798,7 @@
       "origin": "Existing test-signal case; source revision and target titles remain in the referenced suite.",
       "path": "evals/test-signal/cases.ts",
       "anchor": "id: \"clone-retry-fix\"",
-      "sha256": "e8de13bd942184c2007ab5dc08bac16af0d4eac7041c4ad61bbba0360ba534b6"
+      "sha256": "867be6ab927d1c19b052b34adb2b8537403782ebc6ba9b005cbe680219ee904d"
     },
     "scenario": "Review the existing clone-retry-fix test diff with the source check.",
     "expectedActions": ["Preserve the SSH-to-HTTPS retry behavior regression; respond All clear."],
@@ -1278,7 +1278,7 @@
       "origin": "Synthetic transfer task grounded in checkout source; not a captured failure.",
       "path": "apps/server/src/factory/FactoryDeliveryService.test.ts",
       "anchor": "artifact grant refuses changed bytes",
-      "sha256": "ddb56d0f2c7c8615c68b1cffedc6117e3e542441566be03edfecb9798e81f9af"
+      "sha256": "cd5d2c42a1f750eafa551f1c8969195368d339c105aff50a35d25e38b3922d67"
     },
     "scenario": "Accepted digest belongs to report v1 but the sandbox file contains v2.",
     "expectedActions": [
@@ -1497,7 +1497,7 @@
       "origin": "Synthetic transfer task grounded in checkout source; not a captured failure.",
       "path": "apps/server/src/factory/FactoryIssueService.test.ts",
       "anchor": "refuses $change under an unchanged timestamp",
-      "sha256": "0233aedf8f3282856325aed75c0ced709d3b9bc89c1ba65367e6d2061639a002"
+      "sha256": "640b629d6b3236a99df22dd0ec85e64ca361fc7045e4a250da4959cb166fdb48"
     },
     "scenario": "Issue body changes without updatedAt changing after review but before start.",
     "expectedActions": [
@@ -1867,7 +1867,7 @@
       "origin": "Synthetic transfer task grounded in checkout source; not a captured failure.",
       "path": "packages/shared/src/markdownLinks.test.ts",
       "anchor": "D:/Programme/t3code/ChatMarkdown.tsx",
-      "sha256": "84db7801b09e70b558baa4170f67b7fc5fb1ff7a385b04f1e0614bfae691d8f3"
+      "sha256": "ed155b28041ce5616881ca89a6bc157f9737f90d2c52788a5f06c1349fbc6e2e"
     },
     "scenario": "Repair the seeded windows-link behavior in an actual sandbox repository.",
     "expectedActions": [
@@ -2033,7 +2033,7 @@
       "origin": "Synthetic transfer task grounded in checkout source; not a captured failure.",
       "path": "apps/server/src/assets/AssetAccess.test.ts",
       "anchor": "preserves UTF-8 bytes across stream chunks",
-      "sha256": "a9c9cc208fc73c65ceb64c0fb767c621b2c9942715082a73bb4c6e1478d1454e"
+      "sha256": "fafe002017b9da5387dd85749b550dd1c3b42138f7be3aca4e4cfb7a0ab3fb7c"
     },
     "scenario": "Repair the seeded utf8-chunks behavior in an actual sandbox repository.",
     "expectedActions": [
@@ -2531,7 +2531,7 @@
       "origin": "Synthetic transfer task grounded in checkout source; not a captured failure.",
       "path": "apps/server/src/factory/FactoryTaskLaunch.test.ts",
       "anchor": "does not treat an SSH transport port as an HTTPS authority port",
-      "sha256": "2a164e6c69117338e010dca69dce615ee52f609f09140f5a442b20be36c78345"
+      "sha256": "42f4faf8e905b1efd0cfb14c8db99eaf770e5cfc614068d1daa1824cf8e2aa76"
     },
     "scenario": "Repair the seeded ssh-origin-port behavior in an actual sandbox repository.",
     "expectedActions": [
@@ -3149,7 +3149,7 @@
       "origin": "Synthetic transfer task grounded in checkout source; not a captured failure.",
       "path": "apps/server/src/factory/FactoryDeliveryService.test.ts",
       "anchor": "prepare merge-pr needs a confirmed publish",
-      "sha256": "ddb56d0f2c7c8615c68b1cffedc6117e3e542441566be03edfecb9798e81f9af"
+      "sha256": "cd5d2c42a1f750eafa551f1c8969195368d339c105aff50a35d25e38b3922d67"
     },
     "scenario": "A current accepted checkpoint exists; no publication grant exists. User asks only for acceptance status.",
     "expectedActions": [

@@ -86,7 +86,8 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
     }),
   } as never;
 });
-vi.mock(import("../../../state/environments"), () => ({
+vi.mock(import("../../../state/environments"), async (original) => ({
+  ...(await original()),
   useEnvironments: (() => ({
     isReady: true,
     environments: [
@@ -100,10 +101,12 @@ vi.mock(import("../../../state/environments"), () => ({
   })) as never,
   usePrimaryEnvironmentId: () => FACTORY_TASK_FIXTURES.environmentId,
 }));
-vi.mock(import("../../../state/session"), () => ({
+vi.mock(import("../../../state/session"), async (original) => ({
+  ...(await original()),
   useEnvironmentsWithScope: () => new Set([FACTORY_TASK_FIXTURES.environmentId]),
 }));
-vi.mock(import("../../../state/entities"), () => ({
+vi.mock(import("../../../state/entities"), async (original) => ({
+  ...(await original()),
   useProjects: (() =>
     FACTORY_TASK_FIXTURES.projects.map((project) => ({
       environmentId: project.environmentId,
@@ -111,7 +114,8 @@ vi.mock(import("../../../state/entities"), () => ({
       title: project.name,
     }))) as never,
 }));
-vi.mock(import("../../../state/factory"), () => ({
+vi.mock(import("../../../state/factory"), async (original) => ({
+  ...(await original()),
   useFactoryFeedsSupported: () => true,
   useFactoryResearchSupported: () => true,
   useFactoryKnowledgeSupported: () => true,

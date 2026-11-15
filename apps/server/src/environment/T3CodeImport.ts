@@ -20,7 +20,7 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
@@ -237,7 +237,7 @@ type Plan =
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const serverConfig = yield* ServerConfig.ServerConfig;
   const projects = yield* ProjectService.ProjectService;
   const settingsService = yield* ServerSettingsService.ServerSettingsService;
@@ -617,7 +617,7 @@ const make = Effect.gen(function* () {
         const planned = yield* plan({ settings: false });
         for (const project of planned.status === "available" ? planned.projects : []) {
           if (project.status !== "new") continue;
-          const created = yield* crypto.randomUUIDv4().pipe(
+          const created = yield* random.uuidV4().pipe(
             Effect.flatMap((uuid) =>
               projects.create({
                 commandId: CommandId.make(`t3code-import:${uuid}`),

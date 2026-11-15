@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -115,7 +116,7 @@ describe("OpenCode2Server error details", () => {
         Layer.mergeAll(
           OpenCode2Client.layer.pipe(Layer.provide(httpClient)),
           OpenCodeRuntime.layer.pipe(Layer.provide(OpenCodeServerLedger.layerTest)),
-        ).pipe(Layer.provideMerge(NodeServices.layer)),
+        ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
       ),
     );
 
@@ -149,6 +150,51 @@ describe("OpenCode2Server error details", () => {
         assert.notInclude(detail, "127.0.0.1");
       }
     }).pipe(Effect.provide(TestClock.layer())),
+  );
+});
+
+describe("OpenCode2Server external server", () => {
+  it.effect("reverifies after forgetting, so a replaced service's version is seen", () =>
+    Effect.gen(function* () {
+      let version = "2.2.4";
+      const layerService = Layer.succeed(
+        HttpClient.HttpClient,
+        HttpClient.make((request) =>
+          Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              new Response(JSON.stringify({ version, pid: 1, urls: [], paths: { tmp: "/tmp" } }), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              }),
+            ),
+          ),
+        ),
+      );
+      const versions = yield* Effect.gen(function* () {
+        const server = yield* OpenCode2Server.make({
+          binaryPath: "opencode",
+          serverUrl: "http://127.0.0.1:49374",
+          serverPassword: "secret",
+          directory: "/project",
+          environment: {},
+        });
+        const read = server.withConnection((connection) => Effect.succeed(connection.version));
+        const before = yield* read;
+        version = "2.2.5";
+        const cached = yield* read;
+        yield* server.forget;
+        return [before, cached, yield* read];
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            OpenCode2Client.layer.pipe(Layer.provide(layerService)),
+            OpenCodeRuntime.layer.pipe(Layer.provide(OpenCodeServerLedger.layerTest)),
+          ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+        ),
+      );
+      assert.deepStrictEqual(versions, ["2.2.4", "2.2.4", "2.2.5"]);
+    }),
   );
 });
 
@@ -253,7 +299,7 @@ it.effect.each([false, true])(
               body: JSON.stringify({ version: "2.0.18", pid: 1, urls: [], paths: { tmp: "/tmp" } }),
             }),
           ),
-          Layer.provideMerge(NodeServices.layer),
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         ),
       ),
     ),
@@ -317,7 +363,7 @@ it.effect("closes borrowed dedicated servers when the provider scope closes", ()
             body: JSON.stringify({ version: "2.0.18", pid: 1, urls: [], paths: { tmp: "/tmp" } }),
           }),
         ),
-        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       ),
     ),
   ),
@@ -370,6 +416,8 @@ describe("OpenCode2Server spawned server", () => {
       assert.equal(owned, 1);
       assert.strictEqual(reconnected.url, dedicated.url);
       assert.notEqual(dedicated.url, first.url);
+      // Without a lifetime the adapter bounds recovery, so a live but silent attempt server fails.
+      assert.strictEqual(dedicated.processExit, undefined);
       const later = yield* server
         .withConnection((connection) => Effect.succeed(connection))
         .pipe(Effect.provideService(OwnedProcess, attempt));
@@ -377,13 +425,21 @@ describe("OpenCode2Server spawned server", () => {
       assert.notStrictEqual(later.client, dedicated.client);
       const normal = yield* server.withConnection((connection) => Effect.succeed(connection));
       assert.strictEqual(normal.client, first.client);
+      if (first.processExit === undefined)
+        return yield* Effect.die("Missing owned process lifetime");
+      return first.processExit;
     }).pipe(
       Effect.scoped,
+      Effect.flatten,
       Effect.provide(
         Layer.mergeAll(
           OpenCode2Client.layer,
           OpenCodeRuntime.layer.pipe(Layer.provide(OpenCodeServerLedger.layerTest)),
-        ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer))),
+        ).pipe(
+          Layer.provideMerge(
+            Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, FetchHttpClient.layer),
+          ),
+        ),
       ),
     ),
   );

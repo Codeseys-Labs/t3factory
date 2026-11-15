@@ -151,7 +151,6 @@ function harness(
         }),
     }),
     Layer.mock(GitWorkflow.GitWorkflowService)({
-      isRepository: () => Effect.succeed(false),
       createWorktree: () => Effect.never,
       hasCommit: () => Effect.succeed(true),
     }),
@@ -176,6 +175,7 @@ function harness(
     Layer.provide(
       Layer.mergeAll(
         projects,
+        orchestrator,
         folders,
         threads,
         receipts,

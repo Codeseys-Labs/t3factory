@@ -14,7 +14,8 @@ import {
   type ProjectId,
 } from "@t3tools/contracts";
 import { useEffect, useRef } from "react";
-import { Platform, Pressable, RefreshControl, useWindowDimensions, View } from "react-native";
+import { Platform, Pressable, useWindowDimensions, View } from "react-native";
+import { RefreshControl } from "../../components/ui/RefreshControl";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";

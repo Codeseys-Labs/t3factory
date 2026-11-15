@@ -352,7 +352,7 @@ const harness = (
             cause: { _tag: "GitHubApiRequestError" },
           }),
         );
-      return Effect.void;
+      return Effect.undefined;
     },
   });
   const dependencies = Layer.mergeAll(

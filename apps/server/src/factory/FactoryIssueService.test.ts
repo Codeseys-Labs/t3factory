@@ -200,7 +200,6 @@ function harness(
           )),
     }),
     Layer.mock(GitWorkflow.GitWorkflowService)({
-      isRepository: () => Effect.succeed(false),
       // Hold preparation at the external process boundary; no provider or filesystem work runs.
       createWorktree: () => Effect.never,
       hasCommit: () => Effect.succeed(true),
@@ -225,7 +224,7 @@ function harness(
   );
   const folders = ManagedFolders.layer.pipe(Layer.provide(Layer.mergeAll(projects, external)));
   const launcher = ThreadLaunch.layer.pipe(
-    Layer.provide(Layer.mergeAll(projects, folders, threads, receipts, external)),
+    Layer.provide(Layer.mergeAll(projects, folders, threads, receipts, orchestrator, external)),
   );
   const dependencies = Layer.mergeAll(
     projects,

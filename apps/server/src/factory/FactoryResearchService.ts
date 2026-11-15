@@ -27,7 +27,8 @@ import {
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -274,12 +275,13 @@ const make = Effect.gen(function* () {
   const threads = yield* Threads.ThreadManagementService;
   const folders = yield* Folders.ManagedProjectFolders;
   const git = yield* Git.GitVcsDriver;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
+  const digester = yield* Digest.Digest;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const digest = Effect.fn("FactoryResearchService.digest")((value: string) =>
-    crypto
-      .digest("SHA-256", new TextEncoder().encode(value))
+    digester
+      .digest(Digest.sha256, new TextEncoder().encode(value))
       .pipe(Effect.map(Hex.encode), Effect.orDie),
   );
   // `shells` carries lifecycles the caller already read, so a view reads each run's shell once.
@@ -514,9 +516,7 @@ const make = Effect.gen(function* () {
       }),
     );
     const protocol: FactoryResearchProtocol = {
-      id: FactoryResearchProtocolId.make(
-        `research:${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`,
-      ),
+      id: FactoryResearchProtocolId.make(`research:${yield* random.uuidV4()}`),
       projectId: input.projectId,
       repository,
       baseCommit,
@@ -564,7 +564,7 @@ const make = Effect.gen(function* () {
     approvedFinding: FactoryResearchFinding | null,
     previousThreadId: ThreadId | null,
   ) {
-    const attempt = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const attempt = yield* random.uuidV4();
     const intent: Store.FactoryResearchLaunchIntent = {
       projectId: input.projectId,
       workspaceRoot,

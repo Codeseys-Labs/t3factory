@@ -8,7 +8,11 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { awaitConfirmedExit } from "@t3tools/shared/ownedProcess";
 import { wrapCommandForLinuxCgroup } from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import type * as PlatformError from "effect/PlatformError";
-import { PosixCgroupController, makePosixOwnedProcess } from "./PosixOwnedProcess.ts";
+import {
+  PosixCgroupController,
+  makePosixOwnedProcess,
+  ownershipError,
+} from "./PosixOwnedProcess.ts";
 import { makeWindowsOwnedProcess } from "./WindowsOwnedProcess.ts";
 
 export interface OwnedProcessGroup {
@@ -26,20 +30,23 @@ export const ownedWriterPlatformRefusal = Effect.fn("OwnedProcess.platformRefusa
   const controller = yield* PosixCgroupController;
   const probe = yield* Effect.scoped(
     Effect.gen(function* () {
-      const lease = yield* Effect.try(() => controller.create());
+      const lease = yield* Effect.try({ try: () => controller.create(), catch: ownershipError });
       if (lease === undefined) return false;
       yield* Effect.addFinalizer(() =>
-        Effect.try(() => lease.kill()).pipe(
+        Effect.try({ try: () => lease.kill(), catch: ownershipError }).pipe(
           Effect.ignore,
           Effect.andThen(
-            Effect.try(() => {
-              if (!lease.populated()) lease.remove();
+            Effect.try({
+              try: () => {
+                if (!lease.populated()) lease.remove();
+              },
+              catch: ownershipError,
             }),
           ),
           Effect.ignore,
         ),
       );
-      if (yield* Effect.try(() => lease.populated())) return false;
+      if (yield* Effect.try({ try: () => lease.populated(), catch: ownershipError })) return false;
       const native = yield* Effect.serviceOption(ChildProcessSpawner.ChildProcessSpawner);
       if (Option.isNone(native)) return false;
       const wrapped = wrapCommandForLinuxCgroup(lease, "/bin/sh", ["-c", "printf 'contained\\n'"]);
@@ -47,7 +54,7 @@ export const ownedWriterPlatformRefusal = Effect.fn("OwnedProcess.platformRefusa
       const line = yield* child.stdout.pipe(Stream.decodeText, Stream.splitLines, Stream.runHead);
       const code = yield* awaitConfirmedExit(child);
       // Stopping a run depends on cgroup.kill, which older kernels or a read-only file lack.
-      const killed = yield* Effect.try(() => lease.kill()).pipe(
+      const killed = yield* Effect.try({ try: () => lease.kill(), catch: ownershipError }).pipe(
         Effect.as(true),
         Effect.orElseSucceed(() => false),
       );

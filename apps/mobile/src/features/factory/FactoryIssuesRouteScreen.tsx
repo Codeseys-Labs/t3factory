@@ -9,7 +9,8 @@ import {
 } from "@t3tools/contracts";
 import { useProjects } from "../../state/entities";
 import { useMemo, type ReactNode } from "react";
-import { Pressable, RefreshControl, View } from "react-native";
+import { Pressable, View } from "react-native";
+import { RefreshControl } from "../../components/ui/RefreshControl";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SymbolView } from "../../components/ui/AppSymbol";

@@ -34,7 +34,7 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeOS from "node:os";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -326,7 +326,7 @@ const makeService = Effect.gen(function* () {
   const trackers = yield* IssueTrackerProviderRegistry;
   const pullRequests = yield* PullRequests.PullRequestService;
   const outbox = yield* EffectOutbox.EffectOutboxV2;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const tempDir = NodeOS.tmpdir();
@@ -590,7 +590,7 @@ const makeService = Effect.gen(function* () {
     if (input.kind === "publish-artifact") {
       if (!("issueNumber" in input.payload))
         return yield* new FactoryDeliveryError({ reason: "payload-changed" });
-      const attempt = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+      const attempt = yield* random.uuidV4();
       const seen = yield* observeArtifact(input, attempt);
       const destination = yield* artifactDestination(input, input.payload.issueNumber);
       return {
@@ -768,7 +768,7 @@ const makeService = Effect.gen(function* () {
     const validated = yield* validate;
     const at = yield* nowIso;
     const intent: FactoryDeliveryIntent = {
-      id: `delivery:${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`,
+      id: `delivery:${yield* random.uuidV4()}`,
       originKey: validated.origin.originKey,
       threadId: input.threadId,
       projectId: input.projectId,
@@ -1001,7 +1001,7 @@ const makeService = Effect.gen(function* () {
     });
     const at = yield* nowIso;
     const intent: FactoryCommitDeliveryIntent = {
-      id: `delivery:${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`,
+      id: `delivery:${yield* random.uuidV4()}`,
       originKey: input.originKey,
       threadId: input.threadId,
       projectId: input.projectId,
@@ -1267,10 +1267,7 @@ const makeService = Effect.gen(function* () {
       if (pushed._tag === "Failure") return yield* fail(describe("push failed", pushed.failure));
       if (pushed.success.exitCode !== 0) return yield* fail("The publication branch push failed.");
     }
-    const bodyFile = path.join(
-      tempDir,
-      `t3code-delivery-body-${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}.md`,
-    );
+    const bodyFile = path.join(tempDir, `t3code-delivery-body-${yield* random.uuidV4()}.md`);
     const written = yield* Effect.result(fileSystem.writeFileString(bodyFile, payload.body));
     if (written._tag === "Failure")
       return yield* fail(describe("could not write the pull request body", written.failure));
@@ -1367,10 +1364,7 @@ const makeService = Effect.gen(function* () {
       return;
     }
 
-    const bodyFile = path.join(
-      tempDir,
-      `t3code-delivery-body-${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}.md`,
-    );
+    const bodyFile = path.join(tempDir, `t3code-delivery-body-${yield* random.uuidV4()}.md`);
     const written = yield* Effect.result(fileSystem.writeFileString(bodyFile, payload.body));
     if (written._tag === "Failure")
       return yield* fail(describe("could not write the pull request body", written.failure));

@@ -18,7 +18,7 @@ import {
   type FactoryTaskPlanProposalReadResult,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Hex from "effect/encoding/Hex";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
@@ -107,7 +107,7 @@ const make = Effect.gen(function* () {
   const threads = yield* Threads.ThreadManagementService;
   const sessions = yield* AuthSessions.AuthSessionRepository;
   const identity = yield* ServerEnvironmentIdentity;
-  const crypto = yield* Crypto.Crypto;
+  const digester = yield* Digest.Digest;
   // Launches still running in this process; any other unrecorded reservation was abandoned.
   const launching = new Set<ThreadId>();
   const persistence = (cause: unknown) =>
@@ -183,8 +183,8 @@ const make = Effect.gen(function* () {
   });
   const digestOf = Effect.fn("FactoryTaskPlanningService.digest")(
     (operation: string, input: unknown, actor: FactoryPlanActor) =>
-      crypto
-        .digest("SHA-256", new TextEncoder().encode(canonical({ operation, input, actor })))
+      digester
+        .digest(Digest.sha256, new TextEncoder().encode(canonical({ operation, input, actor })))
         .pipe(Effect.map(Hex.encode), Effect.orDie),
   );
   const requestBreakdown = Effect.fn("FactoryTaskPlanningService.requestBreakdown")(function* (

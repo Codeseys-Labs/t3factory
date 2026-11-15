@@ -1,7 +1,13 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it, vi } from "@effect/vitest";
 import {
+  AuthSessionId,
+  AuthOrchestrationOperateScope,
+  CommandId,
+  EnvironmentId,
   MessageId,
   NodeId,
+  ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderSessionId,
@@ -12,12 +18,21 @@ import {
   RuntimeRequestId,
   ThreadId,
   TurnItemId,
+  type FactoryExecutionBinding,
+  type FactoryExecutionGrant,
+  type FactoryPlanSnapshot,
   type OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as SqlError from "effect/sql/SqlError";
 
 import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
+import * as AuthSessions from "../persistence/AuthSessions.ts";
+import * as FactoryExecutionStore from "../persistence/FactoryExecutionStore.ts";
+import * as Sqlite from "../persistence/Sqlite.ts";
 import * as EffectWorker from "./EffectWorker.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
@@ -26,6 +41,226 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderRuntimeRecovery from "./ProviderRuntimeRecoveryService.ts";
 import * as ServerSettings from "../serverSettings.ts";
+
+it.effect("preserves Factory shutdown settlement when a later thread rolls back", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const before = [ThreadId.make("before-1"), ThreadId.make("before-2")];
+    const managedThreadId = ThreadId.make("managed-shutdown");
+    const after = Array.from({ length: 33 }, (_, index) => ThreadId.make(`after-${index}`));
+    const threadIds = [...before, managedThreadId, ...after];
+    const binding: FactoryExecutionBinding = {
+      selection: {
+        ref: {
+          environmentId: EnvironmentId.make("local"),
+          projectId: ProjectId.make("shutdown-project"),
+          rootId: "shutdown-plan",
+        },
+        revision: 1,
+        taskId: "root",
+      },
+      grantVersion: 1,
+      taskVersion: 1,
+      commandId: CommandId.make("admit-shutdown"),
+      threadId: managedThreadId,
+      runId: RunId.make("shutdown-run"),
+      runAttemptId: RunAttemptId.make("shutdown-attempt"),
+      driver: ProviderDriverKind.make("codex"),
+      spec: {
+        taskId: "root",
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "luna" },
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        workspaceStrategy: { type: "root" },
+        setup: "deny",
+        output: { slot: "draft", kind: "sealed-draft" },
+      },
+      inputDigest: "a".repeat(64),
+      inputText: "Shutdown recovery",
+      prerequisites: [],
+      admittedAt: "2026-11-05T00:00:00.000Z",
+      stopRequested: false,
+      quiescent: false,
+    };
+    const { ref } = binding.selection;
+    const at = binding.admittedAt;
+    const plan: FactoryPlanSnapshot = {
+      ref,
+      revision: 1,
+      tasks: [
+        {
+          id: "root",
+          parentId: null,
+          title: "Shutdown",
+          context: "",
+          order: 0,
+          retired: false,
+        },
+      ],
+      edges: [],
+      workContexts: [],
+      editorThreadIds: [],
+      createdAt: at,
+      updatedAt: at,
+    };
+    const grant: FactoryExecutionGrant = {
+      ref,
+      revision: 1,
+      version: 1,
+      issuerSessionId: "shutdown-human",
+      issuedAt: at,
+      revokedAt: null,
+      policy: {
+        version: 1,
+        requesterThreadIds: [],
+        tasks: [binding.spec],
+        edges: [],
+        maxAttempts: 1,
+        maxRetriesPerTask: 0,
+        maxConcurrent: 1,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        requiredCapabilities: [],
+      },
+    };
+    yield* sql`INSERT INTO projection_projects(project_id,title,workspace_root,scripts_json,created_at,updated_at) VALUES (${ref.projectId},'Shutdown','/local','[]',${at},${at})`;
+    yield* sql`INSERT INTO factory_plan_heads(root_id,project_id,revision,snapshot_json,summary_json) VALUES (${ref.rootId},${ref.projectId},1,${JSON.stringify(plan)},'{}')`;
+    yield* sql`INSERT INTO factory_execution_grants(root_id,version,grant_json) VALUES (${ref.rootId},1,${JSON.stringify(grant)})`;
+    yield* sql`INSERT INTO factory_execution_bindings(attempt_id,run_id,thread_id,root_id,revision,task_id,grant_version,binding_json) VALUES (${binding.runAttemptId},${binding.runId},${binding.threadId},${ref.rootId},1,'root',1,${JSON.stringify(binding)})`;
+    yield* (yield* AuthSessions.AuthSessionRepository).create({
+      sessionId: AuthSessionId.make(grant.issuerSessionId),
+      subject: "human",
+      scopes: [AuthOrchestrationOperateScope],
+      method: "browser-session-cookie",
+      client: {
+        label: null,
+        ipAddress: null,
+        userAgent: null,
+        deviceType: "unknown",
+        os: null,
+        browser: null,
+      },
+      issuedAt: DateTime.makeUnsafe(at),
+      expiresAt: DateTime.makeUnsafe(grant.policy.expiresAt),
+    });
+    const lifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
+    yield* lifecycle.runPhase({ ...binding, phase: "session" }, Effect.void);
+    const store = yield* FactoryExecutionStore.FactoryExecutionStore;
+    assert.deepEqual(
+      yield* sql`SELECT observation FROM factory_execution_phases WHERE attempt_id = ${binding.runAttemptId}`,
+      [{ observation: "claimed" }],
+    );
+    let failProjection = true;
+    const visited: ThreadId[] = [];
+    const batches: ThreadId[][] = [];
+    let currentBatch: ThreadId[] | undefined;
+    const failure = new ProjectionStore.ProjectionStoreReadError({
+      threadId: ThreadId.make("after-1"),
+      cause: new Error("later shutdown projection failed"),
+    });
+    const recovery = yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService.pipe(
+      Effect.provide(
+        ProviderRuntimeRecovery.layer.pipe(
+          Layer.provide(ServerSettings.layerTest()),
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(FactoryExecutionLifecycle.FactoryExecutionLifecycle, lifecycle),
+              Layer.mock(ProjectionStore.ProjectionStoreV2)({
+                getRecoveryThreadIds: () => Effect.succeed(threadIds),
+                getRuntimeRecoveryProjection: (threadId) =>
+                  Effect.gen(function* () {
+                    visited.push(threadId);
+                    currentBatch?.push(threadId);
+                    if (failProjection && threadId === after[1]) return yield* failure;
+                    return {
+                      thread: { id: threadId },
+                      runtimeRequests: [],
+                      providerSessions: [],
+                      providerThreads: [],
+                      runs: [],
+                      attempts: [],
+                      providerTurns: [],
+                      messages: [],
+                      turnItems: [],
+                      subagents: [],
+                      nodes: [],
+                    } as unknown as OrchestrationV2ThreadProjection;
+                  }),
+              }),
+              Layer.mock(EventSink.EventSinkV2)({
+                withProviderBatch: (effect) =>
+                  Effect.gen(function* () {
+                    currentBatch = [];
+                    batches.push(currentBatch);
+                    return yield* sql.withTransaction(effect).pipe(
+                      Effect.mapError((cause) =>
+                        SqlError.isSqlError(cause)
+                          ? new EventSink.EventSinkWriteError({ eventCount: 0, cause })
+                          : cause,
+                      ),
+                      Effect.ensuring(
+                        Effect.sync(() => {
+                          currentBatch = undefined;
+                        }),
+                      ),
+                    );
+                  }),
+              }),
+              IdAllocator.layer,
+              Layer.mock(EffectOutbox.EffectOutboxV2)({
+                cancelUnsettled: () => Effect.succeed([]),
+                reconcileAfterProcessLoss: Effect.succeed({ requeued: 0, cancelled: 0 }),
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+    const error = yield* recovery.reconcile("shutdown").pipe(Effect.flip);
+    assert.equal(error.operation, "read-projections");
+    assert.equal(error.threadId, after[1]);
+    assert.strictEqual(error.cause, failure);
+    assert.deepEqual(visited, [...before, managedThreadId, ...after.slice(0, 2)]);
+    assert.deepEqual(
+      {
+        stopRequested: (yield* store.getBinding(binding.runAttemptId)).stopRequested,
+        phases:
+          yield* sql`SELECT phase, observation FROM factory_execution_phases WHERE attempt_id = ${binding.runAttemptId}`,
+      },
+      { stopRequested: true, phases: [{ phase: "session", observation: "quiescent" }] },
+    );
+    assert.deepEqual(batches, [before, after.slice(0, 2)]);
+    failProjection = false;
+    visited.length = 0;
+    batches.length = 0;
+    yield* recovery.reconcile("shutdown");
+    assert.deepEqual(visited, threadIds);
+    assert.deepEqual(batches, [before, after.slice(0, 32), after.slice(32)]);
+    assert.isTrue(yield* lifecycle.complete(binding));
+    assert.isTrue((yield* store.getBinding(binding.runAttemptId)).quiescent);
+  }).pipe(
+    Effect.provide(
+      Layer.mergeAll(
+        FactoryExecutionLifecycle.layer.pipe(
+          Layer.provide(NodeCrypto.layer),
+          Layer.provide(
+            Layer.succeed(FactoryExecutionLifecycle.FactoryOwnedProcessFactory, {
+              make: () =>
+                Effect.succeed({
+                  awaitRootExits: Effect.void,
+                  spawner: { spawn: () => Effect.die("Recovery must not spawn a process") },
+                  quiesce: () => Effect.succeed(true),
+                }),
+            }),
+          ),
+        ),
+        AuthSessions.layer,
+      ).pipe(
+        Layer.provideMerge(FactoryExecutionStore.layer),
+        Layer.provideMerge(Sqlite.layerMemory),
+      ),
+    ),
+  ),
+);
 
 it.effect(
   "terminalizes the orphaned run of a quiescent managed binding after factory recovery",
@@ -578,7 +813,19 @@ it.effect("recovery closes a secret card's form but leaves a link card open", ()
   }).pipe(Effect.provide(layer));
 });
 
-it.effect.each(["queued", "preparing"] as const)("recovers $0 work after restart", (status) => {
+it.effect.each([
+  "queued",
+  "preparing",
+  "starting",
+  "starting-other-request",
+  "starting-own-request",
+  "starting-scheduled",
+] as const)("recovers $0 work after restart", (scenario) => {
+  const status = scenario.startsWith("starting") ? "starting" : scenario;
+  const terminalized =
+    status === "preparing" ||
+    scenario === "starting-own-request" ||
+    scenario === "starting-scheduled";
   const threadId = ThreadId.make("thread_queued_restart");
   const runId = RunId.make("run_queued_restart");
   const attemptId = RunAttemptId.make("attempt_queued_restart");
@@ -587,7 +834,18 @@ it.effect.each(["queued", "preparing"] as const)("recovers $0 work after restart
     null;
   const projection = {
     thread: { id: threadId },
-    runtimeRequests: [],
+    runtimeRequests: scenario.endsWith("request")
+      ? [
+          {
+            id: RuntimeRequestId.make("pending-recovery-request"),
+            nodeId:
+              scenario === "starting-own-request" ? rootNodeId : NodeId.make("other-run-request"),
+            kind: "user_input",
+            status: "pending",
+            responseCapability: { type: "message" },
+          },
+        ]
+      : [],
     providerSessions: [],
     providerThreads: [],
     providerTurns: [],
@@ -595,6 +853,9 @@ it.effect.each(["queued", "preparing"] as const)("recovers $0 work after restart
       {
         id: runId,
         status,
+        startedAt: null,
+        activeAttemptId: attemptId,
+        userMessageId: MessageId.make("message_queued_restart"),
         queuePosition: 1,
         providerInstanceId: ProviderInstanceId.make("codex"),
         ...(status === "preparing"
@@ -617,6 +878,15 @@ it.effect.each(["queued", "preparing"] as const)("recovers $0 work after restart
       },
     ],
     nodes: [
+      ...(scenario === "starting-other-request"
+        ? [
+            {
+              id: NodeId.make("other-run-request"),
+              runId: RunId.make("earlier-run"),
+              status: "waiting",
+            },
+          ]
+        : []),
       {
         id: rootNodeId,
         runId,
@@ -624,7 +894,16 @@ it.effect.each(["queued", "preparing"] as const)("recovers $0 work after restart
       },
     ],
     subagents: [],
-    messages: [],
+    messages:
+      status === "starting"
+        ? [
+            {
+              id: MessageId.make("message_queued_restart"),
+              createdBy: "user",
+              ...(scenario === "starting-scheduled" ? { scheduledTaskId: "scheduled-task" } : {}),
+            },
+          ]
+        : [],
     turnItems: [],
   } as unknown as OrchestrationV2ThreadProjection;
   const layer = ProviderRuntimeRecovery.layer.pipe(
@@ -635,6 +914,16 @@ it.effect.each(["queued", "preparing"] as const)("recovers $0 work after restart
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getRecoveryThreadIds: () => Effect.succeed([threadId]),
           getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+          getMessagesById: (requestedThreadId, messageIds) =>
+            Effect.succeed(
+              new Map(
+                projection.messages
+                  .filter(
+                    (message) => requestedThreadId === threadId && messageIds.includes(message.id),
+                  )
+                  .map((message) => [message.id, message]),
+              ),
+            ),
           getThreadRecords: () => Effect.succeed(projection),
         }),
         Layer.mock(EventSink.EventSinkV2)({
@@ -657,7 +946,7 @@ it.effect.each(["queued", "preparing"] as const)("recovers $0 work after restart
   return Effect.gen(function* () {
     const summary =
       yield* (yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService).reconcile("startup");
-    assert.equal(summary.terminalizedRuns, status === "preparing" ? 1 : 0);
+    assert.equal(summary.terminalizedRuns, terminalized ? 1 : 0);
     const command = committedInput;
     assert.isNotNull(command);
     if (command === null) return;
@@ -666,17 +955,17 @@ it.effect.each(["queued", "preparing"] as const)("recovers $0 work after restart
     const nodeEvent = command.events.find((event) => event.type === "node.updated");
     assert.equal(
       runEvent?.type === "run.updated" ? runEvent.payload.status : null,
-      status === "preparing" ? "cancelled" : "queued",
+      terminalized ? "cancelled" : "queued",
     );
     assert.isEmpty(command.effects);
-    if (status === "preparing") {
+    if (terminalized) {
       assert.equal(
         attemptEvent?.type === "run-attempt.updated" ? attemptEvent.payload.status : null,
         "cancelled",
       );
       assert.equal(
         nodeEvent?.type === "node.updated" ? nodeEvent.payload.status : null,
-        "cancelled",
+        scenario === "starting-own-request" ? null : "cancelled",
       );
     } else {
       assert.equal(runEvent?.type === "run.updated" ? runEvent.payload.queuePosition : null, 1);
@@ -708,6 +997,7 @@ it.effect(
           driver: ProviderDriverKind.make("codex"),
           providerInstanceId: ProviderInstanceId.make("codex"),
           status: "ready",
+          extensionStatuses: [{ key: "watch", text: "Watching" }],
         },
       ],
       providerThreads: [
@@ -752,6 +1042,14 @@ it.effect(
           nodeId: rootNodeId,
           status: "running",
         },
+        ...(["assistant_message", "reasoning", "proposed_plan"] as const).map((type) => ({
+          id: TurnItemId.make(`turn_item_recovery_cancel_${type}`),
+          runId,
+          nodeId: rootNodeId,
+          type,
+          status: "running",
+          streaming: true,
+        })),
       ],
     } as unknown as OrchestrationV2ThreadProjection;
     const layer = ProviderRuntimeRecovery.layer.pipe(
@@ -787,6 +1085,7 @@ it.effect(
       assert.equal(summary.stoppedSessions, 1);
       assert.equal(summary.retiredEffects, 2);
       assert.deepEqual(committedInput?.cancelUnsettledEffects?.effectTypes, [
+        "provider-session.apply-model-selection",
         "provider-turn.start",
         "provider-turn.interrupt",
         "provider-turn.steer",
@@ -806,12 +1105,35 @@ it.effect(
           ["provider-turn.updated", "cancelled"],
           ["message.updated", null],
           ["turn-item.updated", "cancelled"],
+          ["turn-item.updated", "cancelled"],
+          ["turn-item.updated", "cancelled"],
+          ["turn-item.updated", "cancelled"],
+          ["turn-item.updated", "completed"],
           ["provider-thread.updated", "idle"],
           ["provider-session.updated", "stopped"],
         ],
       );
       const messageEvent = events.find((event) => event.type === "message.updated");
       assert.isFalse(messageEvent?.type === "message.updated" && messageEvent.payload.streaming);
+      const stoppedSession = events.find((event) => event.type === "provider-session.updated");
+      assert.deepEqual(
+        stoppedSession?.type === "provider-session.updated"
+          ? stoppedSession.payload.extensionStatuses
+          : undefined,
+        [],
+      );
+      assert.deepEqual(
+        events.flatMap((event) =>
+          event.type === "turn-item.updated" && "streaming" in event.payload
+            ? [[event.payload.type, event.payload.streaming]]
+            : [],
+        ),
+        [
+          ["assistant_message", false],
+          ["reasoning", false],
+          ["proposed_plan", false],
+        ],
+      );
     }).pipe(Effect.provide(layer));
   },
 );

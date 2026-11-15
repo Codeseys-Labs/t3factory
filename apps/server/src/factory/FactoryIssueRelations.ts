@@ -31,7 +31,8 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Hex from "effect/encoding/Hex";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -353,13 +354,14 @@ const make = Effect.gen(function* () {
   );
   const store = yield* Store.FactoryIssueRelationStore;
   const resolve = yield* makeRepositoryResolver;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
+  const digester = yield* Digest.Digest;
   const fingerprintEdge = Effect.fn("FactoryIssueRelations.fingerprintEdge")(function* (
     subject: { readonly canonicalKey: string; readonly issueNumber: number },
     edge: EdgeEvidence,
   ): Effect.fn.Return<FactoryReadinessEdge> {
-    const fingerprint = yield* crypto
-      .digest("SHA-256", encodeEdgeResolution(subject, edge))
+    const fingerprint = yield* digester
+      .digest(Digest.sha256, encodeEdgeResolution(subject, edge))
       .pipe(Effect.map(Hex.encode), Effect.orDie);
     return { ...edge, fingerprint, override: null };
   });
@@ -659,7 +661,7 @@ const make = Effect.gen(function* () {
     yield* store.setOverride({
       canonicalKey: observed.repository.canonicalKey,
       issueNumber: input.issueNumber,
-      id: FactoryReadinessOverrideId.make(yield* crypto.randomUUIDv4().pipe(Effect.orDie)),
+      id: FactoryReadinessOverrideId.make(yield* random.uuidV4()),
       kind: input.kind,
       targetHost: input.targetHost,
       targetId: input.targetId,

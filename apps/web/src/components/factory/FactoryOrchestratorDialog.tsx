@@ -3,7 +3,6 @@ import type {
   ModelSelection,
   ProjectCoordinator,
   ProjectCoordinatorEnsureInput,
-  ProviderInteractionMode,
   RuntimeMode,
 } from "@t3tools/contracts";
 import { useId, useState } from "react";
@@ -16,7 +15,7 @@ import {
 import { isProviderInstancePickerReady, providerInstanceEntriesFor } from "../../providerInstances";
 import type { SidebarProjectGroupMember } from "../../sidebarProjectGrouping";
 import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../../state/server";
-import { getAntigravitySendBlockReason, resolveComposerInteractionMode } from "../ChatView.logic";
+import { getAntigravitySendBlockReason } from "../ChatView.logic";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { runtimeModeConfig, runtimeModeOptions } from "../chat/runtimeModeConfig";
 import { scheduledTaskDefaultModel } from "../settings/scheduledTasksSettings.logic";
@@ -67,7 +66,6 @@ export function FactoryOrchestratorDialog(props: {
   const entries = providerInstanceEntriesFor(providers, settings, target.id);
   const [picked, setPicked] = useState<ModelSelection | null>(null);
   const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>("approval-required");
-  const [interactionMode, setInteractionMode] = useState<ProviderInteractionMode>("default");
   const [replacementConfirmed, setReplacementConfirmed] = useState(false);
   const candidate = resuming
     ? reviewedCoordinator.modelSelection
@@ -90,19 +88,14 @@ export function FactoryOrchestratorDialog(props: {
   );
   const selectedRuntimeMode =
     props.request?.runtimeMode ?? (resuming ? reviewedCoordinator.runtimeMode : runtimeMode);
+  // Plan mode has no picker; only a saved request or launch keeps its interaction mode.
   const selectedInteractionMode =
-    props.request?.interactionMode ??
-    (resuming ? reviewedCoordinator.interactionMode : interactionMode);
+    props.request?.interactionMode ?? (resuming ? reviewedCoordinator.interactionMode : "default");
   const supportedModes = entry?.snapshot.supportedRuntimeModes;
   const availableModes =
     supportedModes && supportedModes.length > 0
       ? runtimeModeOptions.filter((mode) => supportedModes.includes(mode))
       : runtimeModeOptions;
-  const planEnabled = resolveComposerInteractionMode({
-    planModeEnabled: settings.planModeEnabled,
-    provider: entry?.snapshot,
-    interactionMode: selectedInteractionMode,
-  }).enabled;
   const providerBlock = getAntigravitySendBlockReason(entry?.snapshot, selection?.model ?? "");
   const modelOption =
     selection === null
@@ -116,9 +109,7 @@ export function FactoryOrchestratorDialog(props: {
     entry.snapshot.auth.status !== "unauthenticated" &&
     providerBlock === null &&
     modelOption?.isUnavailable !== true;
-  const modeAvailable =
-    availableModes.includes(selectedRuntimeMode) &&
-    (selectedInteractionMode === "default" || planEnabled);
+  const modeAvailable = availableModes.includes(selectedRuntimeMode);
   const mayConfirm =
     props.canStart &&
     !props.pending &&
@@ -213,36 +204,6 @@ export function FactoryOrchestratorDialog(props: {
                   {runtimeModeConfig[selectedRuntimeMode].description} Connection mode limits remain
                   enforced by the server.
                 </p>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor={`${id}-interaction`}>Interaction</Label>
-                <Select
-                  value={selectedInteractionMode}
-                  onValueChange={(value) => {
-                    if (value === "default" || (value === "plan" && planEnabled))
-                      setInteractionMode(value);
-                  }}
-                  disabled={locked || props.failure?.requiresReview}
-                >
-                  <SelectTrigger id={`${id}-interaction`} className="w-full">
-                    <SelectValue>
-                      {selectedInteractionMode === "plan" ? "Plan" : "Default"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectPopup>
-                    <SelectItem value="default">Default</SelectItem>
-                    {planEnabled || selectedInteractionMode === "plan" ? (
-                      <SelectItem value="plan" disabled={!planEnabled}>
-                        Plan
-                      </SelectItem>
-                    ) : null}
-                  </SelectPopup>
-                </Select>
-                {!planEnabled ? (
-                  <p className="text-xs text-muted-foreground">
-                    Plan mode is unavailable for this provider or disabled in settings.
-                  </p>
-                ) : null}
               </div>
             </fieldset>
             {!frozen && (!modelAvailable || !modeAvailable) ? (

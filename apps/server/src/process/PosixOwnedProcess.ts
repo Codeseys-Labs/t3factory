@@ -9,7 +9,11 @@ import * as PlatformError from "effect/PlatformError";
 import * as Scope from "effect/Scope";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import { awaitConfirmedExit } from "@t3tools/shared/ownedProcess";
+import {
+  awaitConfirmedExit,
+  redactIfAnyRedacted,
+  revealCommandWord,
+} from "@t3tools/shared/ownedProcess";
 import {
   makeLinuxCgroupController,
   resolveLinuxCgroupTargetCommand,
@@ -35,7 +39,7 @@ const shellEnvironmentExports = (environment: Record<string, string | undefined>
     )
     .join("");
 
-const ownershipError = (cause: unknown) =>
+export const ownershipError = (cause: unknown) =>
   PlatformError.systemError({
     module: "ChildProcess",
     method: "spawnOwned",
@@ -63,9 +67,12 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
       // Disappearance is not an empty observation. Read the kernel counter after cgroup.kill.
       let empty = false;
       for (let attempt = 0; attempt < 200; attempt++) {
-        const observed = yield* Effect.try(() => {
-          job.lease.kill();
-          return !job.lease.populated();
+        const observed = yield* Effect.try({
+          try: () => {
+            job.lease.kill();
+            return !job.lease.populated();
+          },
+          catch: ownershipError,
         }).pipe(Effect.exit);
         if (Exit.isFailure(observed)) return false;
         if (observed.value) {
@@ -76,7 +83,10 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
       }
       if (!empty || !job.contained || job.exit === undefined) return false;
       if (Exit.isFailure(yield* Effect.exit(job.exit))) return false;
-      const removed = yield* Effect.try(() => job.lease.remove()).pipe(Effect.exit);
+      const removed = yield* Effect.try({
+        try: () => job.lease.remove(),
+        catch: ownershipError,
+      }).pipe(Effect.exit);
       if (Exit.isFailure(removed)) return false;
       job.empty = true;
       return true;
@@ -96,17 +106,29 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
           pending++;
           return yield* Effect.uninterruptibleMask(() =>
             Effect.gen(function* () {
-              const commandEnvironment =
-                command.options.extendEnv === false
-                  ? { ...command.options.env }
-                  : { ...environment, ...command.options.env };
+              const commandEnvironment: Record<string, string | undefined> = Object.fromEntries(
+                Object.entries(
+                  command.options.extendEnv === false
+                    ? { ...command.options.env }
+                    : { ...environment, ...command.options.env },
+                ).map(([name, value]) => [
+                  name,
+                  value === undefined ? undefined : revealCommandWord(value),
+                ]),
+              );
               const invocation = command.options.shell
                 ? {
                     command:
                       typeof command.options.shell === "string" ? command.options.shell : "/bin/sh",
-                    args: ["-c", [command.command, ...command.args].join(" ")],
+                    args: [
+                      "-c",
+                      redactIfAnyRedacted(
+                        command.args,
+                        [command.command, ...command.args.map(revealCommandWord)].join(" "),
+                      ),
+                    ],
                   }
-                : command;
+                : { command: command.command, args: command.args };
               const target = resolveLinuxCgroupTargetCommand(
                 invocation.command,
                 command.options.cwd ?? cwd,
@@ -131,7 +153,8 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
               while (command.options.additionalFds?.[`fd${readyFd}`] !== undefined) readyFd++;
               // Values keep their newlines, so a random line, not an empty one, ends the exports.
               const environmentEnd = `t3-env-end-${NodeCrypto.randomUUID().replaceAll("-", "")}`;
-              const wrapped = wrapCommandForLinuxCgroup(lease, target, invocation.args, {
+              // The wrapper only prepends words, so the target's own arguments are appended after it.
+              const wrapped = wrapCommandForLinuxCgroup(lease, target, [], {
                 beforeExec: [
                   `printf 'contained\\n' >&${readyFd} || exit 125`,
                   `exec ${readyFd}>&-`,
@@ -150,7 +173,7 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
               const acquired = yield* Effect.exit(
                 native
                   .spawn(
-                    ChildProcess.make(wrapped.command, wrapped.args, {
+                    ChildProcess.make(wrapped.command, [...wrapped.args, ...invocation.args], {
                       ...command.options,
                       env: {},
                       extendEnv: false,
@@ -168,10 +191,13 @@ export const makePosixOwnedProcess = Effect.fn("PosixOwnedProcess.make")(
               if (Exit.isFailure(acquired)) {
                 // Node fails spawn only before a child exists, and the wrapper never execs
                 // without resume; still, only an empty kernel counter releases the lease.
-                const released = yield* Effect.try(() => {
-                  if (lease.populated()) return false;
-                  lease.remove();
-                  return true;
+                const released = yield* Effect.try({
+                  try: () => {
+                    if (lease.populated()) return false;
+                    lease.remove();
+                    return true;
+                  },
+                  catch: ownershipError,
                 }).pipe(Effect.orElseSucceed(() => false));
                 if (released) {
                   job.empty = true;

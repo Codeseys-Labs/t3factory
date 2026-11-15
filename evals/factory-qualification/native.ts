@@ -179,6 +179,7 @@ const commitId = (value: string) => {
   if (!/^[a-f0-9]{40}$/.test(value)) throw new Error("An exact commit SHA is required");
   return value;
 };
+// @effect-diagnostics-next-line extendsNativeError:off - a local throw sentinel in synchronous export code.
 class SubmissionError extends Error {}
 const exportCommit = (repo: string, commit: string, destination: string) => {
   commitId(commit);

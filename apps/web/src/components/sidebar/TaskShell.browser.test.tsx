@@ -8,6 +8,11 @@ import { page } from "vite-plus/test/browser";
 
 import "../../index.css";
 import { AppRoot } from "../../AppRoot";
+// These routes load their pages lazily; a first transform inside the test would eat its timeout.
+import "../ChatView";
+import "../factory/FactoryWorkPage";
+import "../tasks/detail/TaskDetailPage";
+import "../tasks/home/TasksPage";
 import { __setClientSettingsForTests } from "../../hooks/useSettings";
 import { getRouter } from "../../router";
 import { openCommandPalette } from "../../commandPaletteBus";

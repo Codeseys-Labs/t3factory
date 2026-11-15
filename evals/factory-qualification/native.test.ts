@@ -272,23 +272,25 @@ const captureFor = (fixture: ReturnType<typeof repaired>) => {
   return { capture, save, write };
 };
 
-it("keeps internally consistent synthetic records blocked and rejects mismatched captured evidence", () => {
-  for (const defect of [
-    "none",
-    "hash",
-    "truncated",
-    "unrelated-run",
-    "null-result",
-    "not-ready",
-    "reject",
-    "dirty-review",
-    "model",
-    "missing-artifact",
-    "truncated-protocol",
-    "reviewed-tuple",
-    "checkpoint-node",
-    "null-root",
-  ]) {
+// One case per defect: each builds its own git fixture, which takes seconds on Windows.
+it.each([
+  "none",
+  "hash",
+  "truncated",
+  "unrelated-run",
+  "null-result",
+  "not-ready",
+  "reject",
+  "dirty-review",
+  "model",
+  "missing-artifact",
+  "truncated-protocol",
+  "reviewed-tuple",
+  "checkpoint-node",
+  "null-root",
+])(
+  "keeps internally consistent synthetic records blocked and rejects mismatched captured evidence (%s)",
+  (defect) => {
     const fixture = repaired();
     const { capture, save, write } = captureFor(fixture);
     const replaceRecord = (path: string, change: Record<string, unknown>, kind: string) => {
@@ -349,8 +351,8 @@ it("keeps internally consistent synthetic records blocked and rejects mismatched
     expect(result.capture, defect).toMatchObject({ gate: defect === "none" ? "pass" : "fail" });
     expect(result.status, defect).toBe(defect === "none" ? "blocked" : "fail");
     expect(result.gates["native-identity"], defect).toBe("missing");
-  }
-});
+  },
+);
 
 it("refuses a gitdir indirection instead of treating a delegated worktree as the standalone seed", () => {
   const fixture = repaired();

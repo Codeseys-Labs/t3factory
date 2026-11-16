@@ -50,6 +50,8 @@ type ComposerTraitsTarget = {
   threadRef?: ScopedThreadRef | undefined;
   draftId?: DraftId | undefined;
   onDraftModelOptionsChange?: () => void;
+  /** Where a pick goes when the options belong to something other than a draft or thread. */
+  onModelOptionsChange?: (nextOptions: ReadonlyArray<ProviderOptionSelection> | undefined) => void;
   model: string;
   models: ReadonlyArray<ServerProviderModel>;
   modelOptions: ReadonlyArray<ProviderOptionSelection> | undefined;
@@ -182,12 +184,12 @@ export function getComposerReasoningStep(input: {
 
 /**
  * The composer's traits input with the model's implicit defaults applied, so a pick writes what
- * the composer would send. Null without a draft or thread to persist to.
+ * the composer would send. Null without a draft, a thread or an options writer to persist to.
  */
 export function resolveComposerTraitsInput(
   input: ComposerTraitsTarget,
 ): TraitsSelectionInput | null {
-  const { threadRef, draftId, ...rest } = input;
+  const { threadRef, draftId, onDraftModelOptionsChange, onModelOptionsChange, ...rest } = input;
   const { selections } = resolveComposerOptionSelections(
     input.models,
     input.model,
@@ -195,7 +197,13 @@ export function resolveComposerTraitsInput(
     input.modelOptions,
     input.includePlanAgent,
   );
-  const persistence = threadRef ? { threadRef } : draftId ? { draftId } : null;
+  const persistence = onModelOptionsChange
+    ? { onModelOptionsChange }
+    : threadRef
+      ? { threadRef, ...(onDraftModelOptionsChange ? { onDraftModelOptionsChange } : {}) }
+      : draftId
+        ? { draftId, ...(onDraftModelOptionsChange ? { onDraftModelOptionsChange } : {}) }
+        : null;
   if (!persistence) return null;
   return { ...rest, ...persistence, modelOptions: selections };
 }

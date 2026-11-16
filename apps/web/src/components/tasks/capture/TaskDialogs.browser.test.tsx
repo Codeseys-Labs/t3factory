@@ -128,13 +128,21 @@ vi.mock(import("../shared/taskCatalog"), () => ({
 }));
 vi.mock(import("../shared/taskModelChoices"), () => ({
   useTaskModelChoices: (() => ({
-    instanceEntries: [{ instanceId: ProviderInstanceId.make("codex"), enabled: true }],
+    instanceEntries: [
+      {
+        instanceId: ProviderInstanceId.make("codex"),
+        driverKind: "codex",
+        enabled: true,
+        models: [],
+      },
+    ],
     modelOptionsByInstance: new Map(),
     normalize: (selection: unknown) => selection,
   })) as never,
   useTaskDefaultRuntimeMode: () => "full-access" as const,
 }));
-vi.mock(import("../../chat/ProviderModelPicker"), () => ({
+vi.mock(import("../../chat/ProviderModelPicker"), async () => ({
+  DockedPickerContext: (await import("react")).createContext({ modelLabel: "" }),
   ProviderModelPicker: ((props: {
     onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
   }) => (

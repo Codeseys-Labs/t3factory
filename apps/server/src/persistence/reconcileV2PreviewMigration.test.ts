@@ -14,26 +14,26 @@ import {
 import PullRequestFilesViewed from "./Migrations/053_PullRequestFilesViewed.ts";
 import RemoveRedundantProjectionIndexes from "./Migrations/056_RemoveRedundantProjectionIndexes.ts";
 import OrchestrationV2 from "./Migrations/055_OrchestrationV2.ts";
-import FactoryIssueLaunches from "./Migrations/193_FactoryIssueLaunches.ts";
-import ProjectCoordinators from "./Migrations/194_ProjectCoordinators.ts";
-import FactoryFeeds from "./Migrations/195_FactoryFeeds.ts";
-import FactoryIssueRelations from "./Migrations/196_FactoryIssueRelations.ts";
-import FactoryReadinessOverrides from "./Migrations/197_FactoryReadinessOverrides.ts";
-import FactoryResearch from "./Migrations/198_FactoryResearch.ts";
-import FactoryClaims from "./Migrations/199_FactoryClaims.ts";
-import FactoryAcceptances from "./Migrations/200_FactoryAcceptances.ts";
-import FactoryDeliveryIntents from "./Migrations/201_FactoryDeliveryIntents.ts";
-import FactoryKnowledge from "./Migrations/202_FactoryKnowledge.ts";
-import FactoryArtifactDeliveries from "./Migrations/203_FactoryArtifactDeliveries.ts";
-import FactoryBaseBranches from "./Migrations/204_FactoryBaseBranches.ts";
-import ProjectCoordinatorRevisions from "./Migrations/205_ProjectCoordinatorRevisions.ts";
-import FactoryWorkReadIndexes from "./Migrations/206_FactoryWorkReadIndexes.ts";
-import FactoryPlans from "./Migrations/207_FactoryPlans.ts";
-import FactoryExecutions from "./Migrations/208_FactoryExecutions.ts";
-import FactoryTasks from "./Migrations/209_FactoryTasks.ts";
-import FactoryTaskProposals from "./Migrations/210_FactoryTaskProposals.ts";
-import FactoryIntake from "./Migrations/211_FactoryIntake.ts";
-import FactoryTaskDefaultModes from "./Migrations/212_FactoryTaskDefaultModes.ts";
+import FactoryIssueLaunches from "./Migrations/10001_FactoryIssueLaunches.ts";
+import ProjectCoordinators from "./Migrations/10002_ProjectCoordinators.ts";
+import FactoryFeeds from "./Migrations/10003_FactoryFeeds.ts";
+import FactoryIssueRelations from "./Migrations/10004_FactoryIssueRelations.ts";
+import FactoryReadinessOverrides from "./Migrations/10005_FactoryReadinessOverrides.ts";
+import FactoryResearch from "./Migrations/10006_FactoryResearch.ts";
+import FactoryClaims from "./Migrations/10007_FactoryClaims.ts";
+import FactoryAcceptances from "./Migrations/10008_FactoryAcceptances.ts";
+import FactoryDeliveryIntents from "./Migrations/10009_FactoryDeliveryIntents.ts";
+import FactoryKnowledge from "./Migrations/10010_FactoryKnowledge.ts";
+import FactoryArtifactDeliveries from "./Migrations/10011_FactoryArtifactDeliveries.ts";
+import FactoryBaseBranches from "./Migrations/10012_FactoryBaseBranches.ts";
+import ProjectCoordinatorRevisions from "./Migrations/10013_ProjectCoordinatorRevisions.ts";
+import FactoryWorkReadIndexes from "./Migrations/10014_FactoryWorkReadIndexes.ts";
+import FactoryPlans from "./Migrations/10015_FactoryPlans.ts";
+import FactoryExecutions from "./Migrations/10016_FactoryExecutions.ts";
+import FactoryTasks from "./Migrations/10017_FactoryTasks.ts";
+import FactoryTaskProposals from "./Migrations/10018_FactoryTaskProposals.ts";
+import FactoryIntake from "./Migrations/10019_FactoryIntake.ts";
+import FactoryTaskDefaultModes from "./Migrations/10020_FactoryTaskDefaultModes.ts";
 
 const seedPreview = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -197,13 +197,16 @@ describe("Factory history upgrade", () => {
           (thread_id, canonical_key, issue_number, request_command_id, intent_json)
         VALUES ('factory-thread', 'github.com/owner/repo', 1, 'factory-command', '{}')
       `;
-      const synced = migrationManifest.filter(([id]) => id > 73 && id < 193);
+      const synced = migrationManifest.filter(([id]) => id > 73 && id < 10001);
       assert.isAbove(synced.length, 0);
       const before = (yield* recordedHistory).map(([id, name]) => ({ id, name }));
       assert.deepStrictEqual(skippedV2Migrations(before), []);
       assert.isTrue(yield* hasPendingMigrations());
 
-      assert.deepStrictEqual(yield* runMigrations(), synced);
+      assert.deepStrictEqual(yield* runMigrations(), [
+        ...synced,
+        [10021, "FactoryCaptureAbandonments"],
+      ]);
 
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.isFalse(yield* hasPendingMigrations());
@@ -226,7 +229,9 @@ describe("Factory history upgrade", () => {
       yield* runMigrations({ toMigrationInclusive: 73 });
       yield* Migrator.make({})({ loader: Migrator.fromRecord(factoryMigrations) });
       yield* sql`CREATE TABLE orchestration_v2_projection_turn_item_counts (thread_id TEXT)`;
-      const before = yield* recordedHistory;
+      const before = (yield* recordedHistory).map(
+        ([id, name]) => [id >= 193 ? id + 9808 : id, name] as const,
+      );
 
       assert.isTrue(Exit.isFailure(yield* Effect.exit(runMigrations())));
       assert.deepStrictEqual(yield* recordedHistory, before);

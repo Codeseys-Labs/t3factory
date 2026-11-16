@@ -380,7 +380,7 @@ it.effect("retraction and restore never turn an unreviewable preview into admiss
 it.effect("075 preserves legacy duplicates, marks later claims and refuses their admission", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* runMigrations({ toMigrationInclusive: 198 });
+    yield* runMigrations({ toMigrationInclusive: 10006 });
     const earliest = {
       ...intent("z-earliest"),
       snapshot: { ...intent("z-earliest").snapshot, feed: "https://news.example.org/a|b#c:%3A" },

@@ -18,7 +18,7 @@ const task = (id: string, parentId: string | null, retired = false) => ({
 it.effect("existing plans become tasks numbered in the order they were created", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* runMigrations({ toMigrationInclusive: 208 });
+    yield* runMigrations({ toMigrationInclusive: 10016 });
     const insert = (
       rootId: string,
       createdAt: string,

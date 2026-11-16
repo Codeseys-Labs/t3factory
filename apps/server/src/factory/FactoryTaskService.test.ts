@@ -753,35 +753,56 @@ it.effect.each(["first start", "retry", "document result"] as const)(
     ),
 );
 
-it.effect("refuses a recorded grant replaced before admission with an actionable reason", () =>
-  scenario(
-    Effect.gen(function* () {
-      const { sql, tasks, create } = yield* harness;
-      const task = yield* create("Replaced grant", { lane: "ready" });
-      const input = {
-        commandId: command("old-start"),
-        ref: task.ref,
-        expectedVersion: task.version,
-        setup: setupOf(),
-      };
-      const gate = yield* OutputGate;
-      for (const commandId of [input.commandId, command("later-start")]) {
-        gate.admission = Effect.fail(new FactoryExecutionError({ reason: "persistence-failure" }));
-        assert.isTrue(
-          Result.isFailure(yield* tasks.start({ ...input, commandId }, human).pipe(Effect.result)),
-        );
-      }
-      const grants = yield* sql`SELECT * FROM factory_execution_grants`;
-      const refused = yield* tasks.start(input, human).pipe(Effect.result);
-      assert.isTrue(Result.isFailure(refused));
-      if (Result.isFailure(refused)) {
-        assert.equal(refused.failure.reason, "version-conflict");
-        assert.include(refused.failure.detail!, "Start the task again");
-      }
-      assert.deepEqual(yield* sql`SELECT * FROM factory_execution_grants`, grants);
-      assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, []);
-    }),
-  ),
+it.effect.each(["replaced", "revoked"] as const)(
+  "refuses a recorded grant %s before admission with an actionable reason",
+  (stage) =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, executions, create } = yield* harness;
+        const task = yield* create("Stale grant", { lane: "ready" });
+        const input = {
+          commandId: command("old-start"),
+          ref: task.ref,
+          expectedVersion: task.version,
+          setup: setupOf(),
+        };
+        const gate = yield* OutputGate;
+        for (const commandId of stage === "replaced"
+          ? [input.commandId, command("later-start")]
+          : [input.commandId]) {
+          gate.admission = Effect.fail(
+            new FactoryExecutionError({ reason: "persistence-failure" }),
+          );
+          assert.isTrue(
+            Result.isFailure(
+              yield* tasks.start({ ...input, commandId }, human).pipe(Effect.result),
+            ),
+          );
+        }
+        if (stage === "revoked") {
+          const ref = { environmentId, projectId, rootId: task.ref.rootId };
+          const grant = (yield* executions.readExecution({ ref, revision: 1 })).grant!;
+          yield* executions.revokeGrant(
+            {
+              commandId: command("revoke"),
+              ref,
+              expectedRevision: grant.revision,
+              expectedGrantVersion: grant.version,
+            },
+            human,
+          );
+        }
+        const grants = yield* sql`SELECT * FROM factory_execution_grants`;
+        const refused = yield* tasks.start(input, human).pipe(Effect.result);
+        assert.isTrue(Result.isFailure(refused));
+        if (Result.isFailure(refused)) {
+          assert.equal(refused.failure.reason, "version-conflict");
+          assert.include(refused.failure.detail!, "Start the task again");
+        }
+        assert.deepEqual(yield* sql`SELECT * FROM factory_execution_grants`, grants);
+        assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, []);
+      }),
+    ),
 );
 
 it.effect.each([

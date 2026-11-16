@@ -853,8 +853,9 @@ const make = Effect.gen(function* () {
             ["grant-conflict", "grant-inactive", "grant-expired", "revision-conflict"].includes(
               error.reason,
             )
-              ? new FactoryTaskError({
-                  reason: executionError(error).reason,
+              ? // A revoked or expired approval is not a permission problem: starting again fixes it.
+                new FactoryTaskError({
+                  reason: "version-conflict",
                   detail: "This Start's approval is no longer current. Start the task again.",
                   cause: error,
                 })

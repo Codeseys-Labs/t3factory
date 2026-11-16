@@ -38,6 +38,7 @@ import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
 import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderRuntimeRecovery from "./ProviderRuntimeRecoveryService.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -262,74 +263,244 @@ it.effect("preserves Factory shutdown settlement when a later thread rolls back"
   ),
 );
 
-it.effect(
-  "terminalizes the orphaned run of a quiescent managed binding after factory recovery",
-  () => {
-    const threadId = ThreadId.make("thread_factory_settled");
-    const runId = RunId.make("run_factory_settled");
-    let committed = false;
-    const projection = {
-      thread: { id: threadId },
-      runtimeRequests: [],
-      providerSessions: [],
-      providerThreads: [],
-      runs: [{ id: runId, status: "running" }],
-      attempts: [],
-      providerTurns: [],
-      messages: [],
-      turnItems: [],
-      subagents: [],
-      nodes: [],
-    } as unknown as OrchestrationV2ThreadProjection;
-    const managedLifecycle = (quiescent: boolean) =>
-      FactoryExecutionLifecycle.FactoryExecutionLifecycle.of({
-        binding: Effect.fn("Testkit.binding")(() =>
-          Effect.succeed({ threadId, runId, quiescent } as never),
-        ),
-        guardCommand: Effect.fn("Testkit.guardCommand")(() => Effect.void),
-        runPhase: (() => Effect.void) as never,
-        respond: Effect.fn("Testkit.respond")(() =>
-          Effect.die("Recovery must not answer requests"),
-        ),
-        recover: Effect.fn("Testkit.recover")(() => Effect.void),
-        retryHeld: Effect.fn("Testkit.retryHeld")(() => Effect.void),
-        stop: Effect.fn("Testkit.stop")(() => Effect.succeed(true)),
-        quiesce: Effect.fn("Testkit.quiesce")(() => Effect.succeed(true)),
-        complete: Effect.fn("Testkit.complete")(() => Effect.succeed(true)),
+// On Windows `recover` expires a dead process's claims and settles the binding before this pass.
+it.effect.each(["running", "starting"] as const)(
+  "terminalizes the unaccepted %s run of a managed binding recovery settles, so a retry is admitted",
+  (status) =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const store = yield* FactoryExecutionStore.FactoryExecutionStore;
+      const lifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
+      const threadId = ThreadId.make("thread_factory_settled");
+      const runId = RunId.make("run_factory_settled");
+      const attemptId = RunAttemptId.make("attempt_factory_settled");
+      const rootNodeId = NodeId.make("node_factory_settled");
+      const messageId = MessageId.make("message_factory_settled");
+      const human = { kind: "human", sessionId: AuthSessionId.make("settled-human") } as const;
+      const at = "2026-11-05T00:00:00.000Z";
+      const startedAt =
+        status === "running" ? DateTime.makeUnsafe("2026-11-05T00:01:00.000Z") : null;
+      const binding: FactoryExecutionBinding = {
+        selection: {
+          ref: {
+            environmentId: EnvironmentId.make("local"),
+            projectId: ProjectId.make("settled-project"),
+            rootId: "settled-plan",
+          },
+          revision: 1,
+          taskId: "root",
+        },
+        grantVersion: 1,
+        taskVersion: 1,
+        commandId: CommandId.make("admit-settled"),
+        threadId,
+        runId,
+        runAttemptId: attemptId,
+        driver: ProviderDriverKind.make("codex"),
+        spec: {
+          taskId: "root",
+          modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "luna" },
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          workspaceStrategy: { type: "root" },
+          setup: "deny",
+          output: { slot: "draft", kind: "sealed-draft" },
+        },
+        inputDigest: "a".repeat(64),
+        inputText: "Settled recovery",
+        prerequisites: [],
+        admittedAt: at,
+        stopRequested: false,
+        quiescent: false,
+      };
+      const { ref } = binding.selection;
+      const plan: FactoryPlanSnapshot = {
+        ref,
+        revision: 1,
+        tasks: [
+          { id: "root", parentId: null, title: "Settled", context: "", order: 0, retired: false },
+        ],
+        edges: [],
+        workContexts: [],
+        editorThreadIds: [],
+        createdAt: at,
+        updatedAt: at,
+      };
+      const grant: FactoryExecutionGrant = {
+        ref,
+        revision: 1,
+        version: 1,
+        issuerSessionId: human.sessionId,
+        issuedAt: at,
+        revokedAt: null,
+        policy: {
+          version: 1,
+          requesterThreadIds: [],
+          tasks: [binding.spec],
+          edges: [],
+          maxAttempts: 2,
+          maxRetriesPerTask: 1,
+          maxConcurrent: 1,
+          expiresAt: "2099-01-01T00:00:00.000Z",
+          requiredCapabilities: [],
+        },
+      };
+      yield* sql`INSERT INTO projection_projects(project_id,title,workspace_root,scripts_json,created_at,updated_at) VALUES (${ref.projectId},'Settled','/local','[]',${at},${at})`;
+      yield* sql`INSERT INTO factory_plan_heads(root_id,project_id,revision,snapshot_json,summary_json) VALUES (${ref.rootId},${ref.projectId},1,${JSON.stringify(plan)},'{}')`;
+      yield* sql`INSERT INTO factory_execution_grants(root_id,version,grant_json) VALUES (${ref.rootId},1,${JSON.stringify(grant)})`;
+      yield* sql`INSERT INTO factory_execution_bindings(attempt_id,run_id,thread_id,root_id,revision,task_id,grant_version,binding_json) VALUES (${attemptId},${runId},${threadId},${ref.rootId},1,'root',1,${JSON.stringify(binding)})`;
+      yield* sql`INSERT INTO factory_execution_tasks(root_id,revision,task_id,version,attempt_id,selected_result_id) VALUES (${ref.rootId},1,'root',1,${attemptId},NULL)`;
+      // The claims a server that died mid-start leaves; the turn phase only once it wrote running.
+      for (const phase of status === "running"
+        ? ["session", "native-thread", "turn"]
+        : ["session", "native-thread"])
+        yield* sql`INSERT INTO factory_execution_phases(attempt_id,phase,claimant_id,observation,detail) VALUES (${attemptId},${phase},${`dead-${phase}`},'claimed','')`;
+      yield* sql`INSERT INTO orchestration_v2_projection_runs(run_id,thread_id,ordinal,provider,provider_instance_id,provider_thread_id,status,requested_at,payload_json) VALUES (${runId},${threadId},1,'codex','codex','native',${status},${at},${JSON.stringify({ status })})`;
+      yield* (yield* AuthSessions.AuthSessionRepository).create({
+        sessionId: human.sessionId,
+        subject: "human",
+        scopes: [AuthOrchestrationOperateScope],
+        method: "browser-session-cookie",
+        client: {
+          label: null,
+          ipAddress: null,
+          userAgent: null,
+          deviceType: "unknown",
+          os: null,
+          browser: null,
+        },
+        issuedAt: DateTime.makeUnsafe(at),
+        expiresAt: DateTime.makeUnsafe(grant.policy.expiresAt),
       });
-    const layerFor = (lifecycle: ReturnType<typeof managedLifecycle>) =>
-      ProviderRuntimeRecovery.layer.pipe(
-        Layer.provide(ServerSettings.layerTest()),
-        Layer.provide(
-          Layer.mergeAll(
-            Layer.succeed(FactoryExecutionLifecycle.FactoryExecutionLifecycle, lifecycle),
-            Layer.mock(ProjectionStore.ProjectionStoreV2)({
-              getRecoveryThreadIds: () => Effect.succeed([threadId]),
-              getRuntimeRecoveryProjection: () => Effect.succeed(projection),
-            }),
-            Layer.mock(EventSink.EventSinkV2)({
-              commitCommand: () => {
-                committed = true;
-                return Effect.succeed({ committed: true, cancelledEffectCount: 0 } as never);
-              },
-            }),
-            IdAllocator.layer,
-            Layer.mock(EffectWorker.OrchestrationEffectWorkerV2)({
-              runRecoveryOnce: Effect.succeed(false),
-            }),
-            Layer.mock(EffectOutbox.EffectOutboxV2)({
-              reconcileAfterProcessLoss: Effect.succeed({ requeued: 0, cancelled: 0 }),
-            }),
+      // A person's admitted prompt that no provider turn ever accepted.
+      const active = status === "running" ? "running" : "pending";
+      const projection = {
+        thread: {
+          id: threadId,
+          archivedAt: null,
+          deletedAt: null,
+          settledOverride: null,
+          snoozedUntil: null,
+          lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+          forkedFrom: null,
+        },
+        runtimeRequests: [],
+        providerSessions: [],
+        providerThreads: [],
+        providerTurns: [],
+        runs: [
+          {
+            id: runId,
+            status,
+            startedAt,
+            rootNodeId,
+            activeAttemptId: attemptId,
+            userMessageId: messageId,
+            queuePosition: null,
+            providerInstanceId: ProviderInstanceId.make("codex"),
+          },
+        ],
+        attempts: [{ id: attemptId, runId, rootNodeId, status: active, startedAt }],
+        nodes: [{ id: rootNodeId, runId, status: active, startedAt }],
+        subagents: [],
+        messages: [{ id: messageId, createdBy: "user", creationSource: "server" }],
+        turnItems: [],
+      } as unknown as OrchestrationV2ThreadProjection;
+      const committed: Array<Parameters<EventSink.EventSinkV2["Service"]["commitCommand"]>[0]> = [];
+      const recovery = yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService.pipe(
+        Effect.provide(
+          ProviderRuntimeRecovery.layer.pipe(
+            Layer.provide(ServerSettings.layerTest()),
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(FactoryExecutionLifecycle.FactoryExecutionLifecycle, lifecycle),
+                Layer.mock(ProjectionStore.ProjectionStoreV2)({
+                  getRecoveryThreadIds: () => Effect.succeed([threadId]),
+                  getRuntimeRecoveryProjection: () => Effect.succeed(projection),
+                  getThreadRecords: () => Effect.succeed(projection),
+                  getMessagesById: (_threadId, messageIds) =>
+                    Effect.succeed(
+                      new Map(
+                        projection.messages
+                          .filter((message) => messageIds.includes(message.id))
+                          .map((message) => [message.id, message]),
+                      ),
+                    ),
+                }),
+                // Commits the run's status where retry admission reads it.
+                Layer.mock(EventSink.EventSinkV2)({
+                  commitCommand: (input) =>
+                    Effect.gen(function* () {
+                      committed.push(input);
+                      for (const event of input.events)
+                        if (event.type === "run.updated")
+                          yield* sql`UPDATE orchestration_v2_projection_runs SET status = ${event.payload.status}, payload_json = json_set(payload_json, '$.status', ${event.payload.status}) WHERE run_id = ${event.payload.id}`;
+                      return { committed: true, cancelledEffectCount: 0 } as never;
+                    }).pipe(Effect.orDie),
+                }),
+                IdAllocator.layer,
+                Layer.mock(EffectWorker.OrchestrationEffectWorkerV2)({
+                  runRecoveryOnce: Effect.succeed(false),
+                }),
+                Layer.mock(EffectOutbox.EffectOutboxV2)({
+                  reconcileAfterProcessLoss: Effect.succeed({ requeued: 0, cancelled: 0 }),
+                }),
+              ),
+            ),
           ),
         ),
       );
-    return Effect.gen(function* () {
-      const summary = yield* (yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService)
-        .recover;
+      const summary = yield* recovery.recover;
+      assert.isTrue((yield* store.getBinding(attemptId)).quiescent);
+      assert.lengthOf(committed, 1);
+      const command = committed[0]!;
+      const runEvent = command.events.find((event) => event.type === "run.updated");
+      const attemptEvent = command.events.find((event) => event.type === "run-attempt.updated");
+      const run = runEvent?.type === "run.updated" ? runEvent.payload : undefined;
+      assert.deepEqual(
+        { status: run?.status, queuePosition: run?.queuePosition, queueHeld: run?.queueHeld },
+        { status: "cancelled", queuePosition: null, queueHeld: undefined },
+      );
+      assert.equal(
+        attemptEvent?.type === "run-attempt.updated" ? attemptEvent.payload.status : null,
+        "cancelled",
+      );
       assert.equal(summary.terminalizedRuns, 1);
-      assert.isTrue(committed);
-    }).pipe(Effect.provide(layerFor(managedLifecycle(true))));
-  },
+      const retry = {
+        commandId: CommandId.make("retry-settled"),
+        selection: binding.selection,
+        grantVersion: 1,
+        expectedTaskVersion: 1,
+        priorRunId: runId,
+        priorRunAttemptId: attemptId,
+        priorResultId: null,
+        intent: "retry",
+      } as const;
+      assert.equal((yield* store.prepareAdmission(retry, human, at)).taskVersion, 2);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          FactoryExecutionLifecycle.layer.pipe(
+            Layer.provide(NodeCrypto.layer),
+            Layer.provide(Layer.succeed(HostProcess.Platform, "win32")),
+            Layer.provide(
+              Layer.succeed(FactoryExecutionLifecycle.FactoryOwnedProcessFactory, {
+                make: () =>
+                  Effect.succeed({
+                    awaitRootExits: Effect.void,
+                    spawner: { spawn: () => Effect.die("Recovery must not spawn a process") },
+                    quiesce: () => Effect.succeed(true),
+                  }),
+              }),
+            ),
+          ),
+          AuthSessions.layer,
+        ).pipe(
+          Layer.provideMerge(FactoryExecutionStore.layer),
+          Layer.provideMerge(Sqlite.layerMemory),
+        ),
+      ),
+    ),
 );
 it.effect("expires orphaned runtime requests before command readiness", () => {
   const threadId = ThreadId.make("thread_recovery_requests");

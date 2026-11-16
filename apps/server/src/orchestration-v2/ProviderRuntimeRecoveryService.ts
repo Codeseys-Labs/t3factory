@@ -478,9 +478,11 @@ export const make = Effect.gen(function* () {
           .map((message) => message.id),
       );
       // A saved user message the provider never accepted stays available through the held queue.
-      const retryableRuns = unstartedRuns.filter((run) =>
-        retryableMessageIds.has(run.userMessageId),
-      );
+      // Nothing resumes a managed run from it, so that run ends here and the Factory retries it.
+      const retryableRuns =
+        managed === null
+          ? unstartedRuns.filter((run) => retryableMessageIds.has(run.userMessageId))
+          : [];
       // Nobody reviews a delegated, agent-sent or scheduled prompt, so it is sent again instead.
       const unattendedRuns = continueAfterRestart
         ? unstartedRuns.filter((run) =>

@@ -182,3 +182,76 @@ it.live("hands the native spawner redacted arguments still redacted", () =>
     assert.isFalse(command.args.some((arg) => typeof arg === "string" && arg.includes(secret)));
   }).pipe(Effect.scoped),
 );
+
+it.live.each([
+  {
+    name: "inherits the host environment",
+    options: {},
+    expected: {
+      env: {
+        GIT_CONFIG_COUNT: "3",
+        GIT_CONFIG_KEY_2: "core.longpaths",
+        GIT_CONFIG_VALUE_2: "true",
+      },
+      extendEnv: true,
+    },
+  },
+  {
+    name: "extends the host environment",
+    options: { env: { EXTRA: "1" }, extendEnv: true },
+    expected: {
+      env: {
+        EXTRA: "1",
+        GIT_CONFIG_COUNT: "3",
+        GIT_CONFIG_KEY_2: "core.longpaths",
+        GIT_CONFIG_VALUE_2: "true",
+      },
+      extendEnv: true,
+    },
+  },
+  {
+    name: "replaces the host environment",
+    options: {
+      env: { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "user.name", GIT_CONFIG_VALUE_0: "Ada" },
+    },
+    expected: {
+      env: {
+        GIT_CONFIG_COUNT: "2",
+        GIT_CONFIG_KEY_0: "user.name",
+        GIT_CONFIG_VALUE_0: "Ada",
+        GIT_CONFIG_KEY_1: "core.longpaths",
+        GIT_CONFIG_VALUE_1: "true",
+      },
+      extendEnv: false,
+    },
+  },
+])("turns on Git long paths for a command that $name", ({ options, expected }) =>
+  Effect.gen(function* () {
+    if (windowsHost !== true) return;
+    const commands: ChildProcess.Command[] = [];
+    const native = ChildProcessSpawner.make((command) => {
+      commands.push(command);
+      return Effect.fail(
+        PlatformError.systemError({ module: "ChildProcess", method: "spawn", _tag: "Unknown" }),
+      );
+    });
+    const owner = yield* makeWindowsOwnedProcess();
+    yield* owner.spawner
+      .spawn(ChildProcess.make(process.execPath, ["plain"], options), native)
+      .pipe(Effect.flip);
+    const command = commands[0];
+    assert.equal(command?._tag, "StandardCommand");
+    if (command?._tag !== "StandardCommand") return;
+    assert.deepStrictEqual(command.options.env, expected.env);
+    assert.equal(command.options.extendEnv === true, expected.extendEnv);
+  }).pipe(
+    Effect.scoped,
+    Effect.provideService(HostProcess.Environment, {
+      GIT_CONFIG_COUNT: "2",
+      GIT_CONFIG_KEY_0: "core.autocrlf",
+      GIT_CONFIG_VALUE_0: "false",
+      GIT_CONFIG_KEY_1: "init.defaultBranch",
+      GIT_CONFIG_VALUE_1: "main",
+    }),
+  ),
+);

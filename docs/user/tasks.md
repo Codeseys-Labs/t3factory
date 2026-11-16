@@ -43,8 +43,10 @@ new run with it.
 ## Review a result
 
 **Accept** records your review of that revision and marks the task Done. **Request changes** runs the
-task again with your note; it waits while another sub-task of the same task is running. **Reopen**,
-in the task page's menu, takes a Done task back to In review.
+task again with your note. While another sub-task of the same task is running it is refused: send it
+again when that one has finished. The new run goes to the agent the task is assigned to at that
+moment, so to hand a result to another agent, change the assignee first. **Reopen**, in the task
+page's menu, takes a Done task back to In review.
 
 Accepting does not publish anything. A code result is the agent's own commits; changes it left
 uncommitted are committed for it under the task's title. For an accepted code result, **Publish**

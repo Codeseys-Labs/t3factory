@@ -706,7 +706,7 @@ const legacyCheckpointRef = (threadId: string, turn: number) =>
   `refs/t3/checkpoints/${Base64Url.encode(threadId)}/turn/${turn}`;
 
 const taskCleanupFixture = Effect.fn("test.taskCleanupFixture")(function* (
-  modules?: "uninitialized" | "populated",
+  modules?: "uninitialized" | "empty directory" | "populated",
 ) {
   const sql = yield* SqlClient.SqlClient;
   const git = yield* GitVcsDriver.GitVcsDriver;
@@ -731,7 +731,7 @@ const taskCleanupFixture = Effect.fn("test.taskCleanupFixture")(function* (
       repo,
       "module",
     ]);
-  if (modules === "uninitialized") {
+  if (modules === "uninitialized" || modules === "empty directory") {
     const sha = (yield* command(worktree, ["rev-parse", "HEAD"])).stdout.trim();
     yield* fs.writeFileString(
       `${worktree}/.gitmodules`,
@@ -744,6 +744,10 @@ const taskCleanupFixture = Effect.fn("test.taskCleanupFixture")(function* (
       "--cacheinfo",
       `160000,${sha},.repos/alchemy-effect/submodules/distilled`,
     ]);
+    if (modules === "empty directory")
+      yield* fs.makeDirectory(`${worktree}/.repos/alchemy-effect/submodules/distilled`, {
+        recursive: true,
+      });
   }
   yield* command(worktree, ["commit", "-m", "base"]);
   const head = (yield* command(worktree, ["rev-parse", "HEAD"])).stdout.trim();
@@ -1348,12 +1352,22 @@ describe("merged task worktree cleanup", () => {
       ),
   );
 
-  it.live.each(["uninitialized", "populated"] as const)(
+  it.live.each(["uninitialized", "empty directory", "populated"] as const)(
     "handles %s submodules without forcing a task-run removal",
     (modules) =>
       runTaskCleanupTest(
         Effect.gen(function* () {
           const f = yield* taskCleanupFixture(modules);
+          const before = yield* f.state;
+          if (modules === "empty directory")
+            expect(
+              (yield* f.command(f.repo, [
+                "ls-tree",
+                f.commit,
+                "--",
+                ".repos/alchemy-effect/submodules/distilled",
+              ])).stdout,
+            ).toMatch(/^160000 commit /);
           expect((yield* f.service.runNow).entries[0]).toMatchObject(
             modules === "populated"
               ? {
@@ -1366,7 +1380,8 @@ describe("merged task worktree cleanup", () => {
             (yield* f.command(f.repo, ["rev-parse", f.branch, f.retainedRef])).stdout
               .trim()
               .split("\n"),
-          ).toEqual([f.commit, f.commit]);
+          ).toEqual([modules === "populated" ? f.head : f.commit, f.commit]);
+          if (modules === "populated") expect(yield* f.state).toEqual(before);
         }),
       ),
   );
@@ -1456,7 +1471,7 @@ describe("merged task worktree cleanup", () => {
         );
         expect((yield* f.service.runNow).entries[0]).toMatchObject({
           outcome: "kept",
-          reason: "The folder has commits that are not in the saved result",
+          reason: expect.stringContaining("The saved result could not be adopted:"),
         });
         expect((yield* f.command(f.worktree, ["rev-parse", "HEAD"])).stdout.trim()).toBe(
           concurrent,
@@ -1466,6 +1481,98 @@ describe("merged task worktree cleanup", () => {
         expect(f.invalidated).toContain(f.worktree);
       }),
     ),
+  );
+
+  it.live.each(["index lock", "unmerged index", "ref lock"])(
+    "reports git's adoption failure for an %s",
+    (mode) =>
+      runTaskCleanupTest(
+        Effect.gen(function* () {
+          const f = yield* taskCleanupFixture();
+          if (mode === "unmerged index") {
+            const git = yield* GitVcsDriver.GitVcsDriver;
+            const blob = (yield* f.command(f.worktree, [
+              "rev-parse",
+              `${f.head}:tracked.txt`,
+            ])).stdout.trim();
+            yield* git.execute({
+              operation: "test.unmergedIndex",
+              cwd: f.worktree,
+              args: ["update-index", "--index-info"],
+              stdin: `0 ${"0".repeat(40)}\ttracked.txt\n100644 ${blob} 1\ttracked.txt\n100644 ${blob} 2\ttracked.txt\n`,
+            });
+          } else if (mode === "ref lock") {
+            const lock = (yield* f.command(f.worktree, [
+              "rev-parse",
+              "--git-path",
+              `refs/heads/${f.branch}`,
+            ])).stdout.trim();
+            yield* f.fs.writeFileString(`${lock}.lock`, "held by another git command\n");
+          }
+          if (mode === "index lock")
+            f.beforeGit((input) =>
+              input.args[0] === "read-tree"
+                ? f.command(f.worktree, ["rev-parse", "--git-path", "index"]).pipe(
+                    Effect.flatMap((result) =>
+                      f.fs.writeFileString(`${result.stdout.trim()}.lock`, "held\n"),
+                    ),
+                    Effect.orDie,
+                  )
+                : Effect.void,
+            );
+          const before = yield* f.state;
+          const entry = (yield* f.service.runNow).entries[0];
+          expect(entry).toMatchObject({
+            outcome: "kept",
+            reason: expect.stringContaining("The saved result could not be adopted:"),
+          });
+          expect(entry?.reason).toMatch(
+            mode === "unmerged index"
+              ? /resolve.*index|unmerged/
+              : mode === "index lock"
+                ? /index.*lock/
+                : /cannot lock ref/,
+          );
+          if (mode === "ref lock") {
+            expect((yield* f.state).head).toBe(before.head);
+            expect((yield* f.command(f.worktree, ["write-tree"])).stdout.trim()).toBe(f.tree);
+            expect(f.invalidated).toContain(f.worktree);
+          } else expect(yield* f.state).toEqual(before);
+          expect((yield* f.command(f.repo, ["rev-parse", f.retainedRef])).stdout.trim()).toBe(
+            f.commit,
+          );
+        }),
+      ),
+  );
+
+  it.live.each(["readable", "held", "unreadable runs", "unreadable"])(
+    "identifies an off-prefix task thread with %s records",
+    (mode) =>
+      runTaskCleanupTest(
+        Effect.gen(function* () {
+          const f = yield* taskCleanupFixture();
+          yield* f.command(f.worktree, ["read-tree", f.commit]);
+          yield* f.command(f.repo, ["update-ref", `refs/heads/${f.branch}`, f.commit]);
+          yield* f.command(f.worktree, ["branch", "-m", "ordinary"]);
+          f.setThreads([{ ...f.thread, branch: "ordinary" }]);
+          f.setSettings({
+            storageCleanup: { ...DEFAULT_SERVER_SETTINGS.storageCleanup, worktreeAfterDays: 14 },
+          });
+          if (mode === "held") yield* f.sql`UPDATE factory_execution_bindings SET quiescent = 0`;
+          if (mode === "unreadable" || mode === "unreadable runs")
+            yield* f.sql`DROP TABLE factory_task_runs`;
+          if (mode === "unreadable") yield* f.sql`DROP TABLE factory_execution_bindings`;
+          expect((yield* f.service.runNow).entries[0]).toMatchObject({
+            outcome: mode === "held" || mode === "unreadable runs" ? "kept" : "removed",
+            reason:
+              mode === "held"
+                ? "The task run is still running or held"
+                : mode === "unreadable runs"
+                  ? "The task run's state is unavailable"
+                  : expect.stringMatching(/^Inactive for \d+ days$/),
+          });
+        }),
+      ),
   );
 });
 

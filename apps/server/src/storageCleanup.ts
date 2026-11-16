@@ -158,6 +158,9 @@ function cleanupFailureReason(error: { readonly message: string }) {
     : (error.message.split(/\r?\n/)[0] ?? error.message);
 }
 
+const taskAdoptionFailureReason = (detail: string) =>
+  `the saved result could not be adopted: ${detail.trim().split(/\r?\n/)[0]?.slice(0, 1000) || "git could not complete the update"}`;
+
 // "Off" promises a project keeps its worktrees, so machine-wide rules skip it too.
 const projectCleanupOff = (settings: ServerSettings, projectId: ProjectId) =>
   settings.projectSettingsOverrides[projectId]?.worktreeCleanup?.mode === "off";
@@ -1927,6 +1930,10 @@ const make = Effect.gen(function* () {
                   return "the saved result does not match its record";
                 const tip = yield* taskBranch(worktreePath, thread.branch!, taskCommit!);
                 if (tip === null) return "the folder has commits that are not in the saved result";
+                const submodules = yield* submoduleRemoval(worktreePath, settings);
+                if (submodules.reason !== null) return submodules.reason;
+                if (submodules.force)
+                  return "the task run has submodules that require forced removal";
                 if (tip === taskCommit) return null;
                 // Index first: an interrupted branch update leaves staged changes and can be retried.
                 const merged = yield* git.execute({
@@ -1935,8 +1942,7 @@ const make = Effect.gen(function* () {
                   args: ["read-tree", "-m", "-i", tip, taskCommit!],
                   allowNonZeroExit: true,
                 });
-                if (merged.exitCode !== 0)
-                  return "the folder has staged changes that differ from the saved result";
+                if (merged.exitCode !== 0) return taskAdoptionFailureReason(merged.stderr);
                 // Invalidate even if the CAS, refresh, or a later check keeps the folder.
                 return yield* Effect.gen(function* () {
                   const moved = yield* git.execute({
@@ -1952,8 +1958,7 @@ const make = Effect.gen(function* () {
                     ],
                     allowNonZeroExit: true,
                   });
-                  if (moved.exitCode !== 0)
-                    return "the folder has commits that are not in the saved result";
+                  if (moved.exitCode !== 0) return taskAdoptionFailureReason(moved.stderr);
                   // A late edit makes refresh exit nonzero; localChangesReason explains it below.
                   yield* git.execute({
                     operation: "StorageCleanup.taskIndex",
@@ -1963,6 +1968,10 @@ const make = Effect.gen(function* () {
                   });
                   return null;
                 }).pipe(Effect.ensuring(gitManager.invalidateStatus(worktreePath)));
+              }),
+            ).pipe(
+              Effect.catchTags({
+                GitCommandError: (error) => Effect.succeed(taskAdoptionFailureReason(error.detail)),
               }),
             );
             return moveReason;

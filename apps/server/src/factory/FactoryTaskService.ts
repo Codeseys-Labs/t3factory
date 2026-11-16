@@ -1770,10 +1770,22 @@ const make = Effect.gen(function* () {
     return { ...result, commit: result.commit };
   });
 
+  const resultReport = Effect.fn("FactoryTaskService.resultReport")(function* (
+    row: Tasks.TaskRow,
+    result: Tasks.TaskResultRow,
+  ) {
+    const output = yield* executions
+      .readOutput({
+        selection: { ref: planRef(row), revision: result.planRevision, taskId: row.taskId },
+        resultId: result.resultId,
+      })
+      .pipe(Effect.mapError(executionError));
+    return ((yield* finalAnswer(result.threadId, output.output.runId)) ?? output.text).trim();
+  });
+
   /**
-   * What Publish opens. The text is written from the commits, the diff and what the agents said.
-   * What a person wrote for the agent stays out: the task's own text and review notes may hold
-   * notes not meant for the host, and nobody sees this text before it is public.
+   * The writer gets commits, the diff and each run's report, never a person's messages.
+   * Anything an agent repeats in its report can reach the host, as it could before generation.
    */
   const publication = Effect.fn("FactoryTaskService.publication")(function* (
     row: Tasks.TaskRow,
@@ -1781,7 +1793,7 @@ const make = Effect.gen(function* () {
     commandId: CommandId,
     baseRef: string | null,
     headBranch: string,
-    threadIds: ReadonlyArray<ThreadId>,
+    results: ReadonlyArray<Tasks.TaskResultRow>,
   ) {
     const previous = yield* deliveryStore
       .getByCommand(commandId)
@@ -1797,25 +1809,34 @@ const make = Effect.gen(function* () {
     const generated =
       cwd === null || baseRef === null
         ? undefined
-        : yield* gitManager
-            .generatePrContent({
+        : yield* Effect.gen(function* () {
+            const baseBranch = yield* git.resolveDefaultBranchName(cwd, "origin");
+            const budget = Math.max(
+              0,
+              Math.floor((REPORT_MAX_CHARS - 2 * (results.length - 1)) / results.length),
+            );
+            const reports = yield* Effect.forEach(results, (entry) =>
+              resultReport(row, entry).pipe(
+                Effect.map((report) => `Result rev ${entry.revision}\n${report}`.slice(0, budget)),
+              ),
+            );
+            return yield* gitManager.generatePrContent({
               cwd,
               projectId: row.projectId,
-              baseBranch: baseRef,
+              baseBranch: baseBranch ?? baseRef,
               headBranch,
               baseRef,
               headRef: result.commit,
-              threadIds,
-              omitUserMessages: true,
-            })
-            .pipe(
-              Effect.timeoutOption("3 minutes"),
-              Effect.orElseSucceed(() => Option.none()),
-              Effect.map(Option.getOrUndefined),
-            );
+              threadContext: reports.join("\n\n").slice(0, REPORT_MAX_CHARS),
+            });
+          }).pipe(
+            Effect.timeoutOption("3 minutes"),
+            Effect.orElseSucceed(() => Option.none()),
+            Effect.map(Option.getOrUndefined),
+          );
     const content = generated?.title.trim() && generated.body.trim() ? generated : undefined;
     const subjects =
-      cwd === null || baseRef === null
+      content !== undefined || cwd === null || baseRef === null
         ? []
         : yield* processes
             .run({
@@ -1831,16 +1852,7 @@ const make = Effect.gen(function* () {
               ),
               Effect.orElseSucceed((): ReadonlyArray<string> => []),
             );
-    const output = yield* executions
-      .readOutput({
-        selection: { ref: planRef(row), revision: result.planRevision, taskId: row.taskId },
-        resultId: result.resultId,
-      })
-      .pipe(Effect.mapError(executionError));
-    // Without the thread's messages, everything the run said is the closest account of it.
-    const report =
-      content?.body ??
-      ((yield* finalAnswer(result.threadId, output.output.runId)) ?? output.text).trim();
+    const report = content?.body ?? (yield* resultReport(row, result));
     return {
       title:
         content?.title.trim().slice(0, FACTORY_DELIVERY_TITLE_MAX_CHARS) ??
@@ -1872,7 +1884,7 @@ const make = Effect.gen(function* () {
     const { task } = yield* requireTask(input.ref);
     const { row } = task;
     const result = yield* deliverable(task, input.revision);
-    const threadIds = [result.threadId];
+    const results: Array<Tasks.TaskResultRow> = [result];
     let baseRef =
       task.runs.find((run) => run.purpose === "work" && run.threadId === result.threadId)
         ?.baseRef ?? null;
@@ -1882,7 +1894,7 @@ const make = Effect.gen(function* () {
         (entry) => entry.revision < revision && entry.kind === "code" && entry.commit === baseRef,
       );
       if (continued === undefined) break;
-      threadIds.unshift(continued.threadId);
+      results.unshift(continued);
       baseRef =
         task.runs.find((run) => run.purpose === "work" && run.threadId === continued.threadId)
           ?.baseRef ?? null;
@@ -1908,7 +1920,7 @@ const make = Effect.gen(function* () {
                   derived(input.commandId, kind),
                   baseRef,
                   headBranch,
-                  threadIds,
+                  results,
                 )),
                 headBranch,
               }

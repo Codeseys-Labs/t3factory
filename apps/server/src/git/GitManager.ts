@@ -126,9 +126,8 @@ interface GeneratePrContentInput {
   readonly headBranch: string;
   readonly baseRef: string;
   readonly headRef?: string;
-  readonly threadIds: ReadonlyArray<ThreadId>;
-  /** Leaves out what a person wrote in those threads. */
-  readonly omitUserMessages?: boolean;
+  readonly threadId?: ThreadId;
+  readonly threadContext?: string;
 }
 
 export class GitManager extends Context.Service<
@@ -767,16 +766,15 @@ export const make = Effect.gen(function* () {
     return { settings: resolveProjectSettings(settings, projectId).settings, projectId };
   });
   const readThreadContext = Effect.fnUntraced(
-    function* (threadId: ThreadId, budget: number, omitUserMessages: boolean) {
+    function* (threadId: ThreadId | undefined) {
+      if (threadId === undefined) return undefined;
       const { visibleTurnItems } = yield* threads.getThreadProjection(threadId);
       const selected = selectHistory({
-        messages: visibleTurnItems.flatMap(({ item }) =>
-          omitUserMessages && item.type === "user_message"
-            ? []
-            : (historicalMessage(limitCommandOutput(item)) ?? []),
+        messages: visibleTurnItems.flatMap(
+          ({ item }) => historicalMessage(limitCommandOutput(item)) ?? [],
         ),
         coverage: "Digest of the thread that made this change, oldest first.",
-        budget,
+        budget: PR_THREAD_CONTEXT_BYTES,
       });
       return selected.messages.length === 0
         ? undefined
@@ -2440,7 +2438,9 @@ export const make = Effect.gen(function* () {
       (yield* resolveTextGenerationSettings({
         cwd: input.cwd,
         ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
-        ...(input.threadIds[0] === undefined ? {} : { threadId: input.threadIds[0] }),
+        ...(input.threadContext === undefined && input.threadId !== undefined
+          ? { threadId: input.threadId }
+          : {}),
       }));
     const provider = yield* sourceControlProvider(input.cwd);
     const rangeContext = yield* gitCore.readRangeContext(input.cwd, input.baseRef, input.headRef);
@@ -2451,14 +2451,7 @@ export const make = Effect.gen(function* () {
             yield* provider.readChangeRequestTemplate({ cwd: input.cwd, treeish: input.baseRef }),
           )
         : undefined;
-    const threadContexts = yield* Effect.forEach(input.threadIds, (threadId) =>
-      readThreadContext(
-        threadId,
-        Math.floor(PR_THREAD_CONTEXT_BYTES / input.threadIds.length),
-        input.omitUserMessages === true,
-      ),
-    );
-    const threadContext = threadContexts.filter((context) => context !== undefined).join("\n\n");
+    const threadContext = input.threadContext ?? (yield* readThreadContext(input.threadId));
     return yield* textGeneration.generatePrContent({
       cwd: input.cwd,
       baseBranch: input.baseBranch,
@@ -2535,7 +2528,7 @@ export const make = Effect.gen(function* () {
         baseBranch,
         headBranch: headContext.headBranch,
         baseRef: baseRangeRef,
-        threadIds: threadId === undefined ? [] : [threadId],
+        ...(threadId === undefined ? {} : { threadId }),
       },
       settings,
     );

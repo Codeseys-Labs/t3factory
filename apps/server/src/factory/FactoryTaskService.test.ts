@@ -193,30 +193,53 @@ const command = (name: string) => CommandId.make(name);
 const recordMessage = Effect.fn("test.recordMessage")(function* (
   run: FactoryTaskRun,
   text: string,
+  ordinal = 3,
 ) {
-  yield* (yield* ProjectionStore.ProjectionStoreV2).apply({
-    id: EventId.make(`message:${run.runId}`),
+  const projection = yield* ProjectionStore.ProjectionStoreV2;
+  const id = `message:${run.runId}:${ordinal}`;
+  yield* projection.apply({
+    id: EventId.make(id),
     type: "turn-item.updated",
     threadId: run.threadId,
     occurredAt: DateTime.makeUnsafe(at),
     payload: {
-      id: TurnItemId.make(`message:${run.runId}`),
+      id: TurnItemId.make(id),
       threadId: run.threadId,
       runId: run.runId,
       nodeId: null,
       type: "assistant_message",
-      messageId: MessageId.make(`message:${run.runId}`),
+      messageId: MessageId.make(id),
       providerThreadId: null,
       providerTurnId: null,
       nativeItemRef: null,
       parentItemId: null,
-      ordinal: 3,
+      ordinal,
       status: "completed",
       title: null,
       startedAt: DateTime.makeUnsafe(at),
       completedAt: DateTime.makeUnsafe(at),
       text,
       streaming: false,
+      updatedAt: DateTime.makeUnsafe(at),
+    },
+  });
+  yield* projection.apply({
+    id: EventId.make(`record:${id}`),
+    type: "message.updated",
+    threadId: run.threadId,
+    occurredAt: DateTime.makeUnsafe(at),
+    payload: {
+      id: MessageId.make(id),
+      threadId: run.threadId,
+      runId: run.runId,
+      nodeId: null,
+      role: "assistant",
+      text,
+      attachments: [],
+      streaming: false,
+      createdBy: "agent",
+      creationSource: "provider",
+      createdAt: DateTime.makeUnsafe(at),
       updatedAt: DateTime.makeUnsafe(at),
     },
   });
@@ -281,6 +304,7 @@ const baseGit = Layer.unwrap(
   Effect.gen(function* () {
     const probe = yield* BaseProbe;
     return Layer.mock(Git.GitVcsDriver)({
+      resolveDefaultBranchName: () => Effect.succeed("main"),
       resolveCommit: () => Effect.succeed({ commitSha: projectHead }),
       execute: (input) =>
         Effect.sync(() => {
@@ -2283,11 +2307,38 @@ it.effect(
           }>`SELECT id FROM factory_delivery_intents WHERE request_command_id = ${`factory-task:${name.startsWith("merge") ? "merge-pr" : "publish-pr"}:${name}`}`.pipe(
             Effect.map((rows) => rows[0]!.id),
           );
-        yield* finish(
-          (yield* start(task)).run!,
-          "sealed",
-          "The ring now wraps at its capacity.\n\n`vp test run ring.test.ts` passes 4 of 4.",
-        );
+        const run = (yield* start(task)).run!;
+        yield* recordMessage(run, "Per your private note: the demo laptop is yours.", 1);
+        yield* (yield* ProjectionStore.ProjectionStoreV2).apply({
+          id: EventId.make("private-command"),
+          type: "turn-item.updated",
+          threadId: run.threadId,
+          occurredAt: DateTime.makeUnsafe(at),
+          payload: {
+            id: TurnItemId.make("private-command"),
+            threadId: run.threadId,
+            runId: run.runId,
+            nodeId: null,
+            type: "command_execution",
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal: 2,
+            status: "completed",
+            title: null,
+            startedAt: DateTime.makeUnsafe(at),
+            completedAt: DateTime.makeUnsafe(at),
+            updatedAt: DateTime.makeUnsafe(at),
+            input: "cat private-demo-notes.txt",
+            output: "Private command output: demo laptop owner",
+            exitCode: 0,
+          },
+        });
+        const report =
+          "The ring now wraps at its capacity.\n\n`vp test run ring.test.ts` passes 4 of 4.";
+        yield* recordMessage(run, report);
+        yield* finish(run, "sealed", "Captured output also repeats the private note.");
         yield* until(task, (current) => current.status === "in-review");
 
         // Accepting is not publishing: nothing goes out before it, and only a person sends it.
@@ -2299,6 +2350,13 @@ it.effect(
         assert.equal(yield* reason(deliver("merge", "merge-early")), "not-published");
 
         const sending = (yield* deliver("publish", "publish")).task;
+        const writer = (yield* GenerationProbe).inputs[0]!;
+        assert.include(writer.threadContext!, report);
+        assert.notInclude(writer.threadContext!, "Per your private note");
+        assert.notInclude(writer.threadContext!, "private-demo-notes.txt");
+        assert.notInclude(writer.threadContext!, "Private command output");
+        assert.notInclude(writer.threadContext!, "Captured output");
+        assert.equal(writer.baseBranch, "main");
         assert.deepEqual(
           [sending.status, sending.result?.pullRequest, sending.result?.delivery],
           ["done", null, { action: "publish", state: "sending", detail: null }],
@@ -2579,15 +2637,20 @@ it.effect("a task made from retained Work carries it as its source", () =>
   ),
 );
 
-it.effect(
-  "request changes runs the same assignee again and the next result replaces the one under review",
-  () =>
+it.effect.each([false, true])(
+  "request changes runs the same assignee again and the next result replaces the one under review (long reports: %s)",
+  (longReports) =>
     scenario(
       Effect.gen(function* () {
         const { sql, tasks, create, start, finish, until } = yield* harness;
         const task = yield* create("Audio ring demo", { lane: "ready" });
         const first = (yield* start(task, setupOf("opus"))).run!;
-        yield* recordMessage(first, "Implemented ring wrapping in the first round.");
+        yield* recordMessage(first, "Private first-round plan", 1);
+        yield* recordMessage(
+          first,
+          "Implemented ring wrapping in the first round." +
+            (longReports ? "x".repeat(60_000) + "first report tail" : ""),
+        );
         const baseProbe = yield* BaseProbe;
         baseProbe.remote = { remoteName: "origin", branchName: "main" };
         baseProbe.failure = "Continuing code must not fetch";
@@ -2684,7 +2747,11 @@ it.effect(
         assert.equal(baseProbe.fetches, 0);
 
         // The revision changed no file of its own, yet still carries the code under review.
-        yield* recordMessage(third, "Preserved cursor paging in the revision round.");
+        yield* recordMessage(
+          third,
+          "Preserved cursor paging in the revision round." +
+            (longReports ? "y".repeat(60_000) + "second report tail" : ""),
+        );
         const revisedCommit = "d".repeat(40);
         yield* finish(third, "sealed", "", revisedCommit);
         const replaced = yield* until(task, (current) => current.result?.revision === 2);
@@ -2743,6 +2810,14 @@ it.effect(
         // The task's own words and the review note were written for the agent, not for the host.
         assert.notInclude(generated.inputs[0]!.threadContext!, "Audio ring demo");
         assert.notInclude(generated.inputs[0]!.threadContext!, "Keep cursor paging");
+        assert.notInclude(generated.inputs[0]!.threadContext!, "Private first-round plan");
+        assert.include(generated.inputs[0]!.threadContext!, "Result rev 1\n");
+        assert.include(generated.inputs[0]!.threadContext!, "Result rev 2\n");
+        assert.isAtMost(generated.inputs[0]!.threadContext!.length, 60_000);
+        if (longReports) {
+          assert.notInclude(generated.inputs[0]!.threadContext!, "first report tail");
+          assert.notInclude(generated.inputs[0]!.threadContext!, "second report tail");
+        }
         assert.equal(generated.inputs[0]!.commitSummary, "first work commit\nrevision work commit");
         assert.equal(generated.inputs[0]!.diffSummary, "whole-change stat");
         assert.equal(generated.inputs[0]!.diffPatch, "whole-change patch");
@@ -2766,6 +2841,7 @@ it.effect("a replayed Publish does not generate again and uses project writer se
       assert.isTrue((yield* tasks.publish(input, human)).replayed);
       assert.equal(probe.inputs.length, callsBeforeReplay);
       assert.lengthOf(probe.inputs, 1);
+      assert.equal(probe.inputs[0]!.threadContext, "Result rev 1\nOriginal run report");
       assert.deepEqual(probe.inputs[0]!.modelSelection, model("project-writer"));
       assert.equal(probe.inputs[0]!.projectId, projectId);
       assert.include(
@@ -2801,27 +2877,41 @@ it.effect("a replayed Publish does not generate again and uses project writer se
   ),
 );
 
-it.effect.each(["provider-error", "empty"] as const)(
+it.effect.each(["provider-error", "empty", "timeout"] as const)(
   "Publish falls back when generation returns %s",
   (failure) =>
     scenario(
       Effect.gen(function* () {
         const { tasks, create, start, finish, until, sql } = yield* harness;
         const probe = yield* GenerationProbe;
+        const generating = yield* Deferred.make<void>();
         probe.outcome =
           failure === "empty"
             ? Effect.succeed({ title: " ", body: " " })
-            : Effect.fail(
-                new TextGenerationError({
-                  operation: "generatePrContent",
-                  detail: "Writer unavailable",
-                }),
-              );
+            : failure === "timeout"
+              ? Deferred.succeed(generating, undefined).pipe(Effect.andThen(Effect.never))
+              : Effect.fail(
+                  new TextGenerationError({
+                    operation: "generatePrContent",
+                    detail: "Writer unavailable",
+                  }),
+                );
         const task = yield* create("Audio ring demo", { lane: "ready" });
         yield* finish((yield* start(task)).run!, "sealed", "Original run report");
         yield* until(task, (current) => current.status === "in-review");
         yield* tasks.accept({ commandId: command("accept"), ref: task.ref, revision: 1 }, human);
-        yield* tasks.publish({ commandId: command("publish"), ref: task.ref, revision: 1 }, human);
+        const publish = tasks.publish(
+          { commandId: command("publish"), ref: task.ref, revision: 1 },
+          human,
+        );
+        if (failure === "timeout") {
+          const fiber = yield* Effect.forkChild(publish);
+          yield* Deferred.await(generating);
+          yield* TestClock.adjust("3 minutes");
+          yield* Fiber.join(fiber);
+        } else {
+          yield* publish;
+        }
         assert.deepEqual(
           yield* sql`SELECT json_extract(payload_json, '$.title') AS title, json_extract(payload_json, '$.body') AS body FROM factory_delivery_intents`,
           [

@@ -17,15 +17,18 @@ import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import * as Store from "../persistence/FactoryExecutionStore.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Processes from "../processRunner.ts";
 import * as Capture from "./FactoryExecutionCapture.ts";
 import { codeResultCommit } from "./FactoryExecutionCapture.ts";
+import { canonicalExecutionJson, executionDigest } from "./FactoryExecutionDigest.ts";
 
 const git = Effect.fn("test.git")(function* (cwd: string, ...args: ReadonlyArray<string>) {
   const result = yield* (yield* Processes.ProcessRunner).run({ command: "git", args, cwd });
@@ -116,160 +119,273 @@ it.effect.each([
   }).pipe(Effect.scoped, Effect.provide(layer)),
 );
 
-it.effect.each(["normal", "slow add", "slow remove"] as const)(
-  "a verified result survives long checkout paths and %s",
-  (scenario) =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-factory-capture-" });
-      // The checkout is `<os tmp>/t3-factory-verify-XXXXXX/tree/<file>`.
-      const checkout = path.join(path.dirname(cwd), "t3-factory-verify-XXXXXX", "tree");
-      const file = [
-        ...Array.from({ length: Math.ceil((300 - checkout.length) / 41) }, () => "d".repeat(40)),
-        "long.ts",
-      ].join("/");
-      assert.isAbove(checkout.length + file.length, 260);
-      const as = (name: string) => [
-        "-c",
-        `user.name=${name}`,
-        "-c",
-        "user.email=agent@example.com",
-      ];
-      yield* git(cwd, "init", "--quiet");
-      // Plumbing only, so the long path never has to exist in this repository's own working tree.
-      yield* fs.writeFileString(path.join(cwd, "blob.txt"), "export {};\n");
-      const blob = yield* git(cwd, "hash-object", "-w", "blob.txt");
-      yield* git(cwd, "update-index", "--add", "--cacheinfo", `100644,${blob},board.ts`);
-      const base = yield* git(
-        cwd,
-        ...as("Agent"),
-        "commit-tree",
-        yield* git(cwd, "write-tree"),
-        "-m",
-        "base",
-      );
-      yield* git(cwd, "update-index", "--add", "--cacheinfo", `100644,${blob},${file}`);
-      const tree = yield* git(cwd, "write-tree");
-      const checkpoint = yield* git(
-        cwd,
-        ...as("T3 Code"),
-        "commit-tree",
-        tree,
-        "-p",
-        base,
-        "-m",
-        "t3",
-      );
+it.effect.each([
+  "normal",
+  "slow add",
+  "slow remove",
+  "built-in",
+  "extra argument",
+  "modifying verification",
+  "nonzero verification",
+  "failed verification retry",
+  "interrupted verification retry",
+  "failed add retry",
+  "interrupted add retry",
+] as const)("a verified result survives long checkout paths and %s", (scenario) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-factory-capture-" });
+    // The checkout is `<os tmp>/t3-factory-verify-XXXXXX/tree/<file>`.
+    const checkout = path.join(path.dirname(cwd), "t3-factory-verify-XXXXXX", "tree");
+    const file = [
+      ...Array.from({ length: Math.ceil((300 - checkout.length) / 41) }, () => "d".repeat(40)),
+      "long.ts",
+    ].join("/");
+    assert.isAbove(checkout.length + file.length, 260);
+    const as = (name: string) => ["-c", `user.name=${name}`, "-c", "user.email=agent@example.com"];
+    yield* git(cwd, "init", "--quiet");
+    // Plumbing only, so the long path never has to exist in this repository's own working tree.
+    yield* fs.writeFileString(path.join(cwd, "blob.txt"), "export {};\n");
+    const blob = yield* git(cwd, "hash-object", "-w", "blob.txt");
+    yield* git(cwd, "update-index", "--add", "--cacheinfo", `100644,${blob},board.ts`);
+    const base = yield* git(
+      cwd,
+      ...as("Agent"),
+      "commit-tree",
+      yield* git(cwd, "write-tree"),
+      "-m",
+      "base",
+    );
+    yield* git(cwd, "update-index", "--add", "--cacheinfo", `100644,${blob},${file}`);
+    const tree = yield* git(cwd, "write-tree");
+    const checkpoint = yield* git(
+      cwd,
+      ...as("T3 Code"),
+      "commit-tree",
+      tree,
+      "-p",
+      base,
+      "-m",
+      "t3",
+    );
 
-      const instanceId = ProviderInstanceId.make("codex");
-      const context = {
-        threadId: ThreadId.make("managed"),
-        runId: RunId.make("run"),
-        runAttemptId: RunAttemptId.make("attempt"),
-        scopeId: CheckpointScopeId.make("scope"),
-        providerThreadId: ProviderThreadId.make("provider-thread"),
-        driver: ProviderDriverKind.make("codex"),
-        providerInstanceId: instanceId,
-      };
-      const binding: FactoryExecutionBinding = {
-        selection: {
-          ref: {
-            environmentId: EnvironmentId.make("local"),
-            projectId: ProjectId.make("project"),
-            rootId: "plan",
-          },
-          revision: 1,
-          taskId: "root",
+    const instanceId = ProviderInstanceId.make("codex");
+    const retry = scenario.endsWith("retry");
+    const noCheckout = scenario === "built-in" || retry;
+    const verification = noCheckout
+      ? { command: "git", args: ["rev-parse", "--verify", "HEAD"] }
+      : scenario === "extra argument"
+        ? { command: "git", args: ["rev-parse", "--verify", "HEAD", "--quiet"] }
+        : scenario === "modifying verification"
+          ? { command: "git", args: ["mv", "board.ts", "moved.ts"] }
+          : scenario === "nonzero verification"
+            ? { command: "git", args: ["rev-parse", "--verify", "refs/missing"] }
+            : { command: "git", args: ["--version"] };
+    const context = {
+      threadId: ThreadId.make("managed"),
+      runId: RunId.make("run"),
+      runAttemptId: RunAttemptId.make("attempt"),
+      scopeId: CheckpointScopeId.make("scope"),
+      providerThreadId: ProviderThreadId.make("provider-thread"),
+      driver: ProviderDriverKind.make("codex"),
+      providerInstanceId: instanceId,
+    };
+    const binding: FactoryExecutionBinding = {
+      selection: {
+        ref: {
+          environmentId: EnvironmentId.make("local"),
+          projectId: ProjectId.make("project"),
+          rootId: "plan",
         },
-        grantVersion: 1,
-        taskVersion: 1,
-        commandId: CommandId.make("admit"),
-        threadId: context.threadId,
+        revision: 1,
+        taskId: "root",
+      },
+      grantVersion: 1,
+      taskVersion: 1,
+      commandId: CommandId.make("admit"),
+      threadId: context.threadId,
+      runId: context.runId,
+      runAttemptId: context.runAttemptId,
+      driver: context.driver,
+      spec: {
+        taskId: "root",
+        modelSelection: { instanceId, model: "luna" },
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        workspaceStrategy: { type: "root" },
+        setup: "deny",
+        verification,
+        output: { slot: "code", kind: "verified-code" },
+      },
+      inputDigest: "a".repeat(64),
+      inputText: "Long paths",
+      prerequisites: [],
+      admittedAt: "2026-11-05T00:00:00.000Z",
+      stopRequested: false,
+      quiescent: false,
+    };
+    const projection = {
+      runs: [{ id: context.runId }],
+      attempts: [
+        {
+          id: context.runAttemptId,
+          runId: context.runId,
+          providerThreadId: context.providerThreadId,
+          providerInstanceId: instanceId,
+          status: "completed",
+        },
+      ],
+      messages: [],
+      checkpointScopes: [{ id: context.scopeId, cwd }],
+      checkpoints: [
+        { runId: context.runId, scopeId: context.scopeId, status: "ready", ref: checkpoint },
+      ],
+    };
+    const runner = yield* Processes.ProcessRunner.pipe(Effect.provide(withoutLongPaths));
+    const inspectGit = Effect.fn("test.inspectGit")((...args: ReadonlyArray<string>) =>
+      git(cwd, ...args).pipe(Effect.provideService(Processes.ProcessRunner, runner)),
+    );
+    const verificationRoots: string[] = [];
+    let injectFailure = retry;
+    let pins = 0;
+    let verificationEvidence: Processes.ProcessRunOutput | undefined;
+    const captureRunner = Layer.succeed(Processes.ProcessRunner, {
+      run: Effect.fn("test.captureRun")(function* (input: Processes.ProcessRunInput) {
+        const operation = input.args[input.args.indexOf("worktree") + 1];
+        const isWorktree = input.args.includes("worktree");
+        const isVerification =
+          input.command === verification.command &&
+          input.args.length === verification.args.length &&
+          input.args.every((arg, index) => arg === verification.args[index]);
+        if (!isVerification)
+          assert.deepEqual(input.args.slice(0, 2), ["-c", "core.longpaths=true"]);
+        if (!isWorktree) assert.isUndefined(input.timeout);
+        if (input.args.includes("update-ref")) pins++;
+        if (isWorktree && operation === "add") verificationRoots.push(input.args.at(-2)!);
+        if (input.args.includes("worktree") && scenario === `slow ${operation}`) {
+          const timeoutMs = Duration.toMillis(
+            Duration.fromInputUnsafe(input.timeout ?? "60 seconds"),
+          );
+          if (timeoutMs <= 65_000)
+            return yield* new Processes.ProcessTimeoutError({
+              command: input.command,
+              argumentCount: input.args.length,
+              timeoutMs,
+            });
+        }
+        if (isVerification && injectFailure && scenario.includes("verification retry")) {
+          injectFailure = false;
+          if (scenario.startsWith("interrupted")) return yield* Effect.interrupt;
+          return yield* new Processes.ProcessSpawnError({
+            command: input.command,
+            argumentCount: input.args.length,
+            cause: "verification failed to start",
+          });
+        }
+        if (isVerification) {
+          const root = input.cwd!;
+          if (noCheckout)
+            assert.deepEqual(yield* fs.readDirectory(root).pipe(Effect.orDie), [".git"]);
+          else {
+            assert.equal(
+              yield* fs.readFileString(path.join(root, "board.ts")).pipe(Effect.orDie),
+              "export {};\n",
+            );
+            assert.equal(
+              yield* fs.readFileString(path.join(root, file)).pipe(Effect.orDie),
+              "export {};\n",
+            );
+          }
+        }
+        const result = yield* runner.run(input);
+        if (isWorktree && operation === "add" && injectFailure && scenario.includes("add retry")) {
+          injectFailure = false;
+          if (scenario.startsWith("interrupted")) return yield* Effect.interrupt;
+          return yield* new Processes.ProcessReadError({
+            command: input.command,
+            argumentCount: input.args.length,
+            stream: "exitCode",
+            cause: "add failed after registering the worktree",
+          });
+        }
+        if (isVerification) verificationEvidence = result;
+        return result;
+      }),
+    });
+    yield* Effect.gen(function* () {
+      const service = yield* Capture.FactoryExecutionCapture;
+      const registrations = yield* inspectGit("worktree", "list", "--porcelain");
+      let pinned: string | undefined;
+      if (retry) {
+        const first = yield* Effect.exit(service.capture(context));
+        assert.isTrue(Exit.isFailure(first));
+        assert.equal(Exit.hasInterrupts(first), scenario.startsWith("interrupted"));
+        assert.equal(yield* inspectGit("worktree", "list", "--porcelain"), registrations);
+        assert.isFalse(yield* fs.exists(path.dirname(verificationRoots[0]!)));
+        pinned = yield* inspectGit(
+          "rev-parse",
+          `refs/t3/factory/outputs/${executionDigest(context.runAttemptId)}`,
+        );
+      }
+      const captured = yield* service.capture(context);
+      const passed = scenario !== "modifying verification" && scenario !== "nonzero verification";
+      assert.equal(captured.status, passed ? "sealed" : "failed");
+      assert.equal(captured.checkpoint?.tree, tree);
+      assert.equal(pins, 1);
+      assert.equal(verificationRoots.length, retry ? 2 : 1);
+      if (scenario === "nonzero verification") assert.notEqual(verificationEvidence?.code, 0);
+      else assert.equal(verificationEvidence?.code, 0);
+      if (noCheckout)
+        assert.equal(verificationEvidence?.stdout.trim(), captured.checkpoint?.commit);
+      if (pinned) assert.equal(captured.checkpoint?.commit, pinned);
+      assert.equal(yield* inspectGit("rev-parse", `${captured.checkpoint!.commit}^{tree}`), tree);
+      assert.equal(yield* inspectGit("worktree", "list", "--porcelain"), registrations);
+      for (const root of verificationRoots) assert.isFalse(yield* fs.exists(path.dirname(root)));
+      const sql = yield* SqlClient.SqlClient;
+      const rows = yield* sql<{
+        digest: string;
+        evidence_json: string;
+      }>`SELECT digest, evidence_json FROM factory_execution_verifications`;
+      const body = {
         runId: context.runId,
         runAttemptId: context.runAttemptId,
-        driver: context.driver,
-        spec: {
-          taskId: "root",
-          modelSelection: { instanceId, model: "luna" },
-          runtimeMode: "approval-required",
-          interactionMode: "default",
-          workspaceStrategy: { type: "root" },
-          setup: "deny",
-          verification: { command: "git", args: ["--version"] },
-          output: { slot: "code", kind: "verified-code" },
-        },
-        inputDigest: "a".repeat(64),
-        inputText: "Long paths",
-        prerequisites: [],
-        admittedAt: "2026-11-05T00:00:00.000Z",
-        stopRequested: false,
-        quiescent: false,
+        commit: captured.checkpoint!.commit,
+        tree,
+        retainedRef: `refs/t3/factory/outputs/${executionDigest(context.runAttemptId)}`,
+        verification,
+        evidence: verificationEvidence,
+        passed,
       };
-      const projection = {
-        runs: [{ id: context.runId }],
-        attempts: [
-          {
-            id: context.runAttemptId,
-            runId: context.runId,
-            providerThreadId: context.providerThreadId,
-            providerInstanceId: instanceId,
-            status: "completed",
-          },
-        ],
-        messages: [],
-        checkpointScopes: [{ id: context.scopeId, cwd }],
-        checkpoints: [
-          { runId: context.runId, scopeId: context.scopeId, status: "ready", ref: checkpoint },
-        ],
-      };
-      const runner = yield* Processes.ProcessRunner.pipe(Effect.provide(withoutLongPaths));
-      const captureRunner = Layer.succeed(Processes.ProcessRunner, {
-        run: (input) => {
-          const operation = input.args[input.args.indexOf("worktree") + 1];
-          if (input.args.includes("worktree") && scenario === `slow ${operation}`) {
-            const timeoutMs = Duration.toMillis(
-              Duration.fromInputUnsafe(input.timeout ?? "60 seconds"),
-            );
-            if (timeoutMs <= 65_000)
-              return Effect.fail(
-                new Processes.ProcessTimeoutError({
-                  command: input.command,
-                  argumentCount: input.args.length,
-                  timeoutMs,
-                }),
-              );
-          }
-          return runner.run(input);
-        },
-      });
-      const captured = yield* Capture.FactoryExecutionCapture.pipe(
-        Effect.flatMap((service) => service.capture(context)),
-        Effect.provide(
-          Capture.layer.pipe(
-            Layer.provide(
-              Layer.mergeAll(
-                Layer.mock(Store.FactoryExecutionStore)({
-                  getBinding: () => Effect.succeed(binding),
-                  captureKey: () => Effect.succeed("native-final/1"),
-                  readCapture: () => Effect.succeed(null),
-                  retainCapture: () => Effect.void,
-                }),
-                Layer.mock(Projections.ProjectionStoreV2)({
-                  getThreadProjection: () => Effect.succeed(projection as never),
-                }),
-                Sqlite.layerMemory,
-                captureRunner,
-                NodeServices.layer,
-              ),
+      assert.isDefined(verificationEvidence);
+      assert.deepEqual(rows, [
+        { digest: executionDigest(body), evidence_json: canonicalExecutionJson(body) },
+      ]);
+      assert.equal(captured.checkpoint?.verificationDigest, rows[0]?.digest);
+    }).pipe(
+      Effect.provide(
+        Capture.layer.pipe(
+          Layer.provideMerge(
+            Layer.mergeAll(
+              Layer.mock(Store.FactoryExecutionStore)({
+                getBinding: () => Effect.succeed(binding),
+                captureKey: () => Effect.succeed("native-final/1"),
+                readCapture: () => Effect.succeed(null),
+                retainCapture: () => Effect.void,
+              }),
+              Layer.mock(Projections.ProjectionStoreV2)({
+                getThreadProjection: () => Effect.succeed(projection as never),
+              }),
+              Sqlite.layerMemory,
+              captureRunner,
+              NodeServices.layer,
             ),
           ),
         ),
-        Effect.provideService(OwnedProcess, {
-          spawn: (command, spawner) => spawner.spawn(command),
-        }),
-      );
-      assert.equal(captured.status, "sealed");
-      assert.equal(captured.checkpoint?.tree, tree);
-    }).pipe(Effect.scoped, Effect.provide(layer)),
+      ),
+      Effect.provideService(OwnedProcess, {
+        spawn: (command, spawner) => spawner.spawn(command),
+      }),
+    );
+  }).pipe(Effect.scoped, Effect.provide(layer)),
 );

@@ -78,6 +78,7 @@ import * as Git from "../vcs/GitVcsDriver.ts";
 import * as Delivery from "./FactoryDeliveryService.ts";
 import { executionDigest } from "./FactoryExecutionDigest.ts";
 import * as Executions from "./FactoryExecutionService.ts";
+import { CHECKPOINT_VERIFICATION } from "./FactoryExecutionVerification.ts";
 import type { FactoryPlanActor } from "./FactoryPlanReducer.ts";
 import * as Plans from "./FactoryPlanService.ts";
 import type { FactoryIntakeScheduleAuthority } from "./FactoryIntakeSchedule.ts";
@@ -292,8 +293,6 @@ const PERSON: Tasks.TaskActor = { kind: "person", label: "You" };
 const FAILED_NATIVE = new Set(["failed", "interrupted", "cancelled"]);
 // A start is one person's approval of one task; it ends with their session, not with a clock.
 const GRANT_EXPIRES_AT = "9999-12-31T23:59:59.999Z";
-// The engine keeps a code checkpoint only behind a check. This one changes nothing.
-const CHECKPOINT_CHECK = { command: "git", args: ["rev-parse", "--verify", "HEAD"] };
 // Leaves the pull request body (FACTORY_DELIVERY_BODY_MAX_CHARS) room for the closing line and footer.
 const REPORT_MAX_CHARS = 60_000;
 // The PR prompt keeps only the first 20,000 characters of the reports; stay under it so none is lost.
@@ -925,7 +924,7 @@ const make = Effect.gen(function* () {
         interactionMode: input.setup.interactionMode,
         workspaceStrategy,
         setup: "deny",
-        ...(worktree ? { verification: CHECKPOINT_CHECK } : {}),
+        ...(worktree ? { verification: CHECKPOINT_VERIFICATION } : {}),
         output: { slot: "result", kind: worktree ? "verified-code" : "sealed-draft" },
       };
       const running = yield* store.liveAttempts({

@@ -10,6 +10,7 @@ import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import * as Processes from "../processRunner.ts";
 import type { NativeExecutionFinalizationContext } from "../orchestration-v2/NativeExecutionPlan.ts";
 import { canonicalExecutionJson, executionDigest } from "./FactoryExecutionDigest.ts";
+import { CHECKPOINT_VERIFICATION } from "./FactoryExecutionVerification.ts";
 import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 
 const SHA = /^[a-f0-9]{40,64}$/;
@@ -224,67 +225,80 @@ const make = Effect.gen(function* () {
         .makeTempDirectoryScoped({ prefix: "t3-factory-verify-" })
         .pipe(Effect.mapError(failure));
       const verificationRoot = path.join(temporary, "tree");
-      yield* git(
-        scope.cwd,
-        [
-          "-c",
-          "core.hooksPath=" + path.join(temporary, "no-hooks"),
-          "worktree",
-          "add",
-          "--detach",
-          verificationRoot,
+      const noCheckout =
+        verification.command === CHECKPOINT_VERIFICATION.command &&
+        verification.args.length === CHECKPOINT_VERIFICATION.args.length &&
+        verification.args.every((arg, index) => arg === CHECKPOINT_VERIFICATION.args[index]);
+      yield* Effect.gen(function* () {
+        yield* git(
+          scope.cwd,
+          [
+            "-c",
+            "core.hooksPath=" + path.join(temporary, "no-hooks"),
+            "worktree",
+            "add",
+            "--detach",
+            ...(noCheckout ? ["--no-checkout"] : []),
+            verificationRoot,
+            commit,
+          ],
+          WORKTREE_TIMEOUT,
+        );
+        const evidence = yield* processes
+          .run({
+            command: verification.command,
+            args: verification.args,
+            cwd: verificationRoot,
+            maxOutputBytes: 1024 * 1024,
+            outputMode: "error",
+          })
+          .pipe(Effect.mapError(failure));
+        // No files were checked out for this read-only command, so status would only report deletions.
+        const unchanged = noCheckout
+          ? ""
+          : yield* git(verificationRoot, ["status", "--porcelain", "--untracked-files=all"]);
+        const finalTree = yield* git(verificationRoot, ["rev-parse", "HEAD^{tree}"]);
+        const passed =
+          evidence.code === 0 &&
+          !evidence.timedOut &&
+          !evidence.stdoutInvalidUtf8 &&
+          !evidence.stderrInvalidUtf8 &&
+          unchanged === "" &&
+          finalTree === tree;
+        const body = {
+          runId: input.runId,
+          runAttemptId: input.runAttemptId,
           commit,
-        ],
-        WORKTREE_TIMEOUT,
+          tree,
+          retainedRef,
+          verification,
+          evidence,
+          passed,
+        };
+        const verificationDigest = executionDigest(body);
+        yield* sql`INSERT INTO factory_execution_verifications(digest, attempt_id, repository_path, evidence_json) VALUES (${verificationDigest}, ${input.runAttemptId}, ${scope.cwd}, ${canonicalExecutionJson(body)}) ON CONFLICT(digest) DO NOTHING`.pipe(
+          Effect.mapError(failure),
+        );
+        checkpoint = { commit, tree, retainedRef, verificationDigest };
+        if (!passed) status = "failed";
+        yield* store.retainCapture({
+          runId: input.runId,
+          runAttemptId: input.runAttemptId,
+          captureKey: yield* store.captureKey(input.runAttemptId),
+          slot: binding.spec.output.slot,
+          text,
+          status,
+          checkpoint,
+        });
+      }).pipe(
+        Effect.onExit(() =>
+          git(
+            scope.cwd,
+            ["worktree", "remove", "--force", verificationRoot],
+            WORKTREE_TIMEOUT,
+          ).pipe(Effect.asVoid),
+        ),
       );
-      const evidence = yield* processes
-        .run({
-          command: verification.command,
-          args: verification.args,
-          cwd: verificationRoot,
-          maxOutputBytes: 1024 * 1024,
-          outputMode: "error",
-        })
-        .pipe(Effect.mapError(failure));
-      const unchanged = yield* git(verificationRoot, [
-        "status",
-        "--porcelain",
-        "--untracked-files=all",
-      ]);
-      const finalTree = yield* git(verificationRoot, ["rev-parse", "HEAD^{tree}"]);
-      const passed =
-        evidence.code === 0 &&
-        !evidence.timedOut &&
-        !evidence.stdoutInvalidUtf8 &&
-        !evidence.stderrInvalidUtf8 &&
-        unchanged === "" &&
-        finalTree === tree;
-      const body = {
-        runId: input.runId,
-        runAttemptId: input.runAttemptId,
-        commit,
-        tree,
-        retainedRef,
-        verification,
-        evidence,
-        passed,
-      };
-      const verificationDigest = executionDigest(body);
-      yield* sql`INSERT INTO factory_execution_verifications(digest, attempt_id, repository_path, evidence_json) VALUES (${verificationDigest}, ${input.runAttemptId}, ${scope.cwd}, ${canonicalExecutionJson(body)}) ON CONFLICT(digest) DO NOTHING`.pipe(
-        Effect.mapError(failure),
-      );
-      checkpoint = { commit, tree, retainedRef, verificationDigest };
-      if (!passed) status = "failed";
-      yield* store.retainCapture({
-        runId: input.runId,
-        runAttemptId: input.runAttemptId,
-        captureKey: yield* store.captureKey(input.runAttemptId),
-        slot: binding.spec.output.slot,
-        text,
-        status,
-        checkpoint,
-      });
-      yield* git(scope.cwd, ["worktree", "remove", "--force", verificationRoot], WORKTREE_TIMEOUT);
     }
     const captured: Store.ObserveResultInput = {
       runId: input.runId,

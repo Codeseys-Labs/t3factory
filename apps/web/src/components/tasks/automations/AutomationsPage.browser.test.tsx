@@ -250,7 +250,7 @@ it("says when each rule last fired", async () => {
   expect(row("Docs label")).toContain("Never fired");
 });
 
-it("a source switch saves enabled", async () => {
+it("switching a source off saves it disabled", async () => {
   setup();
   await using screen = await render(<AutomationsPage />, { router: "/automations" });
   await userEvent.click(screen.getByRole("switch", { name: "GitHub issues" }));

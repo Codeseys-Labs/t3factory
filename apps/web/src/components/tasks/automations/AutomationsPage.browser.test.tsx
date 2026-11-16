@@ -250,7 +250,7 @@ it("says when each rule last fired", async () => {
   expect(row("Docs label")).toContain("Never fired");
 });
 
-it("saves a schedule's time, weekdays and task, and a source switch saves enabled", async () => {
+it("a source switch saves enabled", async () => {
   setup();
   await using screen = await render(<AutomationsPage />, { router: "/automations" });
   await userEvent.click(screen.getByRole("switch", { name: "GitHub issues" }));
@@ -265,7 +265,11 @@ it("saves a schedule's time, weekdays and task, and a source switch saves enable
       enabled: false,
     },
   });
+});
 
+it("saves a schedule's time, weekdays and task", async () => {
+  setup();
+  await using screen = await render(<AutomationsPage />, { router: "/automations" });
   await userEvent.click(screen.getByRole("button", { name: "Add source" }));
   await choose("Kind", "Schedule");
   await choose("Project", "website");
@@ -279,7 +283,7 @@ it("saves a schedule's time, weekdays and task, and a source switch saves enable
   await choose("Assignee", "Scout · Codex · Luna");
   await choose("Status", "Ready");
   await userEvent.click(page.getByRole("dialog").getByRole("button", { name: "Add source" }));
-  expect(state.calls[1]).toEqual({
+  expect(state.calls[0]).toEqual({
     command: "saveIntakeSource",
     input: {
       commandId: expect.any(String),

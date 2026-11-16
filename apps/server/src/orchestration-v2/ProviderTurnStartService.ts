@@ -343,6 +343,7 @@ export const layer: Layer.Layer<
           readonly scopeId: NonNullable<OrchestrationV2ExecutionNode["checkpointScopeId"]>;
           readonly providerThreadId: OrchestrationV2ProviderThread["id"];
         } | null;
+        readonly expectedStatus?: "starting" | "running";
         readonly signal: string;
         readonly status: "completed" | "failed";
         readonly now: DateTime.Utc;
@@ -426,7 +427,7 @@ export const layer: Layer.Layer<
           threadId: run.threadId,
           runId,
           activeAttemptId: attempt.id,
-          expectedStatus: "starting",
+          expectedStatus: input.expectedStatus ?? "starting",
           events,
           ...(managed === null || factoryCapture === null
             ? {}
@@ -1945,6 +1946,48 @@ export const layer: Layer.Layer<
       });
     });
 
+    // Ends a managed run whose start went running but never reached its provider turn.
+    const failUnpromptedRun = Effect.fn("ProviderTurnStartService.failUnpromptedRun")(function* (
+      read: OrchestrationV2Run,
+    ) {
+      const projection = yield* projectionStore.getTurnStartContext(read.threadId, read.id);
+      const run = projection.runs.find((candidate) => candidate.id === read.id);
+      const rootNode = projection.nodes.find((candidate) => candidate.id === run?.rootNodeId);
+      const attempt = projection.attempts.find(
+        (candidate) => candidate.id === read.activeAttemptId,
+      );
+      if (run === undefined || rootNode === undefined || attempt === undefined) {
+        return yield* new ProviderTurnStartRunStateMissingError({ runId: read.id });
+      }
+      const providerThread = projection.providerThreads.find(
+        (candidate) => candidate.id === run.providerThreadId,
+      );
+      const checkpointScope = projection.checkpointScopes.find(
+        (candidate) => candidate.id === rootNode.checkpointScopeId,
+      );
+      yield* settleRunBeforeStart({
+        run,
+        rootNode,
+        attempt,
+        turnItems: projection.turnItems,
+        factoryCapture:
+          providerThread === undefined || checkpointScope === undefined
+            ? null
+            : { scopeId: checkpointScope.id, providerThreadId: providerThread.id },
+        expectedStatus: "running",
+        signal: "provider-turn-start-failure",
+        status: "failed",
+        now: yield* DateTime.now,
+        providerInstanceId: run.providerInstanceId,
+        itemProviderThreadId: run.providerThreadId,
+        item: {
+          type: "error",
+          title: "Turn failed to start",
+          failure: makeProviderFailure({ message: START_GAVE_UP_MESSAGE }),
+        },
+      });
+    });
+
     return ProviderTurnStartServiceV2.of({
       start: Effect.fn("ProviderTurnStartService.start")(
         function* (input) {
@@ -1969,9 +2012,18 @@ export const layer: Layer.Layer<
             // A retry cannot reclaim a phase its first attempt claimed, so it fails before `start`
             // reads the run; the last attempt still needs this identity to fail the run.
             if (managed !== null) {
-              const run = yield* projectionStore.getRun(input.threadId, input.runId);
-              if (run?.status === "starting" && run.activeAttemptId === input.runAttemptId)
-                captureStartingRun(run);
+              const fetched = yield* projectionStore.getRun(input.threadId, input.runId);
+              const run = fetched?.activeAttemptId === input.runAttemptId ? fetched : undefined;
+              if (run?.status === "starting") captureStartingRun(run);
+              // Its `turn` phase is claimed before any prompt, so without one nothing was sent.
+              if (run?.status === "running" && (yield* factoryLifecycle.stopUnprompted(managed)))
+                return yield* failUnpromptedRun(run);
+              // Ended already, as when its ending write committed but reported a failure.
+              if (
+                run !== undefined &&
+                (run.status === "completed" || NON_COMPLETING_TERMINAL_RUN_STATUSES.has(run.status))
+              )
+                return;
             }
             const cwd =
               thread.worktreePath ??

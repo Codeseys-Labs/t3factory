@@ -78,6 +78,7 @@ import * as Git from "../vcs/GitVcsDriver.ts";
 import * as Delivery from "./FactoryDeliveryService.ts";
 import { executionDigest } from "./FactoryExecutionDigest.ts";
 import * as Executions from "./FactoryExecutionService.ts";
+import { CHECKPOINT_VERIFICATION } from "./FactoryExecutionVerification.ts";
 import type { FactoryPlanActor } from "./FactoryPlanReducer.ts";
 import * as Plans from "./FactoryPlanService.ts";
 import type { FactoryIntakeScheduleAuthority } from "./FactoryIntakeSchedule.ts";
@@ -292,8 +293,6 @@ const PERSON: Tasks.TaskActor = { kind: "person", label: "You" };
 const FAILED_NATIVE = new Set(["failed", "interrupted", "cancelled"]);
 // A start is one person's approval of one task; it ends with their session, not with a clock.
 const GRANT_EXPIRES_AT = "9999-12-31T23:59:59.999Z";
-// The engine keeps a code checkpoint only behind a check. This one changes nothing.
-const CHECKPOINT_CHECK = { command: "git", args: ["rev-parse", "--verify", "HEAD"] };
 // Leaves the pull request body (FACTORY_DELIVERY_BODY_MAX_CHARS) room for the closing line and footer.
 const REPORT_MAX_CHARS = 60_000;
 // The PR prompt keeps only the first 20,000 characters of the reports; stay under it so none is lost.
@@ -925,7 +924,7 @@ const make = Effect.gen(function* () {
         interactionMode: input.setup.interactionMode,
         workspaceStrategy,
         setup: "deny",
-        ...(worktree ? { verification: CHECKPOINT_CHECK } : {}),
+        ...(worktree ? { verification: CHECKPOINT_VERIFICATION } : {}),
         output: { slot: "result", kind: worktree ? "verified-code" : "sealed-draft" },
       };
       const running = yield* store.liveAttempts({
@@ -1865,6 +1864,7 @@ const make = Effect.gen(function* () {
     baseRef: string | null,
     headBranch: string,
     results: ReadonlyArray<Tasks.TaskResultRow>,
+    selection: { readonly model: string; readonly instanceId: string } | null,
   ) {
     const previous = yield* deliveryStore
       .getByCommand(commandId)
@@ -1936,6 +1936,9 @@ const make = Effect.gen(function* () {
       body: [
         report.length > REPORT_MAX_CHARS ? `${report.slice(0, REPORT_MAX_CHARS)}\n\n…` : report,
         `---\n_Task ${row.displayId} · result rev ${result.revision} · ${result.summary}_`,
+        selection?.model && selection.instanceId
+          ? `Model \`${selection.model}\` in \`${selection.instanceId}\` via T3 Factory.`
+          : "",
       ]
         .filter((part) => part !== "")
         .join("\n\n"),
@@ -1959,9 +1962,10 @@ const make = Effect.gen(function* () {
     const { row } = task;
     const result = yield* deliverable(task, input.revision);
     const results: Array<Tasks.TaskResultRow> = [result];
-    let baseRef =
-      task.runs.find((run) => run.purpose === "work" && run.threadId === result.threadId)
-        ?.baseRef ?? null;
+    const resultRun = task.runs.find(
+      (run) => run.purpose === "work" && run.threadId === result.threadId,
+    );
+    let baseRef = resultRun?.baseRef ?? null;
     let revision = result.revision;
     while (baseRef !== null) {
       const continued = task.results.findLast(
@@ -1995,6 +1999,7 @@ const make = Effect.gen(function* () {
                   baseRef,
                   headBranch,
                   results,
+                  resultRun?.setup.modelSelection ?? null,
                 )),
                 headBranch,
               }

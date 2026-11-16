@@ -17,6 +17,8 @@ import * as Processes from "../processRunner.ts";
 const SETUP_TIME_LIMIT = Duration.minutes(15);
 const TAIL_LINES = 20;
 const LINE_CHARS = 400;
+// A run's failure text is cut from its start at 4,096 characters; the newest lines must fit.
+const TAIL_CHARS = 3_000;
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 
 export class FactoryWorktreeSetupError extends Schema.TaggedError<FactoryWorktreeSetupError>()(
@@ -93,8 +95,12 @@ const makeTail = (emit: (line: string) => void) => {
   };
 };
 
-const withTail = (summary: string, tail: string) =>
-  tail.length === 0 ? summary : `${summary}\nLast output:\n${tail}`;
+const withTail = (summary: string, tail: string) => {
+  if (tail.length === 0) return summary;
+  if (tail.length <= TAIL_CHARS) return `${summary}\nLast output:\n${tail}`;
+  const newest = tail.slice(-TAIL_CHARS);
+  return `${summary}\nLast output:\n…\n${newest.slice(newest.indexOf("\n") + 1)}`;
+};
 
 const make = Effect.gen(function* () {
   const processes = yield* Processes.ProcessRunner;

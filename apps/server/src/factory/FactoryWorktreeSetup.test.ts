@@ -151,3 +151,47 @@ it.effect("keeps the last output lines of a setup that runs out of time", () =>
     });
   }),
 );
+
+it.effect("keeps the newest lines when the last output is long", () =>
+  Effect.gen(function* () {
+    const runner = Layer.mock(Processes.ProcessRunner)({
+      run: (input) =>
+        Effect.sync(() => {
+          for (let line = 1; line <= 19; line++) {
+            const numbered = `${String(line).padStart(2, "0")} ${"x".repeat(420)}\n`;
+            input.onStdoutChunk?.(encoder.encode(numbered));
+          }
+          input.onStderrChunk?.(encoder.encode("ERR_PNPM_OUTDATED_LOCKFILE\n"));
+          return {
+            stdout: "",
+            stderr: "",
+            code: 1,
+            timedOut: false,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+            stdoutInvalidUtf8: false,
+            stderrInvalidUtf8: false,
+          };
+        }),
+    });
+    const { error } = yield* runSetup("vp i", "/worktree").pipe(
+      Effect.provide(Setup.layer.pipe(Layer.provide(Layer.mergeAll(runner, NodeServices.layer)))),
+      Effect.provideService(HostProcess.Platform, "linux"),
+      Effect.provideService(HostProcess.Environment, {}),
+    );
+    // A failure's text is cut from its start at 4,096 characters, so the end must fit inside.
+    const message = error?.message ?? "";
+    const kept = message.split("\n").slice(2);
+    assert.deepEqual(
+      [
+        message.length < 3_500,
+        message.startsWith("Setup script exited with 1.\nLast output:\n"),
+        // Whole lines only, oldest dropped first, with a mark where they were.
+        kept[0],
+        /^\d\d x{397}…$/.test(kept[1] ?? ""),
+        kept.at(-1),
+      ],
+      [true, true, "…", true, "ERR_PNPM_OUTDATED_LOCKFILE"],
+    );
+  }),
+);

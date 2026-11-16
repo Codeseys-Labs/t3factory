@@ -72,6 +72,7 @@ export class FactoryExecutionLifecycle extends Context.Service<
     readonly recover: (input: Identity) => Effect.Effect<void, FactoryExecutionError>;
     readonly retryHeld: (input: Identity) => Effect.Effect<void, FactoryExecutionError>;
     readonly stop: (input: Identity) => Effect.Effect<boolean, FactoryExecutionError>;
+    readonly stopUnprompted: (input: Identity) => Effect.Effect<boolean, FactoryExecutionError>;
     readonly quiesce: (input: Identity) => Effect.Effect<boolean, FactoryExecutionError>;
     readonly complete: (input: Identity) => Effect.Effect<boolean, FactoryExecutionError>;
   }
@@ -372,6 +373,9 @@ const make = Effect.gen(function* () {
     }),
     stop: Effect.fn("FactoryExecutionLifecycle.stop")((input) =>
       reconcile(input, owners.get(input.runAttemptId) === undefined),
+    ),
+    stopUnprompted: Effect.fn("FactoryExecutionLifecycle.stopUnprompted")((input) =>
+      store.stopUnprompted(input),
     ),
     quiesce: Effect.fn("FactoryExecutionLifecycle.quiesce")(function* (input) {
       const managed = yield* binding(input);

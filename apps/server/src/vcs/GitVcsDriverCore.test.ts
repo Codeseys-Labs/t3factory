@@ -3688,6 +3688,11 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         }
         assert.isFalse(yield* fileSystem.exists(`${cwd}/textconv-ran`));
 
+        yield* git(cwd, ["checkout", initialBranch]);
+        const retained = yield* driver.readRangeContext(projectCwd, initialBranch, "feature/range");
+        assert.deepEqual(retained, context);
+        yield* git(cwd, ["checkout", "feature/range"]);
+
         yield* writeTextFile(cwd, "notes.doc", "updated source line\n");
         const staged = yield* driver.prepareCommitContext(projectCwd, ["notes.doc"]);
         assert.include(staged?.stagedPatch ?? "", "+updated source line");

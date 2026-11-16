@@ -87,6 +87,7 @@ import {
 } from "./FactoryOriginKey.ts";
 import { checkLaneMove, isLiveRunState } from "./FactoryTaskDerivation.ts";
 import * as Work from "./FactoryWorkService.ts";
+import * as GitManager from "../git/GitManager.ts";
 
 /** Set by intake when a source, not a person typing, is where the task came from. */
 export interface FactoryTaskOrigin {
@@ -459,6 +460,7 @@ const make = Effect.gen(function* () {
   const plans = yield* Plans.FactoryPlanService;
   const work = yield* Work.FactoryWorkService;
   const executions = yield* Executions.FactoryExecutionService;
+  const gitManager = yield* GitManager.GitManager;
   const executionStore = yield* ExecutionStore.FactoryExecutionStore;
   const outbox = yield* EffectOutbox.EffectOutboxV2;
   const projections = yield* Projections.ProjectionStoreV2;
@@ -1730,16 +1732,44 @@ const make = Effect.gen(function* () {
     return { ...result, commit: result.commit };
   });
 
-  /**
-   * What Publish opens: the result's own commit subject and the agent's report on it. The task
-   * description stays out; it was written for the agent and may hold notes not meant for the host.
-   */
   const publication = Effect.fn("FactoryTaskService.publication")(function* (
     row: Tasks.TaskRow,
     result: Tasks.TaskResultRow & { readonly commit: string },
+    commandId: CommandId,
     baseRef: string | null,
+    headBranch: string,
+    threadIds: ReadonlyArray<ThreadId>,
   ) {
+    const previous = yield* deliveryStore
+      .getByCommand(commandId)
+      .pipe(Effect.mapError(deliveryRefusal));
+    if (
+      Option.isSome(previous) &&
+      previous.value.kind === "publish-pr" &&
+      "title" in previous.value.payload
+    ) {
+      return { ...previous.value.payload, closes: null };
+    }
     const cwd = yield* store.projectWorkspace(row.projectId);
+    const generated =
+      cwd === null || baseRef === null
+        ? undefined
+        : yield* gitManager
+            .generatePrContent({
+              cwd,
+              projectId: row.projectId,
+              baseBranch: baseRef,
+              headBranch,
+              baseRef,
+              headRef: result.commit,
+              threadIds,
+            })
+            .pipe(
+              Effect.timeoutOption("3 minutes"),
+              Effect.orElseSucceed(() => Option.none()),
+              Effect.map(Option.getOrUndefined),
+            );
+    const content = generated?.title.trim() && generated.body.trim() ? generated : undefined;
     const subjects =
       cwd === null || baseRef === null
         ? []
@@ -1764,14 +1794,15 @@ const make = Effect.gen(function* () {
       })
       .pipe(Effect.mapError(executionError));
     // Without the thread's messages, everything the run said is the closest account of it.
-    const report = (
-      (yield* finalAnswer(result.threadId, output.output.runId)) ?? output.text
-    ).trim();
+    const report =
+      content?.body ??
+      ((yield* finalAnswer(result.threadId, output.output.runId)) ?? output.text).trim();
     return {
       title:
-        subjects.length === 1
+        content?.title.trim().slice(0, FACTORY_DELIVERY_TITLE_MAX_CHARS) ??
+        (subjects.length === 1
           ? subjects[0]!.trim().slice(0, FACTORY_DELIVERY_TITLE_MAX_CHARS)
-          : row.title,
+          : row.title),
       body: [
         report.length > REPORT_MAX_CHARS ? `${report.slice(0, REPORT_MAX_CHARS)}\n\n…` : report,
         `---\n_Task ${row.displayId} · result rev ${result.revision} · ${result.summary}_`,
@@ -1797,6 +1828,7 @@ const make = Effect.gen(function* () {
     const { task } = yield* requireTask(input.ref);
     const { row } = task;
     const result = yield* deliverable(task, input.revision);
+    const threadIds = [result.threadId];
     let baseRef =
       task.runs.find((run) => run.purpose === "work" && run.threadId === result.threadId)
         ?.baseRef ?? null;
@@ -1806,6 +1838,7 @@ const make = Effect.gen(function* () {
         (entry) => entry.revision < revision && entry.kind === "code" && entry.commit === baseRef,
       );
       if (continued === undefined) break;
+      threadIds.unshift(continued.threadId);
       baseRef =
         task.runs.find((run) => run.purpose === "work" && run.threadId === continued.threadId)
           ?.baseRef ?? null;
@@ -1824,7 +1857,17 @@ const make = Effect.gen(function* () {
         baseRef,
         publish:
           kind === "publish-pr"
-            ? { ...(yield* publication(row, result, baseRef)), headBranch }
+            ? {
+                ...(yield* publication(
+                  row,
+                  result,
+                  derived(input.commandId, kind),
+                  baseRef,
+                  headBranch,
+                  threadIds,
+                )),
+                headBranch,
+              }
             : { title: row.title, body: "", headBranch, closes: null },
         // Inside the grant transaction: a reopen between the click and the grant wins.
         recheck: store.acceptedRevision(row).pipe(

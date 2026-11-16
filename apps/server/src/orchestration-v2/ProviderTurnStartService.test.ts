@@ -7,6 +7,7 @@ import {
   CommandId,
   ContextHandoffId,
   ContextTransferId,
+  FactoryExecutionError,
   GitCommandError,
   MessageId,
   NodeId,
@@ -20,6 +21,7 @@ import {
   RunId,
   ThreadId,
   ProjectId,
+  type FactoryExecutionBinding,
   type OrchestrationV2ThreadProjection,
   OrchestrationV2DomainEvent,
 } from "@t3tools/contracts";
@@ -39,7 +41,10 @@ import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
 import * as FactoryDeliveryService from "../factory/FactoryDeliveryService.ts";
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
+import * as FactoryExecutionService from "../factory/FactoryExecutionService.ts";
 import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
+import * as FactoryExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
 import * as PreviewAgentActivity from "../preview/PreviewAgentActivity.ts";
 import * as CheckpointService from "./CheckpointService.ts";
@@ -64,6 +69,7 @@ import * as EventSink from "./EventSink.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EffectWorker from "./EffectWorker.ts";
+import { planNativeStop } from "./NativeExecutionPlan.ts";
 import * as CheckpointRollbackService from "./CheckpointRollbackService.ts";
 import * as ProviderTurnControlService from "./ProviderTurnControlService.ts";
 import * as RunFinalizationService from "./RunFinalizationService.ts";
@@ -419,6 +425,7 @@ function makeLocalCommandHarness(input: {
   readonly failReadsAfterRunning?: boolean;
   readonly missingProviderSession?: boolean;
   readonly recoveryReadFailure?: string;
+  readonly managed?: boolean;
   readonly previousTurn?: {
     readonly runStatus: "failed" | "completed" | "interrupted";
     readonly turnStatus: "running" | "completed" | "interrupted";
@@ -1232,10 +1239,20 @@ function makeLocalCommandHarness(input: {
       projection.runs.find((candidate) => candidate.id === id),
     ),
   );
+  const factory =
+    input.managed === true
+      ? managedStartLifecycle({
+          threadId,
+          runId,
+          runAttemptId: attemptId,
+          driver: providerThread.driver,
+          spec: { modelSelection: { instanceId: newInstanceId } },
+        } as FactoryExecutionBinding)
+      : undefined;
   const layer = ProviderTurnStart.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
-        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+        factory?.layer ?? FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
         Layer.mock(ContextHandoffService.ContextHandoffServiceV2)({
           prepareProviderHandoff: (handoff) =>
             input.sideChat?.nativeForkFrom === undefined
@@ -1326,6 +1343,7 @@ function makeLocalCommandHarness(input: {
   );
   return {
     layer,
+    factory,
     interruptRun,
     settledRuns,
     getThreadRecords,
@@ -1363,24 +1381,85 @@ function makeLocalCommandHarness(input: {
   };
 }
 
+// The real lifecycle over a store whose phase claims stay held once made, as the database's do.
+function managedStartLifecycle(admitted: FactoryExecutionBinding) {
+  const claims = new Map<string, { readonly claimantId: string; settled: boolean }>();
+  let stopRequested = false;
+  let quiescent = false;
+  const store = Layer.mock(FactoryExecutionStore.FactoryExecutionStore)({
+    findNativeBinding: ({ threadId }) =>
+      Effect.succeed(
+        threadId === admitted.threadId ? { ...admitted, stopRequested, quiescent } : null,
+      ),
+    readCapture: () => Effect.succeed(null),
+    claimPhase: ({ phase, claimantId }) =>
+      Effect.sync(() => {
+        if (claims.has(phase) || quiescent) return { status: "held" } as const;
+        claims.set(phase, { claimantId, settled: false });
+        return { status: "claimed" } as const;
+      }),
+    requestNativeStop: () =>
+      Effect.sync(() => {
+        stopRequested = true;
+      }),
+    settlePhase: ({ phase, claimantId, observation }) =>
+      Effect.sync(() => {
+        const claim = claims.get(phase);
+        if (claim?.claimantId === claimantId && observation !== "unknown") claim.settled = true;
+      }),
+    settleAttempt: () =>
+      stopRequested && [...claims.values()].every((claim) => claim.settled)
+        ? Effect.sync(() => {
+            quiescent = true;
+          })
+        : Effect.fail(new FactoryExecutionError({ reason: "not-quiescent" })),
+  });
+  return {
+    binding: admitted,
+    quiescent: () => quiescent,
+    layer: FactoryExecutionLifecycle.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          store,
+          NodeCrypto.layer,
+          Layer.succeed(FactoryExecutionLifecycle.FactoryOwnedProcessFactory, {
+            make: () =>
+              Effect.succeed({
+                awaitRootExits: Effect.void,
+                spawner: { spawn: () => Effect.die("A failed session open spawns nothing.") },
+                quiesce: () => Effect.succeed(true),
+              }),
+          }),
+        ),
+      ),
+    ),
+  };
+}
+
 function layerStartEffectWorker(
   harness: ReturnType<typeof makeLocalCommandHarness>,
   control: Partial<ProviderTurnControlService.ProviderTurnControlServiceV2["Service"]> = {},
+  services: {
+    readonly sessions?: Partial<ProviderSessionManager.ProviderSessionManagerV2["Service"]>;
+    readonly threads?: Partial<ThreadManagementService.ThreadManagementService["Service"]>;
+    readonly projections?: Partial<ProjectionStore.ProjectionStoreV2Shape>;
+    readonly execution?: Partial<FactoryExecutionService.FactoryExecutionService["Service"]>;
+  } = {},
 ) {
   const executor = EffectWorker.layerExecutor.pipe(
     Layer.provide(
       Layer.mergeAll(
         harness.layer,
-        Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({}),
+        Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)(services.sessions ?? {}),
         Layer.mock(ProviderTurnControlService.ProviderTurnControlServiceV2)(control),
         Layer.mock(RunFinalizationService.RunFinalizationService)({}),
         Layer.mock(CheckpointRollbackService.CheckpointRollbackServiceV2)({}),
         Layer.mock(RuntimeRequestService.RuntimeRequestServiceV2)({}),
         Layer.mock(ThreadTitleRegenerationService.ThreadTitleRegenerationService)({}),
-        Layer.mock(ThreadManagementService.ThreadManagementService)({}),
-        Layer.mock(ProjectionStore.ProjectionStoreV2)({}),
-        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
-        FactoryExecutionTestkit.layerExecutionServiceMock,
+        Layer.mock(ThreadManagementService.ThreadManagementService)(services.threads ?? {}),
+        Layer.mock(ProjectionStore.ProjectionStoreV2)(services.projections ?? {}),
+        harness.factory?.layer ?? FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+        Layer.mock(FactoryExecutionService.FactoryExecutionService)(services.execution ?? {}),
         Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
         Layer.mock(FactoryDeliveryService.FactoryDeliveryService)({}),
         ServerSettings.layerTest(),
@@ -1506,6 +1585,103 @@ effectIt.effect("retries a failed settlement past the start budget until it is p
     expect(harness.projection().runs.at(-1)?.status).toBe("failed");
     expect(harness.projection().turnItems).toHaveLength(1);
   }).pipe(Effect.provide(layerStartEffectWorker(harness)));
+});
+
+effectIt.effect.each([
+  { name: "a Factory-managed run", managed: true, opens: 1, title: "Turn failed to start" },
+  { name: "an ordinary run", managed: false, opens: 2, title: "Provider session failed to open" },
+] as const)("ends $name whose session never opens once the start budget is spent", (row) => {
+  const harness = makeLocalCommandHarness({
+    text: "Continue",
+    openFailure: new Error("The provider's program could not be launched."),
+    managed: row.managed,
+  });
+  const run = harness.projection().runs.at(-1)!;
+  const dispatched: Array<string> = [];
+  return Effect.gen(function* () {
+    const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+    const outbox = yield* EffectOutbox.EffectOutboxV2;
+    const write = harness.writeIfRunCurrent.getMockImplementation()!;
+    harness.writeIfRunCurrent.mockImplementation((input) =>
+      write(input).pipe(
+        Effect.tap((written) =>
+          written.committed && input.effects !== undefined
+            ? outbox.enqueue(input.effects).pipe(Effect.orDie)
+            : Effect.void,
+        ),
+      ),
+    );
+    const { storedEffect } = yield* enqueueStart(
+      harness.projection(),
+      row.managed
+        ? { type: "provider-turn.start", runId: run.id, runAttemptId: harness.attemptId }
+        : undefined,
+    );
+    expect(yield* worker.drain()).toBe(1);
+    expect(yield* storedEffect).toMatchObject({ status: "pending", attemptCount: 1 });
+    // Stop on the Tasks page commits this behind the start, which the outbox runs first.
+    const stop =
+      harness.factory === undefined
+        ? []
+        : planNativeStop({
+            binding: harness.factory.binding,
+            commandId: CommandId.make("command:task-stop"),
+            now: yield* DateTime.now,
+          }).effects;
+    yield* outbox.enqueue(stop);
+
+    yield* TestClock.adjust("100 millis");
+    const drained = yield* worker.drain();
+    expect(yield* storedEffect).toMatchObject({ status: "succeeded", attemptCount: 2 });
+    expect(drained).toBe(row.managed ? 3 : 1);
+    expect(harness.open).toHaveBeenCalledTimes(row.opens);
+    expect(harness.projection().runs.at(-1)).toMatchObject({ status: "failed", startedAt: null });
+    expect(harness.projection().turnItems).toMatchObject([
+      { type: "error", status: "failed", title: row.title },
+    ]);
+    if (harness.factory === undefined) return;
+    expect(
+      yield* Effect.forEach(
+        [stop[0]!.id, `effect:factory.execution.finalize:${run.activeAttemptId}`],
+        (id) => outbox.get(id).pipe(Effect.map((effect) => Option.getOrThrow(effect).status)),
+      ),
+    ).toEqual(["succeeded", "succeeded"]);
+    expect(dispatched).toEqual(["run.interrupt"]);
+    // Retry admission reads exactly these: a quiescent prior attempt and a failed native run.
+    expect(harness.factory.quiescent()).toBe(true);
+  }).pipe(
+    Effect.provide(
+      layerStartEffectWorker(
+        harness,
+        {},
+        {
+          sessions: { isLive: () => Effect.succeed(false) },
+          threads: {
+            dispatch: (command) =>
+              Effect.sync(() => {
+                dispatched.push(command.type);
+                return { sequence: 1, storedEvents: [] };
+              }),
+          },
+          projections: { getThreadRecords: () => Effect.succeed(harness.projection()) },
+          execution: {
+            readNativeCapture: () => Effect.succeed(null),
+            captureNativeResult: (context) =>
+              Effect.succeed({
+                runId: context.runId,
+                runAttemptId: context.runAttemptId,
+                captureKey: "native-final/1",
+                slot: "draft",
+                text: "",
+                status: "failed" as const,
+                checkpoint: null,
+              }),
+            observeResult: () => Effect.succeed({} as never),
+          },
+        },
+      ),
+    ),
+  );
 });
 
 effectIt.effect.each(["interrupt", "start"] as const)(

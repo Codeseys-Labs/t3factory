@@ -1966,6 +1966,13 @@ export const layer: Layer.Layer<
                 runId: input.runId,
                 cause: "Managed start requires immutable attempt binding.",
               });
+            // A retry cannot reclaim a phase its first attempt claimed, so it fails before `start`
+            // reads the run; the last attempt still needs this identity to fail the run.
+            if (managed !== null) {
+              const run = yield* projectionStore.getRun(input.threadId, input.runId);
+              if (run?.status === "starting" && run.activeAttemptId === input.runAttemptId)
+                captureStartingRun(run);
+            }
             const cwd =
               thread.worktreePath ??
               (yield* projects

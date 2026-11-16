@@ -42,18 +42,23 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
 }
 
 const projectRoot = process.env.T3CODE_PROJECT_ROOT;
-if (!projectRoot) {
-  throw new Error("T3CODE_PROJECT_ROOT is not set. Run this through the t3.json setup action.");
-}
+
+// Install with the repository's pins, whatever Node.js and pnpm `vp` would pick on this machine.
+const pins: { engines: { node: string }; packageManager: string } = JSON.parse(
+  NodeFS.readFileSync(NodePath.join(worktree, "package.json"), "utf8"),
+);
 
 // Use the shell for Windows vp shims. Unattended installs need pnpm's confirmation
 // flag and closed stdin so other prompts fail. A stale lockfile must fail, not be rewritten.
 // Pipe output so the failure marker can keep its tail.
-const install = NodeChildProcess.spawn("vp i --frozen-lockfile -- --yes", {
-  cwd: worktree,
-  shell: true,
-  stdio: ["ignore", "pipe", "pipe"],
-});
+const install = NodeChildProcess.spawn(
+  `vp env exec --node ${pins.engines.node} --package-manager ${pins.packageManager} vp i --frozen-lockfile -- --yes`,
+  {
+    cwd: worktree,
+    shell: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  },
+);
 activeInstall = install;
 let installOutput = "";
 for (const [source, target] of [
@@ -100,6 +105,11 @@ if (
 }
 
 // Worktrees link main-checkout env files; replace only symlinks so real files always survive.
+// A task run starts this script itself, without the runner's root, and gets no dev env files.
+if (!projectRoot) {
+  process.stdout.write("T3CODE_PROJECT_ROOT is not set; linking no env files.\n");
+  process.exit(0);
+}
 for (const file of ENV_FILES) {
   const source = NodePath.join(projectRoot, file);
   const sourceStat = NodeFS.lstatSync(source, { throwIfNoEntry: false });

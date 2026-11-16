@@ -299,6 +299,7 @@ it.effect(
           close: () => Effect.void,
           closeInstance: () => Effect.void,
           release: () => Effect.void,
+          closeSettledWork: () => Effect.void,
           detach: () => Effect.void,
           otherWorkingThreads: () => Effect.succeed([]),
           releaseUnlessBusy: () => Effect.succeed(true),

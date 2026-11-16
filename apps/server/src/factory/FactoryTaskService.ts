@@ -56,6 +56,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { limitSection } from "@t3tools/provider-core/server/textGenerationUtils";
+import { resolveProjectScripts, setupProjectScript } from "@t3tools/shared/projectScripts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { makeWorktreeBaseResolver } from "./FactoryWorktreeBase.ts";
 import * as Context from "effect/Context";
@@ -822,6 +823,22 @@ const make = Effect.gen(function* () {
     }),
   );
 
+  /**
+   * The project's setup command, pinned into the run's grant for the server to run before the
+   * agent starts. A run that continues an agent's result below Full access gets none: the script
+   * there may be that agent's own, and the server would run it outside the agent's permissions.
+   */
+  const pinnedSetup = Effect.fn("FactoryTaskService.pinnedSetup")(function* (
+    projectId: ProjectId,
+    trusted: boolean,
+  ) {
+    const scripts = trusted ? yield* store.projectScripts(projectId) : null;
+    if (scripts === null) return "deny" as const;
+    const current = yield* settings.getSettings.pipe(Effect.mapError(asTaskError));
+    const script = setupProjectScript(resolveProjectScripts(current, { id: projectId, scripts }));
+    return script === null ? ("deny" as const) : { command: script.command };
+  });
+
   const requireIdleSiblings = Effect.fn("FactoryTaskService.requireIdleSiblings")(function* (
     row: Tasks.TaskRow,
     revision: number,
@@ -914,6 +931,10 @@ const make = Effect.gen(function* () {
       const workspaceStrategy: FactoryExecutionTaskSpec["workspaceStrategy"] = worktree
         ? { type: "worktree", baseRef: input.baseCommit ?? (yield* worktreeBase(row.projectId)) }
         : { type: "root" };
+      const setup = yield* pinnedSetup(
+        row.projectId,
+        worktree && (input.baseCommit === null || input.setup.runtimeMode === "full-access"),
+      );
       yield* store.registerLaunch({
         commandId: admitId,
         profileId,
@@ -947,7 +968,7 @@ const make = Effect.gen(function* () {
         runtimeMode: input.setup.runtimeMode,
         interactionMode: input.setup.interactionMode,
         workspaceStrategy,
-        setup: "deny",
+        setup,
         ...(worktree ? { verification: CHECKPOINT_VERIFICATION } : {}),
         output: { slot: "result", kind: worktree ? "verified-code" : "sealed-draft" },
       };

@@ -68,6 +68,7 @@ import * as FactoryKnowledgeStore from "../persistence/FactoryKnowledgeStore.ts"
 import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
 import * as FactoryExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as FactoryExecutionService from "../factory/FactoryExecutionService.ts";
+import * as FactoryWorktreeSetup from "../factory/FactoryWorktreeSetup.ts";
 
 export const layerEventInfrastructure = Layer.mergeAll(
   OrchestrationEventStore.layer,
@@ -326,6 +327,7 @@ const layerThreadLaunchProvided = ThreadLaunchService.layer.pipe(
       layerEventSink,
       IdAllocator.layer,
       layerFactoryExecutionLifecycle,
+      FactoryWorktreeSetup.layer,
     ).pipe(Layer.provideMerge(layerProjectService)),
   ),
 );

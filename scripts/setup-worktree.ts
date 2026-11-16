@@ -105,7 +105,7 @@ if (
 }
 
 // Worktrees link main-checkout env files; replace only symlinks so real files always survive.
-// A task run starts this script itself, without the runner's root, and gets no dev env files.
+// A task run's setup, by the server or its agent, runs without the runner's root and gets no dev env files.
 if (!projectRoot) {
   process.stdout.write("T3CODE_PROJECT_ROOT is not set; linking no env files.\n");
   process.exit(0);

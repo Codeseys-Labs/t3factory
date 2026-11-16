@@ -13,6 +13,7 @@ import { TaskAssigneeChip, TaskStateMark } from "../shared";
 import { taskItemKeyDown } from "./TaskCard";
 import {
   isCreatableLane,
+  GROUP_ASSIGNEE_LABEL,
   laneAssignee,
   listResultText,
   listSections,
@@ -238,6 +239,7 @@ function SectionHeader({
           <TaskAssigneeChip
             assignee={laneAssignee(section.rows.map((row) => row.task)) ?? section.sample.assignee}
             environmentId={section.sample.ref.environmentId}
+            labelOptions={GROUP_ASSIGNEE_LABEL}
           />
         )}
         <CountBadge count={item.count} />

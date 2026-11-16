@@ -474,6 +474,48 @@ describe("task presentation", () => {
       { label, monogram },
     );
   });
+  it("names the effort a pinned model carries and nothing for one without options", () => {
+    const assigned = task("T-41").assignee;
+    const { setup } = assigned.resolved!;
+    const catalog = fixtures.catalog.map((provider) => ({
+      ...provider,
+      models: provider.models.map((model) => ({
+        ...model,
+        capabilities: {
+          optionDescriptors: [
+            {
+              id: "reasoningEffort",
+              label: "Reasoning",
+              type: "select" as const,
+              options: [
+                { id: "low", label: "Low", isDefault: true },
+                { id: "high", label: "High" },
+              ],
+            },
+          ],
+        },
+      })),
+    }));
+    const label = (options?: { id: string; value: string }[]) =>
+      presentFactoryTaskAssignee(
+        {
+          ...assigned,
+          resolved: null,
+          assignment: {
+            mode: "pinned",
+            setup: {
+              ...setup,
+              modelSelection: { ...setup.modelSelection, ...(options ? { options } : {}) },
+            },
+          },
+        },
+        catalog,
+      ).label;
+    expect([label(), label([{ id: "reasoningEffort", value: "high" }])]).toEqual([
+      "Codex · Sol",
+      "Codex · Sol · High",
+    ]);
+  });
   it("nests children even before their parents, leaves filtered orphans visible and scopes identities", () => {
     const parent = task("T-38");
     const child = task("T-38.2");

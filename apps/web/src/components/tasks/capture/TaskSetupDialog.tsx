@@ -258,6 +258,11 @@ function TaskSetupForm({
     : null;
   const shownMode = setup?.runtimeMode ?? mode ?? defaultMode;
   const shownWorkspace = setup?.workspace ?? workspace ?? "worktree";
+  // The mode governs the agent. The server's own run of the project's setup script is outside it.
+  const modeHint =
+    shownWorkspace === "worktree" && shownMode !== "full-access"
+      ? `${runtimeModeConfig[shownMode].description} When the server runs the project's setup script first, it does not ask.`
+      : runtimeModeConfig[shownMode].description;
   const blockers = planning ? [] : task.blockedBy.map((blocker) => blocker.displayId);
   const changedAssignment = !sameAssignment(assignment, task.assignee.assignment);
   const ready =
@@ -365,7 +370,7 @@ function TaskSetupForm({
                 : {})}
             />
           </Field>
-          <Field label="Mode" hint={runtimeModeConfig[shownMode].description}>
+          <Field label="Mode" hint={modeHint}>
             <Select
               value={shownMode}
               disabled={base === null}

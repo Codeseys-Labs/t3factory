@@ -11,6 +11,7 @@ import {
   FactoryTaskSource,
   FactoryTaskType,
   ModelSelection,
+  ProjectScript,
   RuntimeMode,
   type CommandId,
   type FactoryPlanSnapshot,
@@ -218,6 +219,10 @@ export class FactoryTaskStore extends Context.Service<
     readonly projectWorkspace: (
       projectId: ProjectId,
     ) => Effect.Effect<string | null, FactoryTaskError>;
+    /** The scripts the person's project record holds; null when the project is gone. */
+    readonly projectScripts: (
+      projectId: ProjectId,
+    ) => Effect.Effect<ReadonlyArray<ProjectScript> | null, FactoryTaskError>;
     readonly updateBoard: (
       key: TaskKey,
       patch: BoardPatch,
@@ -367,6 +372,9 @@ const UNSET_MODES: TaskDefaultModes = { environment: DEFAULT_RUNTIME_MODE, proje
 const ActorJson = Schema.fromJsonString(FactoryTaskActivityEntry.fields.actor);
 const EventJson = Schema.fromJsonString(FactoryTaskActivityEvent);
 const HandlesJson = Schema.fromJsonString(Schema.Array(FactoryTaskType));
+const decodeScripts = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Array(ProjectScript)),
+);
 const FilesJson = Schema.fromJsonString(
   Schema.Array(
     Schema.Struct({ path: Schema.String, additions: Schema.Number, deletions: Schema.Number }),
@@ -1174,6 +1182,12 @@ const make = Effect.gen(function* () {
         workspaceRoot: string;
       }>`SELECT workspace_root AS workspaceRoot FROM projection_projects WHERE project_id = ${projectId} AND deleted_at IS NULL`;
       return rows[0]?.workspaceRoot ?? null;
+    }, Effect.mapError(failure)),
+    projectScripts: Effect.fn("FactoryTaskStore.projectScripts")(function* (projectId) {
+      const rows = yield* sql<{
+        scripts: string;
+      }>`SELECT scripts_json AS scripts FROM projection_projects WHERE project_id = ${projectId} AND deleted_at IS NULL`;
+      return rows[0] === undefined ? null : yield* decodeScripts(rows[0].scripts);
     }, Effect.mapError(failure)),
     updateBoard,
     appendActivity,

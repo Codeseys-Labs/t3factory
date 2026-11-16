@@ -38,6 +38,7 @@ import {
   boardLanes,
   dropRefusalMessage,
   isCreatableLane,
+  GROUP_ASSIGNEE_LABEL,
   laneAssignee,
   moveTaskFocus,
   type TaskLane,
@@ -315,6 +316,7 @@ function LaneHeader({
   const assignee = useTaskAssigneeChip(
     laneAssignee(lane.tasks) ?? sample.assignee,
     sample.ref.environmentId,
+    GROUP_ASSIGNEE_LABEL,
   );
   const name = grouping === "project" ? projectName(sample) : assigneeText(assignee);
   return (

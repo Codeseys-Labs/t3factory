@@ -66,6 +66,12 @@ type LaunchReason =
   | "provider-unavailable"
   | "launch-failure";
 
+/** The base resolved to a commit, but choosing between it and its remote branch failed. */
+export class WorktreeBaseError extends Schema.TaggedError<WorktreeBaseError>()(
+  "WorktreeBaseError",
+  { detail: Schema.String, cause: Schema.optional(Schema.Defect()) },
+) {}
+
 export const makeBaseResolver = Effect.gen(function* () {
   const git = yield* Git.GitVcsDriver;
   const settings = yield* Settings.ServerSettingsService;
@@ -104,14 +110,19 @@ export const makeBaseResolver = Effect.gen(function* () {
         ? target.branchName
         : null;
     if (!ref.startsWith("refs/heads/")) return { baseRef: commitSha, baseBranch };
-    const current = yield* settings.getSettings;
+    const current = yield* settings.getSettings.pipe(
+      Effect.mapError(
+        (cause) =>
+          new WorktreeBaseError({ detail: "Could not read the project's settings.", cause }),
+      ),
+    );
     const baseRef = resolveProjectSettings(current, projectId).settings.newWorktreesStartFromOrigin
       ? yield* resolveWorktreeBase({
           cwd,
           refName: ref.slice("refs/heads/".length),
           commitSha,
           remote: target,
-        })
+        }).pipe(Effect.mapError((cause) => new WorktreeBaseError({ detail: cause.detail, cause })))
       : commitSha;
     return { baseRef, baseBranch };
   });

@@ -245,7 +245,7 @@ const make = Effect.gen(function* () {
         (cause) =>
           new FactoryIssueError({
             reason: "invalid-base-ref",
-            detail: cause._tag === "GitCommandError" ? cause.detail : undefined,
+            detail: cause._tag === "WorktreeBaseError" ? cause.detail : undefined,
             cause,
           }),
       ),

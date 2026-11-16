@@ -43,6 +43,10 @@ git merge --no-ff --no-commit <upstream commit>
 - Resolve by area, one owner per file: orchestration; server wiring, persistence, contracts and MCP;
   server features and packages; web, desktop, mobile, scripts and docs. Then one pass that makes
   every package typecheck.
+- Then run the test file beside every file you resolved or edited by hand, and
+  `evals/factory-qualification/dataset.test.ts`. Typecheck does not show a fork test that now
+  fails, and the dataset pins a hash of the source files its cases point at. When a pinned file
+  changed and its anchored case did not, re-pin as `evals/factory-qualification/README.md` says.
 - The rules: upstream's structure wins where it refactored; the fork's additions stay; where both
   sides fixed the same problem, take upstream's.
 - Take upstream's `pnpm-lock.yaml` and run `pnpm install --no-frozen-lockfile`. Regenerate
@@ -151,3 +155,8 @@ lanes is real and blocks the merge.
   folders.
 - **Factory migrations.** Read [#132](https://github.com/Codeseys-Labs/t3factory/issues/132) before
   a sync that brings upstream migrations.
+- **A fork test that failed on the merge commit, unnoticed.** The merge was checked with typecheck
+  and a chosen set of tests. The fork's test for restart recovery of a managed run was not in the
+  set and failed there; nobody saw it until a reviewer asked whether that file had been run.
+- **Stale source pins in the qualification dataset**, two syncs in a row. On the second, nothing
+  ran that test before the receipt's focused tests, and the receipt had to start again.

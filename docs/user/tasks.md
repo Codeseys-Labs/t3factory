@@ -51,12 +51,15 @@ automatically on worktree creation**, and its agent starts only once the script 
 runs it without asking, whatever mode the agent has. The Thread tab shows the script while it runs. If
 it fails or takes longer than 15 minutes, the run fails before its agent starts, and the Thread tab
 shows the script's last lines: fix the script or what it needs, then **Retry** the task, which sets
-up a new worktree. On Windows the script runs in PowerShell: a program that exits with an error
-fails it, and so does an error that stops the script, but an error PowerShell continues past does
-not. Start the script with `$ErrorActionPreference = 'Stop'` to stop at the first one. A run that
-continues an earlier code result (a **Request changes** round, or a **Retry** of one) skips the
-script unless it has Full access, because its worktree holds an agent's code; its agent sets up by
-itself.
+up a new worktree. A run that continues an earlier code result (a **Request changes** round, or a
+**Retry** of one) skips the script unless it has Full access, because its worktree holds an agent's
+code; its agent sets up by itself.
+
+Whether the script failed is its shell's answer, and a shell reports its last command: a failure in
+the middle is passed over unless the script stops at it. On Windows the script runs in PowerShell,
+which fails it when an error stops the script or when the last program it ran exited with an error;
+an error PowerShell continues past does not count. To stop early there, start the script with
+`$ErrorActionPreference = 'Stop'` and check `$LASTEXITCODE` after a program that must succeed.
 
 ## Review a result
 

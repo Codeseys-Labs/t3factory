@@ -18,12 +18,16 @@ import {
   CommandId,
   DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
+  type FactoryExecutionBinding,
+  type FactoryExecutionTaskSpec,
   GitCommandError,
   MessageId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   OrchestrationV2ThreadProjectionJson,
+  RunAttemptId,
+  type RunId,
   ScheduledTaskId,
   type ServerProvider,
   ThreadId,
@@ -47,7 +51,9 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
+import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
 import * as FactoryExecutionTestkit from "../factory/FactoryExecutionTestkit.ts";
+import * as FactoryWorktreeSetup from "../factory/FactoryWorktreeSetup.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -124,7 +130,53 @@ const claudeAdapter = {
   openSession: () => Effect.die("provider execution is disabled in launch tests"),
 } as ProviderAdapter.ProviderAdapterV2["Service"];
 
+/** A lifecycle that reads every run as a task run admitted with this setup. */
+const layerManagedLifecycle = (setup: FactoryExecutionTaskSpec["setup"]) =>
+  Layer.effect(
+    FactoryExecutionLifecycle.FactoryExecutionLifecycle,
+    Effect.map(FactoryExecutionLifecycle.FactoryExecutionLifecycle, (unmanaged) => ({
+      ...unmanaged,
+      binding: ({ threadId, runId }: { threadId: ThreadId; runId?: RunId }) =>
+        Effect.succeed<FactoryExecutionBinding | null>(
+          runId === undefined
+            ? null
+            : {
+                selection: {
+                  ref: { environmentId: EnvironmentId.make("local"), projectId, rootId: "root" },
+                  revision: 1,
+                  taskId: "task",
+                },
+                grantVersion: 1,
+                taskVersion: 1,
+                commandId: CommandId.make("admit"),
+                threadId,
+                runId,
+                runAttemptId: RunAttemptId.make("attempt"),
+                spec: {
+                  taskId: "task",
+                  modelSelection,
+                  runtimeMode: "full-access",
+                  interactionMode: "default",
+                  workspaceStrategy: { type: "worktree", baseRef: "a".repeat(40) },
+                  setup,
+                  output: { slot: "result", kind: "sealed-draft" },
+                },
+                driver: ProviderDriverKind.make("codex"),
+                inputDigest: "0".repeat(64),
+                inputText: "",
+                prerequisites: [],
+                admittedAt: "2026-06-20T00:00:00.000Z",
+                stopRequested: false,
+                quiescent: false,
+              },
+        ),
+    })),
+  ).pipe(Layer.provide(FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle));
+
 interface HarnessOptions {
+  /** Runs launch as task runs admitted with this setup. */
+  readonly managedSetup?: FactoryExecutionTaskSpec["setup"];
+  readonly worktreeSetup?: FactoryWorktreeSetup.FactoryWorktreeSetup["Service"]["run"];
   readonly closeTerminal?: TerminalManager.TerminalManager["Service"]["close"];
   readonly adapters?: ReadonlyArray<ProviderAdapter.ProviderAdapterV2["Service"]>;
   readonly managedFolders?: Layer.Layer<ManagedProjectFolders.ManagedProjectFolders>;
@@ -180,6 +232,7 @@ function makeHarness(options: HarnessOptions = {}) {
   const runSetup = vi.fn(
     options.runSetup ?? (() => Effect.succeed({ status: "no-script" as const })),
   );
+  const worktreeSetup = vi.fn(options.worktreeSetup ?? (() => Effect.void));
   const closeTerminal = vi.fn(options.closeTerminal ?? (() => Effect.void));
   const generateBranchName = vi.fn(
     options.generateBranchName ?? (() => Effect.succeed({ branch: "generated-branch" })),
@@ -236,6 +289,7 @@ function makeHarness(options: HarnessOptions = {}) {
     Layer.succeed(ProjectSetupScriptRunner.ProjectSetupScriptRunner, {
       runForThread: runSetup,
     }),
+    Layer.succeed(FactoryWorktreeSetup.FactoryWorktreeSetup, { run: worktreeSetup }),
     Layer.mock(TextGeneration.TextGeneration)({
       generateThreadTitle,
       generateBranchName,
@@ -252,7 +306,9 @@ function makeHarness(options: HarnessOptions = {}) {
   const layerLaunch = ThreadLaunch.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
-        FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle,
+        options.managedSetup === undefined
+          ? FactoryExecutionTestkit.layerUnmanagedExecutionLifecycle
+          : layerManagedLifecycle(options.managedSetup),
         layerExternalServices,
         layerThreadManagement,
         layerReceipts,
@@ -317,6 +373,7 @@ function makeHarness(options: HarnessOptions = {}) {
     generateBranchName,
     generateThreadTitle,
     runSetup,
+    worktreeSetup,
     closeTerminal,
   };
 }
@@ -3019,6 +3076,158 @@ it.effect.each([0, 1])("releases an async setup before its completion with exit 
         (yield* threads.getThreadProjection(launched.threadId)).runs[0]?.status,
         "starting",
       );
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
+const taskRunLaunch = (name: string) =>
+  launchInput({
+    command: `command:launch:${name}`,
+    thread: `thread:launch:${name}`,
+    message: "Start the task",
+    workspace: { type: "worktree", baseRef: "main" },
+  });
+
+it.effect("starts a task run's agent only after its pinned setup exits", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<FactoryWorktreeSetup.FactoryWorktreeSetupInput>();
+    const exit = yield* Deferred.make<void>();
+    const harness = makeHarness({
+      managedSetup: { command: "node scripts/setup-worktree.ts" },
+      worktreeSetup: (input) =>
+        (input.onOutputLine?.("Packages: +1840") ?? Effect.void).pipe(
+          Effect.andThen(Deferred.succeed(entered, input)),
+          Effect.andThen(Deferred.await(exit)),
+        ),
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+      const outbox = yield* EffectOutbox.EffectOutboxV2;
+      const input = taskRunLaunch("managed-setup");
+      const launched = yield* launches.launch(input);
+      const setup = yield* Deferred.await(entered);
+      assert.deepEqual(
+        [setup.command, setup.worktreePath],
+        ["node scripts/setup-worktree.ts", "/repo-worktrees/feature"],
+      );
+      assert.deepInclude(
+        (yield* tracker.get(launched.threadId))?.stages.find(
+          (stage) => stage.id === "setup-script",
+        ),
+        { status: "running", detail: "node scripts/setup-worktree.ts", tail: ["Packages: +1840"] },
+      );
+      assert.isEmpty(yield* outbox.listByCommandId(CommandId.make(`${input.commandId}:release`)));
+      yield* Deferred.succeed(exit, undefined);
+      yield* tracker.stream(launched.threadId).pipe(
+        Stream.filter((snapshot) => snapshot?.phase === "done"),
+        Stream.runHead,
+      );
+      assert.lengthOf(
+        yield* outbox.listByCommandId(CommandId.make(`${input.commandId}:release`)),
+        1,
+      );
+      assert.equal(harness.runSetup.mock.calls.length, 0);
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
+it.effect("fails a task run whose pinned setup fails, with its last lines, before its agent", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness({
+      managedSetup: { command: "node scripts/setup-worktree.ts" },
+      worktreeSetup: () =>
+        Effect.fail(
+          new FactoryWorktreeSetup.FactoryWorktreeSetupError({
+            reason: "exit",
+            detail: "Setup script exited with 1.\nLast output:\nERR_PNPM_OUTDATED_LOCKFILE",
+          }),
+        ),
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const outbox = yield* EffectOutbox.EffectOutboxV2;
+      const input = taskRunLaunch("managed-setup-fails");
+      const launched = yield* launches.launch(input);
+      yield* threads.streamStoredEventsFrom({ threadId: launched.threadId }).pipe(
+        Stream.filter(
+          (stored) =>
+            stored.event.type === "run.updated" && stored.event.payload.status === "failed",
+        ),
+        Stream.runHead,
+      );
+      const projection = yield* threads.getThreadProjection(launched.threadId);
+      assert.equal(
+        projection.turnItems.find((item) => item.type === "error")?.failure.message,
+        "Workspace preparation failed during run setup script: Setup script exited with 1.\nLast output:\nERR_PNPM_OUTDATED_LOCKFILE",
+      );
+      assert.isEmpty(yield* outbox.listByCommandId(CommandId.make(`${input.commandId}:release`)));
+      assert.equal(projection.thread.worktreePath, "/repo-worktrees/feature");
+      assert.equal(harness.removeWorktree.mock.calls.length, 0);
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
+it.effect("skips setup for a task run whose grant denies it", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness({ managedSetup: "deny" });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+      const outbox = yield* EffectOutbox.EffectOutboxV2;
+      const input = taskRunLaunch("managed-setup-denied");
+      const launched = yield* launches.launch(input);
+      yield* tracker.stream(launched.threadId).pipe(
+        Stream.filter((snapshot) => snapshot?.phase === "done"),
+        Stream.runHead,
+      );
+      assert.equal(
+        (yield* tracker.get(launched.threadId))?.stages.find((stage) => stage.id === "setup-script")
+          ?.status,
+        "skipped",
+      );
+      assert.lengthOf(
+        yield* outbox.listByCommandId(CommandId.make(`${input.commandId}:release`)),
+        1,
+      );
+      assert.equal(harness.worktreeSetup.mock.calls.length, 0);
+      assert.equal(harness.runSetup.mock.calls.length, 0);
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
+it.effect("stops a task run's setup without removing its worktree", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    const stopped = yield* Deferred.make<void>();
+    const harness = makeHarness({
+      managedSetup: { command: "node scripts/setup-worktree.ts" },
+      worktreeSetup: () =>
+        Deferred.succeed(entered, undefined).pipe(
+          Effect.andThen(Effect.never),
+          Effect.onInterrupt(() => Deferred.succeed(stopped, undefined)),
+        ),
+    });
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const outbox = yield* EffectOutbox.EffectOutboxV2;
+      const input = taskRunLaunch("managed-setup-stopped");
+      const launched = yield* launches.launch(input);
+      yield* Deferred.await(entered);
+      assert.isTrue(yield* tracker.cancel(launched.threadId));
+      yield* Deferred.await(stopped);
+      assert.equal((yield* tracker.get(launched.threadId))?.phase, "cancelled");
+      // The run's processes are proven gone only after the phase ends; its worktree stays.
+      assert.equal(harness.removeWorktree.mock.calls.length, 0);
+      assert.equal(harness.deleteLocalBranch.mock.calls.length, 0);
+      assert.equal(
+        (yield* threads.getThreadProjection(launched.threadId)).thread.worktreePath,
+        "/repo-worktrees/feature",
+      );
+      assert.isEmpty(yield* outbox.listByCommandId(CommandId.make(`${input.commandId}:release`)));
     }).pipe(Effect.provide(harness.layer));
   }),
 );

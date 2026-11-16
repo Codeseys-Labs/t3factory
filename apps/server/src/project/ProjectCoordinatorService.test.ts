@@ -35,6 +35,7 @@ import * as ManagedFolders from "./ManagedProjectFolders.ts";
 import * as CloneTracker from "./ProjectCloneTracker.ts";
 import * as SetupTracker from "./WorktreeSetupTracker.ts";
 import * as SetupRunner from "./ProjectSetupScriptRunner.ts";
+import * as WorktreeSetup from "../factory/FactoryWorktreeSetup.ts";
 import * as Terminal from "../terminal/Manager.ts";
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
@@ -121,6 +122,7 @@ function harness(
     Layer.mock(GitWorkflow.GitWorkflowService)({ currentBranch: () => Effect.succeed(null) }),
     Layer.mock(CloneTracker.ProjectCloneTracker)({ get: () => Effect.succeed(null) }),
     Layer.mock(Terminal.TerminalManager)({ close: () => Effect.void }),
+    Layer.mock(WorktreeSetup.FactoryWorktreeSetup)({}),
     Layer.mock(SetupRunner.ProjectSetupScriptRunner)({
       runForThread: () => Effect.die("Root coordinator launches must not run setup scripts"),
     }),

@@ -1497,7 +1497,7 @@
       "origin": "Synthetic transfer task grounded in checkout source; not a captured failure.",
       "path": "apps/server/src/factory/FactoryIssueService.test.ts",
       "anchor": "refuses $change under an unchanged timestamp",
-      "sha256": "5fac535123448363fd2024b7871f13f4702e1934ef0aa5e6c17a41a42582b5d3"
+      "sha256": "8615eb5fd72160628d2ef4f7b346c0f6272e1c790906bc9a96447b6134161e76"
     },
     "scenario": "Issue body changes without updatedAt changing after review but before start.",
     "expectedActions": [

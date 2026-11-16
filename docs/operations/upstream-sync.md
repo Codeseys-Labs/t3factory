@@ -61,6 +61,18 @@ git merge --no-ff --no-commit <upstream commit>
 
 Nobody can review the full diff. Review what was decided by hand.
 
+That review cannot see an upstream change of behaviour in a file that merged without a conflict.
+`check:changed` against the upstream commit can: it runs every test beside a file the fork changes.
+Start it on the merge commit before the reviewers start, not first inside the receipt. It takes
+about an hour on Windows.
+
+When one of its tests fails, find out whose failure it is before fixing anything. Run the same test
+on the default branch, and on the upstream commit itself in a worktree of its own
+(`git worktree add --detach ../t3-upstream-<sha> <upstream commit>`, then the pinned install). A
+fork test that passes on the default branch is a break the merge made. An upstream test that fails
+the same way on unmodified upstream, on a Windows host, belongs on the Windows list. An upstream
+test that passes there is the fork's doing.
+
 1. Save `git show --remerge-diff <merge commit>` and split it by area. Every hunk in it is a
    conflict resolution or a hand edit.
 2. Give each area to a reviewer with one question, from a model family that did not do the
@@ -160,3 +172,10 @@ lanes is real and blocks the merge.
   set and failed there; nobody saw it until a reviewer asked whether that file had been run.
 - **Stale source pins in the qualification dataset**, two syncs in a row. On the second, nothing
   ran that test before the receipt's focused tests, and the receipt had to start again.
+- **An upstream change in a file that merged cleanly broke a fork feature.** Upstream made a new
+  thread's create command carry its first message, so a launch leaves one receipt where it left
+  two. The project orchestrator read both. Nothing conflicted, so no reviewer was shown it; six
+  fork tests found it, an hour into the second receipt.
+- **An upstream test read a row before the fork had written it.** The fork serializes commits and
+  publishes them in order; upstream does not. The test passed on unmodified upstream and failed
+  here, and the write it waited for did land. It now waits for the event it asserts on.

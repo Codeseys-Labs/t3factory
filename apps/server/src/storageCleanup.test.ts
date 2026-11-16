@@ -43,6 +43,7 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import { CodexProviderCapabilitiesV2 } from "./orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { ServerActivation } from "./serverActivation.ts";
 import { withWorkspaceLease } from "./workspace/workspaceLease.ts";
+import { executionDigest } from "./factory/FactoryExecutionDigest.ts";
 import { describe, expect, it } from "@effect/vitest";
 import {
   CheckpointScopeId,
@@ -373,6 +374,7 @@ const cleanupFixture = (
     let indexPathStderr: string | null = null;
     let gitInspections = 0;
     let snapshotReads = 0;
+    const invalidated: string[] = [];
     let beforeGit: (input: GitVcsDriver.ExecuteGitInput) => Effect.Effect<void> = () => Effect.void;
     let terminalListener: ((event: TerminalMetadataStreamEvent) => Effect.Effect<void>) | undefined;
     let events: Stream.Stream<OrchestrationV2DomainEvent> = Stream.empty;
@@ -534,7 +536,10 @@ const cleanupFixture = (
             )) as unknown as SqlClient.SqlClient),
       ),
       Effect.provideService(GitManager.GitManager, {
-        invalidateStatus: () => Effect.void,
+        invalidateStatus: (cwd: string) =>
+          Effect.sync(() => {
+            invalidated.push(cwd);
+          }),
       } as unknown as GitManager.GitManager["Service"]),
       Effect.provideService(TerminalManager.TerminalManager, {
         subscribeMetadata: (
@@ -550,6 +555,7 @@ const cleanupFixture = (
     return {
       service: Context.get(context, StorageCleanup.StorageCleanup),
       repo,
+      invalidated,
       setTerminals: (terminals: TerminalSummary[]) =>
         terminalListener?.({ type: "snapshot", terminals }) ?? Effect.void,
       editBeforeRemoval: () => {
@@ -698,6 +704,667 @@ const runCleanupTest = <A, E>(
 
 const legacyCheckpointRef = (threadId: string, turn: number) =>
   `refs/t3/checkpoints/${Base64Url.encode(threadId)}/turn/${turn}`;
+
+const taskCleanupFixture = Effect.fn("test.taskCleanupFixture")(function* (
+  modules?: "uninitialized" | "populated",
+) {
+  const sql = yield* SqlClient.SqlClient;
+  const git = yield* GitVcsDriver.GitVcsDriver;
+  const fixture = yield* cleanupFixture(
+    {
+      ...DEFAULT_SERVER_SETTINGS.storageCleanup,
+      worktreeOnMerge: true,
+    },
+    sql,
+  );
+  const { fs, repo, worktree, command, setThreads } = fixture;
+  const branch = "t3-factory/thread-1";
+  yield* command(worktree, ["branch", "-m", branch]);
+  yield* fs.writeFileString(`${worktree}/deleted.txt`, "before capture\n");
+  yield* command(worktree, ["add", "deleted.txt"]);
+  if (modules === "populated")
+    yield* command(worktree, [
+      "-c",
+      "protocol.file.allow=always",
+      "submodule",
+      "add",
+      repo,
+      "module",
+    ]);
+  if (modules === "uninitialized") {
+    const sha = (yield* command(worktree, ["rev-parse", "HEAD"])).stdout.trim();
+    yield* fs.writeFileString(
+      `${worktree}/.gitmodules`,
+      '[submodule ".repos/alchemy-effect/submodules/distilled"]\n\tpath = .repos/alchemy-effect/submodules/distilled\n\turl = /unused\n\tupdate = none\n',
+    );
+    yield* command(worktree, ["add", ".gitmodules"]);
+    yield* command(worktree, [
+      "update-index",
+      "--add",
+      "--cacheinfo",
+      `160000,${sha},.repos/alchemy-effect/submodules/distilled`,
+    ]);
+  }
+  yield* command(worktree, ["commit", "-m", "base"]);
+  const head = (yield* command(worktree, ["rev-parse", "HEAD"])).stdout.trim();
+  const index = `${yield* fs.makeTempDirectoryScoped()}/index`;
+  const captureGit = (args: string[]) =>
+    git.execute({
+      operation: "test.capture",
+      cwd: worktree,
+      args,
+      env: { GIT_INDEX_FILE: index },
+    });
+  yield* captureGit(["read-tree", head]);
+  yield* fs.writeFileString(`${worktree}/tracked.txt`, "saved result\n");
+  yield* fs.remove(`${worktree}/deleted.txt`);
+  yield* fs.writeFileString(`${worktree}/new.txt`, "never staged in the run\n");
+  yield* captureGit(["add", "-A"]);
+  const tree = (yield* captureGit(["write-tree"])).stdout.trim();
+  const commit = (yield* command(worktree, [
+    "commit-tree",
+    tree,
+    "-p",
+    head,
+    "-m",
+    "saved",
+  ])).stdout.trim();
+  const retainedRef = `refs/t3/factory/outputs/${executionDigest("attempt")}`;
+  yield* command(repo, ["update-ref", retainedRef, commit]);
+  const thread = shell({ branch, worktreePath: worktree });
+  setThreads([thread]);
+  const timestamp = DateTime.formatIso(at(0));
+  yield* sql`INSERT INTO factory_tasks ${sql.insert({
+    root_id: "root",
+    task_id: "task",
+    project_id: "project-1",
+    display_id: "T-1",
+    title: "Cleanup",
+    definition: "Cleanup",
+    plan_order: 0,
+    assignment_json: "{}",
+    source_json: "{}",
+    created_at: timestamp,
+    updated_at: timestamp,
+  })}`;
+  yield* sql`INSERT INTO factory_task_runs ${sql.insert({
+    thread_id: thread.id,
+    root_id: "root",
+    task_id: "task",
+    ordinal: 1,
+    purpose: "work",
+    run_id: "run",
+    attempt_id: "attempt",
+    setup_json: "{}",
+    started_at: timestamp,
+  })}`;
+  yield* sql`INSERT INTO factory_execution_bindings ${sql.insert({
+    attempt_id: "attempt",
+    run_id: "run",
+    thread_id: thread.id,
+    root_id: "root",
+    revision: 1,
+    task_id: "task",
+    grant_version: 1,
+    binding_json: "{}",
+    quiescent: 1,
+  })}`;
+  const output = {
+    resultId: "result",
+    runId: "run",
+    runAttemptId: "attempt",
+    status: "sealed",
+    checkpoint: { commit, tree, retainedRef },
+  };
+  yield* sql`INSERT INTO factory_execution_results ${sql.insert({
+    result_id: "result",
+    attempt_id: "attempt",
+    capture_key: "native-final/1",
+    root_id: "root",
+    revision: 1,
+    task_id: "task",
+    payload_digest: "digest",
+    output_json: JSON.stringify(output),
+    text_bytes: new Uint8Array(),
+  })}`;
+  yield* sql`INSERT INTO factory_task_results ${sql.insert({
+    root_id: "root",
+    task_id: "task",
+    revision: 1,
+    result_id: "result",
+    attempt_id: "attempt",
+    thread_id: thread.id,
+    plan_revision: 1,
+    kind: "code",
+    summary: "Saved",
+    files_json: "[]",
+    files_omitted: 0,
+    commit_sha: commit,
+    observed_at: timestamp,
+  })}`;
+  yield* sql`INSERT INTO factory_delivery_intents ${sql.insert({
+    id: "publish",
+    origin_key: "task:root|task#1",
+    thread_id: thread.id,
+    project_id: "project-1",
+    kind: "publish-pr",
+    acceptance_id: "acceptance",
+    repository_json: JSON.stringify({ host: "github.com", repository: "test/repo" }),
+    base_ref: "main",
+    base_sha: head,
+    head_sha: commit,
+    payload_json: "{}",
+    payload_digest: "digest",
+    granted_by: "person",
+    granted_at: timestamp,
+    request_command_id: "publish",
+    status: "confirmed",
+    remote_json: JSON.stringify({
+      number: 1,
+      url: "https://github.com/test/repo/pull/1",
+      merged: true,
+    }),
+    updated_at: timestamp,
+  })}`;
+  const state = Effect.gen(function* () {
+    const indexPath = (yield* command(worktree, [
+      "rev-parse",
+      "--git-path",
+      "index",
+    ])).stdout.trim();
+    return {
+      head: (yield* command(worktree, ["rev-parse", "HEAD"])).stdout,
+      index: yield* fs.readFile(indexPath),
+    };
+  });
+  return { ...fixture, sql, branch, head, commit, tree, retainedRef, thread, output, state };
+});
+
+const runTaskCleanupTest = <A, E>(
+  effect: Effect.Effect<A, E, Effect.Services<ReturnType<typeof taskCleanupFixture>>>,
+) => runCleanupTest(effect.pipe(Effect.provide(Sqlite.layerMemory)));
+
+describe("merged task worktree cleanup", () => {
+  it.live.each(["unstaged", "staged result", "already at result", "interrupted", "superseded"])(
+    "removes the %s run and restores its saved result",
+    (mode) =>
+      runTaskCleanupTest(
+        Effect.gen(function* () {
+          const f = yield* taskCleanupFixture();
+          const removals: ReadonlyArray<string>[] = [];
+          const moves: ReadonlyArray<string>[] = [];
+          f.beforeGit((input) =>
+            Effect.sync(() => {
+              if (input.args.includes("remove")) removals.push(input.args);
+              if (["read-tree", "update-ref", "update-index"].includes(input.args[0]!))
+                moves.push(input.args);
+            }),
+          );
+          if (mode === "staged result") yield* f.command(f.worktree, ["add", "-A"]);
+          if (mode === "already at result" || mode === "interrupted")
+            yield* f.command(f.worktree, ["read-tree", "-m", "-i", f.head, f.commit]);
+          if (mode === "already at result")
+            yield* f.command(f.worktree, [
+              "update-ref",
+              `refs/heads/${f.branch}`,
+              f.commit,
+              f.head,
+            ]);
+          if (mode === "superseded") {
+            yield* f.sql`INSERT INTO factory_task_results SELECT root_id, task_id, 2, 'newer-result', 'newer-attempt', 'newer-thread', plan_revision, kind, summary, files_json, files_omitted, ${f.head}, observed_at FROM factory_task_results`;
+            yield* f.sql`UPDATE factory_delivery_intents SET origin_key = 'task:root|task#2'`;
+          }
+          const reports = yield* Effect.all([f.service.runNow, f.service.runNow], {
+            concurrency: "unbounded",
+          });
+          expect(reports.flatMap((report) => report.entries)).toMatchObject([
+            { outcome: "removed", reason: "The task's pull request was merged" },
+          ]);
+          expect(yield* f.fs.exists(f.worktree)).toBe(false);
+          expect(
+            (yield* f.command(f.repo, ["rev-parse", f.branch, f.retainedRef])).stdout
+              .trim()
+              .split("\n"),
+          ).toEqual([f.commit, f.commit]);
+          expect(moves).toEqual(
+            mode === "already at result"
+              ? []
+              : [
+                  ["read-tree", "-m", "-i", f.head, f.commit],
+                  [
+                    "update-ref",
+                    "-m",
+                    "storage cleanup: name the saved task result",
+                    `refs/heads/${f.branch}`,
+                    f.commit,
+                    f.head,
+                  ],
+                  ["update-index", "-q", "--refresh"],
+                ],
+          );
+          // Windows uses force only to drop metadata after the guarded filesystem deletion.
+          expect(
+            removals.every(
+              (args) =>
+                !args.includes("--force") || args.filter((arg) => arg === "--force").length === 2,
+            ),
+          ).toBe(true);
+          yield* f.command(f.repo, ["worktree", "add", f.worktree, f.branch]);
+          expect(yield* f.fs.readFileString(`${f.worktree}/tracked.txt`)).toBe("saved result\n");
+          expect(yield* f.fs.readFileString(`${f.worktree}/new.txt`)).toBe(
+            "never staged in the run\n",
+          );
+          expect(yield* f.fs.exists(`${f.worktree}/deleted.txt`)).toBe(false);
+        }),
+      ),
+  );
+
+  it.live.each([
+    ["open", "The task is not merged"],
+    ["unconfirmed", "The task is not merged"],
+    ["reopened", "The task is not merged"],
+    ["held", "The task run is still running or held"],
+    ["live", "The task run is still running or held"],
+    ["stopping", "The task run is still running or held"],
+    ["missing records", "The task run's state is unavailable"],
+    ["unreadable records", "The task run's state is unavailable"],
+    ["no result", "The task run has no saved result"],
+    ["null commit", "The task run has no saved result"],
+    ["document", "The task run has no saved result"],
+    ["wrong ref", "The saved result does not match its record"],
+    ["wrong tree", "The saved result does not match its record"],
+    ["wrong result", "The saved result does not match its record"],
+    ["late commit", "The folder has commits that are not in the saved result"],
+    ["staged third version", "The folder has staged changes that differ from the saved result"],
+    ["unrelated owner", "Shared by 2 threads"],
+    ["terminal", "Open terminal"],
+    ["live session", "Provider session is still open"],
+    ["sparse", "The task run uses a sparse checkout or skip-worktree entries"],
+    ["skip-worktree", "The task run uses a sparse checkout or skip-worktree entries"],
+  ] as const)("keeps %s without moving branch or index", ([mode, reason]) =>
+    runTaskCleanupTest(
+      Effect.gen(function* () {
+        const f = yield* taskCleanupFixture();
+        f.setSettings({
+          storageCleanup: {
+            ...DEFAULT_SERVER_SETTINGS.storageCleanup,
+            worktreeOnMerge: true,
+            worktreeAfterDays: 1,
+            worktreeKeepWhen: "tracked-changes",
+          },
+        });
+        if (["open", "reopened"].includes(mode))
+          yield* f.sql`UPDATE factory_delivery_intents SET remote_json = '{"number":1,"url":"https://github.com/test/repo/pull/1"}'`;
+        if (mode === "unconfirmed")
+          yield* f.sql`UPDATE factory_delivery_intents SET status = 'unknown'`;
+        if (["held", "live", "stopping"].includes(mode))
+          yield* f.sql`UPDATE factory_execution_bindings SET quiescent = 0, stop_requested = ${mode === "stopping" ? 1 : 0}`;
+        if (["held", "live", "stopping"].includes(mode))
+          yield* f.command(f.worktree, [
+            "restore",
+            `--source=${f.head}`,
+            "--worktree",
+            "--",
+            "tracked.txt",
+            "deleted.txt",
+          ]);
+        if (mode === "missing records") yield* f.sql`DELETE FROM factory_task_runs`;
+        if (mode === "unreadable records") yield* f.sql`DROP TABLE factory_task_runs`;
+        if (mode === "no result") yield* f.sql`DELETE FROM factory_execution_results`;
+        if (mode === "null commit") yield* f.sql`UPDATE factory_task_results SET commit_sha = NULL`;
+        if (mode === "document") yield* f.sql`UPDATE factory_task_results SET kind = 'document'`;
+        if (mode === "wrong ref") yield* f.command(f.repo, ["update-ref", f.retainedRef, f.head]);
+        if (mode === "wrong tree")
+          yield* f.sql`UPDATE factory_execution_results SET output_json = json_set(output_json, '$.checkpoint.tree', ${"0".repeat(40)})`;
+        if (mode === "wrong result")
+          yield* f.sql`UPDATE factory_task_results SET commit_sha = ${f.head}`;
+        if (mode === "late commit")
+          yield* f.command(f.worktree, ["commit", "--allow-empty", "-m", "after capture"]);
+        if (mode === "staged third version") {
+          yield* f.fs.writeFileString(`${f.worktree}/tracked.txt`, "staged by a person\n");
+          yield* f.command(f.worktree, ["add", "tracked.txt"]);
+          yield* f.fs.writeFileString(`${f.worktree}/tracked.txt`, "saved result\n");
+        }
+        if (mode === "unrelated owner")
+          f.setThreads([f.thread, { ...f.thread, id: ThreadId.make("other") }]);
+        if (mode === "terminal")
+          yield* f.openTerminal({ cwd: f.worktree, worktreePath: f.worktree });
+        if (mode === "live session")
+          yield* f.sql`INSERT INTO orchestration_v2_projection_provider_sessions ${f.sql.insert({
+            provider_session_id: "session",
+            provider: "codex",
+            status: "ready",
+            updated_at: DateTime.formatIso(at(0)),
+            payload_json: JSON.stringify({
+              id: "session",
+              driver: "codex",
+              providerInstanceId: "codex",
+              status: "ready",
+              cwd: f.worktree,
+              model: null,
+              capabilities: CodexProviderCapabilitiesV2,
+              createdAt: DateTime.formatIso(at(0)),
+              updatedAt: DateTime.formatIso(at(0)),
+              lastError: null,
+            }),
+          })}`;
+        if (mode === "sparse")
+          yield* f.command(f.worktree, ["config", "core.sparseCheckout", "true"]);
+        if (mode === "skip-worktree")
+          yield* f.command(f.worktree, ["update-index", "--skip-worktree", "tracked.txt"]);
+        const before = yield* f.state;
+        expect((yield* f.service.runNow).entries[0]).toMatchObject({ outcome: "kept", reason });
+        expect(yield* f.state).toEqual(before);
+        if (mode === "staged third version")
+          expect((yield* f.command(f.worktree, ["show", ":tracked.txt"])).stdout).toBe(
+            "staged by a person\n",
+          );
+      }),
+    ),
+  );
+
+  it.live.each([
+    ["tracked-changes", "late.txt", "removed"],
+    ["uncommitted-changes", "late.txt", "kept"],
+    ["any-local-files", "late.txt", "kept"],
+    ["tracked-changes", ".env", "removed"],
+    ["uncommitted-changes", ".env", "removed"],
+    ["any-local-files", ".env", "kept"],
+    ["tracked-changes", "tracked.txt", "kept"],
+  ] as const)("applies %s to %s after moving the result (%s)", ([policy, file, outcome]) =>
+    runTaskCleanupTest(
+      Effect.gen(function* () {
+        const f = yield* taskCleanupFixture();
+        f.setPolicy(policy);
+        yield* f.fs.writeFileString(`${f.worktree}/${file}`, "after capture\n");
+        expect((yield* f.service.runNow).entries[0]).toMatchObject({
+          outcome,
+          reason:
+            outcome === "removed"
+              ? "The task's pull request was merged"
+              : file === ".env"
+                ? "Has ignored files (.env)"
+                : "Has uncommitted changes (1 file)",
+        });
+        expect(
+          (yield* f.command(f.repo, ["rev-parse", f.branch, f.retainedRef])).stdout
+            .trim()
+            .split("\n"),
+        ).toEqual([f.commit, f.commit]);
+        expect(f.invalidated).toContain(f.worktree);
+        if (outcome === "kept") {
+          expect(yield* f.fs.readFileString(`${f.worktree}/${file}`)).toBe("after capture\n");
+          expect((yield* f.command(f.worktree, ["status", "--porcelain"])).stdout).toBe(
+            file === ".env" ? "" : file === "tracked.txt" ? " M tracked.txt\n" : "?? late.txt\n",
+          );
+        }
+      }),
+    ),
+  );
+
+  it.live.each([
+    "side chat",
+    "waking subagent",
+    "late edit",
+    "late commit",
+    "new staged file",
+    "held before removal",
+    "reopened before removal",
+  ])("handles a %s after the move", (mode) =>
+    runTaskCleanupTest(
+      Effect.gen(function* () {
+        const f = yield* taskCleanupFixture();
+        const child = {
+          ...f.thread,
+          id: ThreadId.make("child"),
+          lineage: {
+            rootThreadId: f.thread.id,
+            parentThreadId: f.thread.id,
+            relationshipToParent: "subagent" as const,
+            ...(mode === "side chat" ? { relationshipToParent: null, sideChat: true } : {}),
+          },
+        };
+        if (["side chat", "waking subagent"].includes(mode)) f.setThreads([f.thread, child]);
+        if (mode === "new staged file") {
+          yield* f.fs.writeFileString(`${f.worktree}/person.txt`, "person's staged work\n");
+          yield* f.command(f.worktree, ["add", "person.txt"]);
+        }
+        if (mode === "late edit") f.editBeforeRemoval();
+        let checks = 0;
+        let lateCommit: string | null = null;
+        f.beforeGit((input) =>
+          Effect.gen(function* () {
+            if (input.operation !== "StorageCleanup.localChanges") return;
+            checks++;
+            if (mode === "late commit" && checks === 1) {
+              yield* f.command(f.worktree, [
+                "commit",
+                "--allow-empty",
+                "-m",
+                "after normalization",
+              ]);
+              lateCommit = (yield* f.command(f.worktree, ["rev-parse", "HEAD"])).stdout.trim();
+            }
+            if (mode === "waking subagent")
+              f.setThreads([f.thread, { ...child, status: "running" }]);
+            if (checks !== 2) return;
+            if (mode === "held before removal")
+              yield* f.sql`UPDATE factory_execution_bindings SET quiescent = 0`;
+            if (mode === "reopened before removal")
+              yield* f.sql`UPDATE factory_delivery_intents SET remote_json = '{"number":1,"url":"https://github.com/test/repo/pull/1"}'`;
+          }).pipe(Effect.orDie),
+        );
+        const report = yield* f.service.runNow;
+        expect(report.entries[0]).toMatchObject(
+          mode === "side chat"
+            ? { outcome: "removed", reason: "The task's pull request was merged" }
+            : mode === "late edit"
+              ? {
+                  outcome: "failed",
+                  reason: expect.stringContaining("contains modified or untracked files"),
+                }
+              : {
+                  outcome: "kept",
+                  reason:
+                    mode === "new staged file"
+                      ? "Has uncommitted changes (1 file)"
+                      : mode === "late commit"
+                        ? "The folder has commits that are not in the saved result"
+                        : mode === "waking subagent"
+                          ? "Thread activity or shared worktree changed since check"
+                          : mode === "held before removal"
+                            ? "The task run is still running or held"
+                            : "The task is not merged",
+                },
+        );
+        expect((yield* f.command(f.repo, ["rev-parse", f.branch])).stdout.trim()).toBe(
+          lateCommit ?? f.commit,
+        );
+        expect((yield* f.command(f.repo, ["rev-parse", f.retainedRef])).stdout.trim()).toBe(
+          f.commit,
+        );
+        if (mode === "new staged file")
+          expect((yield* f.command(f.worktree, ["show", ":person.txt"])).stdout).toBe(
+            "person's staged work\n",
+          );
+        if (mode === "late edit")
+          expect(yield* f.fs.readFileString(`${f.worktree}/tracked.txt`)).toBe("late edit\n");
+      }),
+    ),
+  );
+
+  it.live.each(["rule off", "project off", "root workspace", "ordinary thread"])(
+    "leaves %s unchanged",
+    (mode) =>
+      runTaskCleanupTest(
+        Effect.gen(function* () {
+          const f = yield* taskCleanupFixture();
+          const writes: string[] = [];
+          f.beforeGit((input) =>
+            Effect.sync(() => {
+              if (
+                input.args.some((arg) => ["read-tree", "update-ref", "update-index"].includes(arg))
+              )
+                writes.push(input.operation);
+            }),
+          );
+          if (mode === "rule off")
+            f.setSettings({
+              storageCleanup: {
+                ...DEFAULT_SERVER_SETTINGS.storageCleanup,
+                worktreeAfterDays: 1,
+                worktreeKeepWhen: "tracked-changes",
+              },
+            });
+          if (mode === "project off")
+            f.setSettings({
+              projectSettingsOverrides: {
+                [f.thread.projectId]: { worktreeCleanup: { mode: "off" } },
+              },
+            });
+          if (mode === "root workspace") f.setThreads([{ ...f.thread, worktreePath: f.repo }]);
+          if (mode === "ordinary thread") {
+            yield* f.sql`DELETE FROM factory_task_runs`;
+            yield* f.sql`DELETE FROM factory_execution_bindings`;
+            yield* f.command(f.worktree, ["branch", "-m", "ordinary"]);
+            f.setThreads([{ ...f.thread, branch: "ordinary" }]);
+          }
+          const before = yield* f.state;
+          const report = yield* f.service.runNow;
+          expect(report.counts.removed).toBe(0);
+          expect(yield* f.state).toEqual(before);
+          expect(writes).toEqual([]);
+          if (mode === "rule off")
+            expect(report.entries[0]).toMatchObject({ outcome: "kept", reason: "No rules apply" });
+          if (mode === "ordinary thread")
+            expect(report.entries[0]).toMatchObject({
+              outcome: "kept",
+              reason: "Has uncommitted changes (3 files)",
+            });
+        }),
+      ),
+  );
+
+  it.live.each(["uninitialized", "populated"] as const)(
+    "handles %s submodules without forcing a task-run removal",
+    (modules) =>
+      runTaskCleanupTest(
+        Effect.gen(function* () {
+          const f = yield* taskCleanupFixture(modules);
+          expect((yield* f.service.runNow).entries[0]).toMatchObject(
+            modules === "populated"
+              ? {
+                  outcome: "kept",
+                  reason: "The task run has submodules that require forced removal",
+                }
+              : { outcome: "removed", reason: "The task's pull request was merged" },
+          );
+          expect(
+            (yield* f.command(f.repo, ["rev-parse", f.branch, f.retainedRef])).stdout
+              .trim()
+              .split("\n"),
+          ).toEqual([f.commit, f.commit]);
+        }),
+      ),
+  );
+
+  it.live.each(["different saved results", "a member without its run record"])(
+    "keeps %s in one owner group",
+    (mode) =>
+      runTaskCleanupTest(
+        Effect.gen(function* () {
+          const f = yield* taskCleanupFixture();
+          const otherCommit = (yield* f.command(f.repo, [
+            "commit-tree",
+            f.tree,
+            "-p",
+            f.head,
+            "-m",
+            "other result",
+          ])).stdout.trim();
+          const otherRef = `refs/t3/factory/outputs/${executionDigest("other-attempt")}`;
+          yield* f.command(f.repo, ["update-ref", otherRef, otherCommit]);
+          yield* f.sql`INSERT INTO factory_task_runs SELECT 'child', root_id, task_id, 2, purpose, 'other-run', 'other-attempt', setup_json, profile_id, started_at, stop_requested, ended_at, outcome FROM factory_task_runs`;
+          yield* f.sql`INSERT INTO factory_execution_bindings SELECT 'other-attempt', 'other-run', 'child', root_id, revision, task_id, grant_version, binding_json, stop_requested, quiescent FROM factory_execution_bindings`;
+          yield* f.sql`INSERT INTO factory_task_results SELECT root_id, task_id, 2, 'other-result', 'other-attempt', 'child', plan_revision, kind, summary, files_json, files_omitted, ${otherCommit}, observed_at FROM factory_task_results`;
+          yield* f.sql`INSERT INTO factory_execution_results ${f.sql.insert({
+            result_id: "other-result",
+            attempt_id: "other-attempt",
+            capture_key: "native-final/1",
+            root_id: "root",
+            revision: 1,
+            task_id: "task",
+            payload_digest: "digest",
+            text_bytes: new Uint8Array(),
+            output_json: JSON.stringify({
+              ...f.output,
+              resultId: "other-result",
+              runId: "other-run",
+              runAttemptId: "other-attempt",
+              checkpoint: { commit: otherCommit, tree: f.tree, retainedRef: otherRef },
+            }),
+          })}`;
+          yield* f.sql`UPDATE factory_delivery_intents SET origin_key = 'task:root|task#2'`;
+          if (mode === "a member without its run record")
+            yield* f.sql`DELETE FROM factory_task_runs WHERE thread_id = 'child'`;
+          f.setThreads([
+            f.thread,
+            {
+              ...f.thread,
+              id: ThreadId.make("child"),
+              lineage: {
+                rootThreadId: f.thread.id,
+                parentThreadId: f.thread.id,
+                relationshipToParent: "subagent",
+              },
+            },
+          ]);
+          const before = yield* f.state;
+          expect((yield* f.service.runNow).entries[0]).toMatchObject({
+            outcome: "kept",
+            reason:
+              mode === "different saved results"
+                ? "The saved result does not match its record"
+                : "The task run's state is unavailable",
+          });
+          expect(yield* f.state).toEqual(before);
+        }),
+      ),
+  );
+
+  it.live("keeps a CAS refusal with the merged index and the concurrent branch tip", () =>
+    runTaskCleanupTest(
+      Effect.gen(function* () {
+        const f = yield* taskCleanupFixture();
+        const concurrent = (yield* f.command(f.repo, [
+          "commit-tree",
+          `${f.head}^{tree}`,
+          "-p",
+          f.head,
+          "-m",
+          "concurrent",
+        ])).stdout.trim();
+        f.beforeGit((input) =>
+          input.args[0] === "update-ref"
+            ? f
+                .command(f.repo, ["update-ref", `refs/heads/${f.branch}`, concurrent, f.head])
+                .pipe(Effect.asVoid, Effect.orDie)
+            : Effect.void,
+        );
+        expect((yield* f.service.runNow).entries[0]).toMatchObject({
+          outcome: "kept",
+          reason: "The folder has commits that are not in the saved result",
+        });
+        expect((yield* f.command(f.worktree, ["rev-parse", "HEAD"])).stdout.trim()).toBe(
+          concurrent,
+        );
+        expect((yield* f.command(f.worktree, ["write-tree"])).stdout.trim()).toBe(f.tree);
+        expect(yield* f.fs.readFileString(`${f.worktree}/tracked.txt`)).toBe("saved result\n");
+        expect(f.invalidated).toContain(f.worktree);
+      }),
+    ),
+  );
+});
 
 const checkpointCleanupFixture = Effect.fn("test.checkpointCleanupFixture")(function* () {
   const sql = yield* SqlClient.SqlClient;

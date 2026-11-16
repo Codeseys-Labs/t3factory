@@ -52,7 +52,7 @@ const pins: { engines: { node: string }; packageManager: string } = JSON.parse(
 // flag and closed stdin so other prompts fail. A stale lockfile must fail, not be rewritten.
 // Pipe output so the failure marker can keep its tail.
 const install = NodeChildProcess.spawn(
-  `vp env exec --node ${pins.engines.node} --package-manager ${pins.packageManager} vp i --frozen-lockfile -- --yes`,
+  `vp env exec --node "${pins.engines.node}" --package-manager "${pins.packageManager}" vp i --frozen-lockfile -- --yes`,
   {
     cwd: worktree,
     shell: true,

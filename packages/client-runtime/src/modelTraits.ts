@@ -3,6 +3,7 @@ import type {
   ModelSelection,
   ProviderOptionDescriptor,
 } from "@t3tools/contracts";
+import type { EffortDisplay } from "@t3tools/contracts/settings";
 import {
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentLabel,
@@ -114,7 +115,7 @@ export function buildTraitsTriggerDisplay(input: {
   descriptors: ReadonlyArray<ProviderOptionDescriptor>;
   primarySelectDescriptorId: string | null;
   ultrathinkPromptControlled: boolean;
-  modelSelection?: ModelSelection | null;
+  modelSelection?: ModelSelection | null | undefined;
   reportedModelSelection?: ModelSelection | null | undefined;
 }): {
   label: string;
@@ -192,26 +193,175 @@ export function buildTraitsTriggerDisplay(input: {
   return { label: labels.join(" · "), speedLabel, ultracode };
 }
 
+type SelectDescriptor = Extract<ProviderOptionDescriptor, { type: "select" }>;
+type BooleanDescriptor = Extract<ProviderOptionDescriptor, { type: "boolean" }>;
+
+/** Service tiers, Claude's Fast mode, and Ultracode sit in the footer, not the column. */
+export function splitSpeed(
+  selects: ReadonlyArray<SelectDescriptor>,
+  toggles: ReadonlyArray<BooleanDescriptor>,
+) {
+  const speedSelect = selects.find((descriptor) => descriptor.id === "serviceTier") ?? null;
+  const fastToggle = toggles.find((descriptor) => descriptor.id === "fastMode") ?? null;
+  const ultracodeToggle = toggles.find((descriptor) => descriptor.id === "ultracode") ?? null;
+  return {
+    speedSelect,
+    fastToggle,
+    ultracodeToggle,
+    columnSelects: selects.filter((descriptor) => descriptor !== speedSelect),
+    columnToggles: toggles.filter(
+      (descriptor) => descriptor !== fastToggle && descriptor !== ultracodeToggle,
+    ),
+  };
+}
+
+export type ColumnControl =
+  | { kind: "select"; descriptor: SelectDescriptor }
+  | { kind: "boolean"; descriptor: BooleanDescriptor };
+
 /**
- * What the composer's trigger says for a selection: `High`, `High Fast`, `Low · Thinking Off`.
- * Null when the selection carries no options, so the provider's default applies, or its model's
- * options are unknown.
+ * The column lists the model's reasoning levels under the header that names it. Other options,
+ * such as an agent's session mode, sit below as one row each.
+ */
+export function columnControls(
+  selects: ReadonlyArray<SelectDescriptor>,
+  toggles: ReadonlyArray<BooleanDescriptor>,
+) {
+  const { columnSelects, columnToggles } = splitSpeed(selects, toggles);
+  const controls: ReadonlyArray<ColumnControl> = [
+    ...columnSelects.map((descriptor) => ({ kind: "select" as const, descriptor })),
+    ...columnToggles.map((descriptor) => ({ kind: "boolean" as const, descriptor })),
+  ];
+  const effort = controls.find((control) => isReasoningControl(control.descriptor)) ?? null;
+  return { effort, others: controls.filter((control) => control !== effort) };
+}
+
+// Older servers offer Ultracode as a level. It changes the workflow, so it keeps its name.
+// Max is named too, so the full scale stops short of it.
+const NAMED_LEVELS = new Set(["ultracode", "max"]);
+const OFF_LEVELS = new Set(["off", "none"]);
+// More bars than this no longer fit the glyph's height in whole pixels.
+const MAX_BARS = 7;
+
+/**
+ * Maps a reasoning select to bars: one per ordinary level, filled up to the current one, with an
+ * off level as none filled. Max, prompt-injected and workflow levels are named instead of drawn.
+ */
+export function resolveEffortGlyph(descriptor: SelectDescriptor, current: string | null) {
+  const special = new Set([...(descriptor.promptInjectedValues ?? []), ...NAMED_LEVELS]);
+  const levels = descriptor.options.filter((option) => !special.has(option.id));
+  if (levels.length < 2 || levels.length > MAX_BARS || current === null) return null;
+  const startsAtOff = OFF_LEVELS.has(levels[0]!.id);
+  const count = startsAtOff ? levels.length - 1 : levels.length;
+  if (special.has(current)) {
+    const label = descriptor.options.find((option) => option.id === current)?.label ?? current;
+    return { count, filled: count, special: label, label };
+  }
+  const index = levels.findIndex((option) => option.id === current);
+  if (index < 0) return null;
+  return {
+    count,
+    filled: startsAtOff ? index : index + 1,
+    special: null,
+    label: levels[index]!.label,
+  };
+}
+
+/**
+ * What the composer's model trigger shows after the model name: the first reasoning control (as
+ * bars, or its word per `effortDisplay`), a bolt for Fast, an icon for Ultracode and the context
+ * window. `detail` is the expanded description of every option, for an accessible label.
+ */
+export function describeTriggerTraits(input: {
+  descriptors: ReadonlyArray<ProviderOptionDescriptor>;
+  ultrathinkPromptControlled: boolean;
+  effortDisplay: EffortDisplay;
+  modelSelection?: ModelSelection | null | undefined;
+  reportedModelSelection?: ModelSelection | null | undefined;
+}) {
+  const { descriptors, modelSelection, reportedModelSelection } = input;
+  const selectDescriptors = descriptors.filter(
+    (descriptor): descriptor is SelectDescriptor => descriptor.type === "select",
+  );
+  const booleanDescriptors = descriptors.filter(
+    (descriptor): descriptor is BooleanDescriptor => descriptor.type === "boolean",
+  );
+  const primary = selectDescriptors[0] ?? null;
+  const display = buildTraitsTriggerDisplay({
+    descriptors,
+    primarySelectDescriptorId: primary?.id ?? null,
+    ultrathinkPromptControlled: input.ultrathinkPromptControlled,
+    modelSelection,
+    reportedModelSelection,
+  });
+  // The same reasoning control the column lists, wherever the agent put it among its options.
+  const reasoning =
+    columnControls(selectDescriptors, booleanDescriptors).effort?.descriptor ?? null;
+  const ultrathink = input.ultrathinkPromptControlled && reasoning === primary;
+  const glyph =
+    reasoning?.type === "select"
+      ? resolveEffortGlyph(
+          reasoning,
+          ultrathink
+            ? "ultrathink"
+            : getDescriptorStringValue(reasoning, modelSelection, reportedModelSelection),
+        )
+      : null;
+  // Workflow levels such as Ultracode always show their name; the setting names every level.
+  const word = glyph
+    ? (glyph.special ?? (input.effortDisplay === "label" ? glyph.label : null))
+    : !reasoning
+      ? null
+      : reasoning.type === "boolean"
+        ? `${reasoning.label} ${reasoning.currentValue === true ? "On" : "Off"}`
+        : ultrathink
+          ? "Ultrathink"
+          : (getProviderOptionCurrentLabel(reasoning, modelSelection, reportedModelSelection) ??
+            (reasoning.id === "thinking" ? reasoning.label : null));
+  // Agent options such as modes live in the picker; the trigger adds only the context window.
+  const contextWindowDescriptor =
+    selectDescriptors.find((descriptor) => descriptor.id === "contextWindow") ?? null;
+  const contextWindow =
+    (contextWindowDescriptor &&
+      getProviderOptionCurrentLabel(
+        contextWindowDescriptor,
+        modelSelection,
+        reportedModelSelection,
+      )) ||
+    null;
+  return {
+    detail: display.label,
+    glyph,
+    word,
+    speedLabel: display.speedLabel,
+    fast: display.speedLabel === "Fast" || display.speedLabel === "Ultrafast",
+    ultracode: display.ultracode,
+    contextWindow,
+  };
+}
+
+/**
+ * What the composer's trigger visibly shows for a selection, as words: `High`, `High Fast`,
+ * `Low · Ultracode · 1M`. Null when the selection carries no options, so the provider's default
+ * applies, when its model's options are unknown, or when the trigger shows nothing.
  */
 export function describeSelectedEffort(
   selection: ModelSelection,
   capabilities: ModelCapabilities | null | undefined,
 ): string | null {
   if (!selection.options?.length || !capabilities) return null;
-  const descriptors = getProviderOptionDescriptors({
-    caps: capabilities,
-    selections: selection.options,
-  });
-  const { label } = buildTraitsTriggerDisplay({
-    descriptors,
-    primarySelectDescriptorId:
-      descriptors.find((descriptor) => descriptor.type === "select")?.id ?? null,
+  const trigger = describeTriggerTraits({
+    descriptors: getProviderOptionDescriptors({
+      caps: capabilities,
+      selections: selection.options,
+    }),
     ultrathinkPromptControlled: false,
+    effortDisplay: "label",
     modelSelection: selection,
   });
+  const effort = [trigger.word, trigger.fast ? trigger.speedLabel : null].filter(Boolean).join(" ");
+  const label = [effort, trigger.ultracode ? "Ultracode" : null, trigger.contextWindow]
+    .filter(Boolean)
+    .join(" · ");
   return label || null;
 }

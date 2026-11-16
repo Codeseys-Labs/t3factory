@@ -1,12 +1,12 @@
 import {
-  buildTraitsTriggerDisplay,
-  getDescriptorStringValue,
-  isReasoningControl,
+  type ColumnControl,
+  columnControls,
+  describeTriggerTraits,
   selectableProviderOptionChoices,
+  splitSpeed,
 } from "@t3tools/client-runtime/model-traits";
 import type { ProviderOptionDescriptor, RuntimeMode } from "@t3tools/contracts";
 import type { EffortDisplay } from "@t3tools/contracts/settings";
-import { getProviderOptionCurrentLabel } from "@t3tools/shared/model";
 import { CheckIcon, ChevronRightIcon, ChevronUpIcon, WorkflowIcon } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, use, useRef, useState } from "react";
 
@@ -24,7 +24,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { ComposerControlSize } from "./ComposerControl";
 import { ComposerPermissionsSection, type RuntimeModeOption } from "./ComposerFooterControls";
 import { composerFloatingLayerProps, focusCheckedPermission } from "./composerEventScope";
-import { EffortGlyph, FastBolt, resolveEffortGlyph } from "./EffortGlyph";
+import { EffortGlyph, FastBolt } from "./EffortGlyph";
 import { DockedPickerContext } from "./ProviderModelPicker";
 import {
   getTraitsSectionVisibility,
@@ -35,46 +35,6 @@ import {
 
 type SelectDescriptor = Extract<ProviderOptionDescriptor, { type: "select" }>;
 type BooleanDescriptor = Extract<ProviderOptionDescriptor, { type: "boolean" }>;
-
-/** Service tiers, Claude's Fast mode, and Ultracode sit in the footer, not the column. */
-function splitSpeed(
-  selects: ReadonlyArray<SelectDescriptor>,
-  toggles: ReadonlyArray<BooleanDescriptor>,
-) {
-  const speedSelect = selects.find((descriptor) => descriptor.id === "serviceTier") ?? null;
-  const fastToggle = toggles.find((descriptor) => descriptor.id === "fastMode") ?? null;
-  const ultracodeToggle = toggles.find((descriptor) => descriptor.id === "ultracode") ?? null;
-  return {
-    speedSelect,
-    fastToggle,
-    ultracodeToggle,
-    columnSelects: selects.filter((descriptor) => descriptor !== speedSelect),
-    columnToggles: toggles.filter(
-      (descriptor) => descriptor !== fastToggle && descriptor !== ultracodeToggle,
-    ),
-  };
-}
-
-type ColumnControl =
-  | { kind: "select"; descriptor: SelectDescriptor }
-  | { kind: "boolean"; descriptor: BooleanDescriptor };
-
-/**
- * The column lists the model's reasoning levels under the header that names it. Other options,
- * such as an agent's session mode, sit below as one row each.
- */
-function columnControls(
-  selects: ReadonlyArray<SelectDescriptor>,
-  toggles: ReadonlyArray<BooleanDescriptor>,
-) {
-  const { columnSelects, columnToggles } = splitSpeed(selects, toggles);
-  const controls: ReadonlyArray<ColumnControl> = [
-    ...columnSelects.map((descriptor) => ({ kind: "select" as const, descriptor })),
-    ...columnToggles.map((descriptor) => ({ kind: "boolean" as const, descriptor })),
-  ];
-  const effort = controls.find((control) => isReasoningControl(control.descriptor)) ?? null;
-  return { effort, others: controls.filter((control) => control !== effort) };
-}
 
 /**
  * What the model trigger shows after the model name: the effort word (or bars, per the
@@ -93,55 +53,18 @@ export function describeComposerEffort(
     traits.instanceId && traits.model
       ? { instanceId: traits.instanceId, model: traits.model, options: traits.modelOptions ?? [] }
       : null;
-  const primary = visibility.primarySelectDescriptor;
-  const display = buildTraitsTriggerDisplay({
-    descriptors: visibility.descriptors,
-    primarySelectDescriptorId: primary?.id ?? null,
-    ultrathinkPromptControlled: visibility.ultrathinkPromptControlled,
-    modelSelection,
-    reportedModelSelection: traits.reportedModelSelection,
-  });
-  // The same reasoning control the column lists, wherever the agent put it among its options.
-  const reasoning =
-    columnControls(visibility.selectDescriptors, visibility.booleanDescriptors).effort
-      ?.descriptor ?? null;
-  const ultrathink = visibility.ultrathinkPromptControlled && reasoning === primary;
-  const glyph =
-    reasoning?.type === "select"
-      ? resolveEffortGlyph(
-          reasoning,
-          ultrathink
-            ? "ultrathink"
-            : getDescriptorStringValue(reasoning, modelSelection, traits.reportedModelSelection),
-        )
-      : null;
-  // Workflow levels such as Ultracode always show their name; the setting names every level.
-  const word = glyph
-    ? (glyph.special ?? (effortDisplay === "label" ? glyph.label : null))
-    : !reasoning
-      ? null
-      : reasoning.type === "boolean"
-        ? `${reasoning.label} ${reasoning.currentValue === true ? "On" : "Off"}`
-        : ultrathink
-          ? "Ultrathink"
-          : (getProviderOptionCurrentLabel(
-              reasoning,
-              modelSelection,
-              traits.reportedModelSelection,
-            ) ?? (reasoning.id === "thinking" ? reasoning.label : null));
-  const fast = display.speedLabel === "Fast" || display.speedLabel === "Ultrafast";
-  // Agent options such as modes live in the picker; the trigger adds only the context window.
-  const contextWindow =
-    visibility.contextWindowDescriptor &&
-    getProviderOptionCurrentLabel(
-      visibility.contextWindowDescriptor,
+  const { detail, glyph, word, speedLabel, fast, ultracode, contextWindow } = describeTriggerTraits(
+    {
+      descriptors: visibility.descriptors,
+      ultrathinkPromptControlled: visibility.ultrathinkPromptControlled,
+      effortDisplay,
       modelSelection,
-      traits.reportedModelSelection,
-    );
-  if (!word && !glyph && !fast && !display.ultracode && !contextWindow)
-    return { suffix: null, detail: display.label };
+      reportedModelSelection: traits.reportedModelSelection,
+    },
+  );
+  if (!word && !glyph && !fast && !ultracode && !contextWindow) return { suffix: null, detail };
   return {
-    detail: display.label,
+    detail,
     suffix: (
       <span
         className={cn(
@@ -157,8 +80,8 @@ export function describeComposerEffort(
         ) : glyph ? (
           <EffortGlyph count={glyph.count} filled={glyph.filled} size={size} />
         ) : null}
-        {fast ? <FastBolt ultra={display.speedLabel === "Ultrafast"} /> : null}
-        {display.ultracode ? (
+        {fast ? <FastBolt ultra={speedLabel === "Ultrafast"} /> : null}
+        {ultracode ? (
           <WorkflowIcon aria-hidden="true" data-composer-control-icon className="size-3" />
         ) : null}
         {contextWindow ? (

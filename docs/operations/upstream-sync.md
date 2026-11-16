@@ -75,9 +75,10 @@ test that passes there is the fork's doing.
 
 A test that fails only in the full run and passes alone is not classified yet. Time it alone on
 unmodified upstream, then start several copies of that one test there at once, a second apart.
-An upstream test that fails that way belongs on the Windows list, with both results in its
-reason. A fork test that fails only under load is doing too much in one case: split it, do not
-raise its limit.
+An upstream test that fails that way on a Windows host belongs on the Windows list, with both
+results in its reason. The list applies on Windows only: one that also fails that way on Linux is
+a real failure there. A fork test that fails only under load is doing too much in one case: split
+it, do not raise its limit.
 
 1. Save `git show --remerge-diff <merge commit>` and split it by area. Every hunk in it is a
    conflict resolution or a hand edit.

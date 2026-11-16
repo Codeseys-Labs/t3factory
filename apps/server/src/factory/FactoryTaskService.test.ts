@@ -607,7 +607,7 @@ it.effect.each([
 );
 
 it.effect.each(["first start", "document result"] as const)(
-  "refuses a failed remote fetch before recording a plan, grant or run: %s",
+  "refuses a failed remote fetch before recording a plan, grant or run, then admits the same request: %s",
   (stage) =>
     scenario(
       Effect.gen(function* () {
@@ -623,7 +623,7 @@ it.effect.each(["first start", "document result"] as const)(
         const probe = yield* BaseProbe;
         probe.remote = { remoteName: "origin", branchName: "main" };
         probe.failure = "Could not resolve host: unreachable.example";
-        const outcome = yield* (
+        const request =
           stage === "first start"
             ? start(task)
             : tasks
@@ -636,14 +636,20 @@ it.effect.each(["first start", "document result"] as const)(
                   },
                   human,
                 )
-                .pipe(Effect.map((result) => result.task))
-        ).pipe(Effect.result);
+                .pipe(Effect.map((result) => result.task));
+        const outcome = yield* request.pipe(Effect.result);
         assert.isTrue(Result.isFailure(outcome), "fetch failure must refuse admission");
         if (Result.isSuccess(outcome)) return;
         assert.equal(outcome.failure.detail, probe.failure);
         assert.deepEqual(yield* sql`SELECT * FROM factory_plan_revisions`, beforePlans);
         assert.deepEqual(yield* sql`SELECT * FROM factory_execution_grants`, beforeGrants);
         assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, beforeRuns);
+        probe.failure = null;
+        const run = (yield* request).run!;
+        assert.deepEqual(
+          yield* sql`SELECT json_extract(binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef FROM factory_execution_bindings WHERE thread_id = ${run.threadId}`,
+          [{ baseRef: remoteHead }],
+        );
       }),
     ),
 );

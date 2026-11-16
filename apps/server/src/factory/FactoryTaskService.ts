@@ -718,10 +718,6 @@ const make = Effect.gen(function* () {
     function* (projectId: ProjectId) {
       const cwd = yield* store.projectWorkspace(projectId);
       if (cwd === null) return yield* refuse("missing-project");
-      const { commitSha } = yield* git.resolveCommit({ cwd, revision: "HEAD" });
-      const current = yield* settings.getSettings.pipe(Effect.mapError(asTaskError));
-      if (!resolveProjectSettings(current, projectId).settings.newWorktreesStartFromOrigin)
-        return commitSha;
       const symbolic = yield* git.execute({
         operation: "FactoryTaskService.worktreeBase",
         cwd,
@@ -729,9 +725,20 @@ const make = Effect.gen(function* () {
         maxOutputBytes: 4096,
       });
       if (symbolic.stdoutTruncated || symbolic.stderrTruncated)
-        return yield* refuse("unsupported-capability");
+        return yield* new FactoryTaskError({
+          reason: "unsupported-capability",
+          detail: "Could not read which branch the project folder is on.",
+        });
       const ref = symbolic.stdout.trim();
-      if (!ref.startsWith("refs/heads/")) return commitSha;
+      const branch = ref.startsWith("refs/heads/");
+      // The commit comes from the branch just named, so a checkout in between cannot split them.
+      const { commitSha } = yield* git.resolveCommit({ cwd, revision: branch ? ref : "HEAD" });
+      const current = yield* settings.getSettings.pipe(Effect.mapError(asTaskError));
+      if (
+        !branch ||
+        !resolveProjectSettings(current, projectId).settings.newWorktreesStartFromOrigin
+      )
+        return commitSha;
       const refName = ref.slice("refs/heads/".length);
       const remote = yield* git.resolveWorktreeBaseRemote({ cwd, refName });
       if (remote === null) return commitSha;
@@ -746,7 +753,10 @@ const make = Effect.gen(function* () {
       });
       if (ancestor.exitCode === 0) return fetched.commitSha;
       if (ancestor.exitCode === 1) return commitSha;
-      return yield* refuse("unsupported-capability");
+      return yield* new FactoryTaskError({
+        reason: "unsupported-capability",
+        detail: "Could not compare the project folder with its remote branch.",
+      });
     },
     Effect.catchTags({
       GitCommandError: (cause) =>

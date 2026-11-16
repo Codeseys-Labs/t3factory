@@ -130,5 +130,137 @@
     "name": "GitVcsDriver core integration > commit context > keeps other files conflicted through a selected-file commit",
     "issue": 128,
     "why": "the nested repository's commit context fails with Git's generic error instead of naming the unmerged file on a Windows host; fails on unmodified upstream too"
+  },
+  {
+    "file": "packages/provider-acp/src/server/clientPolicy.test.ts",
+    "name": "acpPermissionDisposition > denies mutations through workspace symlinks that escape the writable roots",
+    "issue": 128,
+    "why": "on a Windows host the escaping directory symlink is not resolved before parent segments, so the mutation is allowed; fails on unmodified upstream too"
+  },
+  {
+    "file": "packages/provider-pi/src/server/mcpInjection.test.ts",
+    "name": "materializePiT3McpExtension > never exposes a torn extension file to a concurrent reader",
+    "issue": 128,
+    "why": "renaming over the extension file fails with EPERM while the concurrent reader has it open on a Windows host; fails intermittently on unmodified upstream too"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > requires session-scoped thinking changes",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > keeps compatible Pi selectable when optional discovery fails",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > gives `pi --version` 10 s when it answers after 6 s",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > gives `pi --version` 10 s when it never answers",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > reports a known unauthenticated inventory when Pi returns no usable models",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > diagnoses Pi's active model readiness for a pinned model without credentials",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > diagnoses Pi's active model readiness for a pinned model with a runtime --api-key",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > diagnoses Pi's active model readiness for a pinned model whose provider auth chec…",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > diagnoses Pi's active model readiness for an uncatalogued model id of a provider …",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > diagnoses Pi's active model readiness for an extension model Pi lists as available",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > marks models that only load with Pi extensions as unusable for text generation",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > makes Pi unusable for text generation when Pi without extensions exits before answering",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > makes Pi unusable for text generation when Pi without extensions lists no models",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > preserves normal discovery when the extension-free model listing times out",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > advertises a model's service tiers beside its thinking levels",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > keeps project trust unless a startup dialog blocks discovery (dialog: true, launch args '')",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > keeps project trust unless a startup dialog blocks discovery (dialog: false, launch args '')",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > reports unknown authentication when Pi discovery returns missing models",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > reports unknown authentication when Pi discovery returns missing model id",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > reports unknown authentication when Pi discovery returns mixed valid and invalid models",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
   }
 ]

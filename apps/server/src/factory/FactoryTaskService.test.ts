@@ -3200,6 +3200,35 @@ it.effect.each([false, true])(
     ),
 );
 
+it.effect("request changes runs with the agent the task is assigned to now", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { tasks, create, start, finish, until } = yield* harness;
+      const task = yield* create("Footer link", { lane: "ready" });
+      yield* finish((yield* start(task, setupOf("opus"))).run!, "sealed");
+      const review = yield* until(task, (current) => current.status === "in-review");
+      const reassigned = (yield* tasks.update(
+        {
+          commandId: command("reassign"),
+          ref: task.ref,
+          expectedVersion: review.version,
+          // An agent set to work in the project folder still continues code from the result.
+          assignment: { mode: "pinned", setup: setupOf("flash", "root") },
+        },
+        human,
+      )).task;
+      const round = (yield* tasks.requestChanges(
+        { commandId: command("changes"), ref: task.ref, revision: 1, note: "Try again" },
+        human,
+      )).task;
+      assert.deepEqual(
+        [round.run?.ordinal, round.run?.setup, round.assignee.key],
+        [2, setupOf("flash"), reassigned.assignee.key],
+      );
+    }),
+  ),
+);
+
 it.effect("a replayed Publish does not generate again and uses project writer settings", () =>
   scenario(
     Effect.gen(function* () {

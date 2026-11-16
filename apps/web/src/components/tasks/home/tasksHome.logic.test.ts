@@ -16,10 +16,7 @@ describe("a task's result on the board and in the list", () => {
       run: { ...failedRun, ordinal: 3, state: "completed" as const, purpose: "planning" as const },
     };
     const text = `Run 2${state === "failed" ? " failed" : ""}: Needs a person`;
-    expect([cardMeta(waiting), listResultText(waiting)]).toEqual([
-      { kind: "text", text },
-      text,
-    ]);
+    expect([cardMeta(waiting), listResultText(waiting)]).toEqual([{ kind: "text", text }, text]);
   });
 
   it.each([

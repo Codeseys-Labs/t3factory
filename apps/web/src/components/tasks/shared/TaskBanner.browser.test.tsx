@@ -2,7 +2,7 @@ import "~/index.css";
 
 import { FACTORY_TASK_FIXTURES } from "@t3tools/client-runtime/state/factory-task-fixtures";
 import type { FactoryTaskPlanProposal, FactoryTaskSummary } from "@t3tools/contracts";
-import { ThreadId } from "@t3tools/contracts";
+import { RunId, ThreadId } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
@@ -407,4 +407,32 @@ it.each([
   await expect.element(card).toBeVisible();
   await expect.element(card.getByText(text)).toBeVisible();
   expect(screen.getByRole("region").elements()).toHaveLength(1);
+});
+
+it("gives up the run the person confirmed even when a newer run is held meanwhile", async () => {
+  const mocks = setup();
+  mocks.actions.giveUp = vi.fn(() => Promise.resolve({}));
+  const failed = fixture("T-29");
+  const held = (ordinal: number): FactoryTaskSummary => ({
+    ...failed,
+    run: {
+      ...failed.run!,
+      ordinal,
+      runId: RunId.make(`run-29-${ordinal}`),
+      threadId: ThreadId.make(`task-29-run-${ordinal}`),
+      state: "held",
+      captureFailed: true,
+    },
+  });
+  await using screen = await render(<TaskBanner task={held(1)} />);
+  await userEvent.click(screen.getByRole("button", { name: "Give up result" }));
+  const confirmation = page.getByRole("alertdialog");
+  await expect.element(confirmation.getByText("Give up the result of run 1?")).toBeVisible();
+  await screen.rerender(<TaskBanner task={held(2)} />);
+  await expect.element(confirmation.getByText("Give up the result of run 1?")).toBeVisible();
+  await userEvent.click(confirmation.getByRole("button", { name: "Give up result" }));
+  expect(mocks.actions.giveUp).toHaveBeenCalledExactlyOnceWith(
+    expect.anything(),
+    RunId.make("run-29-1"),
+  );
 });

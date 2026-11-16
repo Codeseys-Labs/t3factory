@@ -21,9 +21,9 @@ import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
 import { ActivityItem, assigneeText, ResultCard } from "../kit";
 import {
-  GiveUpResultDialog,
   TaskAsk,
   TaskAssigneeChip,
+  useGiveUpResult,
   useTaskActions,
   useTaskAssigneeChip,
   useTaskCatalog,
@@ -131,7 +131,7 @@ function RecoverRun({ task }: { task: FactoryTaskSummary }) {
   const actions = useTaskActions();
   const permissions = useTaskPermissions(task.ref.environmentId);
   const [busy, setBusy] = useState(false);
-  const [givingUp, setGivingUp] = useState(false);
+  const giveUp = useGiveUpResult(task);
   const run = factoryTaskFailedRun(task);
   const recovery = presentFactoryTaskRunRecovery(run);
   if (recovery.length === 0) return null;
@@ -152,13 +152,11 @@ function RecoverRun({ task }: { task: FactoryTaskSummary }) {
           size="sm"
           variant="outline"
           disabled={busy || !permissions.giveUp || run === null}
-          onClick={() => setGivingUp(true)}
+          onClick={() => run && giveUp.open(run)}
         >
           Give up result
         </Button>
-        {givingUp && run !== null ? (
-          <GiveUpResultDialog task={task} run={run} onClose={() => setGivingUp(false)} />
-        ) : null}
+        {giveUp.dialog}
       </div>
     );
   return (

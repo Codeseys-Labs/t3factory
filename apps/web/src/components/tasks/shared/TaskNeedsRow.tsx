@@ -18,7 +18,7 @@ import { factoryTasks, useFactoryTaskRequests } from "../../../state/factoryTask
 import { toastManager } from "../../ui/toast";
 import { openTaskSetup } from "../taskDialogs";
 import { type KitAction, NeedsYouRow } from "../kit";
-import { GiveUpResultDialog } from "./GiveUpResultDialog";
+import { useGiveUpResult } from "./GiveUpResultDialog";
 import { useTaskActions, useTaskPermissions } from "./taskActions";
 import { useTaskAssigneeChip } from "./taskAssigneeChip";
 
@@ -68,7 +68,7 @@ function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
   const actions = useTaskActions();
   const permissions = useTaskPermissions(need.ref.environmentId);
   const [busy, setBusy] = useState(false);
-  const [givingUp, setGivingUp] = useState(false);
+  const giveUpResult = useGiveUpResult(task);
   const act = (operation: (task: FactoryTaskSummary) => Promise<unknown>) => () => {
     if (task === null) return;
     setBusy(true);
@@ -110,8 +110,8 @@ function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
     need.reason === "failed" && recovery === "save-again"
       ? {
           label: "Give up result",
-          disabled: task === null || !permissions.giveUp || busy,
-          onClick: () => setGivingUp(true),
+          disabled: failedRun === null || !permissions.giveUp || busy,
+          onClick: () => failedRun && giveUpResult.open(failedRun),
         }
       : undefined;
   return (
@@ -125,9 +125,7 @@ function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
         action={action}
         {...(giveUp ? { secondaryAction: giveUp } : {})}
       />
-      {givingUp && task !== null && failedRun !== null ? (
-        <GiveUpResultDialog task={task} run={failedRun} onClose={() => setGivingUp(false)} />
-      ) : null}
+      {giveUpResult.dialog}
     </>
   );
 }

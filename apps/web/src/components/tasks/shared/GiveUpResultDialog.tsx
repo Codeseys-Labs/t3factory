@@ -1,6 +1,6 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { FactoryTaskRun, FactoryTaskSummary } from "@t3tools/contracts";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { useProject, useThreadShell } from "../../../state/entities";
 import {
@@ -16,10 +16,25 @@ import { Button } from "../../ui/button";
 import { useTaskActions } from "./taskActions";
 
 /**
- * Confirms giving up the result of a run held because it could not be saved. It names the run
- * the person saw, so a run that changed meanwhile is refused instead of given up.
+ * Opens the confirmation for giving up a held run's result. The run is copied when the
+ * confirmation opens, so a live update cannot swap in a run the person never confirmed; the
+ * server refuses that copy once it is no longer the held run.
  */
-export function GiveUpResultDialog({
+export function useGiveUpResult(task: FactoryTaskSummary | null): {
+  open: (run: FactoryTaskRun) => void;
+  dialog: ReactNode;
+} {
+  const [run, setRun] = useState<FactoryTaskRun | null>(null);
+  return {
+    open: setRun,
+    dialog:
+      task !== null && run !== null ? (
+        <GiveUpResultDialog task={task} run={run} onClose={() => setRun(null)} />
+      ) : null,
+  };
+}
+
+function GiveUpResultDialog({
   task,
   run,
   onClose,
@@ -33,7 +48,9 @@ export function GiveUpResultDialog({
   const shell = useThreadShell(scopeThreadRef(task.ref.environmentId, run.threadId));
   const project = useProject(scopeProjectRef(task.ref.environmentId, task.ref.projectId));
   const inProject = run.setup.workspace === "root";
-  const folder = (inProject ? null : shell?.worktreePath) ?? project?.workspaceRoot ?? null;
+  const [folder] = useState(
+    () => (inProject ? null : shell?.worktreePath) ?? project?.workspaceRoot ?? null,
+  );
   const path =
     folder === null ? null : <span className="break-all font-mono text-foreground">{folder}</span>;
   const confirm = async () => {

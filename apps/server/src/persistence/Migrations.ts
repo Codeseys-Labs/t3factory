@@ -6,6 +6,7 @@ import {
   DATABASE_MIGRATIONS_FINISHED_MESSAGE,
   DATABASE_MIGRATIONS_STARTED_MESSAGE,
 } from "@t3tools/shared/databaseMigrationLog";
+import { backupDatabaseOnce } from "../databaseBackup.ts";
 import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
 
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
@@ -386,6 +387,31 @@ const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(funct
   // assertV2MigrationsCanRun reports a history that would still skip migrations, unchanged.
   if (skippedV2Migrations(recorded, throughId).length > 0) return [];
   if (reconciled.legacy.length > 0) {
+    const databases = yield* sql<{
+      readonly name: string;
+      readonly file: string;
+    }>`PRAGMA database_list`;
+    const filename = databases.find((database) => database.name === "main")?.file;
+    if (filename) {
+      const backupDir = `${filename}.before-factory-migration-band`;
+      // Ownership excludes writers; finish checkpoints before the offline main/WAL/SHM copy.
+      const checkpoint = yield* sql<{ readonly busy: number }>`PRAGMA wal_checkpoint(TRUNCATE)`;
+      if (checkpoint.some((row) => row.busy !== 0)) {
+        return yield* new Migrator.MigrationError({
+          kind: "Failed",
+          message: `Cannot prepare the Factory migration backup for ${filename}. Close other database connections and retry; the migration history was not converted.`,
+        });
+      }
+      yield* Effect.tryPromise({
+        try: (signal) => backupDatabaseOnce(filename, backupDir, signal),
+        catch: (cause) =>
+          new Migrator.MigrationError({
+            kind: "Failed",
+            message: `Cannot write the Factory migration backup at ${backupDir}. Check free disk space and directory permissions, then retry; the migration history was not converted.`,
+            cause,
+          }),
+      });
+    }
     yield* sql.withTransaction(
       Effect.gen(function* () {
         for (const row of reconciled.legacy) {

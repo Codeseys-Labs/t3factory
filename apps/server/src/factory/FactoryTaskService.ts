@@ -54,6 +54,8 @@ import {
   type ServerSettings as Settings,
   type ThreadId,
 } from "@t3tools/contracts";
+import { limitSection } from "@t3tools/provider-core/server/textGenerationUtils";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -72,6 +74,7 @@ import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as Processes from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as Git from "../vcs/GitVcsDriver.ts";
 import * as Delivery from "./FactoryDeliveryService.ts";
 import { executionDigest } from "./FactoryExecutionDigest.ts";
 import * as Executions from "./FactoryExecutionService.ts";
@@ -87,6 +90,7 @@ import {
 } from "./FactoryOriginKey.ts";
 import { checkLaneMove, isLiveRunState } from "./FactoryTaskDerivation.ts";
 import * as Work from "./FactoryWorkService.ts";
+import * as GitManager from "../git/GitManager.ts";
 
 /** Set by intake when a source, not a person typing, is where the task came from. */
 export interface FactoryTaskOrigin {
@@ -290,9 +294,10 @@ const FAILED_NATIVE = new Set(["failed", "interrupted", "cancelled"]);
 const GRANT_EXPIRES_AT = "9999-12-31T23:59:59.999Z";
 // The engine keeps a code checkpoint only behind a check. This one changes nothing.
 const CHECKPOINT_CHECK = { command: "git", args: ["rev-parse", "--verify", "HEAD"] };
-const SHA = /^[a-f0-9]{40,64}$/;
 // Leaves the pull request body (FACTORY_DELIVERY_BODY_MAX_CHARS) room for the closing line and footer.
 const REPORT_MAX_CHARS = 60_000;
+// The PR prompt keeps only the first 20,000 characters of the reports; stay under it so none is lost.
+const PR_REPORTS_MAX_CHARS = 16_000;
 
 const planError = (error: FactoryPlanError) => {
   const reasons: Record<FactoryPlanError["reason"], FactoryTaskError["reason"]> = {
@@ -459,12 +464,14 @@ const make = Effect.gen(function* () {
   const plans = yield* Plans.FactoryPlanService;
   const work = yield* Work.FactoryWorkService;
   const executions = yield* Executions.FactoryExecutionService;
+  const gitManager = yield* GitManager.GitManager;
   const executionStore = yield* ExecutionStore.FactoryExecutionStore;
   const outbox = yield* EffectOutbox.EffectOutboxV2;
   const projections = yield* Projections.ProjectionStoreV2;
   const events = yield* OrchestrationEventStore.OrchestrationEventStore;
   const settings = yield* ServerSettings.ServerSettingsService;
   const processes = yield* Processes.ProcessRunner;
+  const git = yield* Git.GitVcsDriver;
   const changes = yield* Changes.FactoryTaskChanges;
   const delivery = yield* Delivery.FactoryDeliveryService;
   const deliveryStore = yield* DeliveryStore.FactoryDeliveryStore;
@@ -572,11 +579,37 @@ const make = Effect.gen(function* () {
     const existing = yield* store.receipt(commandId);
     if (existing !== null && (existing.kind !== kind || existing.digest !== digest))
       return yield* refuse("command-conflict");
+    if (existing === null) {
+      // An unfinished run command holds its id through its input pin, against every kind of command.
+      const pin = yield* store.receipt(derived(commandId, "input"));
+      if (pin !== null && (pin.kind !== kind || pin.digest !== digest))
+        return yield* refuse("command-conflict");
+    }
     return {
+      digest,
       replayed: existing !== null,
       outcome: existing?.outcome,
       record: (outcome: unknown) => store.recordReceipt({ commandId, kind, digest, outcome }),
     };
+  });
+
+  const pinInput = Effect.fn("FactoryTaskService.pinInput")(function* (
+    commandId: CommandId,
+    kind: string,
+    digest: string,
+  ) {
+    const pinId = derived(commandId, "input");
+    let existing = yield* store.receipt(pinId);
+    if (existing === null) {
+      const recorded = yield* store
+        .recordReceipt({ commandId: pinId, kind, digest, outcome: null })
+        .pipe(Effect.result);
+      if (Result.isSuccess(recorded)) return;
+      existing = yield* store.receipt(pinId);
+      if (existing === null) return yield* recorded.failure;
+    }
+    if (existing.kind !== kind || existing.digest !== digest)
+      return yield* refuse("command-conflict");
   });
 
   const applyPlan = Effect.fn("FactoryTaskService.applyPlan")(function* (input: {
@@ -712,26 +745,61 @@ const make = Effect.gen(function* () {
     }
   });
 
-  const headCommit = Effect.fn("FactoryTaskService.headCommit")(function* (projectId: ProjectId) {
-    const cwd = yield* store.projectWorkspace(projectId);
-    if (cwd === null) return yield* refuse("missing-project");
-    const head = yield* processes
-      .run({
-        command: "git",
-        args: ["rev-parse", "--verify", "HEAD^{commit}"],
+  const worktreeBase = Effect.fn("FactoryTaskService.headCommit")(
+    function* (projectId: ProjectId) {
+      const cwd = yield* store.projectWorkspace(projectId);
+      if (cwd === null) return yield* refuse("missing-project");
+      const symbolic = yield* git.execute({
+        operation: "FactoryTaskService.worktreeBase",
         cwd,
-        maxOutputBytes: 256,
-        outputMode: "error",
-      })
-      .pipe(
-        Effect.mapError(
-          (cause) => new FactoryTaskError({ reason: "unsupported-capability", cause }),
+        args: ["rev-parse", "--symbolic-full-name", "--verify", "HEAD"],
+        maxOutputBytes: 4096,
+      });
+      if (symbolic.stdoutTruncated || symbolic.stderrTruncated)
+        return yield* new FactoryTaskError({
+          reason: "unsupported-capability",
+          detail: "Could not read which branch the project folder is on.",
+        });
+      const ref = symbolic.stdout.trim();
+      const branch = ref.startsWith("refs/heads/");
+      // The commit comes from the branch just named, so a checkout in between cannot split them.
+      const { commitSha } = yield* git.resolveCommit({ cwd, revision: branch ? ref : "HEAD" });
+      const current = yield* settings.getSettings.pipe(Effect.mapError(asTaskError));
+      if (
+        !branch ||
+        !resolveProjectSettings(current, projectId).settings.newWorktreesStartFromOrigin
+      )
+        return commitSha;
+      const refName = ref.slice("refs/heads/".length);
+      const remote = yield* git.resolveWorktreeBaseRemote({ cwd, refName });
+      if (remote === null) return commitSha;
+      const fetched = yield* git.fetchWorktreeBaseCommit({ cwd, refName, remote });
+      if (fetched === null) return commitSha;
+      const ancestor = yield* git.execute({
+        operation: "FactoryTaskService.worktreeBase",
+        cwd,
+        args: ["merge-base", "--is-ancestor", commitSha, fetched.commitSha],
+        allowNonZeroExit: true,
+        maxOutputBytes: 4096,
+      });
+      if (ancestor.exitCode === 0) return fetched.commitSha;
+      if (ancestor.exitCode === 1) return commitSha;
+      return yield* new FactoryTaskError({
+        reason: "unsupported-capability",
+        detail: "Could not compare the project folder with its remote branch.",
+      });
+    },
+    Effect.catchTags({
+      GitCommandError: (cause) =>
+        Effect.fail(
+          new FactoryTaskError({
+            reason: "unsupported-capability",
+            detail: cause.detail,
+            cause,
+          }),
         ),
-      );
-    const sha = head.stdout.trim();
-    if (head.code !== 0 || !SHA.test(sha)) return yield* refuse("unsupported-capability");
-    return sha;
-  });
+    }),
+  );
 
   const requireIdleSiblings = Effect.fn("FactoryTaskService.requireIdleSiblings")(function* (
     row: Tasks.TaskRow,
@@ -777,7 +845,8 @@ const make = Effect.gen(function* () {
     readonly commandId: CommandId;
     readonly task: Tasks.TaskView;
     readonly setup: FactoryAgentSetup;
-    readonly profileId: string | null;
+    /** Assigns the agent and yields its profile. Run after the approval check, so a refused Start assigns nothing. */
+    readonly assign: Effect.Effect<string | null, FactoryTaskError>;
     readonly actor: FactoryPlanActor;
     /** A code result to continue from, instead of the project's current commit. */
     readonly baseCommit: string | null;
@@ -785,80 +854,119 @@ const make = Effect.gen(function* () {
     const { row } = input.task;
     const ref = planRef(row);
     const admitId = derived(input.commandId, "admit");
-    yield* store.registerLaunch({ commandId: admitId, profileId: input.profileId, actor: PERSON });
     if (yield* store.launched(admitId)) return;
-    const next = yield* nextRound(row);
-    let { head, prior } = next;
-    if (next.round) {
-      const title = head.tasks.find((task) => task.id === row.taskId)?.title ?? row.title;
-      head = (yield* transact(
-        Effect.gen(function* () {
-          yield* requireIdleSiblings(row, head.revision);
-          return yield* plans
-            .apply(
-              {
-                commandId: derived(input.commandId, "round"),
-                ref,
-                expectedRevision: head.revision,
-                operations: [{ type: "task.update", id: row.taskId, title }],
-              },
-              input.actor,
-            )
-            .pipe(Effect.mapError(planError));
-        }),
-      )).plan;
-      prior = null;
-    }
     const worktree = input.setup.workspace === "worktree";
-    const spec: FactoryExecutionTaskSpec = {
-      taskId: row.taskId,
-      modelSelection: input.setup.modelSelection,
-      runtimeMode: input.setup.runtimeMode,
-      interactionMode: input.setup.interactionMode,
-      workspaceStrategy: worktree
-        ? { type: "worktree", baseRef: input.baseCommit ?? (yield* headCommit(row.projectId)) }
-        : { type: "root" },
-      setup: "deny",
-      ...(worktree ? { verification: CHECKPOINT_CHECK } : {}),
-      output: { slot: "result", kind: worktree ? "verified-code" : "sealed-draft" },
-    };
-    const running = yield* store.liveAttempts({
-      rootId: row.rootId,
-      revision: head.revision,
-      exceptTaskId: row.taskId,
-    });
-    const policy: FactoryExecutionPolicy = {
-      version: 1,
-      requesterThreadIds: [],
-      tasks: [spec, ...running.map((attempt) => attempt.spec)],
-      edges: [],
-      advisoryEdges: true,
-      // A new grant replaces the last one; naming the running attempts keeps them authorized.
-      ...(running.length === 0
-        ? {}
-        : { continues: running.map((attempt) => attempt.runAttemptId) }),
-      maxAttempts: MAX_TASKS,
-      maxRetriesPerTask: MAX_TASKS,
-      maxConcurrent: MAX_TASKS,
-      expiresAt: GRANT_EXPIRES_AT,
-      requiredCapabilities: [],
-    };
-    const granted = yield* executions
-      .issueGrant(
-        {
+    const { grant, prior } = yield* Effect.gen(function* () {
+      const recorded = yield* executionStore
+        .recordedGrant({
           commandId: derived(input.commandId, "grant"),
           ref,
-          expectedRevision: head.revision,
-          expectedGrantVersion: yield* store.grantVersion(row.rootId),
-          policy,
-        },
-        input.actor,
-      )
-      .pipe(Effect.mapError(executionError));
+          actor: input.actor,
+          now: yield* now,
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            ["grant-conflict", "grant-inactive", "grant-expired", "revision-conflict"].includes(
+              error.reason,
+            )
+              ? // A revoked or expired approval is not a permission problem: starting again fixes it.
+                new FactoryTaskError({
+                  reason: "version-conflict",
+                  detail: "This Start's approval is no longer current. Start the task again.",
+                  cause: error,
+                })
+              : executionError(error),
+          ),
+        );
+      const profileId = yield* input.assign;
+      if (recorded !== null)
+        return {
+          grant: recorded,
+          prior: yield* store.engineAttempt({
+            rootId: row.rootId,
+            revision: recorded.revision,
+            taskId: row.taskId,
+          }),
+        };
+      const workspaceStrategy: FactoryExecutionTaskSpec["workspaceStrategy"] = worktree
+        ? { type: "worktree", baseRef: input.baseCommit ?? (yield* worktreeBase(row.projectId)) }
+        : { type: "root" };
+      yield* store.registerLaunch({
+        commandId: admitId,
+        profileId,
+        actor: PERSON,
+      });
+      const next = yield* nextRound(row);
+      let { head, prior } = next;
+      if (next.round) {
+        const title = head.tasks.find((task) => task.id === row.taskId)?.title ?? row.title;
+        head = (yield* transact(
+          Effect.gen(function* () {
+            yield* requireIdleSiblings(row, head.revision);
+            return yield* plans
+              .apply(
+                {
+                  commandId: derived(input.commandId, "round"),
+                  ref,
+                  expectedRevision: head.revision,
+                  operations: [{ type: "task.update", id: row.taskId, title }],
+                },
+                input.actor,
+              )
+              .pipe(Effect.mapError(planError));
+          }),
+        )).plan;
+        prior = null;
+      }
+      const spec: FactoryExecutionTaskSpec = {
+        taskId: row.taskId,
+        modelSelection: input.setup.modelSelection,
+        runtimeMode: input.setup.runtimeMode,
+        interactionMode: input.setup.interactionMode,
+        workspaceStrategy,
+        setup: "deny",
+        ...(worktree ? { verification: CHECKPOINT_CHECK } : {}),
+        output: { slot: "result", kind: worktree ? "verified-code" : "sealed-draft" },
+      };
+      const running = yield* store.liveAttempts({
+        rootId: row.rootId,
+        revision: head.revision,
+        exceptTaskId: row.taskId,
+      });
+      const policy: FactoryExecutionPolicy = {
+        version: 1,
+        requesterThreadIds: [],
+        tasks: [spec, ...running.map((attempt) => attempt.spec)],
+        edges: [],
+        advisoryEdges: true,
+        // A new grant replaces the last one; naming the running attempts keeps them authorized.
+        ...(running.length === 0
+          ? {}
+          : { continues: running.map((attempt) => attempt.runAttemptId) }),
+        maxAttempts: MAX_TASKS,
+        maxRetriesPerTask: MAX_TASKS,
+        maxConcurrent: MAX_TASKS,
+        expiresAt: GRANT_EXPIRES_AT,
+        requiredCapabilities: [],
+      };
+      const granted = yield* executions
+        .issueGrant(
+          {
+            commandId: derived(input.commandId, "grant"),
+            ref,
+            expectedRevision: head.revision,
+            expectedGrantVersion: yield* store.grantVersion(row.rootId),
+            policy,
+          },
+          input.actor,
+        )
+        .pipe(Effect.mapError(executionError));
+      return { grant: granted.execution.grant!, prior };
+    });
     const admission = {
       commandId: admitId,
-      selection: { ref, revision: head.revision, taskId: row.taskId },
-      grantVersion: granted.execution.grant!.version,
+      selection: { ref, revision: grant.revision, taskId: row.taskId },
+      grantVersion: grant.version,
     };
     yield* (
       prior === null
@@ -912,7 +1020,7 @@ const make = Effect.gen(function* () {
     readonly commandId: CommandId;
     readonly task: Tasks.TaskView;
     readonly setup: FactoryAgentSetup;
-    readonly profileId: string | null;
+    readonly assign: Effect.Effect<string | null, FactoryTaskError>;
     readonly actor: FactoryPlanActor;
     readonly baseCommit: string | null;
     readonly record: (outcome: unknown) => Effect.Effect<void, FactoryTaskError>;
@@ -1394,6 +1502,7 @@ const make = Effect.gen(function* () {
       const input = yield* decodeStart(raw).pipe(Effect.mapError(invalid));
       const command = yield* begin("start", input.commandId, actor, input);
       if (command.replayed) return yield* replay(input.ref);
+      yield* pinInput(input.commandId, "start", command.digest);
       const { root, task } = yield* requireTask(input.ref);
       // A command that already admitted its run only has to finish recording it.
       if (!(yield* store.launched(derived(input.commandId, "admit")))) {
@@ -1412,7 +1521,7 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         task,
         setup: input.setup,
-        profileId: yield* assignFor(task, input.setup),
+        assign: assignFor(task, input.setup),
         actor,
         baseCommit: null,
         record: command.record,
@@ -1426,6 +1535,7 @@ const make = Effect.gen(function* () {
       const input = yield* decodeRetry(raw).pipe(Effect.mapError(invalid));
       const command = yield* begin("retry", input.commandId, actor, input);
       if (command.replayed) return yield* replay(input.ref);
+      yield* pinInput(input.commandId, "retry", command.digest);
       const { root, task } = yield* requireTask(input.ref);
       const work = task.runs.filter((entry) => entry.purpose === "work");
       const resumed = yield* store.launched(derived(input.commandId, "admit"));
@@ -1450,10 +1560,10 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         task,
         setup,
-        profileId:
+        assign:
           input.setup === undefined
-            ? (previous?.profileId ?? null)
-            : yield* assignFor(task, input.setup),
+            ? Effect.succeed(previous?.profileId ?? null)
+            : assignFor(task, input.setup),
         actor,
         // A failed Request changes run starts again from the result it was changing.
         baseCommit:
@@ -1618,6 +1728,7 @@ const make = Effect.gen(function* () {
     const input = yield* decodeRequestChanges(raw).pipe(Effect.mapError(invalid));
     const command = yield* begin("requestChanges", input.commandId, actor, input);
     if (command.replayed) return yield* replay(input.ref);
+    yield* pinInput(input.commandId, "requestChanges", command.digest);
     const { root, task } = yield* requireTask(input.ref);
     const { row } = task;
     // A failed request clears the pending note, so two in flight on one task could clear the other's.
@@ -1664,7 +1775,7 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         task,
         setup: author.setup,
-        profileId: author.profileId,
+        assign: Effect.succeed(author.profileId),
         actor,
         // Code continues from the result under review; a document starts from the task again.
         baseCommit: latest.kind === "code" ? latest.commit : null,
@@ -1730,18 +1841,76 @@ const make = Effect.gen(function* () {
     return { ...result, commit: result.commit };
   });
 
+  const resultReport = Effect.fn("FactoryTaskService.resultReport")(function* (
+    row: Tasks.TaskRow,
+    result: Tasks.TaskResultRow,
+  ) {
+    const output = yield* executions
+      .readOutput({
+        selection: { ref: planRef(row), revision: result.planRevision, taskId: row.taskId },
+        resultId: result.resultId,
+      })
+      .pipe(Effect.mapError(executionError));
+    return ((yield* finalAnswer(result.threadId, output.output.runId)) ?? output.text).trim();
+  });
+
   /**
-   * What Publish opens: the result's own commit subject and the agent's report on it. The task
-   * description stays out; it was written for the agent and may hold notes not meant for the host.
+   * The writer gets commits, the diff and each run's report, never a person's messages.
+   * Anything an agent repeats in its report can reach the host, as it could before generation.
    */
   const publication = Effect.fn("FactoryTaskService.publication")(function* (
     row: Tasks.TaskRow,
     result: Tasks.TaskResultRow & { readonly commit: string },
+    commandId: CommandId,
     baseRef: string | null,
+    headBranch: string,
+    results: ReadonlyArray<Tasks.TaskResultRow>,
   ) {
+    const previous = yield* deliveryStore
+      .getByCommand(commandId)
+      .pipe(Effect.mapError(deliveryRefusal));
+    if (
+      Option.isSome(previous) &&
+      previous.value.kind === "publish-pr" &&
+      "title" in previous.value.payload
+    ) {
+      return { ...previous.value.payload, closes: null };
+    }
     const cwd = yield* store.projectWorkspace(row.projectId);
-    const subjects =
+    // Publish is refused without a default branch; asking the writer first would only delay that.
+    const baseBranch =
       cwd === null || baseRef === null
+        ? null
+        : yield* git.resolveDefaultBranchName(cwd, "origin").pipe(Effect.orElseSucceed(() => null));
+    const generated =
+      cwd === null || baseRef === null || !baseBranch
+        ? undefined
+        : yield* Effect.gen(function* () {
+            const share = Math.floor(PR_REPORTS_MAX_CHARS / results.length);
+            const reports = yield* Effect.forEach(results, (entry) =>
+              resultReport(row, entry).pipe(
+                Effect.map((report) =>
+                  limitSection(`Result rev ${entry.revision}\n${report}`, share),
+                ),
+              ),
+            );
+            return yield* gitManager.generatePrContent({
+              cwd,
+              projectId: row.projectId,
+              baseBranch,
+              headBranch,
+              baseRef,
+              headRef: result.commit,
+              threadContext: reports.join("\n\n"),
+            });
+          }).pipe(
+            Effect.timeoutOption("3 minutes"),
+            Effect.orElseSucceed(() => Option.none()),
+            Effect.map(Option.getOrUndefined),
+          );
+    const content = generated?.title.trim() && generated.body.trim() ? generated : undefined;
+    const subjects =
+      content !== undefined || cwd === null || baseRef === null
         ? []
         : yield* processes
             .run({
@@ -1757,21 +1926,13 @@ const make = Effect.gen(function* () {
               ),
               Effect.orElseSucceed((): ReadonlyArray<string> => []),
             );
-    const output = yield* executions
-      .readOutput({
-        selection: { ref: planRef(row), revision: result.planRevision, taskId: row.taskId },
-        resultId: result.resultId,
-      })
-      .pipe(Effect.mapError(executionError));
-    // Without the thread's messages, everything the run said is the closest account of it.
-    const report = (
-      (yield* finalAnswer(result.threadId, output.output.runId)) ?? output.text
-    ).trim();
+    const report = content?.body ?? (yield* resultReport(row, result));
     return {
       title:
-        subjects.length === 1
+        content?.title.trim().slice(0, FACTORY_DELIVERY_TITLE_MAX_CHARS) ??
+        (subjects.length === 1
           ? subjects[0]!.trim().slice(0, FACTORY_DELIVERY_TITLE_MAX_CHARS)
-          : row.title,
+          : row.title),
       body: [
         report.length > REPORT_MAX_CHARS ? `${report.slice(0, REPORT_MAX_CHARS)}\n\n…` : report,
         `---\n_Task ${row.displayId} · result rev ${result.revision} · ${result.summary}_`,
@@ -1797,6 +1958,7 @@ const make = Effect.gen(function* () {
     const { task } = yield* requireTask(input.ref);
     const { row } = task;
     const result = yield* deliverable(task, input.revision);
+    const results: Array<Tasks.TaskResultRow> = [result];
     let baseRef =
       task.runs.find((run) => run.purpose === "work" && run.threadId === result.threadId)
         ?.baseRef ?? null;
@@ -1806,6 +1968,7 @@ const make = Effect.gen(function* () {
         (entry) => entry.revision < revision && entry.kind === "code" && entry.commit === baseRef,
       );
       if (continued === undefined) break;
+      results.unshift(continued);
       baseRef =
         task.runs.find((run) => run.purpose === "work" && run.threadId === continued.threadId)
           ?.baseRef ?? null;
@@ -1824,7 +1987,17 @@ const make = Effect.gen(function* () {
         baseRef,
         publish:
           kind === "publish-pr"
-            ? { ...(yield* publication(row, result, baseRef)), headBranch }
+            ? {
+                ...(yield* publication(
+                  row,
+                  result,
+                  derived(input.commandId, kind),
+                  baseRef,
+                  headBranch,
+                  results,
+                )),
+                headBranch,
+              }
             : { title: row.title, body: "", headBranch, closes: null },
         // Inside the grant transaction: a reopen between the click and the grant wins.
         recheck: store.acceptedRevision(row).pipe(

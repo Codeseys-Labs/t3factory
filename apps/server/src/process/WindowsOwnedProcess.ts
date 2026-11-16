@@ -157,7 +157,7 @@ export const makeWindowsOwnedProcess = Effect.fn("WindowsOwnedProcess.make")(fun
       const inherits = command.options.env === undefined || command.options.extendEnv === true;
       const visible: NodeJS.ProcessEnv = inherits ? { ...(yield* HostProcess.Environment) } : {};
       for (const [name, value] of Object.entries(command.options.env ?? {})) {
-        if (value === undefined || typeof value === "string") visible[name] = value;
+        visible[name] = value === undefined ? undefined : revealCommandWord(value);
       }
       // An agent's own git reads tracked files beyond MAX_PATH as deleted without core.longpaths.
       const env = {

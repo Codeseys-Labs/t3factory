@@ -225,6 +225,26 @@ it.live.each([
       extendEnv: false,
     },
   },
+  {
+    name: "redacts its Git settings",
+    options: {
+      env: {
+        GIT_CONFIG_COUNT: Redacted.make("1"),
+        GIT_CONFIG_KEY_0: "user.name",
+        GIT_CONFIG_VALUE_0: "Ada",
+      },
+    },
+    expected: {
+      env: {
+        GIT_CONFIG_COUNT: "2",
+        GIT_CONFIG_KEY_0: "user.name",
+        GIT_CONFIG_VALUE_0: "Ada",
+        GIT_CONFIG_KEY_1: "core.longpaths",
+        GIT_CONFIG_VALUE_1: "true",
+      },
+      extendEnv: false,
+    },
+  },
 ])("turns on Git long paths for a command that $name", ({ options, expected }) =>
   Effect.gen(function* () {
     if (windowsHost !== true) return;

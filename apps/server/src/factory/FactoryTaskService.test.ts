@@ -22,7 +22,7 @@ import {
   SourceControlProviderKind,
   ThreadId,
   type FactoryAgentSetup,
-  type FactoryTaskError,
+  FactoryTaskError,
   type FactoryTaskChange,
   type FactoryTaskCreateInput,
   type FactoryTaskMutationResult,
@@ -724,10 +724,42 @@ it.effect.each(["first start", "retry", "document result"] as const)(
         assert.equal(grants.length, stage === "first start" ? 1 : 2);
         assert.equal(runs.length, stage === "first start" ? 0 : 1);
         assert.equal(probe.fetches, 1);
+        if (stage === "document result") {
+          const note =
+            yield* sql`SELECT input_note FROM factory_tasks WHERE task_id = ${task.ref.taskId}`;
+          const activity = yield* sql`SELECT * FROM factory_task_activity`;
+          assert.deepEqual(note, [{ input_note: null }]);
+          assert.isFalse(
+            (yield* tasks.activity({ ref: task.ref })).entries.some(
+              (entry) => entry.event.type === "changes-requested",
+            ),
+          );
+          const refused = yield* tasks
+            .requestChanges({ commandId, ref: task.ref, revision: 1, note: "Another note" }, human)
+            .pipe(Effect.result);
+          assert.isTrue(Result.isFailure(refused));
+          if (Result.isFailure(refused)) assert.equal(refused.failure.reason, "command-conflict");
+          assert.deepEqual(
+            yield* sql`SELECT input_note FROM factory_tasks WHERE task_id = ${task.ref.taskId}`,
+            note,
+          );
+          assert.deepEqual(yield* sql`SELECT * FROM factory_task_activity`, activity);
+          assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, runs);
+        }
         probe.fetched = "e".repeat(40);
         const resumed = yield* request;
         const replayed = yield* request;
         assert.equal(replayed.task.run?.threadId, resumed.task.run?.threadId);
+        if (stage === "document result") {
+          const bindings = yield* sql<{
+            text: string;
+          }>`SELECT json_extract(binding_json, '$.inputText') AS text FROM factory_execution_bindings WHERE thread_id = ${resumed.task.run!.threadId}`;
+          assert.include(
+            bindings[0]!.text,
+            "Changes requested on the previous result:\nImplement it",
+          );
+          assert.notInclude(bindings[0]!.text, "Another note");
+        }
         assert.deepEqual(
           yield* sql`SELECT json_extract(binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef FROM factory_execution_bindings WHERE thread_id = ${resumed.task.run!.threadId}`,
           [{ baseRef: remoteHead }],
@@ -806,34 +838,102 @@ it.effect.each(["replaced", "revoked"] as const)(
 );
 
 it.effect.each([
-  { name: "another agent", setup: setupOf("other") },
-  { name: "another workspace", setup: setupOf("replay", "root") },
-])("refuses a recorded grant's Start replayed with $name, then admits the original", ({ setup }) =>
-  scenario(
-    Effect.gen(function* () {
-      const { sql, tasks, create, summary } = yield* harness;
-      const task = yield* create("Changed request", { lane: "ready" });
-      const input = {
-        commandId: command("changed-start"),
-        ref: task.ref,
-        expectedVersion: task.version,
-        setup: setupOf(),
-      };
-      const gate = yield* OutputGate;
-      gate.admission = Effect.fail(new FactoryExecutionError({ reason: "persistence-failure" }));
-      assert.isTrue(Result.isFailure(yield* tasks.start(input, human).pipe(Effect.result)));
-      const assigned = (yield* summary(task)).assignee.key;
-      const refused = yield* tasks.start({ ...input, setup }, human).pipe(Effect.result);
-      assert.isTrue(Result.isFailure(refused));
-      if (Result.isFailure(refused)) assert.equal(refused.failure.reason, "command-conflict");
-      assert.equal((yield* summary(task)).assignee.key, assigned);
-      assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, []);
-      const resumed = yield* tasks.start(input, human);
-      assert.deepEqual(yield* sql`SELECT thread_id AS threadId FROM factory_execution_bindings`, [
-        { threadId: resumed.task.run!.threadId },
-      ]);
-    }),
-  ),
+  { name: "another agent", setup: setupOf("other"), admitted: false },
+  { name: "another workspace", setup: setupOf("replay", "root"), admitted: false },
+  { name: "another agent after admission", setup: setupOf("other"), admitted: true },
+])(
+  "refuses a recorded grant's Start replayed with $name, then admits the original",
+  ({ setup, admitted }) =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, summary } = yield* harness;
+        const task = yield* create("Changed request", { lane: "ready" });
+        const input = {
+          commandId: command("changed-start"),
+          ref: task.ref,
+          expectedVersion: task.version,
+          setup: setupOf(),
+        };
+        const gate = yield* OutputGate;
+        const store = yield* TaskStore.FactoryTaskStore;
+        const recordReceipt = store.recordReceipt;
+        let failReceipt = admitted;
+        using _receipt = vi.spyOn(store, "recordReceipt").mockImplementation((receipt) => {
+          if (receipt.commandId === input.commandId && failReceipt) {
+            failReceipt = false;
+            return Effect.fail(new FactoryTaskError({ reason: "persistence-failure" }));
+          }
+          return recordReceipt(receipt);
+        });
+        if (!admitted)
+          gate.admission = Effect.fail(
+            new FactoryExecutionError({ reason: "persistence-failure" }),
+          );
+        const failed = yield* tasks.start(input, human).pipe(Effect.result);
+        assert.isTrue(Result.isFailure(failed));
+        if (Result.isFailure(failed)) assert.equal(failed.failure.reason, "persistence-failure");
+        assert.isNull(yield* store.receipt(input.commandId));
+        const assigned = (yield* summary(task)).assignee.key;
+        const bindings = yield* sql`SELECT * FROM factory_execution_bindings`;
+        assert.equal(bindings.length, admitted ? 1 : 0);
+        const refused = yield* tasks.start({ ...input, setup }, human).pipe(Effect.result);
+        assert.isTrue(Result.isFailure(refused));
+        if (Result.isFailure(refused)) assert.equal(refused.failure.reason, "command-conflict");
+        assert.equal((yield* summary(task)).assignee.key, assigned);
+        assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, bindings);
+        const resumed = yield* tasks.start(input, human);
+        assert.deepEqual(yield* sql`SELECT thread_id AS threadId FROM factory_execution_bindings`, [
+          { threadId: resumed.task.run!.threadId },
+        ]);
+      }),
+    ),
+);
+
+it.effect.each(["same", "another kind", "another digest", "no winner"] as const)(
+  "handles an input pin insert that loses to %s",
+  (winner) =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, summary } = yield* harness;
+        const task = yield* create("Input pin race", { lane: "ready" });
+        const input = {
+          commandId: command("pin-race"),
+          ref: task.ref,
+          expectedVersion: task.version,
+          setup: setupOf(),
+        };
+        const pinId = CommandId.make(`factory-task:input:${input.commandId}`);
+        const store = yield* TaskStore.FactoryTaskStore;
+        const recordReceipt = store.recordReceipt;
+        using _receipt = vi.spyOn(store, "recordReceipt").mockImplementation((receipt) => {
+          if (receipt.commandId !== pinId) return recordReceipt(receipt);
+          if (winner === "no winner")
+            return Effect.fail(new FactoryTaskError({ reason: "persistence-failure" }));
+          return recordReceipt({
+            ...receipt,
+            kind: winner === "another kind" ? "retry" : receipt.kind,
+            digest: winner === "another digest" ? "another-digest" : receipt.digest,
+          }).pipe(Effect.andThen(recordReceipt(receipt)));
+        });
+        const started = yield* tasks.start(input, human).pipe(Effect.result);
+        if (winner === "same") {
+          assert.isTrue(Result.isSuccess(started));
+          assert.isNull((yield* store.receipt(pinId))!.outcome);
+          assert.deepEqual(yield* sql`SELECT count(*) AS count FROM factory_execution_bindings`, [
+            { count: 1 },
+          ]);
+        } else {
+          assert.isTrue(Result.isFailure(started));
+          if (Result.isFailure(started))
+            assert.equal(
+              started.failure.reason,
+              winner === "no winner" ? "persistence-failure" : "command-conflict",
+            );
+          assert.deepEqual((yield* summary(task)).assignee, task.assignee);
+          assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, []);
+        }
+      }),
+    ),
 );
 
 it.effect("replays a rejected grant receipt as its original rejection without admitting", () =>

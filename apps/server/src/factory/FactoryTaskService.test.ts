@@ -2747,7 +2747,7 @@ it.effect(
             {
               branch: `t3/T-1-rev1-${executionDigest([environmentId, projectId, task.ref.rootId, task.ref.taskId]).slice(0, 32)}/audio-ring-demo`,
               title: generatedPr.title,
-              body: `${generatedPr.body}\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_`,
+              body: `${generatedPr.body}\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_\n\nModel \`replay\` in \`devReplay\` via T3 Factory.`,
               head: resultCommit,
             },
           ],
@@ -3293,7 +3293,7 @@ it.effect.each(["provider-error", "empty", "timeout", "no default branch"] as co
           [
             {
               title: "fix(board): cards keep their width",
-              body: "Original run report\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_",
+              body: "Original run report\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_\n\nModel `replay` in `devReplay` via T3 Factory.",
             },
           ],
         );

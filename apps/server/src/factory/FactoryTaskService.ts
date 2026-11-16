@@ -1865,6 +1865,7 @@ const make = Effect.gen(function* () {
     baseRef: string | null,
     headBranch: string,
     results: ReadonlyArray<Tasks.TaskResultRow>,
+    selection: { readonly model: string; readonly instanceId: string } | null,
   ) {
     const previous = yield* deliveryStore
       .getByCommand(commandId)
@@ -1936,6 +1937,9 @@ const make = Effect.gen(function* () {
       body: [
         report.length > REPORT_MAX_CHARS ? `${report.slice(0, REPORT_MAX_CHARS)}\n\n…` : report,
         `---\n_Task ${row.displayId} · result rev ${result.revision} · ${result.summary}_`,
+        selection?.model && selection.instanceId
+          ? `Model \`${selection.model}\` in \`${selection.instanceId}\` via T3 Factory.`
+          : "",
       ]
         .filter((part) => part !== "")
         .join("\n\n"),
@@ -1959,9 +1963,10 @@ const make = Effect.gen(function* () {
     const { row } = task;
     const result = yield* deliverable(task, input.revision);
     const results: Array<Tasks.TaskResultRow> = [result];
-    let baseRef =
-      task.runs.find((run) => run.purpose === "work" && run.threadId === result.threadId)
-        ?.baseRef ?? null;
+    const resultRun = task.runs.find(
+      (run) => run.purpose === "work" && run.threadId === result.threadId,
+    );
+    let baseRef = resultRun?.baseRef ?? null;
     let revision = result.revision;
     while (baseRef !== null) {
       const continued = task.results.findLast(
@@ -1995,6 +2000,7 @@ const make = Effect.gen(function* () {
                   baseRef,
                   headBranch,
                   results,
+                  resultRun?.setup.modelSelection ?? null,
                 )),
                 headBranch,
               }

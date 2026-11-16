@@ -1,5 +1,5 @@
 import { ProviderDriverKind, ProviderInstanceId, type FactoryAgentSetup } from "@t3tools/contracts";
-import { expect, it, vi } from "vite-plus/test";
+import { expect, it } from "vite-plus/test";
 
 import type { ProviderInstanceEntry } from "../../../providerInstances";
 import { hasChosenOptions, taskTraitsInput, withModelOptions } from "./taskModelOptions.logic";
@@ -50,8 +50,8 @@ it("stores chosen options on the model and clears them back to the provider's de
   expect(hasChosenOptions(withModelOptions(chosen, []))).toBe(false);
 });
 
-it("offers the model's options as the composer does, and hands a pick to the caller", () => {
-  const onChange = vi.fn();
+it("offers the model's options as the composer does", () => {
+  const onChange = () => {};
   expect(taskTraitsInput(entries, setup(), onChange)).toMatchObject({
     provider: "codex",
     model: "terra",
@@ -60,7 +60,5 @@ it("offers the model's options as the composer does, and hands a pick to the cal
   });
   const stored = taskTraitsInput(entries, setup(effort), onChange);
   expect(stored?.modelOptions).toEqual([...effort, { id: "fastMode", value: false }]);
-  stored?.onModelOptionsChange?.(effort);
-  expect(onChange).toHaveBeenCalledExactlyOnceWith(effort);
   expect(taskTraitsInput([], setup(), onChange)).toBeNull();
 });

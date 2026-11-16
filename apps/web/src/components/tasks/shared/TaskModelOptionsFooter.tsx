@@ -28,9 +28,11 @@ export function TaskModelOptionsFooter(props: {
       {traits ? <SpeedControl traits={traits} /> : null}
       {traits ? <UltracodeControl traits={traits} /> : null}
       {hasChosen ? (
-        <Button className="ms-auto" variant="ghost-muted" size="compact" onClick={onReset}>
-          Use model defaults
-        </Button>
+        <div className="ms-auto">
+          <Button variant="ghost-muted" size="compact" onClick={onReset}>
+            Use model defaults
+          </Button>
+        </div>
       ) : null}
     </div>
   );

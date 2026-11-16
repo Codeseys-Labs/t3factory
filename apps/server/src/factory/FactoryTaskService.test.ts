@@ -3271,8 +3271,7 @@ it.effect.each(["provider-error", "empty", "timeout", "no default branch"] as co
                   }),
                 );
         const task = yield* create("Audio ring demo", { lane: "ready" });
-        const run = (yield* start(task)).run!;
-        yield* finish(run, "sealed", "Original run report");
+        yield* finish((yield* start(task)).run!, "sealed", "Original run report");
         yield* until(task, (current) => current.status === "in-review");
         yield* tasks.accept({ commandId: command("accept"), ref: task.ref, revision: 1 }, human);
         // Publish is refused without a default branch, so the writer is not asked first.

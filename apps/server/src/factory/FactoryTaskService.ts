@@ -1865,6 +1865,7 @@ const make = Effect.gen(function* () {
     baseRef: string | null,
     headBranch: string,
     results: ReadonlyArray<Tasks.TaskResultRow>,
+    selection: { readonly model: string; readonly instanceId: string } | null,
   ) {
     const previous = yield* deliveryStore
       .getByCommand(commandId)
@@ -1927,8 +1928,6 @@ const make = Effect.gen(function* () {
               Effect.orElseSucceed((): ReadonlyArray<string> => []),
             );
     const report = content?.body ?? (yield* resultReport(row, result));
-    const selections = yield* sql<{ model: string | null; instanceId: string | null }>`SELECT json_extract(setup_json, '$.modelSelection.model') AS model, json_extract(setup_json, '$.modelSelection.instanceId') AS instanceId FROM factory_task_runs WHERE thread_id = ${result.threadId}`.pipe(Effect.mapError((cause) => new FactoryTaskError({ reason: "persistence-failure", cause })));
-    const selection = selections[0];
     return {
       title:
         content?.title.trim().slice(0, FACTORY_DELIVERY_TITLE_MAX_CHARS) ??
@@ -1964,9 +1963,10 @@ const make = Effect.gen(function* () {
     const { row } = task;
     const result = yield* deliverable(task, input.revision);
     const results: Array<Tasks.TaskResultRow> = [result];
-    let baseRef =
-      task.runs.find((run) => run.purpose === "work" && run.threadId === result.threadId)
-        ?.baseRef ?? null;
+    const resultRun = task.runs.find(
+      (run) => run.purpose === "work" && run.threadId === result.threadId,
+    );
+    let baseRef = resultRun?.baseRef ?? null;
     let revision = result.revision;
     while (baseRef !== null) {
       const continued = task.results.findLast(
@@ -2000,6 +2000,7 @@ const make = Effect.gen(function* () {
                   baseRef,
                   headBranch,
                   results,
+                  resultRun?.setup.modelSelection ?? null,
                 )),
                 headBranch,
               }

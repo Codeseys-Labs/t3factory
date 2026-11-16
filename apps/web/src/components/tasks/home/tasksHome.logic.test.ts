@@ -7,6 +7,18 @@ const fixture = (displayId: string) =>
   FACTORY_TASK_FIXTURES.tasks.find((task) => task.displayId === displayId)!;
 
 describe("a task's result on the board and in the list", () => {
+  it.each(["failed", "held"] as const)("describes a %s run despite later planning", (state) => {
+    const task = fixture("T-36");
+    const failedRun = { ...task.run!, ordinal: 2, state, note: "Needs a person" };
+    const waiting = {
+      ...task,
+      failedRun,
+      run: { ...failedRun, ordinal: 3, state: "completed" as const, purpose: "planning" as const },
+    };
+    const text = `Run 2${state === "failed" ? " failed" : ""}: Needs a person`;
+    expect([cardMeta(waiting), listResultText(waiting)]).toEqual([{ kind: "text", text }, text]);
+  });
+
   it.each([
     ["published, in review", "T-36", "#112 · +184 −20", "PR #112 · +184 −20 · 6 files"],
     ["accepted with its pull request open", "T-38.1", "#108 · +212 −48", "PR #108 open · accepted"],

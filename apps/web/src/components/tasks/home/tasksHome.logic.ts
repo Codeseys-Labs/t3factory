@@ -1,5 +1,6 @@
 import {
   type FactoryTaskDrop,
+  factoryTaskFailedRun,
   groupFactoryTasks,
   nestFactoryTasks,
 } from "@t3tools/client-runtime/state/factory-task-view";
@@ -104,10 +105,12 @@ function shortResultLine(result: NonNullable<FactoryTaskSummary["result"]>): str
   return result.summary.replace(/^Document\b/u, "Doc");
 }
 
-const failedRunLine = (task: FactoryTaskSummary) =>
-  task.run?.state === "failed"
-    ? `Run ${task.run.ordinal} failed${task.run.note ? `: ${task.run.note}` : ""}`
+const failedRunLine = (task: FactoryTaskSummary) => {
+  const run = factoryTaskFailedRun(task);
+  return run?.state === "failed" || run?.state === "held"
+    ? `Run ${run.ordinal}${run.state === "failed" ? " failed" : ""}${run.note ? `: ${run.note}` : ""}`
     : null;
+};
 
 /** The card's meta line beside the project: progress for a parent, else result, run or source. */
 export function cardMeta(

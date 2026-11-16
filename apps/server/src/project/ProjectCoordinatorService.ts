@@ -114,19 +114,33 @@ const make = Effect.gen(function* () {
         binding.accepted === 0 && shell !== null
           ? yield* readReceipt(CommandId.make(`${intent.commandId}:initial-message`))
           : Option.none();
+      const launchAccepted =
+        shell !== null &&
+        shell.latestRunId !== null &&
+        Option.isSome(launchReceipt) &&
+        launchReceipt.value.status === "accepted" &&
+        launchReceipt.value.commandType === "thread.create" &&
+        launchReceipt.value.threadId === intent.threadId;
+      // A new thread's create carries its first message and leaves no message receipt.
+      const carried =
+        launchAccepted && Option.isNone(messageReceipt)
+          ? (yield* threads
+              .getMessagesById(intent.threadId, [intent.messageId])
+              .pipe(
+                Effect.mapError(
+                  (cause) => new ProjectCoordinatorError({ reason: "persistence-failure", cause }),
+                ),
+              )).has(intent.messageId)
+          : false;
       // Receipts commit with the projection; the binding acknowledgement can be interrupted later.
       orientationAccepted =
         orientationAccepted ||
-        (shell !== null &&
-          shell.latestRunId !== null &&
-          Option.isSome(launchReceipt) &&
-          launchReceipt.value.status === "accepted" &&
-          launchReceipt.value.commandType === "thread.create" &&
-          launchReceipt.value.threadId === intent.threadId &&
-          Option.isSome(messageReceipt) &&
-          messageReceipt.value.status === "accepted" &&
-          messageReceipt.value.commandType === "message.dispatch" &&
-          messageReceipt.value.threadId === intent.threadId);
+        (launchAccepted &&
+          (carried ||
+            (Option.isSome(messageReceipt) &&
+              messageReceipt.value.status === "accepted" &&
+              messageReceipt.value.commandType === "message.dispatch" &&
+              messageReceipt.value.threadId === intent.threadId)));
       if (shell === null) {
         status = binding.accepted === 1 || Option.isSome(launchReceipt) ? "missing" : "launching";
       } else if (shell.deletedAt !== null || shell.projectId !== intent.projectId)

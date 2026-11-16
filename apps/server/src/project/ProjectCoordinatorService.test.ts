@@ -1000,14 +1000,9 @@ it.effect.each(["thread.create", "message.dispatch"] as const)(
       assert.equal(projection.messages[0]?.id, current.intent.messageId);
       assert.equal(projection.messages[0]?.text, current.intent.prompt);
       assert.equal(projection.runs.length, 1);
-      for (const commandId of [
-        current.intent.commandId,
-        CommandId.make(`${current.intent.commandId}:initial-message`),
-      ]) {
-        const receipt = Option.getOrThrow(yield* receipts.getByCommandId(commandId));
-        assert.equal(receipt.status, "accepted");
-        assert.equal(receipt.threadId, current.intent.threadId);
-      }
+      const receipt = Option.getOrThrow(yield* receipts.getByCommandId(current.intent.commandId));
+      assert.equal(receipt.status, "accepted");
+      assert.equal(receipt.threadId, current.intent.threadId);
       assert.deepEqual((yield* service.list()).coordinators, [replacement.coordinator]);
       const sql = yield* SqlClient.SqlClient;
       assert.equal((yield* sql`SELECT thread_id FROM project_coordinators`).length, 2);
@@ -1470,19 +1465,17 @@ it.effect.each([
       assert.equal(binding.accepted, 0);
       assert.equal(binding.superseded, 0);
       assert.equal(intent.requestCommandId, originalInput.commandId);
-      const acceptedReceipts: Array<Receipts.CommandReceiptV2> = [];
-      for (const [commandId, commandType] of [
-        [intent.commandId, "thread.create"],
-        [CommandId.make(`${intent.commandId}:initial-message`), "message.dispatch"],
-      ] as const) {
-        const receipt = Option.getOrThrow(yield* receipts.getByCommandId(commandId));
-        assert.equal(receipt.status, "accepted");
-        assert.equal(receipt.commandId, commandId);
-        assert.equal(receipt.commandType, commandType);
-        assert.equal(receipt.threadId, intent.threadId);
-        assert.isNull(receipt.error);
-        acceptedReceipts.push(receipt);
-      }
+      // A new thread's create carries its first message, so this launch leaves one receipt.
+      const launchReceipt = Option.getOrThrow(yield* receipts.getByCommandId(intent.commandId));
+      assert.equal(launchReceipt.status, "accepted");
+      assert.equal(launchReceipt.commandType, "thread.create");
+      assert.equal(launchReceipt.threadId, intent.threadId);
+      assert.isNull(launchReceipt.error);
+      assert.isTrue(
+        Option.isNone(
+          yield* receipts.getByCommandId(CommandId.make(`${intent.commandId}:initial-message`)),
+        ),
+      );
       const launched = yield* threads.getThreadProjection(intent.threadId);
       assert.equal(launched.messages.length, 1);
       assert.equal(launched.messages[0]?.id, intent.messageId);
@@ -1555,12 +1548,10 @@ it.effect.each([
         Option.getOrThrow(yield* store.getByRequest(originalInput.commandId)).intent,
         intent,
       );
-      for (const receipt of acceptedReceipts) {
-        assert.deepEqual(
-          Option.getOrThrow(yield* receipts.getByCommandId(receipt.commandId)),
-          receipt,
-        );
-      }
+      assert.deepEqual(
+        Option.getOrThrow(yield* receipts.getByCommandId(intent.commandId)),
+        launchReceipt,
+      );
       assert.deepEqual((yield* service.list()).coordinators, [coordinator]);
       const sql = yield* SqlClient.SqlClient;
       assert.equal((yield* sql`SELECT thread_id FROM project_coordinators`).length, 1);

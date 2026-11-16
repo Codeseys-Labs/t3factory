@@ -15,6 +15,7 @@ import {
 } from "@t3tools/shared/ownedProcess";
 import type { OwnedProcessGroup } from "./OwnedProcess.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { gitConfigEnv } from "../vcs/VcsProcess.ts";
 
 const jobHost = String.raw`
 using System;
@@ -153,6 +154,16 @@ export const makeWindowsOwnedProcess = Effect.fn("WindowsOwnedProcess.make")(fun
       ) {
         return yield* platformError("Owned process acquisition is unavailable or stopped.");
       }
+      const inherits = command.options.env === undefined || command.options.extendEnv === true;
+      const visible: NodeJS.ProcessEnv = inherits ? { ...(yield* HostProcess.Environment) } : {};
+      for (const [name, value] of Object.entries(command.options.env ?? {})) {
+        visible[name] = value === undefined ? undefined : revealCommandWord(value);
+      }
+      // An agent's own git reads tracked files beyond MAX_PATH as deleted without core.longpaths.
+      const env = {
+        ...command.options.env,
+        ...gitConfigEnv(visible, "core.longpaths", "true", "win32"),
+      };
       pending++;
       return yield* Effect.uninterruptibleMask(() =>
         Effect.gen(function* () {
@@ -283,7 +294,7 @@ exit 125
               "-EncodedCommand",
               redactIfAnyRedacted(command.args, Buffer.from(script, "utf16le").toString("base64")),
             ],
-            { ...command.options, shell: false },
+            { ...command.options, env, extendEnv: inherits, shell: false },
           );
           const acquired = yield* Effect.exit(
             native.spawn(wrapped).pipe(Effect.provideService(Scope.Scope, scope)),

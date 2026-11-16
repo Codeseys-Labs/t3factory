@@ -6,7 +6,7 @@ import {
   DATABASE_MIGRATIONS_FINISHED_MESSAGE,
   DATABASE_MIGRATIONS_STARTED_MESSAGE,
 } from "@t3tools/shared/databaseMigrationLog";
-import { backupDatabaseOnce } from "../databaseBackup.ts";
+import { backupDatabaseOnce, databaseBackupFile, pathExists } from "../databaseBackup.ts";
 import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
 
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
@@ -403,7 +403,12 @@ const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(funct
         });
       }
       yield* Effect.tryPromise({
-        try: (signal) => backupDatabaseOnce(filename, backupDir, signal),
+        try: async (signal) => {
+          await backupDatabaseOnce(filename, backupDir, signal);
+          if (!(await pathExists(databaseBackupFile(backupDir, "")))) {
+            throw new Error("The completed backup is missing its database file.");
+          }
+        },
         catch: (cause) =>
           new Migrator.MigrationError({
             kind: "Failed",

@@ -1,4 +1,4 @@
-// Frozen startup logic from eaab88d7484945a46a41b74e219e2ec87860033b; only import paths may change.
+// Frozen startup logic from eaab88d7484945a46a41b74e219e2ec87860033b; imports relocated and unused exports removed.
 import * as Migrator from "effect/sql/Migrator";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -312,10 +312,7 @@ function reconciledFactoryHistory(recorded: ReadonlyArray<MigrationRow>) {
   };
 }
 
-export function skippedV2Migrations(
-  history: ReadonlyArray<MigrationRow>,
-  throughId?: number,
-): string[] {
+function skippedV2Migrations(history: ReadonlyArray<MigrationRow>, throughId?: number): string[] {
   // Startup reconciles Factory history before this check, so check what it will see.
   const reconciled = includesFactory(throughId) ? reconciledFactoryHistory(history) : { history };
   if (reconciled === null) return ["an unrecognized legacy Factory migration history"];
@@ -417,7 +414,7 @@ const latestMigrationId = Math.max(...migrationEntries.map(([id]) => id));
 
 // Mirrors the Migrator, which runs only ids above the highest recorded, plus the V2-preview and
 // Factory reconciliations.
-export const hasPendingMigrations = Effect.fn("hasPendingMigrations")(function* () {
+const hasPendingMigrations = Effect.fn("hasPendingMigrations")(function* () {
   const sql = yield* SqlClient.SqlClient;
   const tables = yield* sql`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'

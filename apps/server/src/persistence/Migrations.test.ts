@@ -91,7 +91,7 @@ const schema = Effect.gen(function* () {
 });
 
 describe("Factory migration band", () => {
-  it.effect.each(["success", "backup failure", "unknown history"])(
+  it.effect.each(["success", "backup failure", "unknown history", "incomplete backup"])(
     "backs up before conversion: %s",
     (scenario) =>
       Effect.gen(function* () {
@@ -100,6 +100,7 @@ describe("Factory migration band", () => {
         const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-factory-band-" });
         const filename = path.join(root, "statev2.sqlite");
         const backup = `${filename}.before-factory-migration-band`;
+        if (scenario === "incomplete backup") yield* fs.makeDirectory(backup);
         yield* Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           yield* sql`PRAGMA journal_mode = WAL`;
@@ -110,7 +111,7 @@ describe("Factory migration band", () => {
           const before = yield* history;
           assert.isTrue(yield* hasPendingMigrations());
           assert.deepStrictEqual(yield* history, before);
-          assert.isFalse(yield* fs.exists(backup));
+          assert.strictEqual(yield* fs.exists(backup), scenario === "incomplete backup");
           using rename = vi.spyOn(NodeFSP, "rename");
           if (scenario === "backup failure") {
             rename.mockRejectedValueOnce(
@@ -122,7 +123,7 @@ describe("Factory migration band", () => {
             assert.isTrue(Exit.isFailure(exit));
             if (scenario === "backup failure") assert.include(String(exit), "backup");
             assert.deepStrictEqual(yield* history, before);
-            assert.isFalse(yield* fs.exists(backup));
+            assert.strictEqual(yield* fs.exists(backup), scenario === "incomplete backup");
             assert.isFalse(yield* fs.exists(`${backup}.staging`));
             return;
           }

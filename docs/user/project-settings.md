@@ -242,10 +242,10 @@ ignored files to be deleted. Branches and thread history stay; starting another 
 Merge cleanup requires a merged pull request whose commits are included in the remote default
 branch. A squash or rebase merge on GitHub also counts when the pull request targeted the default
 branch and the worktree is still at the pull request's last commit.
-For a task whose pull request is confirmed merged, **Delete merged worktrees** first moves each
-settled run's branch to its own saved result, without changing working files. Local changes are
-then judged against that result, using the same policy above. Reopening a removed run restores
-the saved result. Running or held task runs are kept.
+For a task, a confirmed merged pull request is enough, whichever branch it was merged into.
+**Delete merged worktrees** first moves each settled run's branch to its own saved result, without
+changing working files. Local changes are then judged against that result, using the same policy
+above. Reopening a removed run restores the saved result. Running or held task runs are kept.
 
 Enable **Delete worktrees with deleted threads** to remove safe worktrees after their last
 thread is deleted, including archived threads and worktrees left by earlier deletions. The

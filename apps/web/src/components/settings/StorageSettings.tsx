@@ -673,7 +673,7 @@ export function WorktreeCleanupSection() {
               title="Delete merged worktrees"
               status={ruleStatus("worktreeOnMerge")}
               managedPaths={lockablePath("worktreeOnMerge")}
-              description="Remove worktrees whose pull request is merged and whose commits are included in the default branch."
+              description="Remove worktrees merged into the default branch. For merged tasks, move the run's branch to its saved result before checking local changes. Reopening a removed run restores that result."
               serverScoped={!isProjectScope}
               control={
                 <Switch

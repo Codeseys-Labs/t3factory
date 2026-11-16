@@ -1875,14 +1875,24 @@ const make = Effect.gen(function* () {
           });
         }),
       );
+      const assignee = task.assignee.resolved;
+      const code = latest.kind === "code";
       return yield* run({
         commandId: input.commandId,
         task,
-        setup: author.setup,
-        assign: Effect.succeed(author.profileId),
+        // The round goes to the agent the task names now; the result's author stands in when it names none.
+        setup:
+          assignee === null
+            ? author.setup
+            : code
+              ? { ...assignee.setup, workspace: "worktree" }
+              : assignee.setup,
+        assign: Effect.succeed(
+          assignee === null ? author.profileId : (assignee.profile?.id ?? null),
+        ),
         actor,
-        // Code continues from the result under review; a document starts from the task again.
-        baseCommit: latest.kind === "code" ? latest.commit : null,
+        // Code continues from the result under review, in a worktree; a document starts from the task again.
+        baseCommit: code ? latest.commit : null,
         record: command.record,
       }).pipe(
         // A run that was never admitted leaves no trace for a later one; an Accept that won says so.

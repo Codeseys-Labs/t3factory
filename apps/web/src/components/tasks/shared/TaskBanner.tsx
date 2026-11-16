@@ -235,6 +235,11 @@ export function TaskBanner({
       {giveUp.dialog}
       {requestingChanges && revision !== undefined ? (
         <RequestChangesDialog
+          agent={
+            task.assignee.resolved
+              ? presentTaskSetup(task.assignee.resolved.setup, catalog).label
+              : null
+          }
           onClose={() => setRequestingChanges(false)}
           onSend={async (note) => {
             const sent = await actions.requestChanges(task, revision, note);
@@ -247,9 +252,12 @@ export function TaskBanner({
 }
 
 function RequestChangesDialog({
+  agent,
   onClose,
   onSend,
 }: {
+  /** The task's assignee now, who the round goes to. Null when it names none and the result's author runs. */
+  agent: string | null;
   onClose: () => void;
   onSend: (note: string) => Promise<void>;
 }) {
@@ -279,7 +287,9 @@ function RequestChangesDialog({
         >
           <DialogHeader>
             <DialogTitle>Request changes</DialogTitle>
-            <DialogDescription>The agent gets this note and makes a new result.</DialogDescription>
+            <DialogDescription>
+              {agent ?? "The agent"} gets this note and makes a new result.
+            </DialogDescription>
           </DialogHeader>
           <DialogPanel>
             <Textarea

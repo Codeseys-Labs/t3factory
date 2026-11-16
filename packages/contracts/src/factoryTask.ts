@@ -426,7 +426,7 @@ export const FactoryTaskAcceptInput = Schema.Struct({
   revision: PositiveInt,
 });
 export type FactoryTaskAcceptInput = typeof FactoryTaskAcceptInput.Type;
-/** Sends the note to the run's agent. The next result replaces the one under review. */
+/** Sends the note to the task's assignee in a new run. The next result replaces the one under review. */
 export const FactoryTaskRequestChangesInput = Schema.Struct({
   commandId: CommandId,
   ref: FactoryTaskRef,

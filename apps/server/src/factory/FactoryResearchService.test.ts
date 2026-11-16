@@ -42,6 +42,7 @@ import * as ManagedFolders from "../project/ManagedProjectFolders.ts";
 import * as CloneTracker from "../project/ProjectCloneTracker.ts";
 import * as SetupTracker from "../project/WorktreeSetupTracker.ts";
 import * as SetupRunner from "../project/ProjectSetupScriptRunner.ts";
+import * as WorktreeSetup from "./FactoryWorktreeSetup.ts";
 import * as Terminal from "../terminal/Manager.ts";
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as Git from "../vcs/GitVcsDriver.ts";
@@ -206,6 +207,7 @@ const makeHarness = Effect.fn("ResearchTest.harness")(function* (origin: string)
     }),
     Layer.mock(CloneTracker.ProjectCloneTracker)({ get: () => Effect.succeed(null) }),
     Layer.mock(Terminal.TerminalManager)({ close: () => Effect.void }),
+    Layer.mock(WorktreeSetup.FactoryWorktreeSetup)({}),
     Layer.mock(SetupRunner.ProjectSetupScriptRunner)({
       runForThread: () => Effect.succeed({ status: "no-script" }),
     }),

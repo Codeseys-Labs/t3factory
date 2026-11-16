@@ -18,6 +18,7 @@ import {
   TurnItemId,
   type ProviderApprovalOption,
   type FactoryExecutionPolicy,
+  type FactoryExecutionTaskSpec,
   type FactoryExecutionRetryInput,
   type FactoryExecutionAdmitInput,
   type FactoryPlanSnapshot,
@@ -202,18 +203,28 @@ it.effect(
     Effect.gen(function* () {
       yield* seed;
       const store = yield* Store.FactoryExecutionStore;
-      for (const capability of ["hard-cost-limit", "external-actions-denied"] as const) {
+      for (const [name, invalid] of [
+        ["hard-cost-limit", { ...policy, requiredCapabilities: ["hard-cost-limit"] }],
+        [
+          "external-actions-denied",
+          { ...policy, requiredCapabilities: ["external-actions-denied"] },
+        ],
+        [
+          "setup-in-project-folder",
+          { ...policy, tasks: [{ ...policy.tasks[0]!, setup: { command: "vp i" } }] },
+        ],
+      ] as const) {
         const refused = yield* decide({
           type: "grant",
           input: {
-            commandId: CommandId.make(`unsupported:${capability}`),
+            commandId: CommandId.make(`invalid:${name}`),
             ref,
             expectedRevision: 1,
             expectedGrantVersion: 0,
-            policy: { ...policy, requiredCapabilities: [capability] },
+            policy: invalid,
           },
         });
-        assert.equal(refused.error, "invalid-input");
+        assert.equal(refused.error, "invalid-input", name);
       }
       assert.equal((yield* grant).error, null);
       assert.equal((yield* store.readExecution({ ref, revision: 1 })).tasks[0]!.version, 0);
@@ -243,6 +254,37 @@ it.effect(
         ),
       );
     }).pipe(Effect.provide(layer)),
+);
+
+it.effect("keeps a continued attempt's setup as it was admitted", () =>
+  Effect.gen(function* () {
+    yield* seed;
+    const spec: FactoryExecutionTaskSpec = {
+      ...policy.tasks[0]!,
+      workspaceStrategy: { type: "worktree", baseRef: "a".repeat(40) },
+      setup: { command: "node scripts/setup-worktree.ts" },
+    };
+    const issue = (version: number, setup: FactoryExecutionTaskSpec["setup"]) =>
+      decide({
+        type: "grant",
+        input: {
+          commandId: CommandId.make(`grant:${version}:${JSON.stringify(setup)}`),
+          ref,
+          expectedRevision: 1,
+          expectedGrantVersion: version,
+          policy: {
+            ...policy,
+            tasks: [{ ...spec, setup }],
+            ...(version === 0 ? {} : { continues: [RunAttemptId.make("attempt:start")] }),
+          },
+        },
+      });
+    assert.equal((yield* issue(0, spec.setup)).error, null);
+    yield* decide({ type: "admit", ...(yield* bindingFor()) });
+    assert.equal((yield* issue(1, "deny")).error, "invalid-input");
+    assert.equal((yield* issue(1, { command: "vp i" })).error, "invalid-input");
+    assert.equal((yield* issue(1, spec.setup)).error, null);
+  }).pipe(Effect.provide(layer)),
 );
 
 it.effect.each([

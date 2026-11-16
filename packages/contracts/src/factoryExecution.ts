@@ -1,5 +1,12 @@
 import * as Schema from "effect/Schema";
-import { CommandId, IsoDateTime, RunId, RunAttemptId, ThreadId } from "./baseSchemas.ts";
+import {
+  CommandId,
+  IsoDateTime,
+  RunId,
+  RunAttemptId,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { FactoryPlanRef } from "./factoryPlan.ts";
 import { ModelSelection } from "./modelSelection.ts";
 import { RuntimeMode, ProviderInteractionMode } from "./providerPolicy.ts";
@@ -29,7 +36,9 @@ export const FactoryExecutionTaskSpec = Schema.Struct({
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   workspaceStrategy: FactoryExecutionWorkspace,
-  setup: Schema.Literal("deny"),
+  // The project's setup command, pinned when a person starts the run; the server runs it in
+  // the run's worktree before the agent's first turn.
+  setup: Schema.Union([Schema.Literal("deny"), Schema.Struct({ command: TrimmedNonEmptyString })]),
   verification: Schema.optional(
     Schema.Struct({
       command: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),

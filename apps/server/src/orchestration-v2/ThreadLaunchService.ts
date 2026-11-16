@@ -1,4 +1,5 @@
 import * as FactoryExecutionLifecycle from "../factory/FactoryExecutionLifecycle.ts";
+import * as FactoryWorktreeSetup from "../factory/FactoryWorktreeSetup.ts";
 import * as WorktreeSetupTracker from "../project/WorktreeSetupTracker.ts";
 import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
@@ -253,6 +254,7 @@ const make = Effect.gen(function* () {
   const git = yield* GitWorkflow.GitWorkflowService;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
   const setupScripts = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
+  const worktreeSetup = yield* FactoryWorktreeSetup.FactoryWorktreeSetup;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const textGeneration = yield* TextGeneration.TextGeneration;
@@ -988,6 +990,21 @@ const make = Effect.gen(function* () {
         } else {
           yield* setupTracker.stageStatus(threadId, "setup-script", "done");
         }
+      } else if (managed !== null && worktreePath !== null && managed.spec.setup !== "deny") {
+        // A task run's pinned setup runs as a process the run owns; its agent waits for it.
+        const command = managed.spec.setup.command;
+        yield* setupTracker.stage(threadId, "setup-script", { detail: command });
+        yield* worktreeSetup
+          .run({
+            command,
+            worktreePath,
+            onOutputLine: (line) => setupTracker.appendTail(threadId, "setup-script", line),
+          })
+          .pipe(Effect.mapError(mapError(input, "run-setup-script", threadId)));
+        yield* setupTracker.stage(threadId, "setup-script", {
+          status: "done",
+          detail: "exited with 0",
+        });
       } else {
         yield* setupTracker.stageStatus(threadId, "setup-script", "skipped");
       }
@@ -1029,10 +1046,12 @@ const make = Effect.gen(function* () {
             yield* terminals
               .close({ threadId, terminalId: setupTerminalId, deleteHistory: true })
               .pipe(Effect.ignore);
+          // A task run keeps its worktree when stopped: its processes are proven gone only after
+          // this phase ends, and a failed run keeps its worktree too.
           if (
             tracked &&
             createdWorktreePath &&
-            ((cancelled && !runReleased) || !workspaceRecorded)
+            ((cancelled && !runReleased && managed === null) || !workspaceRecorded)
           ) {
             if (branchRename !== null) yield* Fiber.interrupt(branchRename);
             const removedPath = createdWorktreePath;

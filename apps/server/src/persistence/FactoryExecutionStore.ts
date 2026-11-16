@@ -60,7 +60,6 @@ import {
 export type FactoryExecutionActor = FactoryPlanActor | { readonly kind: "automation" };
 export type FactoryExecutionPhase =
   | "workspace"
-  | "setup"
   | "session"
   | "native-thread"
   | "turn"
@@ -911,7 +910,9 @@ const make = Effect.gen(function* () {
         (entry) =>
           !plan.tasks.some((task) => task.id === entry.taskId && !task.retired) ||
           (entry.output.kind === "verified-code" &&
-            (!entry.verification || entry.workspaceStrategy.type !== "worktree")),
+            (!entry.verification || entry.workspaceStrategy.type !== "worktree")) ||
+          // Setup runs only in a worktree of the run's own; never in the project folder.
+          (entry.setup !== "deny" && entry.workspaceStrategy.type !== "worktree"),
       )
     )
       return false;

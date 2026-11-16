@@ -426,6 +426,8 @@ function makeLocalCommandHarness(input: {
   readonly missingProviderSession?: boolean;
   readonly recoveryReadFailure?: string;
   readonly managed?: boolean;
+  /** Opens the session and counts provider turns run; `failBindingRead` fails that read after running. */
+  readonly nativeStart?: { readonly failBindingRead?: 1 | 2 };
   readonly previousTurn?: {
     readonly runStatus: "failed" | "completed" | "interrupted";
     readonly turnStatus: "running" | "completed" | "interrupted";
@@ -1119,33 +1121,44 @@ function makeLocalCommandHarness(input: {
                     ),
                   ),
                 )
-              : input.failReadsAfterRunning === true || input.previousTurn !== undefined
+              : input.failReadsAfterRunning === true ||
+                  input.previousTurn !== undefined ||
+                  input.nativeStart !== undefined
                 ? Effect.succeed({
                     driver: providerThread.driver,
+                    instanceId: newInstanceId,
+                    providerSessionId,
                     providerSession,
                     ensureThread: () => Effect.succeed(providerThread),
                     resumeThread: () => Effect.succeed(projection.providerThreads[0]),
                   } as never)
                 : Effect.die("A local command must not open a native session."),
   );
+  let providerTurnsRun = 0;
   const startRootRun = vi.fn<
     (
       input: RunExecutionService.RunExecutionServiceV2StartRootRunInput,
     ) => Effect.Effect<void, RunExecutionService.RunExecutionServiceV2Error>
   >((runInput) =>
-    input.sideChat !== undefined
-      ? (runInput.resume
-          ? runInput.session.resumeTurn!({
-              ...runInput,
-              messageId: runInput.message.messageId,
-            } as never)
-          : runInput.session.startTurn(runInput as never)
-        ).pipe(Effect.orDie)
-      : input.failReadsAfterRunning === true || input.previousTurn !== undefined
-        ? Effect.suspend(() =>
-            providerBusy ? Effect.die("The previous provider turn is still running.") : Effect.void,
-          )
-        : Effect.die("A local command must not start a native turn."),
+    input.nativeStart !== undefined
+      ? Effect.sync(() => {
+          providerTurnsRun += 1;
+        })
+      : input.sideChat !== undefined
+        ? (runInput.resume
+            ? runInput.session.resumeTurn!({
+                ...runInput,
+                messageId: runInput.message.messageId,
+              } as never)
+            : runInput.session.startTurn(runInput as never)
+          ).pipe(Effect.orDie)
+        : input.failReadsAfterRunning === true || input.previousTurn !== undefined
+          ? Effect.suspend(() =>
+              providerBusy
+                ? Effect.die("The previous provider turn is still running.")
+                : Effect.void,
+            )
+          : Effect.die("A local command must not start a native turn."),
   );
   const failReadIfRunning = Effect.suspend(() =>
     input.failReadsAfterRunning === true &&
@@ -1239,15 +1252,22 @@ function makeLocalCommandHarness(input: {
       projection.runs.find((candidate) => candidate.id === id),
     ),
   );
+  let bindingReadsWhileRunning = 0;
   const factory =
     input.managed === true
-      ? managedStartLifecycle({
-          threadId,
-          runId,
-          runAttemptId: attemptId,
-          driver: providerThread.driver,
-          spec: { modelSelection: { instanceId: newInstanceId } },
-        } as FactoryExecutionBinding)
+      ? managedStartLifecycle(
+          {
+            threadId,
+            runId,
+            runAttemptId: attemptId,
+            driver: providerThread.driver,
+            spec: { modelSelection: { instanceId: newInstanceId } },
+          } as FactoryExecutionBinding,
+          () =>
+            input.nativeStart?.failBindingRead !== undefined &&
+            projection.runs.find((candidate) => candidate.id === runId)?.status === "running" &&
+            ++bindingReadsWhileRunning === input.nativeStart.failBindingRead,
+        )
       : undefined;
   const layer = ProviderTurnStart.layer.pipe(
     Layer.provide(
@@ -1367,6 +1387,7 @@ function makeLocalCommandHarness(input: {
     oldInstanceId,
     newInstanceId,
     attemptId,
+    providerTurnsRun: () => providerTurnsRun,
     projection: () => projection,
     start: Effect.gen(function* () {
       yield* (yield* ProviderTurnStart.ProviderTurnStartServiceV2).start({ threadId, runId });
@@ -1382,15 +1403,25 @@ function makeLocalCommandHarness(input: {
 }
 
 // The real lifecycle over a store whose phase claims stay held once made, as the database's do.
-function managedStartLifecycle(admitted: FactoryExecutionBinding) {
+function managedStartLifecycle(admitted: FactoryExecutionBinding, failRead = () => false) {
   const claims = new Map<string, { readonly claimantId: string; settled: boolean }>();
   let stopRequested = false;
   let quiescent = false;
   const store = Layer.mock(FactoryExecutionStore.FactoryExecutionStore)({
     findNativeBinding: ({ threadId }) =>
-      Effect.succeed(
-        threadId === admitted.threadId ? { ...admitted, stopRequested, quiescent } : null,
+      Effect.suspend(() =>
+        failRead()
+          ? Effect.fail(new FactoryExecutionError({ reason: "persistence-failure" }))
+          : Effect.succeed(
+              threadId === admitted.threadId ? { ...admitted, stopRequested, quiescent } : null,
+            ),
       ),
+    stopUnprompted: ({ runAttemptId }) =>
+      Effect.sync(() => {
+        if (runAttemptId !== admitted.runAttemptId || claims.has("turn")) return false;
+        stopRequested = true;
+        return true;
+      }),
     readCapture: () => Effect.succeed(null),
     claimPhase: ({ phase, claimantId }) =>
       Effect.sync(() => {
@@ -1417,6 +1448,8 @@ function managedStartLifecycle(admitted: FactoryExecutionBinding) {
   return {
     binding: admitted,
     quiescent: () => quiescent,
+    stopRequested: () => stopRequested,
+    claimTurn: () => void claims.set("turn", { claimantId: "turn", settled: false }),
     layer: FactoryExecutionLifecycle.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -1587,30 +1620,113 @@ effectIt.effect("retries a failed settlement past the start budget until it is p
   }).pipe(Effect.provide(layerStartEffectWorker(harness)));
 });
 
+// Stop on the Tasks page and the Factory's finalize, with no live provider behind them.
+const layerFinalizeWorker = (
+  harness: ReturnType<typeof makeLocalCommandHarness>,
+  dispatched: Array<string>,
+) =>
+  layerStartEffectWorker(
+    harness,
+    {},
+    {
+      sessions: { isLive: () => Effect.succeed(false) },
+      threads: {
+        dispatch: (command) =>
+          Effect.sync(() => {
+            dispatched.push(command.type);
+            return { sequence: 1, storedEvents: [] };
+          }),
+      },
+      projections: { getThreadRecords: () => Effect.succeed(harness.projection()) },
+      execution: {
+        readNativeCapture: () => Effect.succeed(null),
+        captureNativeResult: (context) =>
+          Effect.succeed({
+            runId: context.runId,
+            runAttemptId: context.runAttemptId,
+            captureKey: "native-final/1",
+            slot: "draft",
+            text: "",
+            status: "failed" as const,
+            checkpoint: null,
+          }),
+        observeResult: () => Effect.succeed({} as never),
+      },
+    },
+  );
+
+// Enqueues a committed write's effects as the sink does; `fail` breaks the first write expecting `status`.
+const commitWrittenEffects = (
+  harness: ReturnType<typeof makeLocalCommandHarness>,
+  fail?: { readonly status: "starting" | "running"; readonly committed: boolean },
+) =>
+  Effect.gen(function* () {
+    const outbox = yield* EffectOutbox.EffectOutboxV2;
+    const write = harness.writeIfRunCurrent.getMockImplementation()!;
+    let armed = fail;
+    harness.writeIfRunCurrent.mockImplementation((input) => {
+      const failing = armed?.status === input.expectedStatus ? armed : undefined;
+      if (failing !== undefined) armed = undefined;
+      const written = write(input).pipe(
+        Effect.tap((result) =>
+          result.committed && input.effects !== undefined
+            ? outbox.enqueue(input.effects).pipe(Effect.orDie)
+            : Effect.void,
+        ),
+      );
+      if (failing === undefined) return written;
+      const error = new EventSink.EventSinkWriteError({
+        eventCount: input.events.length,
+        cause: "storage unavailable",
+      });
+      return failing.committed
+        ? written.pipe(Effect.andThen(Effect.fail(error)))
+        : Effect.fail(error);
+    });
+  });
+
 effectIt.effect.each([
-  { name: "a Factory-managed run", managed: true, opens: 1, title: "Turn failed to start" },
-  { name: "an ordinary run", managed: false, opens: 2, title: "Provider session failed to open" },
-] as const)("ends $name whose session never opens once the start budget is spent", (row) => {
+  {
+    name: "a Factory-managed run whose session never opens",
+    managed: true,
+    opens: 1,
+    title: "Turn failed to start",
+  },
+  {
+    name: "a Factory-managed run whose binding read fails leaving native-thread",
+    managed: true,
+    failBindingRead: 1,
+    opens: 1,
+    title: "Turn failed to start",
+  },
+  {
+    name: "a Factory-managed run whose binding read fails leaving session",
+    managed: true,
+    failBindingRead: 2,
+    opens: 1,
+    title: "Turn failed to start",
+  },
+  {
+    name: "an ordinary run whose session never opens",
+    managed: false,
+    opens: 2,
+    title: "Provider session failed to open",
+  },
+] as const)("ends $name once the start budget is spent", (row) => {
+  const started = "failBindingRead" in row;
   const harness = makeLocalCommandHarness({
     text: "Continue",
-    openFailure: new Error("The provider's program could not be launched."),
     managed: row.managed,
+    ...(started
+      ? { nativeStart: { failBindingRead: row.failBindingRead } }
+      : { openFailure: new Error("The provider's program could not be launched.") }),
   });
   const run = harness.projection().runs.at(-1)!;
   const dispatched: Array<string> = [];
   return Effect.gen(function* () {
     const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
     const outbox = yield* EffectOutbox.EffectOutboxV2;
-    const write = harness.writeIfRunCurrent.getMockImplementation()!;
-    harness.writeIfRunCurrent.mockImplementation((input) =>
-      write(input).pipe(
-        Effect.tap((written) =>
-          written.committed && input.effects !== undefined
-            ? outbox.enqueue(input.effects).pipe(Effect.orDie)
-            : Effect.void,
-        ),
-      ),
-    );
+    yield* commitWrittenEffects(harness);
     const { storedEffect } = yield* enqueueStart(
       harness.projection(),
       row.managed
@@ -1619,6 +1735,9 @@ effectIt.effect.each([
     );
     expect(yield* worker.drain()).toBe(1);
     expect(yield* storedEffect).toMatchObject({ status: "pending", attemptCount: 1 });
+    expect(harness.projection().runs.at(-1)?.status).toBe(started ? "running" : "starting");
+    // Only a failure inside the outer phase's work makes that phase request a stop.
+    if (started) expect(harness.factory!.stopRequested()).toBe(row.failBindingRead === 1);
     // Stop on the Tasks page commits this behind the start, which the outbox runs first.
     const stop =
       harness.factory === undefined
@@ -1635,7 +1754,9 @@ effectIt.effect.each([
     expect(yield* storedEffect).toMatchObject({ status: "succeeded", attemptCount: 2 });
     expect(drained).toBe(row.managed ? 3 : 1);
     expect(harness.open).toHaveBeenCalledTimes(row.opens);
-    expect(harness.projection().runs.at(-1)).toMatchObject({ status: "failed", startedAt: null });
+    expect(harness.providerTurnsRun()).toBe(0);
+    expect(harness.projection().runs.at(-1)?.status).toBe("failed");
+    expect(harness.projection().runs.at(-1)?.startedAt === null).toBe(!started);
     expect(harness.projection().turnItems).toMatchObject([
       { type: "error", status: "failed", title: row.title },
     ]);
@@ -1649,39 +1770,99 @@ effectIt.effect.each([
     expect(dispatched).toEqual(["run.interrupt"]);
     // Retry admission reads exactly these: a quiescent prior attempt and a failed native run.
     expect(harness.factory.quiescent()).toBe(true);
-  }).pipe(
-    Effect.provide(
-      layerStartEffectWorker(
-        harness,
-        {},
-        {
-          sessions: { isLive: () => Effect.succeed(false) },
-          threads: {
-            dispatch: (command) =>
-              Effect.sync(() => {
-                dispatched.push(command.type);
-                return { sequence: 1, storedEvents: [] };
-              }),
-          },
-          projections: { getThreadRecords: () => Effect.succeed(harness.projection()) },
-          execution: {
-            readNativeCapture: () => Effect.succeed(null),
-            captureNativeResult: (context) =>
-              Effect.succeed({
-                runId: context.runId,
-                runAttemptId: context.runAttemptId,
-                captureKey: "native-final/1",
-                slot: "draft",
-                text: "",
-                status: "failed" as const,
-                checkpoint: null,
-              }),
-            observeResult: () => Effect.succeed({} as never),
-          },
-        },
-      ),
-    ),
-  );
+  }).pipe(Effect.provide(layerFinalizeWorker(harness, dispatched)));
+});
+
+effectIt.effect.each([
+  { name: "a managed run whose turn was claimed", managed: true, act: "claim-turn" },
+  { name: "a managed run whose attempt was replaced", managed: true, act: "replace" },
+  {
+    name: "a managed run whose ending write fails once",
+    managed: true,
+    fail: { status: "running", committed: false },
+  },
+  {
+    name: "a managed run whose ending write commits but reports a failure",
+    managed: true,
+    fail: { status: "running", committed: true },
+  },
+  {
+    name: "an ordinary run whose running write commits but reports a failure",
+    managed: false,
+    fail: { status: "starting", committed: true },
+  },
+] as const)("retries a start that went running for $name", (row) => {
+  const harness = makeLocalCommandHarness({
+    text: "Continue",
+    managed: row.managed,
+    nativeStart: row.managed ? { failBindingRead: 2 } : {},
+  });
+  const run = harness.projection().runs.at(-1)!;
+  const replacement = RunAttemptId.make("attempt-replacement");
+  const ends = row.managed && "fail" in row;
+  const endingWrites = () =>
+    harness.writeIfRunCurrent.mock.calls.filter(([write]) => write.expectedStatus === "running")
+      .length;
+  const dispatched: Array<string> = [];
+  return Effect.gen(function* () {
+    const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+    const outbox = yield* EffectOutbox.EffectOutboxV2;
+    const finalize = outbox.get(`effect:factory.execution.finalize:${run.activeAttemptId}`);
+    yield* commitWrittenEffects(harness, "fail" in row ? row.fail : undefined);
+    const { storedEffect } = yield* enqueueStart(
+      harness.projection(),
+      row.managed
+        ? { type: "provider-turn.start", runId: run.id, runAttemptId: harness.attemptId }
+        : undefined,
+    );
+    expect(yield* worker.drain()).toBe(1);
+    expect(yield* storedEffect).toMatchObject({ status: "pending", attemptCount: 1 });
+    expect(harness.projection().runs.at(-1)?.status).toBe("running");
+    if ("act" in row && row.act === "claim-turn") harness.factory!.claimTurn();
+    if ("act" in row && row.act === "replace") {
+      const projection = harness.projection();
+      harness.setProjection({
+        ...projection,
+        runs: projection.runs.map((candidate) =>
+          candidate.id === run.id ? { ...candidate, activeAttemptId: replacement } : candidate,
+        ),
+        attempts: [...projection.attempts, { ...projection.attempts.at(-1)!, id: replacement }],
+      });
+    }
+
+    yield* TestClock.adjust("100 millis");
+    yield* worker.drain();
+    expect(harness.providerTurnsRun()).toBe(0);
+    if (!ends) {
+      expect(harness.projection().runs.at(-1)).toMatchObject({
+        status: "running",
+        activeAttemptId: "act" in row && row.act === "replace" ? replacement : harness.attemptId,
+      });
+      expect(harness.projection().turnItems).toEqual([]);
+      expect(endingWrites()).toBe(0);
+      expect(yield* finalize).toEqual(Option.none());
+      expect(harness.factory?.stopRequested() ?? false).toBe(false);
+      // An ordinary retry finds the run running and returns, as before.
+      if (!row.managed)
+        expect(yield* storedEffect).toMatchObject({ status: "succeeded", attemptCount: 2 });
+      return;
+    }
+    expect(yield* storedEffect).toMatchObject({ status: "pending", attemptCount: 2 });
+
+    yield* TestClock.adjust("200 millis");
+    yield* worker.drain();
+    expect(yield* storedEffect).toMatchObject({ status: "succeeded", attemptCount: 3 });
+    expect(harness.projection().runs.at(-1)?.status).toBe("failed");
+    expect(harness.projection().turnItems).toMatchObject([
+      { type: "error", status: "failed", title: "Turn failed to start" },
+    ]);
+    expect(endingWrites()).toBe("fail" in row && row.fail.committed ? 1 : 2);
+    expect((yield* finalize).pipe(Option.map((effect) => effect.status))).toEqual(
+      Option.some("succeeded"),
+    );
+    expect(harness.factory!.quiescent()).toBe(true);
+    expect(harness.providerTurnsRun()).toBe(0);
+  }).pipe(Effect.provide(layerFinalizeWorker(harness, dispatched)));
 });
 
 effectIt.effect.each(["interrupt", "start"] as const)(

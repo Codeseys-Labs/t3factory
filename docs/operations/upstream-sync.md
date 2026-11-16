@@ -73,6 +73,12 @@ fork test that passes on the default branch is a break the merge made. An upstre
 the same way on unmodified upstream, on a Windows host, belongs on the Windows list. An upstream
 test that passes there is the fork's doing.
 
+A test that fails only in the full run and passes alone is not classified yet. Time it alone on
+unmodified upstream, then start several copies of that one test there at once, a second apart.
+An upstream test that fails that way belongs on the Windows list, with both results in its
+reason. A fork test that fails only under load is doing too much in one case: split it, do not
+raise its limit.
+
 1. Save `git show --remerge-diff <merge commit>` and split it by area. Every hunk in it is a
    conflict resolution or a hand edit.
 2. Give each area to a reviewer with one question, from a model family that did not do the
@@ -179,3 +185,9 @@ lanes is real and blocks the merge.
 - **An upstream test read a row before the fork had written it.** The fork serializes commits and
   publishes them in order; upstream does not. The test passed on unmodified upstream and failed
   here, and the write it waited for did land. It now waits for the event it asserts on.
+- **Three tests that failed only in the full run** stopped the third receipt twice, an hour each
+  time. Two were upstream's. One waits for a checkpoint of the folder the tests run from, about
+  19 seconds alone on Windows against a 60 second limit. The other removes its temp folder while
+  the update it started still writes there. Both failed on unmodified upstream once several
+  copies ran at once. The third was a fork browser case with about twenty interactions under a
+  15 second limit.

@@ -1,5 +1,6 @@
 import {
   type FactoryTaskCatalog,
+  type FactoryTaskLabelOptions,
   presentFactoryTaskAssignee,
 } from "@t3tools/client-runtime/state/factory-task-view";
 import type {
@@ -21,10 +22,15 @@ export interface TaskAssigneeParent {
 }
 
 /** `Codex · Sol` and `Cx` for a setup, from the environment's provider catalog. */
-export function presentTaskSetup(setup: FactoryAgentSetup, catalog: FactoryTaskCatalog) {
+export function presentTaskSetup(
+  setup: FactoryAgentSetup,
+  catalog: FactoryTaskCatalog,
+  labelOptions?: FactoryTaskLabelOptions,
+) {
   const presented = presentFactoryTaskAssignee(
     { assignment: { mode: "pinned", setup }, key: "", resolved: null },
     catalog,
+    labelOptions,
   );
   return { label: presented.label, mono: presented.monogram };
 }
@@ -40,12 +46,13 @@ function assigneeSetup(assignee: FactoryTaskAssignee): FactoryAgentSetup | null 
 export function taskAssigneeChipProps(
   assignee: FactoryTaskAssignee,
   catalog: FactoryTaskCatalog,
+  labelOptions?: FactoryTaskLabelOptions,
 ): AssigneeChipProps {
   const mode = assignee.assignment.mode;
   if (mode === "person") return { kind: "person", label: "You" };
   const setup = mode === "unassigned" ? null : assigneeSetup(assignee);
   if (!setup) return { kind: "unassigned" };
-  const { label, mono } = presentTaskSetup(setup, catalog);
+  const { label, mono } = presentTaskSetup(setup, catalog, labelOptions);
   return mode === "auto" ? { kind: "auto", label } : { kind: "agent", label, mono };
 }
 

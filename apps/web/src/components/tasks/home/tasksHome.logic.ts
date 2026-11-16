@@ -174,6 +174,9 @@ export function boardLanes(
   return lanes;
 }
 
+/** A lane, section or filter choice stands for tasks that may differ in options, so its label names none. */
+export const GROUP_ASSIGNEE_LABEL = { options: false } as const;
+
 /** An Auto assignee as the agent it resolved to, so a lane or a filter choice names the agent. */
 export function agentAssignee(assignee: FactoryTaskAssignee): FactoryTaskAssignee {
   if (assignee.assignment.mode !== "auto" || !assignee.resolved) return assignee;

@@ -24,7 +24,7 @@ import {
 import { Separator } from "../../ui/separator";
 import { assigneeText, CountBadge, TASK_STATUS_VISUALS, TASK_TYPE_LABELS } from "../kit";
 import { useTaskAssigneeChip } from "../shared";
-import { activeFilterCount, type TaskFilterField } from "./tasksHome.logic";
+import { activeFilterCount, GROUP_ASSIGNEE_LABEL, type TaskFilterField } from "./tasksHome.logic";
 
 const STATUS_OPTIONS: readonly FactoryTaskStatus[] = [
   "backlog",
@@ -179,7 +179,7 @@ function AssigneeFilterItem({
   checked: boolean;
   onToggle: () => void;
 }) {
-  const chip = useTaskAssigneeChip(option.assignee, option.environmentId);
+  const chip = useTaskAssigneeChip(option.assignee, option.environmentId, GROUP_ASSIGNEE_LABEL);
   return (
     <MenuCheckboxItem checked={checked} onCheckedChange={onToggle}>
       {assigneeText(chip)}

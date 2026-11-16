@@ -1,7 +1,14 @@
 import { FACTORY_TASK_FIXTURES } from "@t3tools/client-runtime/state/factory-task-fixtures";
 import { describe, expect, it } from "vite-plus/test";
 
-import { cardMeta, listResultText } from "./tasksHome.logic";
+import { taskAssigneeChipProps } from "../shared/taskAssigneeModel";
+import {
+  boardLanes,
+  cardMeta,
+  GROUP_ASSIGNEE_LABEL,
+  laneAssignee,
+  listResultText,
+} from "./tasksHome.logic";
 
 const fixture = (displayId: string) =>
   FACTORY_TASK_FIXTURES.tasks.find((task) => task.displayId === displayId)!;
@@ -35,6 +42,59 @@ describe("a task's result on the board and in the list", () => {
     expect([cardMeta(unpublished), listResultText(unpublished)]).toEqual([
       { kind: "text", text: "+212 −48 · 7 files" },
       "Accepted · rev 1",
+    ]);
+  });
+});
+
+describe("a group of tasks pinned to one model", () => {
+  it("is named by the model, while each task keeps the effort it chose", () => {
+    const effort = {
+      id: "reasoningEffort",
+      label: "Reasoning",
+      type: "select" as const,
+      options: [
+        { id: "low", label: "Low", isDefault: true },
+        { id: "high", label: "High" },
+      ],
+    };
+    const catalog = FACTORY_TASK_FIXTURES.catalog.map((provider) => ({
+      ...provider,
+      models: provider.models.map((model) => ({
+        ...model,
+        capabilities: { optionDescriptors: [effort] },
+      })),
+    }));
+    const base = fixture("T-41");
+    const { setup } = base.assignee.resolved!;
+    const pinnedAt = (taskId: string, value: string) => ({
+      ...base,
+      ref: { ...base.ref, taskId },
+      assignee: {
+        key: base.assignee.key,
+        resolved: null,
+        assignment: {
+          mode: "pinned" as const,
+          setup: {
+            ...setup,
+            modelSelection: {
+              ...setup.modelSelection,
+              options: [{ id: "reasoningEffort", value }],
+            },
+          },
+        },
+      },
+    });
+    const tasks = [pinnedAt("high", "high"), pinnedAt("low", "low")];
+    const lanes = boardLanes(tasks, "assignee");
+    expect(lanes).toHaveLength(1);
+    expect([
+      taskAssigneeChipProps(laneAssignee(lanes[0]!.tasks)!, catalog, GROUP_ASSIGNEE_LABEL),
+      taskAssigneeChipProps(tasks[0]!.assignee, catalog),
+      taskAssigneeChipProps(tasks[1]!.assignee, catalog),
+    ]).toMatchObject([
+      { label: "Codex · Sol" },
+      { label: "Codex · Sol · High" },
+      { label: "Codex · Sol · Low" },
     ]);
   });
 });

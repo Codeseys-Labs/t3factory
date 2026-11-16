@@ -225,6 +225,12 @@ export class FactoryExecutionStore extends Context.Service<
       readonly runId?: RunId;
       readonly detail: string;
     }) => Effect.Effect<void, FactoryExecutionError>;
+    /** Fences an attempt that never claimed its turn; false once a prompt may have been sent. */
+    readonly stopUnprompted: (input: {
+      readonly threadId: ThreadId;
+      readonly runId: RunId;
+      readonly runAttemptId: RunAttemptId;
+    }) => Effect.Effect<boolean, FactoryExecutionError>;
     readonly retainCapture: (
       input: ObserveResultInput,
     ) => Effect.Effect<void, FactoryExecutionError>;
@@ -1354,6 +1360,24 @@ const make = Effect.gen(function* () {
     (effect) => sql.withTransaction(effect),
     Effect.mapError(failure),
   );
+  const stopUnprompted = Effect.fn("FactoryExecutionStore.stopUnprompted")(
+    function* (input: {
+      readonly threadId: ThreadId;
+      readonly runId: RunId;
+      readonly runAttemptId: RunAttemptId;
+    }) {
+      const binding = yield* findNativeBinding(input);
+      if (binding?.runId !== input.runId || binding.runAttemptId !== input.runAttemptId)
+        return false;
+      const turn =
+        yield* sql`SELECT phase FROM factory_execution_phases WHERE attempt_id = ${input.runAttemptId} AND phase = 'turn'`;
+      if (turn.length > 0) return false;
+      yield* sql`UPDATE factory_execution_bindings SET stop_requested = 1 WHERE attempt_id = ${input.runAttemptId}`;
+      return true;
+    },
+    (effect) => sql.withTransaction(effect),
+    Effect.mapError(failure),
+  );
   const claimPhase = Effect.fn("FactoryExecutionStore.claimPhase")(
     function* (
       input: Claim,
@@ -1550,6 +1574,7 @@ const make = Effect.gen(function* () {
     settleAttempt,
     expireOrphanClaims,
     requestNativeStop,
+    stopUnprompted,
     retainCapture,
     readCapture,
     captureKey,

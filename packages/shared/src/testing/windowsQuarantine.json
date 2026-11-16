@@ -109,12 +109,6 @@
   },
   {
     "file": "apps/server/src/vcs/GitVcsDriver.test.ts",
-    "name": "restores empty checkpoints without changing paths outside the workspace",
-    "issue": 160,
-    "why": "on a Windows host where Git can delete its own working directory, `git clean` in a workspace folder with no tracked files removes `./` and exits 0 on every pass, so the restore reports untracked files remain; driver and test are unchanged from upstream"
-  },
-  {
-    "file": "apps/server/src/vcs/GitVcsDriver.test.ts",
     "name": "checkpoint bulk staging cleans operation-owned packs after interrupt and can retry",
     "issue": 128,
     "why": "reading the operation's temporary object directory's `pack` folder fails with ENOENT on a Windows host; fails the same way on unmodified upstream"

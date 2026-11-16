@@ -43,6 +43,10 @@ git merge --no-ff --no-commit <upstream commit>
 - Resolve by area, one owner per file: orchestration; server wiring, persistence, contracts and MCP;
   server features and packages; web, desktop, mobile, scripts and docs. Then one pass that makes
   every package typecheck.
+- Then run the test file beside every file you resolved or edited by hand, and
+  `evals/factory-qualification/dataset.test.ts`. Typecheck does not show a fork test that now
+  fails, and the dataset pins a hash of the source files its cases point at. When a pinned file
+  changed and its anchored case did not, re-pin as `evals/factory-qualification/README.md` says.
 - The rules: upstream's structure wins where it refactored; the fork's additions stay; where both
   sides fixed the same problem, take upstream's.
 - Take upstream's `pnpm-lock.yaml` and run `pnpm install --no-frozen-lockfile`. Regenerate
@@ -56,6 +60,25 @@ git merge --no-ff --no-commit <upstream commit>
 ## Review
 
 Nobody can review the full diff. Review what was decided by hand.
+
+That review cannot see an upstream change of behaviour in a file that merged without a conflict.
+`check:changed` against the upstream commit can: it runs every test beside a file the fork changes.
+Start it on the merge commit before the reviewers start, not first inside the receipt. It takes
+about an hour on Windows.
+
+When one of its tests fails, find out whose failure it is before fixing anything. Run the same test
+on the default branch, and on the upstream commit itself in a worktree of its own
+(`git worktree add --detach ../t3-upstream-<sha> <upstream commit>`, then the pinned install). A
+fork test that passes on the default branch is a break the merge made. An upstream test that fails
+the same way on unmodified upstream, on a Windows host, belongs on the Windows list. An upstream
+test that passes there is the fork's doing.
+
+A test that fails only in the full run and passes alone is not classified yet. Time it alone on
+unmodified upstream, then start several copies of that one test there at once, a second apart.
+An upstream test that fails that way on a Windows host belongs on the Windows list, with both
+results in its reason. The list applies on Windows only: one that also fails that way on Linux is
+a real failure there. A fork test that fails only under load is doing too much in one case: split
+it, do not raise its limit.
 
 1. Save `git show --remerge-diff <merge commit>` and split it by area. Every hunk in it is a
    conflict resolution or a hand edit.
@@ -151,3 +174,21 @@ lanes is real and blocks the merge.
   folders.
 - **Factory migrations.** Read [#132](https://github.com/Codeseys-Labs/t3factory/issues/132) before
   a sync that brings upstream migrations.
+- **A fork test that failed on the merge commit, unnoticed.** The merge was checked with typecheck
+  and a chosen set of tests. The fork's test for restart recovery of a managed run was not in the
+  set and failed there; nobody saw it until a reviewer asked whether that file had been run.
+- **Stale source pins in the qualification dataset**, two syncs in a row. On the second, nothing
+  ran that test before the receipt's focused tests, and the receipt had to start again.
+- **An upstream change in a file that merged cleanly broke a fork feature.** Upstream made a new
+  thread's create command carry its first message, so a launch leaves one receipt where it left
+  two. The project orchestrator read both. Nothing conflicted, so no reviewer was shown it; six
+  fork tests found it, an hour into the second receipt.
+- **An upstream test read a row before the fork had written it.** The fork serializes commits and
+  publishes them in order; upstream does not. The test passed on unmodified upstream and failed
+  here, and the write it waited for did land. It now waits for the event it asserts on.
+- **Three tests that failed only in the full run** stopped the third receipt twice, an hour each
+  time. Two were upstream's. One waits for a checkpoint of the folder the tests run from, about
+  19 seconds alone on Windows against a 60 second limit. The other removes its temp folder while
+  the update it started still writes there. Both failed on unmodified upstream once several
+  copies ran at once. The third was a fork browser case with about twenty interactions under a
+  15 second limit.

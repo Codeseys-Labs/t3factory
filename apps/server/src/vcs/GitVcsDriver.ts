@@ -1915,16 +1915,18 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         onSpawn,
       });
       let cleaned = yield* clean;
+      // With no tracked files here, clean on Windows removes './' itself and exits 0: nothing is left.
+      const removedChild = /^Removing (?!\.\/\r?$)/m;
       // Removing a new .gitignore exposes the files it hid; clean again until nothing is left.
       for (
         let pass = 1;
-        pass < 4 && cleaned.exitCode === 0 && /^Removing /m.test(cleaned.stdout);
+        pass < 4 && cleaned.exitCode === 0 && removedChild.test(cleaned.stdout);
         pass++
       ) {
         yield* recreateWorkspace;
         cleaned = yield* clean;
       }
-      if (cleaned.exitCode === 0 && /^Removing /m.test(cleaned.stdout)) {
+      if (cleaned.exitCode === 0 && removedChild.test(cleaned.stdout)) {
         yield* recreateWorkspace;
         const remaining = yield* execute({
           operation,

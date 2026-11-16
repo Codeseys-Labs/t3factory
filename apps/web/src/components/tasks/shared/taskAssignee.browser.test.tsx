@@ -327,28 +327,45 @@ it("asks the server when the parent does not decide", async () => {
   });
 });
 
-it("ends on the last model chosen even when an earlier save is slow", async () => {
-  setup();
-  const task = {
-    ...FACTORY_TASK_FIXTURES.tasks.find((entry) => entry.displayId === "T-41")!,
-    assignee: { assignment: { mode: "unassigned" }, key: "unassigned", resolved: null },
-    liveRuns: [],
-    run: null,
-    parent: null,
-    version: 0,
-  } as unknown as Parameters<typeof TaskAssigneeEditor>[0]["task"];
-  await using screen = await render(<TaskAssigneeEditor task={task} />);
-  await userEvent.click(screen.getByRole("button", { name: /Unassigned/ }));
-  await userEvent.click(page.getByRole("option", { name: /Pin a harness and model/ }));
-  await userEvent.click(page.getByRole("button", { name: "Choose Terra" }));
-  await userEvent.click(page.getByRole("radio", { name: "High" }));
-  await userEvent.click(page.getByRole("button", { name: "Choose Claude Opus" }));
-  await vi.waitFor(() => expect(state.server.release).not.toBeNull());
-  state.server.release?.();
-  await vi.waitFor(() => expect(state.server.applied).toHaveLength(3));
-  expect(state.server.applied.map((assignment) => assignment.setup.modelSelection)).toMatchObject([
-    { model: "terra" },
-    { model: "terra", options: [{ id: "reasoningEffort", value: "high" }] },
-    { model: "claude-opus" },
-  ]);
-});
+it.each([
+  { name: "in one editor", remount: false },
+  { name: "after the editor is unmounted and mounted again", remount: true },
+])(
+  "ends on the last model chosen even when an earlier save is slow, $name",
+  async ({ remount }) => {
+    setup();
+    const task = {
+      ...FACTORY_TASK_FIXTURES.tasks.find((entry) => entry.displayId === "T-41")!,
+      assignee: { assignment: { mode: "unassigned" }, key: "unassigned", resolved: null },
+      liveRuns: [],
+      run: null,
+      parent: null,
+      version: 0,
+    } as unknown as Parameters<typeof TaskAssigneeEditor>[0]["task"];
+    await using screen = await render(<TaskAssigneeEditor task={task} />);
+    await userEvent.click(screen.getByRole("button", { name: /Unassigned/ }));
+    await userEvent.click(page.getByRole("option", { name: /Pin a harness and model/ }));
+    await userEvent.click(page.getByRole("button", { name: "Choose Terra" }));
+    await userEvent.click(page.getByRole("radio", { name: "High" }));
+    await vi.waitFor(() => expect(state.server.release).not.toBeNull());
+    await using _last = remount
+      ? await (async () => {
+          await screen.unmount();
+          const again = await render(<TaskAssigneeEditor task={task} />);
+          await userEvent.click(again.getByRole("button", { name: /Unassigned/ }));
+          await userEvent.click(page.getByRole("option", { name: /Pin a harness and model/ }));
+          return again;
+        })()
+      : screen;
+    await userEvent.click(page.getByRole("button", { name: "Choose Claude Opus" }));
+    state.server.release?.();
+    await vi.waitFor(() => expect(state.server.applied).toHaveLength(3));
+    expect(state.server.applied.map((assignment) => assignment.setup.modelSelection)).toMatchObject(
+      [
+        { model: "terra" },
+        { model: "terra", options: [{ id: "reasoningEffort", value: "high" }] },
+        { model: "claude-opus" },
+      ],
+    );
+  },
+);

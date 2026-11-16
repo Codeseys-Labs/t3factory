@@ -11,7 +11,7 @@ import type {
   ProjectId,
 } from "@t3tools/contracts";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { type ReactElement, useRef, useState } from "react";
+import { type ReactElement, useState } from "react";
 
 import { factoryTasks, useFactoryAgentProfiles } from "../../../state/factoryTasks";
 import { ComposerEffortColumn } from "../../chat/ComposerModelEffort";
@@ -34,6 +34,7 @@ import {
   taskAssigneeChipProps,
 } from "./taskAssigneeModel";
 import { useTaskCatalog } from "./taskCatalog";
+import { queueTaskSave } from "./taskSaveQueue";
 import { useTaskDefaultRuntimeMode, useTaskModelChoices } from "./taskModelChoices";
 import { TaskModelOptionsFooter } from "./TaskModelOptionsFooter";
 import { taskTraitsInput, withModelOptions } from "./taskModelOptions.logic";
@@ -305,8 +306,6 @@ export function TaskAssigneeEditor({ task }: { task: FactoryTaskSummary }) {
   const canUpdate = useAtomValue(factoryTasks.updateTask.permissionAtom(environmentId));
   const parent = useParentAssignee(task);
   const actions = useTaskActions();
-  // One save at a time, in the order chosen: a slower earlier save must not land after a later one.
-  const saves = useRef<Promise<unknown>>(Promise.resolve());
   const running =
     task.liveRuns.some((run) => run.taskId === task.ref.taskId) ||
     task.run?.state === "running" ||
@@ -326,7 +325,7 @@ export function TaskAssigneeEditor({ task }: { task: FactoryTaskSummary }) {
       type={task.type}
       value={task.assignee.assignment}
       onChange={(assignment) => {
-        saves.current = saves.current.then(() => actions.update(task, { assignment }));
+        void queueTaskSave(task.ref, () => actions.update(task, { assignment }));
       }}
       trigger={<AssigneeChip assignee={chip} render={<button type="button" />} />}
       allowUnassigned

@@ -3007,9 +3007,12 @@ it.effect("a task made from retained Work carries it as its source", () =>
   ),
 );
 
-it.effect.each([false, true])(
-  "request changes runs the task's current assignee and the next result replaces the one under review (long reports: %s)",
-  (longReports) =>
+it.effect.each([
+  { longReports: false, reassigned: false },
+  { longReports: true, reassigned: true },
+])(
+  "request changes runs the task's current assignee and the next result replaces the one under review (long reports: $longReports, reassigned: $reassigned)",
+  ({ longReports, reassigned }) =>
     scenario(
       Effect.gen(function* () {
         const { sql, tasks, create, start, finish, until } = yield* harness;
@@ -3025,7 +3028,7 @@ it.effect.each([false, true])(
         baseProbe.remote = { remoteName: "origin", branchName: "main" };
         baseProbe.failure = "Continuing code must not fetch";
         yield* finish(first, "sealed");
-        yield* until(task, (current) => current.status === "in-review");
+        const review = yield* until(task, (current) => current.status === "in-review");
 
         // An Accept that lands after a Request changes passed its checks wins: the run is not
         // admitted, and the note does not wait for the next run.
@@ -3058,15 +3061,17 @@ it.effect.each([false, true])(
           human,
         )).task;
         // Reassigned after the result. An agent set to the project folder still continues the code.
-        const reassigned = (yield* tasks.update(
-          {
-            commandId: command("reassign"),
-            ref: task.ref,
-            expectedVersion: reopened.version,
-            assignment: { mode: "pinned", setup: setupOf("flash", "root") },
-          },
-          human,
-        )).task;
+        const assignee = reassigned
+          ? (yield* tasks.update(
+              {
+                commandId: command("reassign"),
+                ref: task.ref,
+                expectedVersion: reopened.version,
+                assignment: { mode: "pinned", setup: setupOf("flash", "root") },
+              },
+              human,
+            )).task.assignee
+          : review.assignee;
 
         // A Request changes that lands while an Accept reads the result wins: the run it started
         // is not covered by an acceptance of the result before it.
@@ -3092,9 +3097,9 @@ it.effect.each([false, true])(
         const second = changing.run!;
         assert.deepEqual(
           [changing.status, second.ordinal, second.state, changing.assignee.key],
-          ["in-progress", 2, "running", reassigned.assignee.key],
+          ["in-progress", 2, "running", assignee.key],
         );
-        assert.deepEqual(second.setup, setupOf("flash"));
+        assert.deepEqual(second.setup, reassigned ? setupOf("flash") : first.setup);
         assert.deepEqual(changing.attention, []);
         // The sealed attempt cannot continue: the note and the result's commit start a new one.
         const bindings = yield* sql<{

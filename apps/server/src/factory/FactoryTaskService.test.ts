@@ -35,6 +35,7 @@ import {
 } from "@t3tools/contracts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { buildPrContentPrompt } from "@t3tools/provider-core/server/textGenerationPrompts";
 import { AcpProviderCapabilitiesV2 } from "@t3tools/provider-acp/server/adapter";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { PosixCgroupController } from "../process/PosixOwnedProcess.ts";
@@ -195,35 +196,38 @@ const recordMessage = Effect.fn("test.recordMessage")(function* (
   run: FactoryTaskRun,
   text: string,
   ordinal = 3,
+  /** A message the person typed in the run's thread, not one the agent wrote. */
+  person = false,
 ) {
   const projection = yield* ProjectionStore.ProjectionStoreV2;
   const id = `message:${run.runId}:${ordinal}`;
-  yield* projection.apply({
-    id: EventId.make(id),
-    type: "turn-item.updated",
-    threadId: run.threadId,
-    occurredAt: DateTime.makeUnsafe(at),
-    payload: {
-      id: TurnItemId.make(id),
+  if (!person)
+    yield* projection.apply({
+      id: EventId.make(id),
+      type: "turn-item.updated",
       threadId: run.threadId,
-      runId: run.runId,
-      nodeId: null,
-      type: "assistant_message",
-      messageId: MessageId.make(id),
-      providerThreadId: null,
-      providerTurnId: null,
-      nativeItemRef: null,
-      parentItemId: null,
-      ordinal,
-      status: "completed",
-      title: null,
-      startedAt: DateTime.makeUnsafe(at),
-      completedAt: DateTime.makeUnsafe(at),
-      text,
-      streaming: false,
-      updatedAt: DateTime.makeUnsafe(at),
-    },
-  });
+      occurredAt: DateTime.makeUnsafe(at),
+      payload: {
+        id: TurnItemId.make(id),
+        threadId: run.threadId,
+        runId: run.runId,
+        nodeId: null,
+        type: "assistant_message",
+        messageId: MessageId.make(id),
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal,
+        status: "completed",
+        title: null,
+        startedAt: DateTime.makeUnsafe(at),
+        completedAt: DateTime.makeUnsafe(at),
+        text,
+        streaming: false,
+        updatedAt: DateTime.makeUnsafe(at),
+      },
+    });
   yield* projection.apply({
     id: EventId.make(`record:${id}`),
     type: "message.updated",
@@ -234,12 +238,12 @@ const recordMessage = Effect.fn("test.recordMessage")(function* (
       threadId: run.threadId,
       runId: run.runId,
       nodeId: null,
-      role: "assistant",
+      role: person ? "user" : "assistant",
       text,
       attachments: [],
       streaming: false,
-      createdBy: "agent",
-      creationSource: "provider",
+      createdBy: person ? "user" : "agent",
+      creationSource: person ? "web" : "provider",
       createdAt: DateTime.makeUnsafe(at),
       updatedAt: DateTime.makeUnsafe(at),
     },
@@ -294,6 +298,7 @@ class BaseProbe extends Context.Service<
   BaseProbe,
   {
     branch: string | null;
+    defaultBranch: string | null;
     remote: Git.GitWorktreeBaseRemote | null;
     fetched: string | null;
     ancestor: boolean;
@@ -305,7 +310,7 @@ const baseGit = Layer.unwrap(
   Effect.gen(function* () {
     const probe = yield* BaseProbe;
     return Layer.mock(Git.GitVcsDriver)({
-      resolveDefaultBranchName: () => Effect.succeed("main"),
+      resolveDefaultBranchName: () => Effect.sync(() => probe.defaultBranch),
       resolveCommit: () => Effect.succeed({ commitSha: projectHead }),
       execute: (input) =>
         Effect.sync(() => {
@@ -363,6 +368,7 @@ const baseGit = Layer.unwrap(
   Layer.provideMerge(
     Layer.sync(BaseProbe, () => ({
       branch: "main",
+      defaultBranch: "main",
       remote: null,
       fetched: remoteHead,
       ancestor: true,
@@ -2694,6 +2700,7 @@ it.effect(
         const report =
           "The ring now wraps at its capacity.\n\n`vp test run ring.test.ts` passes 4 of 4.";
         yield* recordMessage(run, report);
+        yield* recordMessage(run, "Person's chat note: keep my laptop out of this.", 9, true);
         yield* finish(run, "sealed", "Captured output also repeats the private note.");
         yield* until(task, (current) => current.status === "in-review");
 
@@ -2708,10 +2715,17 @@ it.effect(
         const sending = (yield* deliver("publish", "publish")).task;
         const writer = (yield* GenerationProbe).inputs[0]!;
         assert.include(writer.threadContext!, report);
-        assert.notInclude(writer.threadContext!, "Per your private note");
-        assert.notInclude(writer.threadContext!, "private-demo-notes.txt");
-        assert.notInclude(writer.threadContext!, "Private command output");
-        assert.notInclude(writer.threadContext!, "Captured output");
+        // Nothing the person typed, and nothing that quotes it, reaches the writer in any field.
+        const handed = JSON.stringify(writer);
+        for (const kept of [
+          "Operator note",
+          "Person's chat note",
+          "Per your private note",
+          "private-demo-notes.txt",
+          "Private command output",
+          "Captured output",
+        ])
+          assert.notInclude(handed, kept);
         assert.equal(writer.baseBranch, "main");
         assert.deepEqual(
           [sending.status, sending.result?.pullRequest, sending.result?.delivery],
@@ -3169,10 +3183,14 @@ it.effect.each([false, true])(
         assert.notInclude(generated.inputs[0]!.threadContext!, "Private first-round plan");
         assert.include(generated.inputs[0]!.threadContext!, "Result rev 1\n");
         assert.include(generated.inputs[0]!.threadContext!, "Result rev 2\n");
-        assert.isAtMost(generated.inputs[0]!.threadContext!.length, 60_000);
+        // The model reads the prompt, which cuts this context: both rounds must survive the cut.
+        const { prompt } = buildPrContentPrompt(generated.inputs[0]!);
+        assert.include(prompt, "Implemented ring wrapping in the first round.");
+        assert.include(prompt, "Preserved cursor paging in the revision round.");
         if (longReports) {
-          assert.notInclude(generated.inputs[0]!.threadContext!, "first report tail");
-          assert.notInclude(generated.inputs[0]!.threadContext!, "second report tail");
+          assert.notInclude(prompt, "first report tail");
+          assert.notInclude(prompt, "second report tail");
+          assert.include(prompt, "[truncated]");
         }
         assert.equal(generated.inputs[0]!.commitSummary, "first work commit\nrevision work commit");
         assert.equal(generated.inputs[0]!.diffSummary, "whole-change stat");
@@ -3233,7 +3251,7 @@ it.effect("a replayed Publish does not generate again and uses project writer se
   ),
 );
 
-it.effect.each(["provider-error", "empty", "timeout"] as const)(
+it.effect.each(["provider-error", "empty", "timeout", "no default branch"] as const)(
   "Publish falls back when generation returns %s",
   (failure) =>
     scenario(
@@ -3256,6 +3274,8 @@ it.effect.each(["provider-error", "empty", "timeout"] as const)(
         yield* finish((yield* start(task)).run!, "sealed", "Original run report");
         yield* until(task, (current) => current.status === "in-review");
         yield* tasks.accept({ commandId: command("accept"), ref: task.ref, revision: 1 }, human);
+        // Publish is refused without a default branch, so the writer is not asked first.
+        if (failure === "no default branch") (yield* BaseProbe).defaultBranch = null;
         const publish = tasks.publish(
           { commandId: command("publish"), ref: task.ref, revision: 1 },
           human,
@@ -3277,7 +3297,7 @@ it.effect.each(["provider-error", "empty", "timeout"] as const)(
             },
           ],
         );
-        assert.lengthOf(probe.inputs, 1);
+        assert.lengthOf(probe.inputs, failure === "no default branch" ? 0 : 1);
       }),
     ),
 );

@@ -54,6 +54,7 @@ import {
   type ServerSettings as Settings,
   type ThreadId,
 } from "@t3tools/contracts";
+import { limitSection } from "@t3tools/provider-core/server/textGenerationUtils";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -295,6 +296,8 @@ const GRANT_EXPIRES_AT = "9999-12-31T23:59:59.999Z";
 const CHECKPOINT_CHECK = { command: "git", args: ["rev-parse", "--verify", "HEAD"] };
 // Leaves the pull request body (FACTORY_DELIVERY_BODY_MAX_CHARS) room for the closing line and footer.
 const REPORT_MAX_CHARS = 60_000;
+// The PR prompt keeps only the first 20,000 characters of the reports; stay under it so none is lost.
+const PR_REPORTS_MAX_CHARS = 16_000;
 
 const planError = (error: FactoryPlanError) => {
   const reasons: Record<FactoryPlanError["reason"], FactoryTaskError["reason"]> = {
@@ -1874,28 +1877,31 @@ const make = Effect.gen(function* () {
       return { ...previous.value.payload, closes: null };
     }
     const cwd = yield* store.projectWorkspace(row.projectId);
-    const generated =
+    // Publish is refused without a default branch; asking the writer first would only delay that.
+    const baseBranch =
       cwd === null || baseRef === null
+        ? null
+        : yield* git.resolveDefaultBranchName(cwd, "origin").pipe(Effect.orElseSucceed(() => null));
+    const generated =
+      cwd === null || baseRef === null || !baseBranch
         ? undefined
         : yield* Effect.gen(function* () {
-            const baseBranch = yield* git.resolveDefaultBranchName(cwd, "origin");
-            const budget = Math.max(
-              0,
-              Math.floor((REPORT_MAX_CHARS - 2 * (results.length - 1)) / results.length),
-            );
+            const share = Math.floor(PR_REPORTS_MAX_CHARS / results.length);
             const reports = yield* Effect.forEach(results, (entry) =>
               resultReport(row, entry).pipe(
-                Effect.map((report) => `Result rev ${entry.revision}\n${report}`.slice(0, budget)),
+                Effect.map((report) =>
+                  limitSection(`Result rev ${entry.revision}\n${report}`, share),
+                ),
               ),
             );
             return yield* gitManager.generatePrContent({
               cwd,
               projectId: row.projectId,
-              baseBranch: baseBranch ?? baseRef,
+              baseBranch,
               headBranch,
               baseRef,
               headRef: result.commit,
-              threadContext: reports.join("\n\n").slice(0, REPORT_MAX_CHARS),
+              threadContext: reports.join("\n\n"),
             });
           }).pipe(
             Effect.timeoutOption("3 minutes"),

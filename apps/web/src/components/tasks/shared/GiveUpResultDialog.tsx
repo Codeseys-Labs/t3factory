@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from "../../ui/alert-dialog";
 import { Button } from "../../ui/button";
+import { presentGiveUpFolder } from "./GiveUpResultDialog.logic";
 import { useTaskActions } from "./taskActions";
 
 /**
@@ -47,12 +48,13 @@ function GiveUpResultDialog({
   const [sending, setSending] = useState(false);
   const shell = useThreadShell(scopeThreadRef(task.ref.environmentId, run.threadId));
   const project = useProject(scopeProjectRef(task.ref.environmentId, task.ref.projectId));
-  const inProject = run.setup.workspace === "root";
-  const [folder] = useState(
-    () => (inProject ? null : shell?.worktreePath) ?? project?.workspaceRoot ?? null,
+  const [folder] = useState(() =>
+    presentGiveUpFolder({
+      workspace: run.setup.workspace,
+      worktreePath: shell?.worktreePath ?? null,
+      projectRoot: project?.workspaceRoot ?? null,
+    }),
   );
-  const path =
-    folder === null ? null : <span className="break-all font-mono text-foreground">{folder}</span>;
   const confirm = async () => {
     setSending(true);
     const given = await actions.giveUp(task, run.runId);
@@ -70,19 +72,15 @@ function GiveUpResultDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Give up the result of run {run.ordinal}?</AlertDialogTitle>
           <AlertDialogDescription>
-            The task won't use what run {run.ordinal} made, and you can retry or reassign it.
-            {inProject ? (
+            The task won't use what run {run.ordinal} made, and you can retry or reassign it.{" "}
+            {folder.lead}
+            {folder.path === null ? null : (
               <>
-                Nothing is removed: the agent's changes stay in the project folder
-                {path === null ? "" : " "}
-                {path}.
-              </>
-            ) : (
-              <>
-                Nothing is removed: the agent's files stay in {path ?? "the run's folder"} until
-                your Storage settings clean up that folder, as for any other thread.
+                {" "}
+                <span className="break-all font-mono text-foreground">{folder.path}</span>
               </>
             )}
+            {folder.tail}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

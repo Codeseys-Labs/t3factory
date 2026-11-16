@@ -48,6 +48,18 @@
     "why": "expects path.resolve(\"/workspace\"), which adds a drive letter on Windows, while the adapter passes the cwd through unchanged"
   },
   {
+    "file": "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts",
+    "name": "ClaudeAdapterV2 background wake turns > persists a todo_list from inline Claude task-tool frames",
+    "issue": 128,
+    "why": "its scenario sets no workspace, so it checkpoints the folder the tests run from: about 19 s alone on a Windows host, and past the scenario's 60 s bound under load. On unmodified upstream it passes alone and fails 14 of 14 when 14 run at once"
+  },
+  {
+    "file": "apps/server/src/cloud/selfUpdate.test.ts",
+    "name": "server self update > keeps preparing after the progress stream closes",
+    "issue": 128,
+    "why": "intermittent on a Windows host: ENOTEMPTY removing the test's temp folder while the update the test leaves running still writes there; 1 of 18 runs under load on unmodified upstream"
+  },
+  {
     "file": "apps/desktop/src/app/DesktopCliCommand.test.ts",
     "name": "DesktopCliCommand > links the launcher onto PATH and removes only that link",
     "issue": 128,
@@ -64,5 +76,233 @@
     "name": "electron development launcher > restores execute permissions on an unchanged launcher",
     "issue": 128,
     "why": "Windows has no POSIX execute bits, so the file mode never reads back as 0o755"
+  },
+  {
+    "file": "apps/desktop/src/wsl/DesktopWslEnvironment.test.ts",
+    "name": "WSL runtime install script (executed) > prepareRuntime through wsl.exe > installs the runtime when wslpath cannot translate the archive's Windows path",
+    "issue": 128,
+    "why": "on a Windows host the install script exits 127 with `flock: command not found`, although the suite's own probe found `flock` in the distro; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "checkpoint ref cleanup > cleans more checkpoint refs than default git output holds",
+    "issue": 128,
+    "why": "seeding thousands of refs outlasts the git command timeout on a Windows host; times out on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "orphan worktree reports > reports a linked orphan's size without removing its files (annexed)",
+    "issue": 128,
+    "why": "replaces the worktree's .git with a directory symlink, which Git for Windows does not read as a repository; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "storage cleanup reports and local file policies > removes a worktree whose .git file git-annex replaced with a symlink",
+    "issue": 128,
+    "why": "replaces the worktree's .git with a directory symlink, which Git for Windows does not read as a repository; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "storage cleanup reports and local file policies > removes a worktree owned by a repository other than the project root",
+    "issue": 128,
+    "why": "joins the worktrees folder with \"/\" and looks the report entry up by that string, but the report holds the native Windows path; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriver.test.ts",
+    "name": "restores empty checkpoints without changing paths outside the workspace",
+    "issue": 160,
+    "why": "on a Windows host where Git can delete its own working directory, `git clean` in a workspace folder with no tracked files removes `./` and exits 0 on every pass, so the restore reports untracked files remain; driver and test are unchanged from upstream"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriver.test.ts",
+    "name": "checkpoint bulk staging cleans operation-owned packs after interrupt and can retry",
+    "issue": 128,
+    "why": "reading the operation's temporary object directory's `pack` folder fails with ENOENT on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriver.test.ts",
+    "name": "checkpoint bulk staging cleans operation-owned packs after timeout and can retry",
+    "issue": 128,
+    "why": "reading the operation's temporary object directory's `pack` folder fails with ENOENT on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriver.test.ts",
+    "name": "checkpoint bulk staging cleans operation-owned packs after success and can retry",
+    "issue": 128,
+    "why": "reading the operation's temporary object directory's `pack` folder fails with ENOENT on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "pullCurrentBranch > resolves a status waiter when Pull claims its queued fetch",
+    "issue": 128,
+    "why": "a git child still holds the temp repository when its scope removes it (EBUSY on rmdir); fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "GitVcsDriver core integration > worktree operations > preserves another creator's worktree on its new branch at the same path (current)",
+    "issue": 128,
+    "why": "looks for the backslash path in `git worktree list --porcelain`, which Git for Windows prints with forward slashes; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "GitVcsDriver core integration > worktree operations > preserves another creator's worktree on its new branch at the same path (legacy)",
+    "issue": 128,
+    "why": "looks for the backslash path in `git worktree list --porcelain`, which Git for Windows prints with forward slashes; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "GitVcsDriver core integration > worktree operations > removes its worktree and branch when cancelled before the claim (main)",
+    "issue": 128,
+    "why": "looks for the backslash path in `git worktree list --porcelain`, which Git for Windows prints with forward slashes; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "GitVcsDriver core integration > worktree operations > removes its worktree and branch when cancelled before the claim (linked)",
+    "issue": 128,
+    "why": "looks for the backslash path in `git worktree list --porcelain`, which Git for Windows prints with forward slashes; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "GitVcsDriver core integration > commit context > rejects selected-file merge commits without mutation (nested, conflict: true, utf8)",
+    "issue": 128,
+    "why": "the empty-tree lookup in the nested repository exits non-zero on a Windows host; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "GitVcsDriver core integration > commit context > keeps other files conflicted through a selected-file commit",
+    "issue": 128,
+    "why": "the nested repository's commit context fails with Git's generic error instead of naming the unmerged file on a Windows host; fails on unmodified upstream too"
+  },
+  {
+    "file": "packages/provider-acp/src/server/clientPolicy.test.ts",
+    "name": "acpPermissionDisposition > denies mutations through workspace symlinks that escape the writable roots",
+    "issue": 128,
+    "why": "Windows resolves `..` before it follows a directory link, so `linked-directory/..` stays inside the workspace and the policy answers allow where the test expects deny; nothing leaves the root. Fails on unmodified upstream too"
+  },
+  {
+    "file": "packages/provider-pi/src/server/mcpInjection.test.ts",
+    "name": "materializePiT3McpExtension > never exposes a torn extension file to a concurrent reader",
+    "issue": 128,
+    "why": "renaming over the extension file fails with EPERM while the concurrent reader has it open on a Windows host; fails intermittently on unmodified upstream too"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > requires session-scoped thinking changes",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > keeps compatible Pi selectable when optional discovery fails",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > gives `pi --version` 10 s when it answers after 6 s",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > gives `pi --version` 10 s when it never answers",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > reports a known unauthenticated inventory when Pi returns no usable models",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > diagnoses Pi's active model readiness for a pinned model without credentials",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > diagnoses Pi's active model readiness for a pinned model with a runtime --api-key",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > diagnoses Pi's active model readiness for a pinned model whose provider auth chec…",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > diagnoses Pi's active model readiness for an uncatalogued model id of a provider …",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > diagnoses Pi's active model readiness for an extension model Pi lists as available",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > marks models that only load with Pi extensions as unusable for text generation",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > makes Pi unusable for text generation when Pi without extensions exits before answering",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > makes Pi unusable for text generation when Pi without extensions lists no models",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > preserves normal discovery when the extension-free model listing times out",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > advertises a model's service tiers beside its thinking levels",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > keeps project trust unless a startup dialog blocks discovery (dialog: true, launch args '')",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > keeps project trust unless a startup dialog blocks discovery (dialog: false, launch args '')",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > reports unknown authentication when Pi discovery returns missing models",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > reports unknown authentication when Pi discovery returns missing model id",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > reports unknown authentication when Pi discovery returns mixed valid and invalid models",
+    "issue": 128,
+    "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
   }
 ]

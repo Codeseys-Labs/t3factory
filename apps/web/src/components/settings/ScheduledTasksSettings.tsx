@@ -66,7 +66,6 @@ import {
 import {
   useProjects,
   useQuietThreadShell,
-  useQuietThreadShells,
   useThreadShell,
   useVisibleThreadShells,
 } from "../../state/entities";
@@ -822,6 +821,13 @@ function ScheduledTaskRow({
   });
   const act = async (action: "toggle" | "run" | "delete") => {
     if (busy || !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return;
+    if (action === "delete") {
+      const message = `Delete "${task.title}"?\nThis cannot be undone.`;
+      const confirmed =
+        (await requestConfirmDialog(message, { variant: "destructive" })) ??
+        window.confirm(message);
+      if (!confirmed) return;
+    }
     setBusy(true);
     if (action === "run") {
       setDispatchedThreadId(null);
@@ -1301,6 +1307,16 @@ const THREAD_MODE_LABELS: Record<ScheduledTaskThreadMode, string> = {
   fresh_session: "One thread, fresh session each run",
 };
 
+function useScheduledTaskThread(environmentId: EnvironmentId, threadId: ThreadId | null) {
+  const ref = threadId === null ? null : scopeThreadRef(environmentId, threadId);
+  const shell = useThreadShell(ref);
+  // The shell can omit older settled threads; their family read still carries the row.
+  const family = useEnvironmentQuery(
+    ref !== null && shell === null ? threadFamilies.familyAtom(environmentId, ref.threadId) : null,
+  );
+  return shell ?? family.data?.threads.find((row) => row.id === threadId) ?? null;
+}
+
 function ScheduledTaskDestination({
   environmentId,
   projectId,
@@ -1326,12 +1342,7 @@ function ScheduledTaskDestination({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const ref = threadId === null ? null : scopeThreadRef(environmentId, threadId);
-  const shell = useThreadShell(ref);
-  // The shell can omit older settled threads; their family read still carries the title.
-  const family = useEnvironmentQuery(
-    ref !== null && shell === null ? threadFamilies.familyAtom(environmentId, ref.threadId) : null,
-  );
-  const thread = shell ?? family.data?.threads.find((row) => row.id === threadId);
+  const thread = useScheduledTaskThread(environmentId, threadId);
   const currentLabel =
     ref !== null
       ? ref.threadId === orchestratorThreadId
@@ -1528,7 +1539,6 @@ function ScheduledTaskEditorForm({
     environmentId: initialEnvironmentId,
     projectId: task?.projectId ?? "",
   });
-  const threadShells = useQuietThreadShells();
   const submissionPending = useRef(false);
   const editingTaskMissing =
     draft.editingId !== null &&
@@ -1574,12 +1584,10 @@ function ScheduledTaskEditorForm({
               : !coordinatorAvailable
                 ? `The project orchestrator is ${coordinator.status}. Open it before binding a workflow.`
                 : null;
-  const boundThread = draft.threadId
-    ? threadShells.find(
-        (entry) =>
-          entry.environmentId === bindingTarget.environmentId && entry.id === draft.threadId,
-      )
-    : null;
+  const boundThread = useScheduledTaskThread(
+    bindingTarget.environmentId,
+    draft.threadId ? (draft.threadId as ThreadId) : null,
+  );
   const bindingError = !draft.threadId
     ? null
     : bindingTarget.environmentId !== environmentId ||
@@ -1621,11 +1629,17 @@ function ScheduledTaskEditorForm({
   const activeInstanceId =
     activeSelection?.instanceId ?? firstInstance?.instanceId ?? ("" as ProviderInstanceId);
   const activeModel = activeSelection?.model ?? "";
+  // Bound runs use the thread's current model, so the locked picker shows that one.
+  const shownSelection = draft.threadId
+    ? (boundThread?.modelSelection ?? null)
+    : { instanceId: activeInstanceId, model: activeModel };
+  const shownInstanceId = shownSelection?.instanceId ?? activeInstanceId;
+  const shownModel = shownSelection?.model ?? "";
   const modelOptionsByInstance = getCustomModelOptionsByInstance(
     settings,
     providers,
-    activeInstanceId,
-    activeModel,
+    shownInstanceId,
+    shownModel,
   );
 
   const reportFailure = (title: string, error: unknown) => {
@@ -1928,7 +1942,7 @@ function ScheduledTaskEditorForm({
                 {boundThread.modelSelection.model}.{" "}
                 <Link
                   to="/$environmentId/$threadId"
-                  params={{ environmentId: boundThread.environmentId, threadId: boundThread.id }}
+                  params={{ environmentId: bindingTarget.environmentId, threadId: boundThread.id }}
                   className="underline underline-offset-2"
                 >
                   Open bound thread
@@ -2041,31 +2055,24 @@ function ScheduledTaskEditorForm({
             />
           </Field>
 
-          <Field label="Model" hint={draft.threadId ? "Current bound-thread model" : ""}>
-            {draft.threadId ? (
-              <p className="text-sm text-muted-foreground">
-                {boundThread
-                  ? `${boundThread.modelSelection.model} (${boundThread.providerInstanceId})`
-                  : "The server resolves the bound thread's current provider and model at dispatch."}
-              </p>
-            ) : (
-              <div>
-                <ProviderModelPicker
-                  environmentId={environmentId}
-                  disabled={saving || !connected}
-                  activeInstanceId={activeInstanceId}
-                  model={activeModel}
-                  lockedProvider={null}
-                  instanceEntries={instanceEntries}
-                  modelOptionsByInstance={modelOptionsByInstance}
-                  isComposerOwned={false}
-                  triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
-                  onInstanceModelChange={(instanceId, model) =>
-                    setDraft((current) => ({ ...current, modelKey: `${instanceId}:${model}` }))
-                  }
-                />
-              </div>
-            )}
+          <Field label="Model">
+            <div>
+              <ProviderModelPicker
+                environmentId={environmentId}
+                // The saved selection only seeds new threads; bound runs ignore it.
+                disabled={saving || !connected || draft.threadId !== ""}
+                activeInstanceId={shownInstanceId}
+                model={shownModel}
+                lockedProvider={null}
+                instanceEntries={instanceEntries}
+                modelOptionsByInstance={modelOptionsByInstance}
+                isComposerOwned={false}
+                triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
+                onInstanceModelChange={(instanceId, model) =>
+                  setDraft((current) => ({ ...current, modelKey: `${instanceId}:${model}` }))
+                }
+              />
+            </div>
           </Field>
 
           <div className="grid gap-3 sm:grid-cols-2">

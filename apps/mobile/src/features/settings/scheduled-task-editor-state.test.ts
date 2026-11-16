@@ -180,7 +180,7 @@ describe("workflow owner boundaries", () => {
     ).toBeNull();
   });
 
-  it("preserves signing, filtering, workspace and permission choices during an allowed owner move", () => {
+  it("keeps signing, filtering and permission choices during an allowed owner move, and leaves the old checkout behind", () => {
     const initial = createFactoryDraft(projectId, null);
     const draft = {
       ...initial,
@@ -190,6 +190,7 @@ describe("workflow owner boundaries", () => {
       interactionMode: "plan" as const,
       workspace: "existing_worktree" as const,
       checkoutPath: "/review",
+      startFromOrigin: false,
       schedule: {
         ...initial.schedule,
         mode: "webhook" as const,
@@ -198,16 +199,25 @@ describe("workflow owner boundaries", () => {
         replayKey: "{{headers.delivery-id}}",
       },
     };
+    const destination = {
+      ...createDraft(null, null),
+      workspace: "root" as const,
+      baseRef: "trunk",
+    };
     const next = moveScheduledTaskEditor(
       { environmentId, environmentLabel: "Owner", draft },
       target,
-      createDraft(null, null),
+      destination,
     );
     expect(next?.environmentId).toBe(otherEnvironmentId);
     expect(next?.draft).toEqual({
       ...draft,
       projectId: null,
       modelSelectionIsExplicit: false,
+      workspace: "root",
+      baseRef: "trunk",
+      checkoutPath: "",
+      startFromOrigin: true,
     });
     expect(next && scheduleFromDraft(next.draft.schedule)).toMatchObject({
       type: "webhook",

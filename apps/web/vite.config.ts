@@ -106,17 +106,18 @@ const unitTestProject = {
   },
 } satisfies TestProjectInlineConfiguration;
 
-// Hash checkout paths to ports 61000-64999; Vitest's fixed port collides under inherited strictPort.
-// strictPort:false skips ports in use, not ones Windows reserves (EACCES), so probe past those.
+// Hash checkout paths to ports 20000-23999; Vitest's fixed port collides under inherited strictPort.
+// Stay below ephemeral ranges, where Windows reserves Hyper-V/WSL blocks, and probe past any
+// reserved port anyway: strictPort:false skips ports in use, not ones Windows refuses (EACCES).
 const browserTestApiPort = await Effect.runPromise(
   Effect.gen(function* () {
     const net = Net.make();
     const hashed = (Hash.string(import.meta.dirname) >>> 0) % 4_000;
     for (let step = 0; step < 4_000; step++) {
-      const port = 61_000 + ((hashed + step) % 4_000);
+      const port = 20_000 + ((hashed + step) % 4_000);
       if (yield* net.canListenOnHost(port, "localhost")) return port;
     }
-    return 61_000 + hashed;
+    return 20_000 + hashed;
   }),
 );
 

@@ -132,6 +132,11 @@ export function moveScheduledTaskEditor(
       projectId: destination.projectId,
       modelSelection: destination.modelSelection,
       modelSelectionIsExplicit: false,
+      // A checkout and its branch belong to the environment and project the task leaves.
+      workspace: destination.workspace,
+      baseRef: destination.baseRef,
+      checkoutPath: destination.checkoutPath,
+      startFromOrigin: destination.startFromOrigin,
     },
   };
 }

@@ -43,6 +43,7 @@ import * as CloneTracker from "../project/ProjectCloneTracker.ts";
 import * as SetupTracker from "../project/WorktreeSetupTracker.ts";
 import * as SetupRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as Terminal from "../terminal/Manager.ts";
+import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as Git from "../vcs/GitVcsDriver.ts";
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
@@ -212,6 +213,7 @@ const makeHarness = Effect.fn("ResearchTest.harness")(function* (origin: string)
       generateBranchName: () => Effect.succeed({ branch: "research-fixture" }),
     }),
     ProviderRegistryMock.layer(),
+    Layer.mock(CheckpointStore.CheckpointStore)({ isGitRepository: () => Effect.succeed(true) }),
     settings,
     SetupTracker.layer,
     ThreadCommands.layer,

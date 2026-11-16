@@ -1350,6 +1350,14 @@ it.effect("replays a command id, refuses it with other input, and reports a stal
       assert.equal(moved.task.status, "ready");
       assert.isAbove(moved.task.version, created.task.version);
       assert.isTrue((yield* tasks.update(move, human)).replayed);
+      // A finished command still replays beside another command's leftover input pin under its id.
+      yield* (yield* TaskStore.FactoryTaskStore).recordReceipt({
+        commandId: CommandId.make(`factory-task:input:${move.commandId}`),
+        kind: "start",
+        digest: "another-digest",
+        outcome: null,
+      });
+      assert.isTrue((yield* tasks.update(move, human)).replayed);
       assert.equal(
         (yield* tasks.update({ ...move, lane: "backlog" }, human).pipe(Effect.flip)).reason,
         "command-conflict",

@@ -102,6 +102,13 @@ blocked work. It records the activity timestamp for stable
 sorting and detaches idle provider sessions. Clients render the persisted result; they do not
 derive settlement from their own clocks or PR caches.
 
+## Factory migration numbering
+
+Factory shares `effect_sql_migrations` with upstream, using ids 10001 and up; the next Factory
+migration is 10022. The name is the migration's identity: preserve it when moving an id, and
+translate recorded history only on an exact id and name match. Keep upstream ids below the band
+and Factory filenames aligned with the [manifest](../../apps/server/src/persistence/Migrations.ts).
+
 ## Waiting for asynchronous work
 
 Tests use [drainable workers](../../packages/shared/src/DrainableWorker.ts) to wait until both the

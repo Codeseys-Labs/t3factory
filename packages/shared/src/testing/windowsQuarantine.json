@@ -90,6 +90,12 @@
     "why": "joins the worktrees folder with \"/\" and looks the report entry up by that string, but the report holds the native Windows path; fails on unmodified upstream too"
   },
   {
+    "file": "apps/server/src/vcs/GitVcsDriver.test.ts",
+    "name": "restores empty checkpoints without changing paths outside the workspace",
+    "issue": 160,
+    "why": "on a Windows host where Git can delete its own working directory, `git clean` in a workspace folder with no tracked files removes `./` and exits 0 on every pass, so the restore reports untracked files remain; driver and test are unchanged from upstream"
+  },
+  {
     "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
     "name": "pullCurrentBranch > resolves a status waiter when Pull claims its queued fetch",
     "issue": 128,

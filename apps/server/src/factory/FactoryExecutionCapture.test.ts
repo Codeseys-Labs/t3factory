@@ -16,6 +16,7 @@ import {
 import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
+import * as Duration from "effect/Duration";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -115,131 +116,160 @@ it.effect.each([
   }).pipe(Effect.scoped, Effect.provide(layer)),
 );
 
-it.effect("a verified result is captured when its checkout path passes the Windows limit", () =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
-    const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-factory-capture-" });
-    // The checkout is `<os tmp>/t3-factory-verify-XXXXXX/tree/<file>`.
-    const checkout = path.join(path.dirname(cwd), "t3-factory-verify-XXXXXX", "tree");
-    const file = [
-      ...Array.from({ length: Math.ceil((300 - checkout.length) / 41) }, () => "d".repeat(40)),
-      "long.ts",
-    ].join("/");
-    assert.isAbove(checkout.length + file.length, 260);
-    const as = (name: string) => ["-c", `user.name=${name}`, "-c", "user.email=agent@example.com"];
-    yield* git(cwd, "init", "--quiet");
-    // Plumbing only, so the long path never has to exist in this repository's own working tree.
-    yield* fs.writeFileString(path.join(cwd, "blob.txt"), "export {};\n");
-    const blob = yield* git(cwd, "hash-object", "-w", "blob.txt");
-    yield* git(cwd, "update-index", "--add", "--cacheinfo", `100644,${blob},board.ts`);
-    const base = yield* git(
-      cwd,
-      ...as("Agent"),
-      "commit-tree",
-      yield* git(cwd, "write-tree"),
-      "-m",
-      "base",
-    );
-    yield* git(cwd, "update-index", "--add", "--cacheinfo", `100644,${blob},${file}`);
-    const tree = yield* git(cwd, "write-tree");
-    const checkpoint = yield* git(
-      cwd,
-      ...as("T3 Code"),
-      "commit-tree",
-      tree,
-      "-p",
-      base,
-      "-m",
-      "t3",
-    );
+it.effect.each(["normal", "slow add", "slow remove"] as const)(
+  "a verified result survives long checkout paths and %s",
+  (scenario) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-factory-capture-" });
+      // The checkout is `<os tmp>/t3-factory-verify-XXXXXX/tree/<file>`.
+      const checkout = path.join(path.dirname(cwd), "t3-factory-verify-XXXXXX", "tree");
+      const file = [
+        ...Array.from({ length: Math.ceil((300 - checkout.length) / 41) }, () => "d".repeat(40)),
+        "long.ts",
+      ].join("/");
+      assert.isAbove(checkout.length + file.length, 260);
+      const as = (name: string) => [
+        "-c",
+        `user.name=${name}`,
+        "-c",
+        "user.email=agent@example.com",
+      ];
+      yield* git(cwd, "init", "--quiet");
+      // Plumbing only, so the long path never has to exist in this repository's own working tree.
+      yield* fs.writeFileString(path.join(cwd, "blob.txt"), "export {};\n");
+      const blob = yield* git(cwd, "hash-object", "-w", "blob.txt");
+      yield* git(cwd, "update-index", "--add", "--cacheinfo", `100644,${blob},board.ts`);
+      const base = yield* git(
+        cwd,
+        ...as("Agent"),
+        "commit-tree",
+        yield* git(cwd, "write-tree"),
+        "-m",
+        "base",
+      );
+      yield* git(cwd, "update-index", "--add", "--cacheinfo", `100644,${blob},${file}`);
+      const tree = yield* git(cwd, "write-tree");
+      const checkpoint = yield* git(
+        cwd,
+        ...as("T3 Code"),
+        "commit-tree",
+        tree,
+        "-p",
+        base,
+        "-m",
+        "t3",
+      );
 
-    const instanceId = ProviderInstanceId.make("codex");
-    const context = {
-      threadId: ThreadId.make("managed"),
-      runId: RunId.make("run"),
-      runAttemptId: RunAttemptId.make("attempt"),
-      scopeId: CheckpointScopeId.make("scope"),
-      providerThreadId: ProviderThreadId.make("provider-thread"),
-      driver: ProviderDriverKind.make("codex"),
-      providerInstanceId: instanceId,
-    };
-    const binding: FactoryExecutionBinding = {
-      selection: {
-        ref: {
-          environmentId: EnvironmentId.make("local"),
-          projectId: ProjectId.make("project"),
-          rootId: "plan",
+      const instanceId = ProviderInstanceId.make("codex");
+      const context = {
+        threadId: ThreadId.make("managed"),
+        runId: RunId.make("run"),
+        runAttemptId: RunAttemptId.make("attempt"),
+        scopeId: CheckpointScopeId.make("scope"),
+        providerThreadId: ProviderThreadId.make("provider-thread"),
+        driver: ProviderDriverKind.make("codex"),
+        providerInstanceId: instanceId,
+      };
+      const binding: FactoryExecutionBinding = {
+        selection: {
+          ref: {
+            environmentId: EnvironmentId.make("local"),
+            projectId: ProjectId.make("project"),
+            rootId: "plan",
+          },
+          revision: 1,
+          taskId: "root",
         },
-        revision: 1,
-        taskId: "root",
-      },
-      grantVersion: 1,
-      taskVersion: 1,
-      commandId: CommandId.make("admit"),
-      threadId: context.threadId,
-      runId: context.runId,
-      runAttemptId: context.runAttemptId,
-      driver: context.driver,
-      spec: {
-        taskId: "root",
-        modelSelection: { instanceId, model: "luna" },
-        runtimeMode: "approval-required",
-        interactionMode: "default",
-        workspaceStrategy: { type: "root" },
-        setup: "deny",
-        verification: { command: "git", args: ["--version"] },
-        output: { slot: "code", kind: "verified-code" },
-      },
-      inputDigest: "a".repeat(64),
-      inputText: "Long paths",
-      prerequisites: [],
-      admittedAt: "2026-11-05T00:00:00.000Z",
-      stopRequested: false,
-      quiescent: false,
-    };
-    const projection = {
-      runs: [{ id: context.runId }],
-      attempts: [
-        {
-          id: context.runAttemptId,
-          runId: context.runId,
-          providerThreadId: context.providerThreadId,
-          providerInstanceId: instanceId,
-          status: "completed",
+        grantVersion: 1,
+        taskVersion: 1,
+        commandId: CommandId.make("admit"),
+        threadId: context.threadId,
+        runId: context.runId,
+        runAttemptId: context.runAttemptId,
+        driver: context.driver,
+        spec: {
+          taskId: "root",
+          modelSelection: { instanceId, model: "luna" },
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          workspaceStrategy: { type: "root" },
+          setup: "deny",
+          verification: { command: "git", args: ["--version"] },
+          output: { slot: "code", kind: "verified-code" },
         },
-      ],
-      messages: [],
-      checkpointScopes: [{ id: context.scopeId, cwd }],
-      checkpoints: [
-        { runId: context.runId, scopeId: context.scopeId, status: "ready", ref: checkpoint },
-      ],
-    };
-    const captured = yield* Capture.FactoryExecutionCapture.pipe(
-      Effect.flatMap((service) => service.capture(context)),
-      Effect.provide(
-        Capture.layer.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.mock(Store.FactoryExecutionStore)({
-                getBinding: () => Effect.succeed(binding),
-                captureKey: () => Effect.succeed("native-final/1"),
-                readCapture: () => Effect.succeed(null),
-                retainCapture: () => Effect.void,
-              }),
-              Layer.mock(Projections.ProjectionStoreV2)({
-                getThreadProjection: () => Effect.succeed(projection as never),
-              }),
-              Sqlite.layerMemory,
-              withoutLongPaths,
-              NodeServices.layer,
+        inputDigest: "a".repeat(64),
+        inputText: "Long paths",
+        prerequisites: [],
+        admittedAt: "2026-11-05T00:00:00.000Z",
+        stopRequested: false,
+        quiescent: false,
+      };
+      const projection = {
+        runs: [{ id: context.runId }],
+        attempts: [
+          {
+            id: context.runAttemptId,
+            runId: context.runId,
+            providerThreadId: context.providerThreadId,
+            providerInstanceId: instanceId,
+            status: "completed",
+          },
+        ],
+        messages: [],
+        checkpointScopes: [{ id: context.scopeId, cwd }],
+        checkpoints: [
+          { runId: context.runId, scopeId: context.scopeId, status: "ready", ref: checkpoint },
+        ],
+      };
+      const runner = yield* Processes.ProcessRunner.pipe(Effect.provide(withoutLongPaths));
+      const captureRunner = Layer.succeed(Processes.ProcessRunner, {
+        run: (input) => {
+          const operation = input.args[input.args.indexOf("worktree") + 1];
+          if (input.args.includes("worktree") && scenario === `slow ${operation}`) {
+            const timeoutMs = Duration.toMillis(
+              Duration.fromInputUnsafe(input.timeout ?? "60 seconds"),
+            );
+            if (timeoutMs <= 65_000)
+              return Effect.fail(
+                new Processes.ProcessTimeoutError({
+                  command: input.command,
+                  argumentCount: input.args.length,
+                  timeoutMs,
+                }),
+              );
+          }
+          return runner.run(input);
+        },
+      });
+      const captured = yield* Capture.FactoryExecutionCapture.pipe(
+        Effect.flatMap((service) => service.capture(context)),
+        Effect.provide(
+          Capture.layer.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.mock(Store.FactoryExecutionStore)({
+                  getBinding: () => Effect.succeed(binding),
+                  captureKey: () => Effect.succeed("native-final/1"),
+                  readCapture: () => Effect.succeed(null),
+                  retainCapture: () => Effect.void,
+                }),
+                Layer.mock(Projections.ProjectionStoreV2)({
+                  getThreadProjection: () => Effect.succeed(projection as never),
+                }),
+                Sqlite.layerMemory,
+                captureRunner,
+                NodeServices.layer,
+              ),
             ),
           ),
         ),
-      ),
-      Effect.provideService(OwnedProcess, { spawn: (command, spawner) => spawner.spawn(command) }),
-    );
-    assert.equal(captured.status, "sealed");
-    assert.equal(captured.checkpoint?.tree, tree);
-  }).pipe(Effect.scoped, Effect.provide(layer)),
+        Effect.provideService(OwnedProcess, {
+          spawn: (command, spawner) => spawner.spawn(command),
+        }),
+      );
+      assert.equal(captured.status, "sealed");
+      assert.equal(captured.checkpoint?.tree, tree);
+    }).pipe(Effect.scoped, Effect.provide(layer)),
 );

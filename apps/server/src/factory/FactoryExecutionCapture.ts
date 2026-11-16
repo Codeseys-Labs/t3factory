@@ -13,6 +13,7 @@ import { canonicalExecutionJson, executionDigest } from "./FactoryExecutionDiges
 import { OwnedProcess } from "@t3tools/shared/ownedProcess";
 
 const SHA = /^[a-f0-9]{40,64}$/;
+const WORKTREE_TIMEOUT = "10 minutes";
 // Git for Windows refuses a checkout path past 260 characters without this; elsewhere it is ignored.
 const LONG_PATHS = ["-c", "core.longpaths=true"];
 // The identity T3's own checkpoint commits carry, for a repository that configures none.
@@ -121,12 +122,14 @@ const make = Effect.gen(function* () {
   const git = Effect.fn("FactoryExecutionCapture.git")(function* (
     cwd: string,
     args: ReadonlyArray<string>,
+    timeout?: Processes.ProcessRunInput["timeout"],
   ) {
     const result = yield* processes
       .run({
         command: "git",
         args: [...LONG_PATHS, ...args],
         cwd,
+        timeout,
         maxOutputBytes: 1024 * 1024,
         outputMode: "error",
       })
@@ -221,15 +224,19 @@ const make = Effect.gen(function* () {
         .makeTempDirectoryScoped({ prefix: "t3-factory-verify-" })
         .pipe(Effect.mapError(failure));
       const verificationRoot = path.join(temporary, "tree");
-      yield* git(scope.cwd, [
-        "-c",
-        "core.hooksPath=" + path.join(temporary, "no-hooks"),
-        "worktree",
-        "add",
-        "--detach",
-        verificationRoot,
-        commit,
-      ]);
+      yield* git(
+        scope.cwd,
+        [
+          "-c",
+          "core.hooksPath=" + path.join(temporary, "no-hooks"),
+          "worktree",
+          "add",
+          "--detach",
+          verificationRoot,
+          commit,
+        ],
+        WORKTREE_TIMEOUT,
+      );
       const evidence = yield* processes
         .run({
           command: verification.command,
@@ -277,7 +284,7 @@ const make = Effect.gen(function* () {
         status,
         checkpoint,
       });
-      yield* git(scope.cwd, ["worktree", "remove", "--force", verificationRoot]);
+      yield* git(scope.cwd, ["worktree", "remove", "--force", verificationRoot], WORKTREE_TIMEOUT);
     }
     const captured: Store.ObserveResultInput = {
       runId: input.runId,

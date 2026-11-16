@@ -622,23 +622,30 @@ const make = Effect.gen(function* () {
     };
   });
 
+  /** Records a receipt once: one already there for the same command is kept, another conflicts. */
+  const recordOnce = Effect.fn("FactoryTaskService.recordOnce")(function* (receipt: {
+    readonly commandId: CommandId;
+    readonly kind: string;
+    readonly digest: string;
+    readonly outcome: unknown;
+  }) {
+    let existing = yield* store.receipt(receipt.commandId);
+    if (existing === null) {
+      const recorded = yield* store.recordReceipt(receipt).pipe(Effect.result);
+      if (Result.isSuccess(recorded)) return;
+      existing = yield* store.receipt(receipt.commandId);
+      if (existing === null) return yield* recorded.failure;
+    }
+    if (existing.kind !== receipt.kind || existing.digest !== receipt.digest)
+      return yield* refuse("command-conflict");
+  });
+
   const pinInput = Effect.fn("FactoryTaskService.pinInput")(function* (
     commandId: CommandId,
     kind: string,
     digest: string,
   ) {
-    const pinId = derived(commandId, "input");
-    let existing = yield* store.receipt(pinId);
-    if (existing === null) {
-      const recorded = yield* store
-        .recordReceipt({ commandId: pinId, kind, digest, outcome: null })
-        .pipe(Effect.result);
-      if (Result.isSuccess(recorded)) return;
-      existing = yield* store.receipt(pinId);
-      if (existing === null) return yield* recorded.failure;
-    }
-    if (existing.kind !== kind || existing.digest !== digest)
-      return yield* refuse("command-conflict");
+    yield* recordOnce({ commandId: derived(commandId, "input"), kind, digest, outcome: null });
   });
 
   const applyPlan = Effect.fn("FactoryTaskService.applyPlan")(function* (input: {
@@ -1708,6 +1715,8 @@ const make = Effect.gen(function* () {
     yield* requireHuman(actor);
     const input = yield* decodeAbandonCapture(raw).pipe(Effect.mapError(invalid));
     const command = yield* begin("abandonCapture", input.commandId, actor, input);
+    // Holds the command id before the engine can take it, against a crash before the receipt.
+    if (!command.replayed) yield* pinInput(input.commandId, "abandonCapture", command.digest);
     const { task } = yield* requireTask(input.ref);
     const abandonId = derived(input.commandId, "abandon");
     // The run is the one the person confirmed, found by its id: never the latest one again.
@@ -1742,7 +1751,14 @@ const make = Effect.gen(function* () {
         actor,
       )
       .pipe(Effect.mapError(giveUpRefusal));
-    if (!command.replayed) yield* transact(command.record(task.row));
+    // A delivery of the same command that overlapped this one may have recorded it first.
+    if (!command.replayed)
+      yield* recordOnce({
+        commandId: input.commandId,
+        kind: "abandonCapture",
+        digest: command.digest,
+        outcome: task.row,
+      });
     yield* sync(task.row.rootId);
     return { task: yield* summaryOf(task.row), replayed: command.replayed };
   });

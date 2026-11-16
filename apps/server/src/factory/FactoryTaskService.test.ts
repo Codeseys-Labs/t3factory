@@ -43,6 +43,7 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -528,6 +529,8 @@ class OutputGate extends Context.Service<
     next: Effect.Effect<void> | null;
     admission: Effect.Effect<void, FactoryExecutionError> | null;
     grant: Effect.Effect<void, FactoryExecutionError> | null;
+    /** Runs once after the engine took a give-up, before the task records it. */
+    abandoned: Effect.Effect<void> | null;
   }
 >()("t3/factory/FactoryTaskService.test/OutputGate") {}
 const gatedExecutions = Layer.effect(
@@ -561,6 +564,16 @@ const gatedExecutions = Layer.effect(
           gate.next = null;
           return next;
         }).pipe(Effect.andThen(executions.readOutput(input))),
+      abandonCapture: (input, actor) =>
+        executions.abandonCapture(input, actor).pipe(
+          Effect.tap(() =>
+            Effect.suspend(() => {
+              const next = gate.abandoned ?? Effect.void;
+              gate.abandoned = null;
+              return next;
+            }),
+          ),
+        ),
     });
   }),
 ).pipe(
@@ -568,7 +581,9 @@ const gatedExecutions = Layer.effect(
   Layer.provide(
     Executions.layer.pipe(Layer.provide(Lifecycle.layer.pipe(Layer.provide(ExecutionStore.layer)))),
   ),
-  Layer.provideMerge(Layer.sync(OutputGate, () => ({ next: null, admission: null, grant: null }))),
+  Layer.provideMerge(
+    Layer.sync(OutputGate, () => ({ next: null, admission: null, grant: null, abandoned: null })),
+  ),
 );
 const eventStores = EventStore.layerFromOrchestrationEventStore.pipe(
   Layer.provideMerge(OrchestrationEventStore.layer),
@@ -2628,30 +2643,46 @@ it.effect(
     ),
 );
 
+/** A task whose second run is held because its result could not be saved, after a first result. */
+const heldForCapture = Effect.fn("test.heldForCapture")(function* ({
+  sql,
+  tasks,
+  create,
+  start,
+  finish,
+  summary,
+  attemptOf,
+  until,
+}: Effect.Success<typeof harness>) {
+  const task = yield* create("Resample the ticks", { lane: "ready" });
+  const first = (yield* start(task)).run!;
+  yield* finish(first, "sealed", "First result");
+  yield* until(task, (current) => current.result?.revision === 1);
+  const run = (yield* tasks.requestChanges(
+    { commandId: command("changes"), ref: task.ref, revision: 1, note: "Use UTC" },
+    human,
+  )).task.run!;
+  // Its turn ended and its capture kept nothing; the thread has no root_run scope either.
+  const attemptId = yield* attemptOf(run);
+  yield* sql`UPDATE orchestration_v2_projection_runs SET status = 'completed', payload_json = json_set(payload_json, '$.status', 'completed') WHERE run_id = ${run.runId}`;
+  yield* sql`UPDATE factory_execution_bindings SET stop_requested = 1 WHERE attempt_id = ${attemptId}`;
+  yield* sql`UPDATE orchestration_v2_effect_outbox SET status = 'succeeded' WHERE thread_id = ${run.threadId}`;
+  for (const phase of ["turn", "capture"])
+    yield* sql`INSERT INTO factory_execution_phases(attempt_id, phase, claimant_id, observation, detail) VALUES (${attemptId}, ${phase}, 'worker', 'quiescent', '')`;
+  const held = yield* summary(task);
+  assert.deepEqual([held.run?.state, held.run?.captureFailed], ["held", true]);
+  return { task, first, run, attemptId, held };
+});
+
 it.effect(
   "giving up a held run's result lets the task retry on the same plan revision and review its earlier result",
   () =>
     scenario(
       Effect.gen(function* () {
-        const { sql, tasks, create, start, finish, summary, attemptOf, until } = yield* harness;
+        const tools = yield* harness;
+        const { sql, tasks, finish, summary, until } = tools;
         const sink = yield* EventSink.EventSinkV2;
-        const task = yield* create("Resample the ticks", { lane: "ready" });
-        const first = (yield* start(task)).run!;
-        yield* finish(first, "sealed", "First result");
-        yield* until(task, (current) => current.result?.revision === 1);
-        const run = (yield* tasks.requestChanges(
-          { commandId: command("changes"), ref: task.ref, revision: 1, note: "Use UTC" },
-          human,
-        )).task.run!;
-        // Its turn ended and its capture kept nothing; the thread has no root_run scope either.
-        const attemptId = yield* attemptOf(run);
-        yield* sql`UPDATE orchestration_v2_projection_runs SET status = 'completed', payload_json = json_set(payload_json, '$.status', 'completed') WHERE run_id = ${run.runId}`;
-        yield* sql`UPDATE factory_execution_bindings SET stop_requested = 1 WHERE attempt_id = ${attemptId}`;
-        yield* sql`UPDATE orchestration_v2_effect_outbox SET status = 'succeeded' WHERE thread_id = ${run.threadId}`;
-        for (const phase of ["turn", "capture"])
-          yield* sql`INSERT INTO factory_execution_phases(attempt_id, phase, claimant_id, observation, detail) VALUES (${attemptId}, ${phase}, 'worker', 'quiescent', '')`;
-        const held = yield* summary(task);
-        assert.deepEqual([held.run?.state, held.run?.captureFailed], ["held", true]);
+        const { task, first, run, attemptId, held } = yield* heldForCapture(tools);
         const refusal = <A>(effect: Effect.Effect<A, FactoryTaskError>) =>
           effect.pipe(
             Effect.flip,
@@ -2815,6 +2846,85 @@ it.effect(
         assert.equal(canceled.status, "canceled");
       }),
     ),
+);
+
+it.effect(
+  "a give-up stopped after the engine took it keeps its command id until it is replayed",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const tools = yield* harness;
+        const { sql, tasks, summary } = tools;
+        const { task, run } = yield* heldForCapture(tools);
+        const giveUp = { commandId: command("give-up"), ref: task.ref, runId: run.runId };
+        // The server stops after the abandonment commits and before the task records the command.
+        (yield* OutputGate).abandoned = Effect.interrupt;
+        const stopped = yield* Effect.forkChild(tasks.abandonCapture(giveUp, human));
+        assert.isTrue(Exit.hasInterrupts(yield* Fiber.await(stopped)));
+        assert.deepEqual(
+          yield* sql`SELECT COUNT(*) AS count FROM factory_execution_capture_abandonments`,
+          [{ count: 1 }],
+        );
+        const other = yield* tasks
+          .update(
+            {
+              commandId: giveUp.commandId,
+              ref: task.ref,
+              expectedVersion: (yield* summary(task)).version,
+              title: "Another command with the same id",
+            },
+            human,
+          )
+          .pipe(Effect.flip);
+        assert.equal(other.reason, "command-conflict");
+        const replayed = yield* tasks.abandonCapture(giveUp, human);
+        assert.deepEqual(
+          [replayed.task.title, replayed.task.run?.state, replayed.task.run?.resultGivenUp?.by],
+          ["Resample the ticks", "failed", "You"],
+        );
+      }),
+    ),
+);
+
+it.effect("two overlapping deliveries of one give-up answer alike and record it once", () =>
+  scenario(
+    Effect.gen(function* () {
+      const tools = yield* harness;
+      const { sql, tasks } = tools;
+      const { task, run } = yield* heldForCapture(tools);
+      const giveUp = { commandId: command("give-up"), ref: task.ref, runId: run.runId };
+      const reached = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      (yield* OutputGate).abandoned = Deferred.succeed(reached, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+      );
+      const first = yield* Effect.forkChild(tasks.abandonCapture(giveUp, human));
+      yield* Deferred.await(reached);
+      const second = yield* tasks.abandonCapture(giveUp, human);
+      yield* Deferred.succeed(release, undefined);
+      const answered = [yield* Fiber.join(first), second].map((given) => [
+        given.replayed,
+        given.task.run?.state,
+        given.task.run?.resultGivenUp?.by,
+      ]);
+      assert.deepEqual(answered, [
+        [false, "failed", "You"],
+        [false, "failed", "You"],
+      ]);
+      assert.deepEqual(
+        yield* sql`SELECT COUNT(*) AS count FROM factory_execution_capture_abandonments`,
+        [{ count: 1 }],
+      );
+      assert.deepEqual(
+        yield* sql`SELECT kind FROM factory_task_commands WHERE command_id = ${giveUp.commandId}`,
+        [{ kind: "abandonCapture" }],
+      );
+      const ended = (yield* tasks.activity({ ref: task.ref })).entries.filter(
+        (entry) => entry.event.type === "run-ended" && entry.event.ordinal === run.ordinal,
+      );
+      assert.equal(ended.length, 1);
+    }),
+  ),
 );
 
 it.effect(

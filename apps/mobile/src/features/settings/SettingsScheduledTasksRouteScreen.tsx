@@ -80,7 +80,6 @@ import { SettingsSection } from "./components/SettingsSection";
 import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";
 import {
   changeDraftProject,
-  createDraft,
   createFactoryDraft,
   editDraft,
   parseIntervalMinutes,
@@ -636,9 +635,9 @@ export function SettingsScheduledTaskEditRouteScreen() {
 }
 
 function SettingsScheduledTaskEditorScreen({ title }: { readonly title: string }) {
-  const { editor, voiceOwnerKey, readEditor, setEditor, hasChanges } = useScheduledTaskEditor();
+  const { editor, voiceOwnerKey, readEditor, setEditor, hasChanges, draftForEnvironment } =
+    useScheduledTaskEditor();
   const { availableTargets } = useSettingsEnvironmentFilter();
-  const configs = useServerConfigs();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const [saving, setSaving] = useState(false);
@@ -769,10 +768,7 @@ function SettingsScheduledTaskEditorScreen({ title }: { readonly title: string }
                   : (moveScheduledTaskEditor(
                       current,
                       { environmentId: target.environmentId, environmentLabel: target.label },
-                      createDraft(
-                        null,
-                        scheduledTaskDefaultModel(configs.get(target.environmentId) ?? null, null),
-                      ),
+                      draftForEnvironment(target.environmentId),
                     ) ?? current),
               );
             }}

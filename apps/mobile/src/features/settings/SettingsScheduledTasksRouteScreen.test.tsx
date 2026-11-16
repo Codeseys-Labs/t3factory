@@ -60,7 +60,15 @@ vi.mock("./components/ScheduledTaskPromptField", () => ({ ScheduledTaskPromptFie
 vi.mock("../layout/workspace/useSelectWorkspaceDetail", () => ({
   useSelectWorkspaceDetail: () => vi.fn(),
 }));
-vi.mock("../../state/threads", () => ({ threadFamilies: {} }));
+vi.mock("../../state/threads", () => ({
+  threadFamilies: {},
+  environmentThreadShells: { threadShellsAtom: Atom.make([]) },
+}));
+vi.mock("../../state/environments", () => ({ useEnvironments: () => ({ environments: [] }) }));
+vi.mock("../../state/factory", () => ({
+  factoryCoordinatorSupportedAtom: () => Atom.make(false),
+  factoryEnvironment: { coordinatorsGet: () => ({}) },
+}));
 vi.mock("../../lib/copyTextWithHaptic", () => ({ tryCopyTextWithHaptic: vi.fn() }));
 vi.mock("../voice-input/useVoiceInputController", () => ({
   useVoiceInputController: () => ({ blocksSubmission: false }),
@@ -126,10 +134,15 @@ vi.mock("../../state/server", () => ({
   serverEnvironment: {
     scheduledTasksLive: () => ({}),
     upsertScheduledTask: { permissionAtom: () => Atom.make(true) },
+    rotateScheduledTaskWebhookToken: { permissionAtom: () => Atom.make(true) },
   },
 }));
 vi.mock("../../state/query", () => ({
-  useEnvironmentQuery: () => ({ data: { tasks: mocks.tasks, threads: [] } }),
+  useEnvironmentQuery: () => ({
+    data: { tasks: mocks.tasks, threads: [] },
+    error: null,
+    isSuccess: true,
+  }),
 }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => mocks.upsert }));
 

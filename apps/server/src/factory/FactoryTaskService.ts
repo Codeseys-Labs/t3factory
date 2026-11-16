@@ -574,6 +574,10 @@ const make = Effect.gen(function* () {
     const existing = yield* store.receipt(commandId);
     if (existing !== null && (existing.kind !== kind || existing.digest !== digest))
       return yield* refuse("command-conflict");
+    // An unfinished run command holds its id through its input pin, against every kind of command.
+    const pin = yield* store.receipt(derived(commandId, "input"));
+    if (pin !== null && (pin.kind !== kind || pin.digest !== digest))
+      return yield* refuse("command-conflict");
     return {
       digest,
       replayed: existing !== null,

@@ -838,12 +838,13 @@ it.effect.each(["replaced", "revoked"] as const)(
 );
 
 it.effect.each([
-  { name: "another agent", setup: setupOf("other"), admitted: false },
-  { name: "another workspace", setup: setupOf("replay", "root"), admitted: false },
-  { name: "another agent after admission", setup: setupOf("other"), admitted: true },
+  { name: "another agent", setup: setupOf("other"), admitted: false, update: false },
+  { name: "another workspace", setup: setupOf("replay", "root"), admitted: false, update: false },
+  { name: "another agent after admission", setup: setupOf("other"), admitted: true, update: false },
+  { name: "another command", setup: setupOf(), admitted: false, update: true },
 ])(
   "refuses a recorded grant's Start replayed with $name, then admits the original",
-  ({ setup, admitted }) =>
+  ({ setup, admitted, update }) =>
     scenario(
       Effect.gen(function* () {
         const { sql, tasks, create, summary } = yield* harness;
@@ -876,10 +877,23 @@ it.effect.each([
         const assigned = (yield* summary(task)).assignee.key;
         const bindings = yield* sql`SELECT * FROM factory_execution_bindings`;
         assert.equal(bindings.length, admitted ? 1 : 0);
-        const refused = yield* tasks.start({ ...input, setup }, human).pipe(Effect.result);
+        const refused = yield* (
+          update
+            ? tasks.update(
+                {
+                  commandId: input.commandId,
+                  ref: task.ref,
+                  expectedVersion: task.version,
+                  lane: "backlog",
+                },
+                human,
+              )
+            : tasks.start({ ...input, setup }, human)
+        ).pipe(Effect.result);
         assert.isTrue(Result.isFailure(refused));
         if (Result.isFailure(refused)) assert.equal(refused.failure.reason, "command-conflict");
-        assert.equal((yield* summary(task)).assignee.key, assigned);
+        const after = yield* summary(task);
+        assert.deepEqual([after.assignee.key, after.lane], [assigned, "ready"]);
         assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, bindings);
         const resumed = yield* tasks.start(input, human);
         assert.deepEqual(yield* sql`SELECT thread_id AS threadId FROM factory_execution_bindings`, [

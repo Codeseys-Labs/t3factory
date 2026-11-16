@@ -190,6 +190,7 @@ describe("workflow owner boundaries", () => {
       interactionMode: "plan" as const,
       workspace: "existing_worktree" as const,
       checkoutPath: "/review",
+      startFromOrigin: false,
       schedule: {
         ...initial.schedule,
         mode: "webhook" as const,

@@ -562,17 +562,37 @@ it.effect(
 );
 
 it.effect(
-  "CASes nullable retry result against every captured result, including unselected failure captures",
+  "admits a retry once an unprompted attempt settles, CASing its result against every captured result",
   () =>
     Effect.gen(function* () {
       yield* seed;
       yield* grant;
       const admitted = yield* bindingFor();
       yield* decide({ type: "admit", ...admitted });
-      yield* nativeTerminal(admitted.binding, "failed");
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`UPDATE factory_execution_bindings SET quiescent = 1, stop_requested = 1`;
       const store = yield* Store.FactoryExecutionStore;
+      // A start that opened its session and native thread but never claimed its turn.
+      const phases = (["session", "native-thread"] as const).map((phase) => ({
+        runAttemptId: admitted.binding.runAttemptId,
+        phase,
+        claimantId: phase,
+      }));
+      for (const phase of phases) assert.equal((yield* store.claimPhase(phase)).status, "claimed");
+      assert.isFalse(
+        yield* store.stopUnprompted({
+          ...admitted.binding,
+          runAttemptId: RunAttemptId.make("attempt:replaced"),
+        }),
+      );
+      assert.isFalse((yield* store.getBinding(admitted.binding.runAttemptId)).stopRequested);
+      assert.isTrue(yield* store.stopUnprompted(admitted.binding));
+      assert.deepInclude(yield* store.getBinding(admitted.binding.runAttemptId), {
+        stopRequested: true,
+        quiescent: false,
+      });
+      const turn = { ...phases[0]!, phase: "turn", claimantId: "turn" } as const;
+      assert.equal((yield* store.claimPhase(turn)).status, "suppressed");
+      assert.isFalse(yield* store.stopUnprompted(admitted.binding));
+      yield* nativeTerminal(admitted.binding, "failed");
       const retry = {
         commandId: CommandId.make("retry"),
         selection,
@@ -583,6 +603,16 @@ it.effect(
         priorResultId: null,
         intent: "retry",
       } as const;
+      const early = yield* store.prepareAdmission(retry, human, at).pipe(Effect.result);
+      assert.isTrue(Result.isFailure(early));
+      if (Result.isFailure(early)) assert.equal(early.failure.reason, "not-quiescent");
+      for (const phase of phases)
+        yield* store.settlePhase({ ...phase, observation: "quiescent", detail: "joined" });
+      yield* store.settleAttempt({
+        runAttemptId: admitted.binding.runAttemptId,
+        observation: "quiescent",
+        detail: "joined",
+      });
       assert.equal((yield* store.prepareAdmission(retry, human, at)).taskVersion, 2);
       yield* store.retainCapture({
         runId: admitted.binding.runId,

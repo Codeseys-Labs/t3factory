@@ -4686,7 +4686,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       cwd,
       ["rev-parse", "--symbolic-full-name", "--verify", "--end-of-options", refName],
       { allowNonZeroExit: true },
-    );
+    ).pipe(retryWhileConfigLocked);
     if (result.exitCode !== 0) {
       const remoteName = yield* resolvePrimaryRemoteName(cwd).pipe(
         Effect.orElseSucceed(() => null),
@@ -5222,42 +5222,60 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const checkoutWorkers = configuredCheckoutWorkers ?? "0";
     const fastCheckout = checkoutCache !== undefined && options?.fastCheckout === true;
     const cacheGeneration = fastCheckout ? yield* checkoutCache.currentGeneration : 0;
-    const stockCheckout = executeGitWithStableDiagnostics(
-      "GitVcsDriver.createWorktree",
-      input.cwd,
-      [
-        "-c",
-        `checkout.workers=${checkoutWorkers}`,
-        "worktree",
-        "add",
-        ...(lockReason ? ["--lock", "--reason", lockReason] : []),
-        "--",
-        worktreePath,
-        checkoutRef,
-      ],
-      {
-        fallbackErrorDetail: "git worktree add failed",
-        // Large checkouts and post-checkout hooks can legitimately run for many
-        // minutes; a fixed deadline kills them and leaves an orphaned worktree.
-        timeoutMs: null,
-        // Hooks and filter drivers may print without bound; only progress lines are read.
-        appendTruncationMarker: true,
-        keepLineCallbacksAfterTruncation: true,
-        ...(onCheckoutProgress
-          ? {
-              // Git only prints checkout progress when stderr is a tty or the
-              // delay elapsed. GIT_PROGRESS_DELAY=0 forces it through the pipe.
-              env: { GIT_PROGRESS_DELAY: "0" },
-              progress: {
-                onStderrLine: (line) => {
-                  const parsed = parseGitCheckoutProgressLine(line);
-                  return parsed ? onCheckoutProgress(parsed) : Effect.void;
+    const checkoutPath = worktreePath;
+    const checkoutLeftNothing = (error: GitCommandError): Effect.Effect<boolean> =>
+      configReadFailures.has(error)
+        ? fileSystem.exists(checkoutPath).pipe(
+            Effect.map((exists) => !exists),
+            Effect.orElseSucceed(() => false),
+          )
+        : Effect.succeed(false);
+    const stockCheckout: Effect.Effect<GitVcsDriver.ExecuteGitResult, GitCommandError> =
+      executeGitWithStableDiagnostics(
+        "GitVcsDriver.createWorktree",
+        input.cwd,
+        [
+          "-c",
+          `checkout.workers=${checkoutWorkers}`,
+          "worktree",
+          "add",
+          ...(lockReason ? ["--lock", "--reason", lockReason] : []),
+          "--",
+          worktreePath,
+          checkoutRef,
+        ],
+        {
+          fallbackErrorDetail: "git worktree add failed",
+          // Large checkouts and post-checkout hooks can legitimately run for many
+          // minutes; a fixed deadline kills them and leaves an orphaned worktree.
+          timeoutMs: null,
+          // Hooks and filter drivers may print without bound; only progress lines are read.
+          appendTruncationMarker: true,
+          keepLineCallbacksAfterTruncation: true,
+          ...(onCheckoutProgress
+            ? {
+                // Git only prints checkout progress when stderr is a tty or the
+                // delay elapsed. GIT_PROGRESS_DELAY=0 forces it through the pipe.
+                env: { GIT_PROGRESS_DELAY: "0" },
+                progress: {
+                  onStderrLine: (line) => {
+                    const parsed = parseGitCheckoutProgressLine(line);
+                    return parsed ? onCheckoutProgress(parsed) : Effect.void;
+                  },
                 },
-              },
-            }
-          : {}),
-      },
-    );
+              }
+            : {}),
+        },
+      ).pipe(
+        // Runs outside the shared-config lock, so on Windows its config read can lose to another
+        // launch's branch write. A hook's nested Git fails the same way after the checkout made the
+        // folder, so only a checkout that left no folder behind is repeated.
+        Effect.retry({
+          while: checkoutLeftNothing,
+          times: 10,
+          schedule: Schedule.spaced("50 millis"),
+        }),
+      );
     // Set inside the claim's uninterruptible region: a pending cancel still surfaces as it ends.
     let claimed = false;
     const onWorktreeClaimed = progress?.onWorktreeClaimed;

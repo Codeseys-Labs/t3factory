@@ -2709,7 +2709,18 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         matches: (args: ReadonlyArray<string>) =>
           args[0] === "config" && args[1] === "--get" && args[2] === "checkout.workers",
       },
-    ])("creates the worktree when $read fails reading config once", ({ matches }) =>
+      {
+        read: "the branch base lookup",
+        baseRefName: "origin/release",
+        matches: (args: ReadonlyArray<string>) =>
+          args.includes("--symbolic-full-name") && args.includes("--verify"),
+      },
+      {
+        read: "the checkout",
+        matches: (args: ReadonlyArray<string>) =>
+          args.includes("worktree") && args.includes("add") && !args.includes("-h"),
+      },
+    ])("creates the worktree when $read fails reading config once", ({ matches, baseRefName }) =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
         const remote = yield* makeTmpDir("git-remote-");
@@ -2729,6 +2740,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
             path: worktreePath,
             refName: "origin/release",
             newRefName: "feature/tracked",
+            ...(baseRefName === undefined ? {} : { baseRefName }),
           }),
         );
 

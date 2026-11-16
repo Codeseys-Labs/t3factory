@@ -823,80 +823,116 @@ const make = Effect.gen(function* () {
     const ref = planRef(row);
     const admitId = derived(input.commandId, "admit");
     if (yield* store.launched(admitId)) return;
-    const worktree = input.setup.workspace === "worktree";
-    const workspaceStrategy: FactoryExecutionTaskSpec["workspaceStrategy"] = worktree
-      ? { type: "worktree", baseRef: input.baseCommit ?? (yield* worktreeBase(row.projectId)) }
-      : { type: "root" };
-    yield* store.registerLaunch({ commandId: admitId, profileId: input.profileId, actor: PERSON });
-    const next = yield* nextRound(row);
-    let { head, prior } = next;
-    if (next.round) {
-      const title = head.tasks.find((task) => task.id === row.taskId)?.title ?? row.title;
-      head = (yield* transact(
-        Effect.gen(function* () {
-          yield* requireIdleSiblings(row, head.revision);
-          return yield* plans
-            .apply(
-              {
-                commandId: derived(input.commandId, "round"),
-                ref,
-                expectedRevision: head.revision,
-                operations: [{ type: "task.update", id: row.taskId, title }],
-              },
-              input.actor,
-            )
-            .pipe(Effect.mapError(planError));
-        }),
-      )).plan;
-      prior = null;
-    }
-    const spec: FactoryExecutionTaskSpec = {
-      taskId: row.taskId,
-      modelSelection: input.setup.modelSelection,
-      runtimeMode: input.setup.runtimeMode,
-      interactionMode: input.setup.interactionMode,
-      workspaceStrategy,
-      setup: "deny",
-      ...(worktree ? { verification: CHECKPOINT_CHECK } : {}),
-      output: { slot: "result", kind: worktree ? "verified-code" : "sealed-draft" },
-    };
-    const running = yield* store.liveAttempts({
-      rootId: row.rootId,
-      revision: head.revision,
-      exceptTaskId: row.taskId,
-    });
-    const policy: FactoryExecutionPolicy = {
-      version: 1,
-      requesterThreadIds: [],
-      tasks: [spec, ...running.map((attempt) => attempt.spec)],
-      edges: [],
-      advisoryEdges: true,
-      // A new grant replaces the last one; naming the running attempts keeps them authorized.
-      ...(running.length === 0
-        ? {}
-        : { continues: running.map((attempt) => attempt.runAttemptId) }),
-      maxAttempts: MAX_TASKS,
-      maxRetriesPerTask: MAX_TASKS,
-      maxConcurrent: MAX_TASKS,
-      expiresAt: GRANT_EXPIRES_AT,
-      requiredCapabilities: [],
-    };
-    const granted = yield* executions
-      .issueGrant(
-        {
+    const { grant, prior } = yield* Effect.gen(function* () {
+      const recorded = yield* executionStore
+        .recordedGrant({
           commandId: derived(input.commandId, "grant"),
           ref,
-          expectedRevision: head.revision,
-          expectedGrantVersion: yield* store.grantVersion(row.rootId),
-          policy,
-        },
-        input.actor,
-      )
-      .pipe(Effect.mapError(executionError));
+          actor: input.actor,
+          now: yield* now,
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            ["grant-conflict", "grant-inactive", "grant-expired", "revision-conflict"].includes(
+              error.reason,
+            )
+              ? new FactoryTaskError({
+                  reason: executionError(error).reason,
+                  detail: "This Start's approval is no longer current. Start the task again.",
+                  cause: error,
+                })
+              : executionError(error),
+          ),
+        );
+      if (recorded !== null)
+        return {
+          grant: recorded,
+          prior: yield* store.engineAttempt({
+            rootId: row.rootId,
+            revision: recorded.revision,
+            taskId: row.taskId,
+          }),
+        };
+      const worktree = input.setup.workspace === "worktree";
+      const workspaceStrategy: FactoryExecutionTaskSpec["workspaceStrategy"] = worktree
+        ? { type: "worktree", baseRef: input.baseCommit ?? (yield* worktreeBase(row.projectId)) }
+        : { type: "root" };
+      yield* store.registerLaunch({
+        commandId: admitId,
+        profileId: input.profileId,
+        actor: PERSON,
+      });
+      const next = yield* nextRound(row);
+      let { head, prior } = next;
+      if (next.round) {
+        const title = head.tasks.find((task) => task.id === row.taskId)?.title ?? row.title;
+        head = (yield* transact(
+          Effect.gen(function* () {
+            yield* requireIdleSiblings(row, head.revision);
+            return yield* plans
+              .apply(
+                {
+                  commandId: derived(input.commandId, "round"),
+                  ref,
+                  expectedRevision: head.revision,
+                  operations: [{ type: "task.update", id: row.taskId, title }],
+                },
+                input.actor,
+              )
+              .pipe(Effect.mapError(planError));
+          }),
+        )).plan;
+        prior = null;
+      }
+      const spec: FactoryExecutionTaskSpec = {
+        taskId: row.taskId,
+        modelSelection: input.setup.modelSelection,
+        runtimeMode: input.setup.runtimeMode,
+        interactionMode: input.setup.interactionMode,
+        workspaceStrategy,
+        setup: "deny",
+        ...(worktree ? { verification: CHECKPOINT_CHECK } : {}),
+        output: { slot: "result", kind: worktree ? "verified-code" : "sealed-draft" },
+      };
+      const running = yield* store.liveAttempts({
+        rootId: row.rootId,
+        revision: head.revision,
+        exceptTaskId: row.taskId,
+      });
+      const policy: FactoryExecutionPolicy = {
+        version: 1,
+        requesterThreadIds: [],
+        tasks: [spec, ...running.map((attempt) => attempt.spec)],
+        edges: [],
+        advisoryEdges: true,
+        // A new grant replaces the last one; naming the running attempts keeps them authorized.
+        ...(running.length === 0
+          ? {}
+          : { continues: running.map((attempt) => attempt.runAttemptId) }),
+        maxAttempts: MAX_TASKS,
+        maxRetriesPerTask: MAX_TASKS,
+        maxConcurrent: MAX_TASKS,
+        expiresAt: GRANT_EXPIRES_AT,
+        requiredCapabilities: [],
+      };
+      const granted = yield* executions
+        .issueGrant(
+          {
+            commandId: derived(input.commandId, "grant"),
+            ref,
+            expectedRevision: head.revision,
+            expectedGrantVersion: yield* store.grantVersion(row.rootId),
+            policy,
+          },
+          input.actor,
+        )
+        .pipe(Effect.mapError(executionError));
+      return { grant: granted.execution.grant!, prior };
+    });
     const admission = {
       commandId: admitId,
-      selection: { ref, revision: head.revision, taskId: row.taskId },
-      grantVersion: granted.execution.grant!.version,
+      selection: { ref, revision: grant.revision, taskId: row.taskId },
+      grantVersion: grant.version,
     };
     yield* (
       prior === null

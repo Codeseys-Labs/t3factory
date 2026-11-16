@@ -11,6 +11,7 @@ import {
   MessageId,
   NodeId,
   FactoryDeliveryError,
+  FactoryExecutionError,
   FactoryWorkError,
   GitCommandError,
   ProjectId,
@@ -364,9 +365,14 @@ const gatedPlans = Layer.effect(
   Layer.provideMerge(Layer.sync(PlanGate, () => ({ next: null }))),
 );
 /** Runs once before the next result read, so a test can hold an Accept after its first check. */
-class OutputGate extends Context.Service<OutputGate, { next: Effect.Effect<void> | null }>()(
-  "t3/factory/FactoryTaskService.test/OutputGate",
-) {}
+class OutputGate extends Context.Service<
+  OutputGate,
+  {
+    next: Effect.Effect<void> | null;
+    admission: Effect.Effect<void, FactoryExecutionError> | null;
+    grant: Effect.Effect<void, FactoryExecutionError> | null;
+  }
+>()("t3/factory/FactoryTaskService.test/OutputGate") {}
 const gatedExecutions = Layer.effect(
   Executions.FactoryExecutionService,
   Effect.gen(function* () {
@@ -374,6 +380,24 @@ const gatedExecutions = Layer.effect(
     const gate = yield* OutputGate;
     return Executions.FactoryExecutionService.of({
       ...executions,
+      issueGrant: (input, actor) =>
+        Effect.suspend(() => {
+          const next = gate.grant ?? Effect.void;
+          gate.grant = null;
+          return next;
+        }).pipe(Effect.andThen(executions.issueGrant(input, actor))),
+      admit: (input, actor) =>
+        Effect.suspend(() => {
+          const next = gate.admission ?? Effect.void;
+          gate.admission = null;
+          return next;
+        }).pipe(Effect.andThen(executions.admit(input, actor))),
+      retry: (input, actor) =>
+        Effect.suspend(() => {
+          const next = gate.admission ?? Effect.void;
+          gate.admission = null;
+          return next;
+        }).pipe(Effect.andThen(executions.retry(input, actor))),
       readOutput: (input) =>
         Effect.suspend(() => {
           const next = gate.next ?? Effect.void;
@@ -384,7 +408,7 @@ const gatedExecutions = Layer.effect(
   }),
 ).pipe(
   Layer.provide(Executions.layer),
-  Layer.provideMerge(Layer.sync(OutputGate, () => ({ next: null }))),
+  Layer.provideMerge(Layer.sync(OutputGate, () => ({ next: null, admission: null, grant: null }))),
 );
 const eventStores = EventStore.layerFromOrchestrationEventStore.pipe(
   Layer.provideMerge(OrchestrationEventStore.layer),
@@ -652,6 +676,159 @@ it.effect.each(["first start", "document result"] as const)(
         );
       }),
     ),
+);
+
+it.effect.each(["first start", "retry", "document result"] as const)(
+  "resumes a recorded grant before admission after the remote moves: %s",
+  (stage) =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, start, finish, until, summary } = yield* harness;
+        const task = yield* create("Resume recorded grant", { lane: "ready" });
+        if (stage !== "first start") {
+          yield* finish(
+            (yield* start(task)).run!,
+            stage === "retry" ? "failed" : "sealed",
+            "No code.",
+            projectHead,
+          );
+          yield* until(task, (value) =>
+            stage === "retry" ? value.run?.state === "failed" : value.result?.kind === "document",
+          );
+        }
+        const current = yield* summary(task);
+        const probe = yield* BaseProbe;
+        probe.remote = { remoteName: "origin", branchName: "main" };
+        const commandId = command("resume-grant");
+        const request =
+          stage === "first start"
+            ? tasks.start(
+                { commandId, ref: task.ref, expectedVersion: current.version, setup: setupOf() },
+                human,
+              )
+            : stage === "retry"
+              ? tasks.retry({ commandId, ref: task.ref, expectedVersion: current.version }, human)
+              : tasks.requestChanges(
+                  { commandId, ref: task.ref, revision: 1, note: "Implement it" },
+                  human,
+                );
+        const gate = yield* OutputGate;
+        gate.admission = Effect.fail(new FactoryExecutionError({ reason: "persistence-failure" }));
+        const failed = yield* request.pipe(Effect.result);
+        assert.isTrue(Result.isFailure(failed));
+        if (Result.isFailure(failed)) assert.equal(failed.failure.reason, "persistence-failure");
+        const grants = yield* sql`SELECT * FROM factory_execution_grants`;
+        const plans = yield* sql`SELECT * FROM factory_plan_revisions`;
+        const runs = yield* sql`SELECT * FROM factory_execution_bindings`;
+        const receipts = yield* sql`SELECT * FROM factory_execution_commands`;
+        assert.equal(grants.length, stage === "first start" ? 1 : 2);
+        assert.equal(runs.length, stage === "first start" ? 0 : 1);
+        assert.equal(probe.fetches, 1);
+        probe.fetched = "e".repeat(40);
+        const resumed = yield* request;
+        const replayed = yield* request;
+        assert.equal(replayed.task.run?.threadId, resumed.task.run?.threadId);
+        assert.deepEqual(
+          yield* sql`SELECT json_extract(binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef FROM factory_execution_bindings WHERE thread_id = ${resumed.task.run!.threadId}`,
+          [{ baseRef: remoteHead }],
+        );
+        assert.equal(probe.fetches, 1);
+        assert.deepEqual(yield* sql`SELECT * FROM factory_execution_grants`, grants);
+        assert.deepEqual(yield* sql`SELECT * FROM factory_plan_revisions`, plans);
+        assert.equal(
+          (yield* sql`SELECT * FROM factory_execution_bindings`).length,
+          runs.length + 1,
+        );
+        assert.equal(
+          (yield* sql`SELECT * FROM factory_execution_commands`).length,
+          receipts.length + 1,
+        );
+        if (stage === "retry") {
+          assert.deepEqual(
+            yield* sql`SELECT json_extract(binding_json, '$.taskVersion') AS version FROM factory_execution_bindings WHERE thread_id = ${resumed.task.run!.threadId}`,
+            [{ version: 2 }],
+          );
+        }
+      }),
+    ),
+);
+
+it.effect("refuses a recorded grant replaced before admission with an actionable reason", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { sql, tasks, create } = yield* harness;
+      const task = yield* create("Replaced grant", { lane: "ready" });
+      const input = {
+        commandId: command("old-start"),
+        ref: task.ref,
+        expectedVersion: task.version,
+        setup: setupOf(),
+      };
+      const gate = yield* OutputGate;
+      for (const commandId of [input.commandId, command("later-start")]) {
+        gate.admission = Effect.fail(new FactoryExecutionError({ reason: "persistence-failure" }));
+        assert.isTrue(
+          Result.isFailure(yield* tasks.start({ ...input, commandId }, human).pipe(Effect.result)),
+        );
+      }
+      const grants = yield* sql`SELECT * FROM factory_execution_grants`;
+      const refused = yield* tasks.start(input, human).pipe(Effect.result);
+      assert.isTrue(Result.isFailure(refused));
+      if (Result.isFailure(refused)) {
+        assert.equal(refused.failure.reason, "version-conflict");
+        assert.include(refused.failure.detail!, "Start the task again");
+      }
+      assert.deepEqual(yield* sql`SELECT * FROM factory_execution_grants`, grants);
+      assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, []);
+    }),
+  ),
+);
+
+it.effect("replays a rejected grant receipt as its original rejection without admitting", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { sql, tasks, executions, create } = yield* harness;
+      const task = yield* create("Rejected grant", { lane: "ready" });
+      const input = {
+        commandId: command("rejected-start"),
+        ref: task.ref,
+        expectedVersion: task.version,
+        setup: setupOf(),
+      };
+      const gate = yield* OutputGate;
+      gate.admission = Effect.fail(new FactoryExecutionError({ reason: "persistence-failure" }));
+      yield* tasks
+        .start({ ...input, commandId: command("initial-start") }, human)
+        .pipe(Effect.result);
+      const ref = { environmentId, projectId, rootId: task.ref.rootId };
+      const grant = (yield* executions.readExecution({ ref, revision: 1 })).grant!;
+      gate.grant = executions
+        .issueGrant(
+          {
+            commandId: command("competing-grant"),
+            ref,
+            expectedRevision: grant.revision,
+            expectedGrantVersion: grant.version,
+            policy: grant.policy,
+          },
+          human,
+        )
+        .pipe(Effect.asVoid);
+      const first = yield* tasks.start(input, human).pipe(Effect.result);
+      assert.isTrue(Result.isFailure(first));
+      if (Result.isFailure(first)) assert.equal(first.failure.reason, "version-conflict");
+      const receipts = yield* sql`SELECT * FROM factory_execution_commands`;
+      const probe = yield* BaseProbe;
+      const fetches = probe.fetches;
+      probe.remote = { remoteName: "origin", branchName: "main" };
+      const replayed = yield* tasks.start(input, human).pipe(Effect.result);
+      assert.isTrue(Result.isFailure(replayed));
+      if (Result.isFailure(replayed)) assert.equal(replayed.failure.reason, "version-conflict");
+      assert.equal(probe.fetches, fetches);
+      assert.deepEqual(yield* sql`SELECT * FROM factory_execution_commands`, receipts);
+      assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, []);
+    }),
+  ),
 );
 
 it.effect.each(["recorded", "admitted before receipt"] as const)(

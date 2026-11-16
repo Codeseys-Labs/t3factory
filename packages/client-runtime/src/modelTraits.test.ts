@@ -87,6 +87,40 @@ describe("describeSelectedEffort", () => {
     expect(describeSelectedEffort(selection(options), capabilities)).toBe(label);
   });
 
+  // The composer's trigger lists every option of the model, so a task's label does too.
+  const agentCapabilities: ModelCapabilities = {
+    optionDescriptors: [
+      ...capabilities.optionDescriptors!.slice(0, 1),
+      { id: "thinking", label: "Thinking", type: "boolean", currentValue: true },
+      { id: "ultracode", label: "Ultracode", type: "boolean" },
+      ...capabilities.optionDescriptors!.slice(1),
+    ],
+  };
+  it.each([
+    {
+      name: "Thinking off",
+      options: [{ id: "thinking", value: false }],
+      label: "Low · Thinking Off",
+    },
+    {
+      name: "Ultracode on",
+      options: [{ id: "ultracode", value: true }],
+      label: "Low · Thinking On · Ultracode",
+    },
+    {
+      name: "Fast on",
+      options: [{ id: "fastMode", value: true }],
+      label: "Low Fast · Thinking On",
+    },
+    {
+      name: "a non-default effort",
+      options: [{ id: "reasoningEffort", value: "high" }],
+      label: "High · Thinking On",
+    },
+  ])("says what the composer's trigger says for $name", ({ options, label }) => {
+    expect(describeSelectedEffort(selection(options), agentCapabilities)).toBe(label);
+  });
+
   it("names nothing for a model whose options are unknown", () => {
     expect(
       describeSelectedEffort(selection([{ id: "reasoningEffort", value: "high" }]), null),

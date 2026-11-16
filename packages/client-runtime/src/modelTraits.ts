@@ -193,9 +193,9 @@ export function buildTraitsTriggerDisplay(input: {
 }
 
 /**
- * The effort a selection chose, in the composer's words: `High`, or `High Fast`. Null when the
- * selection carries no options, so the provider's default applies, or its model's options are
- * unknown.
+ * What the composer's trigger says for a selection: `High`, `High Fast`, `Low · Thinking Off`.
+ * Null when the selection carries no options, so the provider's default applies, or its model's
+ * options are unknown.
  */
 export function describeSelectedEffort(
   selection: ModelSelection,
@@ -206,14 +206,10 @@ export function describeSelectedEffort(
     caps: capabilities,
     selections: selection.options,
   });
-  const reasoning = descriptors.find(isReasoningSelect) ?? null;
-  const shown = descriptors.filter(
-    (descriptor) =>
-      descriptor === reasoning || descriptor.id === "fastMode" || descriptor.id === "serviceTier",
-  );
   const { label } = buildTraitsTriggerDisplay({
-    descriptors: shown,
-    primarySelectDescriptorId: reasoning?.id ?? null,
+    descriptors,
+    primarySelectDescriptorId:
+      descriptors.find((descriptor) => descriptor.type === "select")?.id ?? null,
     ultrathinkPromptControlled: false,
     modelSelection: selection,
   });

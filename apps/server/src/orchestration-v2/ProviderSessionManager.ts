@@ -257,8 +257,9 @@ export interface ProviderSessionManagerV2Shape {
     readonly detail?: string;
   }) => Effect.Effect<void, ProviderSessionManagerV2Error>;
   /**
-   * T3Factory: ends what a release ends on one provider thread, for any runtime, once the caller
-   * proved every process its sessions started gone. Work started after `provenAt` stays open.
+   * T3Factory: ends what a release ends on one provider thread and its native children, for any
+   * runtime, once the caller proved every process they started gone. Work started after
+   * `provenAt` stays open.
    */
   readonly closeSettledWork: (input: {
     readonly threadId: ThreadId;
@@ -3548,20 +3549,50 @@ export const layerWithOptions = (
               (candidate) => candidate.id === input.providerThreadId,
             );
             if (providerThread?.providerSessionId == null) return;
-            yield* writeReleasedBackgroundWorkEvents(
-              [
-                {
-                  threadId: input.threadId,
-                  providerSessionId: providerThread.providerSessionId,
-                  providerThreadId: providerThread.id,
-                  driver: providerThread.driver,
-                  taskIds: new Set(
-                    (providerThread.pendingBackgroundTasks ?? []).map((task) => task.taskId),
-                  ),
-                },
-              ],
-              input.provenAt,
-            );
+            const providerSessionId = providerThread.providerSessionId;
+            const settled: Array<ReleasedProviderThread> = [];
+            const settle = (threadId: ThreadId, settledThread: OrchestrationV2ProviderThread) =>
+              settled.push({
+                threadId,
+                providerSessionId: settledThread.providerSessionId ?? providerSessionId,
+                providerThreadId: settledThread.id,
+                driver: settledThread.driver,
+                taskIds: new Set(
+                  (settledThread.pendingBackgroundTasks ?? []).map((task) => task.taskId),
+                ),
+              });
+            // A native child descends through its own provider thread's forkedFrom; Codex records
+            // the child and its parent-visible item under that provider thread, not the parent's.
+            const pending = [{ threadId: input.threadId, providerThread }];
+            const seen = new Set<ProviderThreadId>();
+            for (let next = pending.shift(); next !== undefined; next = pending.shift()) {
+              if (seen.has(next.providerThread.id)) continue;
+              seen.add(next.providerThread.id);
+              settle(next.threadId, next.providerThread);
+              const { subagents } = yield* projectionStore.getThreadRecords(next.threadId, [
+                "subagents",
+              ]);
+              for (const subagent of subagents) {
+                if (subagent.origin !== "provider_native" || subagent.childThreadId === null) {
+                  continue;
+                }
+                const child = yield* projectionStore
+                  .getThreadRecords(subagent.childThreadId, ["providerThreads"])
+                  .pipe(
+                    Effect.catchTags({
+                      ProjectionStoreThreadNotFoundError: () => Effect.succeed(null),
+                    }),
+                  );
+                const childThread = child?.providerThreads.find(
+                  (candidate) => candidate.id === subagent.providerThreadId,
+                );
+                if (childThread?.forkedFrom?.providerThreadId !== next.providerThread.id) continue;
+                // The record and its item stay on this thread; the child's own work is on its thread.
+                settle(next.threadId, childThread);
+                pending.push({ threadId: subagent.childThreadId, providerThread: childThread });
+              }
+            }
+            yield* writeReleasedBackgroundWorkEvents(settled, input.provenAt);
           },
           (effect, input) =>
             effect.pipe(

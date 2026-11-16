@@ -64,5 +64,71 @@
     "name": "electron development launcher > restores execute permissions on an unchanged launcher",
     "issue": 128,
     "why": "Windows has no POSIX execute bits, so the file mode never reads back as 0o755"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "checkpoint ref cleanup > cleans more checkpoint refs than default git output holds",
+    "issue": 128,
+    "why": "seeding thousands of refs outlasts the git command timeout on a Windows host; times out on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "orphan worktree reports > reports a linked orphan's size without removing its files (annexed)",
+    "issue": 128,
+    "why": "replaces the worktree's .git with a directory symlink, which Git for Windows does not read as a repository; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "storage cleanup reports and local file policies > removes a worktree whose .git file git-annex replaced with a symlink",
+    "issue": 128,
+    "why": "replaces the worktree's .git with a directory symlink, which Git for Windows does not read as a repository; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "storage cleanup reports and local file policies > removes a worktree owned by a repository other than the project root",
+    "issue": 128,
+    "why": "joins the worktrees folder with \"/\" and looks the report entry up by that string, but the report holds the native Windows path; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "pullCurrentBranch > resolves a status waiter when Pull claims its queued fetch",
+    "issue": 128,
+    "why": "a git child still holds the temp repository when its scope removes it (EBUSY on rmdir); fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "GitVcsDriver core integration > worktree operations > preserves another creator's worktree on its new branch at the same path (current)",
+    "issue": 128,
+    "why": "looks for the backslash path in `git worktree list --porcelain`, which Git for Windows prints with forward slashes; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "GitVcsDriver core integration > worktree operations > preserves another creator's worktree on its new branch at the same path (legacy)",
+    "issue": 128,
+    "why": "looks for the backslash path in `git worktree list --porcelain`, which Git for Windows prints with forward slashes; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "GitVcsDriver core integration > worktree operations > removes its worktree and branch when cancelled before the claim (main)",
+    "issue": 128,
+    "why": "looks for the backslash path in `git worktree list --porcelain`, which Git for Windows prints with forward slashes; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "GitVcsDriver core integration > worktree operations > removes its worktree and branch when cancelled before the claim (linked)",
+    "issue": 128,
+    "why": "looks for the backslash path in `git worktree list --porcelain`, which Git for Windows prints with forward slashes; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "GitVcsDriver core integration > commit context > rejects selected-file merge commits without mutation (nested, conflict: true, utf8)",
+    "issue": 128,
+    "why": "the empty-tree lookup in the nested repository exits non-zero on a Windows host; fails on unmodified upstream too"
+  },
+  {
+    "file": "apps/server/src/vcs/GitVcsDriverCore.test.ts",
+    "name": "GitVcsDriver core integration > commit context > keeps other files conflicted through a selected-file commit",
+    "issue": 128,
+    "why": "the nested repository's commit context fails with Git's generic error instead of naming the unmerged file on a Windows host; fails on unmodified upstream too"
   }
 ]

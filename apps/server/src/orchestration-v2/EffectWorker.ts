@@ -228,6 +228,12 @@ export const layerExecutor: Layer.Layer<
             }
             if (!(yield* factoryLifecycle.quiesce(context)))
               return yield* Effect.fail("Provider writer ownership remains unknown.");
+            // T3Factory: no process of the run is left, so none of its items is still running.
+            yield* providerSessions.closeSettledWork({
+              threadId: effect.threadId,
+              providerThreadId: request.providerThreadId,
+              provenAt: yield* DateTime.now,
+            });
             const captured =
               retained ??
               (yield* factoryLifecycle.runPhase(

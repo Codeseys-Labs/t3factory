@@ -60,6 +60,14 @@ branch, even after commits were pushed to it; only Merge is pinned to the publis
   own cgroup is writable by the same user, so an agent process can write its PID back there, and on
   either platform it can ask an outside service (systemd, WMI, Task Scheduler) to start a process.
   Closing that needs a separate user or a user and cgroup namespace on an `nsdelegate` mount.
+- A worktree run's grant pins the project's setup command (`FactoryTaskService.pinnedSetup`), and
+  `ThreadLaunchService` runs it through `FactoryWorktreeSetup` inside the attempt's `workspace` phase,
+  so it is an owned process and the agent's first turn waits for it. It runs outside the provider's
+  approval prompts, so it is pinned only when the worktree starts from the project's own commit or
+  the run has Full access, the same line as links' setup scripts in [remote](remote.md). Copying a
+  trusted script from the base is not a boundary: the install runs the worktree's own package
+  lifecycle scripts anyway. A stopped run keeps its worktree, because the phase removes nothing before
+  the lifecycle has proven its processes gone.
 - A work run's thread refuses messages (`FactoryExecutionLifecycle.guardCommand`), so "Message agent"
   works only for planning runs; changes go through Request changes, which starts a new attempt.
 - Editing a plan bumps its revision. The engine then refuses approval answers for runs admitted under

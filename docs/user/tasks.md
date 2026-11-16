@@ -40,6 +40,13 @@ A task's **Thread** tab shows the agent's conversation. Replies to a working age
 question and approval cards; to change the result, use **Request changes** with a note, which starts a
 new run with it.
 
+A run that works in its own worktree first runs the project's setup script, the one set to **Run
+automatically on worktree creation**, and its agent starts only once the script succeeds. The Thread
+tab shows the script while it runs. If it fails or takes longer than 15 minutes, the run fails before
+its agent starts, and the Thread tab shows the script's last lines: fix the script or what it needs,
+then **Retry** the task, which sets up a new worktree. A **Request changes** round below Full access
+skips the script, because its worktree holds the previous agent's code; its agent sets up by itself.
+
 ## Review a result
 
 **Accept** records your review of that revision and marks the task Done. **Request changes** runs the

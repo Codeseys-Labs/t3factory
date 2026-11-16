@@ -135,7 +135,7 @@
     "file": "packages/provider-acp/src/server/clientPolicy.test.ts",
     "name": "acpPermissionDisposition > denies mutations through workspace symlinks that escape the writable roots",
     "issue": 128,
-    "why": "on a Windows host the escaping directory symlink is not resolved before parent segments, so the mutation is allowed; fails on unmodified upstream too"
+    "why": "Windows resolves `..` before it follows a directory link, so `linked-directory/..` stays inside the workspace and the policy answers allow where the test expects deny; nothing leaves the root. Fails on unmodified upstream too"
   },
   {
     "file": "packages/provider-pi/src/server/mcpInjection.test.ts",

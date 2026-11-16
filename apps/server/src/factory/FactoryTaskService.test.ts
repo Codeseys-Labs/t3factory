@@ -12,6 +12,7 @@ import {
   NodeId,
   FactoryDeliveryError,
   FactoryWorkError,
+  GitCommandError,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -41,6 +42,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Result from "effect/Result";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as PubSub from "effect/PubSub";
@@ -63,6 +65,7 @@ import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as Processes from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as Git from "../vcs/GitVcsDriver.ts";
 import * as Profiles from "./FactoryAgentProfileService.ts";
 import * as Delivery from "./FactoryDeliveryService.ts";
 import { canonicalExecutionJson, executionDigest } from "./FactoryExecutionDigest.ts";
@@ -89,6 +92,7 @@ const setupOf = (
   workspace,
 });
 const projectHead = "a".repeat(40);
+const remoteHead = "d".repeat(40);
 const resultCommit = "b".repeat(40);
 const command = (name: string) => CommandId.make(name);
 const issueRef = { version: 1, environmentId, kind: "issue", id: "issue-96" } as const;
@@ -136,6 +140,86 @@ const git = Layer.mock(Processes.ProcessRunner)({
       stderrInvalidUtf8: false,
     }),
 });
+class BaseProbe extends Context.Service<
+  BaseProbe,
+  {
+    branch: string | null;
+    remote: Git.GitWorktreeBaseRemote | null;
+    fetched: string | null;
+    ancestor: boolean;
+    failure: string | null;
+    fetches: number;
+  }
+>()("t3/factory/FactoryTaskService.test/BaseProbe") {}
+const baseGit = Layer.unwrap(
+  Effect.gen(function* () {
+    const probe = yield* BaseProbe;
+    return Layer.mock(Git.GitVcsDriver)({
+      resolveCommit: () => Effect.succeed({ commitSha: projectHead }),
+      execute: (input) =>
+        Effect.sync(() => {
+          if (input.args[0] === "merge-base") {
+            assert.deepEqual(input.args, [
+              "merge-base",
+              "--is-ancestor",
+              projectHead,
+              probe.fetched!,
+            ]);
+          }
+          return {
+            exitCode: ChildProcessSpawner.ExitCode(
+              input.args[0] === "merge-base" && !probe.ancestor ? 1 : 0,
+            ),
+            stdout:
+              input.args[0] === "rev-parse"
+                ? `${probe.branch === null ? "HEAD" : `refs/heads/${probe.branch}`}\n`
+                : "",
+            stderr: "",
+            stdoutTruncated: false,
+            stderrTruncated: false,
+          };
+        }),
+      resolveWorktreeBaseRemote: () => Effect.sync(() => probe.remote),
+      fetchWorktreeBaseCommit: (input) =>
+        Effect.suspend(() => {
+          probe.fetches += 1;
+          assert.deepEqual(input, {
+            cwd: `/${projectId}`,
+            refName: probe.branch!,
+            remote: probe.remote!,
+          });
+          return probe.failure === null
+            ? Effect.succeed(
+                probe.fetched === null
+                  ? null
+                  : {
+                      commitSha: probe.fetched,
+                      remoteRefName: `${probe.remote!.remoteName}/${probe.remote!.branchName}`,
+                    },
+              )
+            : Effect.fail(
+                new GitCommandError({
+                  operation: "GitVcsDriver.fetchRemote",
+                  command: "git fetch",
+                  cwd: input.cwd,
+                  detail: probe.failure,
+                }),
+              );
+        }),
+    });
+  }),
+).pipe(
+  Layer.provideMerge(
+    Layer.sync(BaseProbe, () => ({
+      branch: "main",
+      remote: null,
+      fetched: remoteHead,
+      ancestor: true,
+      failure: null,
+      fetches: 0,
+    })),
+  ),
+);
 const adapters = Layer.effect(
   ProviderAdapterRegistryV2,
   Effect.gen(function* () {
@@ -330,6 +414,7 @@ const layerWith = (settings: TestSettings = {}, fileTrusted = true) => {
     NodeServices.layer,
     IdAllocator.layer,
     git,
+    baseGit,
     adapters,
     Layer.succeed(ServerEnvironmentIdentity, { getEnvironmentId: Effect.succeed(environmentId) }),
     Layer.succeed(HostProcess.Platform, "win32"),
@@ -409,6 +494,7 @@ const harness = Effect.gen(function* () {
     run: FactoryTaskRun,
     outcome: "sealed" | "failed",
     text = "",
+    checkpointCommit = resultCommit,
   ) {
     const attemptId = yield* attemptOf(run);
     const native = outcome === "sealed" ? "completed" : "failed";
@@ -421,7 +507,7 @@ const harness = Effect.gen(function* () {
         let checkpoint = null;
         if (outcome === "sealed" && run.setup.workspace === "worktree") {
           checkpoint = {
-            commit: resultCommit,
+            commit: checkpointCommit,
             tree: "c".repeat(40),
             retainedRef: `refs/t3/factory/outputs/${executionDigest(attemptId)}`,
             verificationDigest: executionDigest(["verification", attemptId]),
@@ -485,6 +571,159 @@ const scenario = <A, E>(
   settings: TestSettings = {},
   fileTrusted = true,
 ) => body.pipe(Effect.scoped, Effect.provide(layerWith(settings, fileTrusted)));
+
+it.effect.each([
+  { name: "behind", fetched: remoteHead, ancestor: true, expected: remoteHead, fetches: 1 },
+  { name: "equal", fetched: projectHead, ancestor: true, expected: projectHead, fetches: 1 },
+  { name: "ahead", fetched: "e".repeat(40), ancestor: false, expected: projectHead, fetches: 1 },
+  { name: "diverged", fetched: remoteHead, ancestor: false, expected: projectHead, fetches: 1 },
+  { name: "missing branch", fetched: null, ancestor: true, expected: projectHead, fetches: 1 },
+  { name: "no remote", fetched: null, ancestor: true, expected: projectHead, fetches: 0 },
+  { name: "detached", fetched: remoteHead, ancestor: true, expected: projectHead, fetches: 0 },
+  { name: "setting off", fetched: remoteHead, ancestor: true, expected: projectHead, fetches: 0 },
+])("worktree admission resolves the remote base: $name", (test) =>
+  scenario(
+    Effect.gen(function* () {
+      const { sql, create, start } = yield* harness;
+      const probe = yield* BaseProbe;
+      probe.remote =
+        test.name === "no remote" ? null : { remoteName: "upstream", branchName: "trunk" };
+      probe.branch = test.name === "detached" ? null : "main";
+      probe.fetched = test.fetched;
+      probe.ancestor = test.ancestor;
+      const run = (yield* start(yield* create("Remote base", { lane: "ready" }))).run!;
+      assert.deepEqual(
+        yield* sql`SELECT json_extract(binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef FROM factory_execution_bindings WHERE thread_id = ${run.threadId}`,
+        [{ baseRef: test.expected }],
+      );
+      assert.equal(probe.fetches, test.fetches);
+    }),
+    {
+      projectSettingsOverrides: {
+        [projectId]: { newWorktreesStartFromOrigin: test.name !== "setting off" },
+      },
+    },
+  ),
+);
+
+it.effect.each(["first start", "document result"] as const)(
+  "refuses a failed remote fetch before recording a plan, grant or run: %s",
+  (stage) =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, start, finish, until } = yield* harness;
+        const task = yield* create("Unreachable base", { lane: "ready" });
+        if (stage === "document result") {
+          yield* finish((yield* start(task)).run!, "sealed", "Only an explanation.", projectHead);
+          yield* until(task, (current) => current.result?.kind === "document");
+        }
+        const beforePlans = yield* sql`SELECT * FROM factory_plan_revisions`;
+        const beforeGrants = yield* sql`SELECT * FROM factory_execution_grants`;
+        const beforeRuns = yield* sql`SELECT * FROM factory_execution_bindings`;
+        const probe = yield* BaseProbe;
+        probe.remote = { remoteName: "origin", branchName: "main" };
+        probe.failure = "Could not resolve host: unreachable.example";
+        const outcome = yield* (
+          stage === "first start"
+            ? start(task)
+            : tasks
+                .requestChanges(
+                  {
+                    commandId: command("document-changes"),
+                    ref: task.ref,
+                    revision: 1,
+                    note: "Try again",
+                  },
+                  human,
+                )
+                .pipe(Effect.map((result) => result.task))
+        ).pipe(Effect.result);
+        assert.isTrue(Result.isFailure(outcome), "fetch failure must refuse admission");
+        if (Result.isSuccess(outcome)) return;
+        assert.equal(outcome.failure.detail, probe.failure);
+        assert.deepEqual(yield* sql`SELECT * FROM factory_plan_revisions`, beforePlans);
+        assert.deepEqual(yield* sql`SELECT * FROM factory_execution_grants`, beforeGrants);
+        assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, beforeRuns);
+      }),
+    ),
+);
+
+it.effect.each(["recorded", "admitted before receipt"] as const)(
+  "replaying Start after the remote moves keeps the admitted base and grant: %s",
+  (stage) =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create } = yield* harness;
+        const probe = yield* BaseProbe;
+        probe.remote = { remoteName: "origin", branchName: "main" };
+        const task = yield* create("Replay remote base", { lane: "ready" });
+        const input = {
+          commandId: command("remote-start"),
+          ref: task.ref,
+          expectedVersion: task.version,
+          setup: setupOf(),
+        };
+        const first = yield* tasks.start(input, human);
+        if (stage === "admitted before receipt") {
+          yield* sql`DELETE FROM factory_task_commands WHERE command_id = ${input.commandId}`;
+        }
+        probe.fetched = "e".repeat(40);
+        const replayed = yield* tasks.start(input, human);
+        assert.equal(replayed.replayed, stage === "recorded");
+        assert.equal(replayed.task.run?.threadId, first.task.run?.threadId);
+        assert.deepEqual(
+          yield* sql`SELECT json_extract(binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef FROM factory_execution_bindings WHERE thread_id = ${replayed.task.run!.threadId}`,
+          [{ baseRef: remoteHead }],
+        );
+        assert.equal(probe.fetches, 1);
+        assert.deepEqual(yield* sql`SELECT count(*) AS count FROM factory_execution_grants`, [
+          { count: 1 },
+        ]);
+        assert.deepEqual(yield* sql`SELECT count(*) AS count FROM factory_execution_bindings`, [
+          { count: 1 },
+        ]);
+      }),
+    ),
+);
+
+it.effect.each(["retry", "document"] as const)("resolves a fresh remote base after a %s", (stage) =>
+  scenario(
+    Effect.gen(function* () {
+      const { sql, tasks, create, start, finish, until } = yield* harness;
+      const task = yield* create("Fresh remote base", { lane: "ready" });
+      yield* finish(
+        (yield* start(task)).run!,
+        stage === "retry" ? "failed" : "sealed",
+        "No code.",
+        projectHead,
+      );
+      const current = yield* until(task, (value) =>
+        stage === "retry" ? value.run?.state === "failed" : value.result?.kind === "document",
+      );
+      const probe = yield* BaseProbe;
+      probe.remote = { remoteName: "origin", branchName: "main" };
+      const next = yield* stage === "retry"
+        ? tasks.retry(
+            { commandId: command("fresh-retry"), ref: task.ref, expectedVersion: current.version },
+            human,
+          )
+        : tasks.requestChanges(
+            {
+              commandId: command("fresh-document"),
+              ref: task.ref,
+              revision: 1,
+              note: "Implement it",
+            },
+            human,
+          );
+      assert.deepEqual(
+        yield* sql`SELECT json_extract(binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef FROM factory_execution_bindings WHERE thread_id = ${next.task.run!.threadId}`,
+        [{ baseRef: remoteHead }],
+      );
+      assert.equal(probe.fetches, 1);
+    }),
+  ),
+);
 
 it.effect(
   "a saved schedule creates tasks after the author's login expires, with creation-only authority",
@@ -2196,6 +2435,9 @@ it.effect(
         const { sql, tasks, create, start, finish, until } = yield* harness;
         const task = yield* create("Audio ring demo", { lane: "ready" });
         const first = (yield* start(task, setupOf("opus"))).run!;
+        const baseProbe = yield* BaseProbe;
+        baseProbe.remote = { remoteName: "origin", branchName: "main" };
+        baseProbe.failure = "Continuing code must not fetch";
         yield* finish(first, "sealed");
         const review = yield* until(task, (current) => current.status === "in-review");
 
@@ -2286,6 +2528,7 @@ it.effect(
         }>`SELECT json_extract(binding_json, '$.inputText') AS text, json_extract(binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef FROM factory_execution_bindings WHERE thread_id = ${third.threadId}`;
         assert.include(retriedBinding[0]!.text, "Keep cursor paging");
         assert.equal(retriedBinding[0]!.baseRef, resultCommit);
+        assert.equal(baseProbe.fetches, 0);
 
         // The revision changed no file of its own, yet still carries the code under review.
         yield* finish(third, "sealed");

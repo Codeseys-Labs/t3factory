@@ -3551,6 +3551,15 @@ it.effect.each(["detach", "stream failure", "provider stop", "early close"] as c
           otherSession: "running",
           replacement: "running",
         });
+        // T3Factory: the fork publishes commits in order, so this end can land after the second interrupt.
+        yield* eventSink.stream({ threadId, afterSequence }).pipe(
+          Stream.filter(
+            ({ event }) =>
+              event.type === "subagent.updated" && event.payload.status === "interrupted",
+          ),
+          Stream.take(1),
+          Stream.runDrain,
+        );
         // regression: #36548 a native subagent the dead process ran stayed running after its run completed
         assert.notInclude(["pending", "running", "waiting"], yield* nativeSubagentStatus);
       });

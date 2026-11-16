@@ -168,6 +168,12 @@ export class FactoryExecutionStore extends Context.Service<
       readonly ref: FactoryPlanRef;
       readonly actor: FactoryExecutionActor;
     }) => Effect.Effect<FactoryExecutionReadResult | null, FactoryExecutionError>;
+    readonly recordedGrant: (input: {
+      readonly commandId: CommandId;
+      readonly ref: FactoryPlanRef;
+      readonly actor: FactoryExecutionActor;
+      readonly now: string;
+    }) => Effect.Effect<FactoryExecutionGrant | null, FactoryExecutionError>;
     readonly findNativeBinding: (
       input: BindingLookup,
     ) => Effect.Effect<FactoryExecutionBinding | null, FactoryExecutionError>;
@@ -1232,6 +1238,42 @@ const make = Effect.gen(function* () {
     if (outcome.error !== null) return yield* new FactoryExecutionError({ reason: outcome.error });
     return outcome.result;
   }, Effect.mapError(failure));
+  const recordedGrant = Effect.fn("FactoryExecutionStore.recordedGrant")(function* (input: {
+    readonly commandId: CommandId;
+    readonly ref: FactoryPlanRef;
+    readonly actor: FactoryExecutionActor;
+    readonly now: string;
+  }) {
+    yield* authorize(input.actor, input.ref, true);
+    const rows = yield* sql<{
+      digest: string;
+      root: string;
+      json: string;
+    }>`SELECT digest, root_id AS root, outcome_json AS json FROM factory_execution_commands WHERE command_id = ${input.commandId}`;
+    if (!rows[0]) return null;
+    if (rows[0].root !== input.ref.rootId)
+      return yield* new FactoryExecutionError({ reason: "command-conflict" });
+    const outcome = yield* decodeOutcome(rows[0].json);
+    if (outcome.error !== null) return yield* new FactoryExecutionError({ reason: outcome.error });
+    const grant = outcome.result?.grant;
+    if (!grant || canonicalExecutionJson(grant.ref) !== canonicalExecutionJson(input.ref))
+      return yield* new FactoryExecutionError({ reason: "command-conflict" });
+    const digest = executionDigest([
+      "grant",
+      input.actor,
+      {
+        commandId: input.commandId,
+        ref: grant.ref,
+        expectedRevision: grant.revision,
+        expectedGrantVersion: grant.version - 1,
+        policy: grant.policy,
+      },
+    ]);
+    if (rows[0].digest !== digest)
+      return yield* new FactoryExecutionError({ reason: "command-conflict" });
+    yield* liveGrant(input.ref, grant.revision, grant.version, input.now);
+    return grant;
+  }, Effect.mapError(failure));
   const requestNativeStop = Effect.fn("FactoryExecutionStore.requestNativeStop")(
     function* (input: {
       readonly threadId: ThreadId;
@@ -1427,6 +1469,7 @@ const make = Effect.gen(function* () {
     prepareAdmission,
     decide,
     replay,
+    recordedGrant,
     getBinding,
     hasNativeClaims,
     listHeldAttempts,

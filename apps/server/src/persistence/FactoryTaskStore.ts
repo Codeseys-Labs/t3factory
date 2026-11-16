@@ -1201,8 +1201,9 @@ const make = Effect.gen(function* () {
     recordReceipt: Effect.fn("FactoryTaskStore.recordReceipt")(function* (input) {
       yield* sql`INSERT INTO factory_task_commands(command_id, kind, digest, outcome_json) VALUES (${input.commandId}, ${input.kind}, ${input.digest}, ${yield* encodeOutcome(input.outcome)})`;
     }, Effect.mapError(failure)),
+    // Written only while the command has no grant, so the last write describes the grant issued.
     registerLaunch: Effect.fn("FactoryTaskStore.registerLaunch")(function* (input) {
-      yield* sql`INSERT INTO factory_task_launches(command_id, profile_id, actor_json) VALUES (${input.commandId}, ${input.profileId}, ${yield* encodeActor(input.actor)}) ON CONFLICT(command_id) DO NOTHING`;
+      yield* sql`INSERT INTO factory_task_launches(command_id, profile_id, actor_json) VALUES (${input.commandId}, ${input.profileId}, ${yield* encodeActor(input.actor)}) ON CONFLICT(command_id) DO UPDATE SET profile_id = excluded.profile_id, actor_json = excluded.actor_json`;
     }, Effect.mapError(failure)),
     launched: Effect.fn("FactoryTaskStore.launched")(function* (commandId) {
       const rows =

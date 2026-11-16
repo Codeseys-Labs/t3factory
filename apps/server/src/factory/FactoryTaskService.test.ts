@@ -3008,7 +3008,7 @@ it.effect("a task made from retained Work carries it as its source", () =>
 );
 
 it.effect.each([false, true])(
-  "request changes runs the same assignee again and the next result replaces the one under review (long reports: %s)",
+  "request changes runs the task's current assignee and the next result replaces the one under review (long reports: %s)",
   (longReports) =>
     scenario(
       Effect.gen(function* () {
@@ -3025,7 +3025,7 @@ it.effect.each([false, true])(
         baseProbe.remote = { remoteName: "origin", branchName: "main" };
         baseProbe.failure = "Continuing code must not fetch";
         yield* finish(first, "sealed");
-        const review = yield* until(task, (current) => current.status === "in-review");
+        yield* until(task, (current) => current.status === "in-review");
 
         // An Accept that lands after a Request changes passed its checks wins: the run is not
         // admitted, and the note does not wait for the next run.
@@ -3053,7 +3053,20 @@ it.effect.each([false, true])(
           yield* sql`SELECT input_note AS note FROM factory_tasks WHERE task_id = ${task.ref.taskId}`,
           [{ note: null }],
         );
-        yield* tasks.reopen({ commandId: command("undo-first"), ref: task.ref }, human);
+        const reopened = (yield* tasks.reopen(
+          { commandId: command("undo-first"), ref: task.ref },
+          human,
+        )).task;
+        // Reassigned after the result. An agent set to the project folder still continues the code.
+        const reassigned = (yield* tasks.update(
+          {
+            commandId: command("reassign"),
+            ref: task.ref,
+            expectedVersion: reopened.version,
+            assignment: { mode: "pinned", setup: setupOf("flash", "root") },
+          },
+          human,
+        )).task;
 
         // A Request changes that lands while an Accept reads the result wins: the run it started
         // is not covered by an acceptance of the result before it.
@@ -3079,9 +3092,9 @@ it.effect.each([false, true])(
         const second = changing.run!;
         assert.deepEqual(
           [changing.status, second.ordinal, second.state, changing.assignee.key],
-          ["in-progress", 2, "running", review.assignee.key],
+          ["in-progress", 2, "running", reassigned.assignee.key],
         );
-        assert.deepEqual(second.setup, first.setup);
+        assert.deepEqual(second.setup, setupOf("flash"));
         assert.deepEqual(changing.attention, []);
         // The sealed attempt cannot continue: the note and the result's commit start a new one.
         const bindings = yield* sql<{
@@ -3198,35 +3211,6 @@ it.effect.each([false, true])(
         assert.equal((yield* tasks.readResult({ ref: task.ref, revision: 1 })).result.revision, 1);
       }),
     ),
-);
-
-it.effect("request changes runs with the agent the task is assigned to now", () =>
-  scenario(
-    Effect.gen(function* () {
-      const { tasks, create, start, finish, until } = yield* harness;
-      const task = yield* create("Footer link", { lane: "ready" });
-      yield* finish((yield* start(task, setupOf("opus"))).run!, "sealed");
-      const review = yield* until(task, (current) => current.status === "in-review");
-      const reassigned = (yield* tasks.update(
-        {
-          commandId: command("reassign"),
-          ref: task.ref,
-          expectedVersion: review.version,
-          // An agent set to work in the project folder still continues code from the result.
-          assignment: { mode: "pinned", setup: setupOf("flash", "root") },
-        },
-        human,
-      )).task;
-      const round = (yield* tasks.requestChanges(
-        { commandId: command("changes"), ref: task.ref, revision: 1, note: "Try again" },
-        human,
-      )).task;
-      assert.deepEqual(
-        [round.run?.ordinal, round.run?.setup, round.assignee.key],
-        [2, setupOf("flash"), reassigned.assignee.key],
-      );
-    }),
-  ),
 );
 
 it.effect("a replayed Publish does not generate again and uses project writer settings", () =>
@@ -3581,7 +3565,7 @@ it.effect(
   () =>
     scenario(
       Effect.gen(function* () {
-        const { sql, tasks, create, subtask, start, finish, until } = yield* harness;
+        const { sql, tasks, create, subtask, summary, start, finish, until } = yield* harness;
         const parent = yield* create("Unified task model");
         const contract = yield* subtask("Contract and migration", parent);
         const notes = yield* subtask("Release notes", parent);
@@ -3620,7 +3604,7 @@ it.effect(
             "Changes are already being requested on this task. Try again in a moment.",
           ],
         );
-        yield* start(notes, setupOf("flash", "root"));
+        const sibling = (yield* start(notes, setupOf("flash", "root"))).run!;
         yield* Deferred.succeed(release, undefined);
         assert.equal((yield* Fiber.join(overtaken)).reason, "run-active");
         assert.deepEqual(
@@ -3632,6 +3616,40 @@ it.effect(
             .filter((entry) => entry.event.type === "changes-requested")
             .map((entry) => entry.event),
           [],
+        );
+
+        // The same command, sent again once the sibling is done and the task has another assignee,
+        // starts the round for that assignee: its setup and its profile, not the lost try's.
+        yield* finish(sibling, "sealed", "Noted.");
+        yield* until(notes, (current) => current.status === "in-review");
+        const checker = (yield* (yield* Profiles.FactoryAgentProfileService).save(
+          {
+            commandId: command("checker"),
+            name: "Checker",
+            setup: setupOf("luna", "root"),
+            handles: [],
+          },
+          human,
+        )).profile!;
+        yield* tasks.update(
+          {
+            commandId: command("to-checker"),
+            ref: contract.ref,
+            expectedVersion: (yield* summary(contract)).version,
+            assignment: { mode: "profile", profileId: checker.id },
+          },
+          human,
+        );
+        const round = (yield* tasks.requestChanges(
+          { commandId: command("overtaken"), ref: contract.ref, revision: 1, note: "Later" },
+          human,
+        )).task.run!;
+        assert.deepEqual(
+          [
+            round.setup,
+            yield* sql`SELECT profile_id AS profile FROM factory_task_runs WHERE thread_id = ${round.threadId}`,
+          ],
+          [checker.setup, [{ profile: checker.id }]],
         );
       }),
     ),

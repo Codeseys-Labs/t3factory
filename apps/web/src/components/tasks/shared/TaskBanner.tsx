@@ -233,7 +233,7 @@ export function TaskBanner({
           agent={
             task.assignee.resolved
               ? presentTaskSetup(task.assignee.resolved.setup, catalog).label
-              : runLabel
+              : null
           }
           onClose={() => setRequestingChanges(false)}
           onSend={async (note) => {
@@ -251,7 +251,7 @@ function RequestChangesDialog({
   onClose,
   onSend,
 }: {
-  /** Who the round goes to: the task's assignee now, or the last run's agent when it names none. */
+  /** The task's assignee now, who the round goes to. Null when it names none and the result's author runs. */
   agent: string | null;
   onClose: () => void;
   onSend: (note: string) => Promise<void>;

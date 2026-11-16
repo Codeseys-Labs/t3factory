@@ -56,11 +56,10 @@ up a new worktree. A run that continues an earlier code result (a **Request chan
 code; its agent sets up by itself.
 
 The server takes the shell's exit status as the script's result, so a command that fails in the
-middle does not always fail the script. On macOS and Linux the last command decides. On Windows the
-script runs in PowerShell, which fails it when an error stops the script or when the last program it
-ran exited with an error; an error PowerShell continues past does not count. To stop early there,
-start the script with `$ErrorActionPreference = 'Stop'` and check `$LASTEXITCODE` after a program
-that must succeed.
+middle does not always fail the script. On Windows the script runs in PowerShell, which fails it
+when an error stops the script or when the last program it ran exited with an error; an error
+PowerShell continues past does not count. To stop early there, start the script with
+`$ErrorActionPreference = 'Stop'` and check `$LASTEXITCODE` after a program that must succeed.
 
 ## Review a result
 

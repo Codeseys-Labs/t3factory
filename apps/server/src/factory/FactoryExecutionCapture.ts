@@ -291,10 +291,11 @@ const make = Effect.gen(function* () {
           checkpoint,
         });
       }).pipe(
+        // A killed `worktree add` leaves its registration locked; one --force does not remove that.
         Effect.onExit(() =>
           git(
             scope.cwd,
-            ["worktree", "remove", "--force", verificationRoot],
+            ["worktree", "remove", "--force", "--force", verificationRoot],
             WORKTREE_TIMEOUT,
           ).pipe(Effect.asVoid),
         ),

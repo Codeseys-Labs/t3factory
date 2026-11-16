@@ -131,6 +131,7 @@ it.effect.each([
   "interrupted verification retry",
   "failed add retry",
   "interrupted add retry",
+  "killed add retry",
 ] as const)("a verified result survives long checkout paths and %s", (scenario) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -301,6 +302,14 @@ it.effect.each([
         const result = yield* runner.run(input);
         if (isWorktree && operation === "add" && injectFailure && scenario.includes("add retry")) {
           injectFailure = false;
+          if (scenario.startsWith("killed")) {
+            // A `git worktree add` that is killed leaves its registration locked as "initializing".
+            const registered = path.join(cwd, ".git", "worktrees");
+            for (const name of yield* fs.readDirectory(registered).pipe(Effect.orDie))
+              yield* fs
+                .writeFileString(path.join(registered, name, "locked"), "initializing")
+                .pipe(Effect.orDie);
+          }
           if (scenario.startsWith("interrupted")) return yield* Effect.interrupt;
           return yield* new Processes.ProcessReadError({
             command: input.command,

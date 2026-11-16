@@ -54,6 +54,7 @@ import {
   type ServerSettings as Settings,
   type ThreadId,
 } from "@t3tools/contracts";
+import { limitSection } from "@t3tools/provider-core/server/textGenerationUtils";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -89,6 +90,7 @@ import {
 } from "./FactoryOriginKey.ts";
 import { checkLaneMove, isLiveRunState } from "./FactoryTaskDerivation.ts";
 import * as Work from "./FactoryWorkService.ts";
+import * as GitManager from "../git/GitManager.ts";
 
 /** Set by intake when a source, not a person typing, is where the task came from. */
 export interface FactoryTaskOrigin {
@@ -294,6 +296,8 @@ const GRANT_EXPIRES_AT = "9999-12-31T23:59:59.999Z";
 const CHECKPOINT_CHECK = { command: "git", args: ["rev-parse", "--verify", "HEAD"] };
 // Leaves the pull request body (FACTORY_DELIVERY_BODY_MAX_CHARS) room for the closing line and footer.
 const REPORT_MAX_CHARS = 60_000;
+// The PR prompt keeps only the first 20,000 characters of the reports; stay under it so none is lost.
+const PR_REPORTS_MAX_CHARS = 16_000;
 
 const planError = (error: FactoryPlanError) => {
   const reasons: Record<FactoryPlanError["reason"], FactoryTaskError["reason"]> = {
@@ -460,6 +464,7 @@ const make = Effect.gen(function* () {
   const plans = yield* Plans.FactoryPlanService;
   const work = yield* Work.FactoryWorkService;
   const executions = yield* Executions.FactoryExecutionService;
+  const gitManager = yield* GitManager.GitManager;
   const executionStore = yield* ExecutionStore.FactoryExecutionStore;
   const outbox = yield* EffectOutbox.EffectOutboxV2;
   const projections = yield* Projections.ProjectionStoreV2;
@@ -1836,18 +1841,76 @@ const make = Effect.gen(function* () {
     return { ...result, commit: result.commit };
   });
 
+  const resultReport = Effect.fn("FactoryTaskService.resultReport")(function* (
+    row: Tasks.TaskRow,
+    result: Tasks.TaskResultRow,
+  ) {
+    const output = yield* executions
+      .readOutput({
+        selection: { ref: planRef(row), revision: result.planRevision, taskId: row.taskId },
+        resultId: result.resultId,
+      })
+      .pipe(Effect.mapError(executionError));
+    return ((yield* finalAnswer(result.threadId, output.output.runId)) ?? output.text).trim();
+  });
+
   /**
-   * What Publish opens: the result's own commit subject and the agent's report on it. The task
-   * description stays out; it was written for the agent and may hold notes not meant for the host.
+   * The writer gets commits, the diff and each run's report, never a person's messages.
+   * Anything an agent repeats in its report can reach the host, as it could before generation.
    */
   const publication = Effect.fn("FactoryTaskService.publication")(function* (
     row: Tasks.TaskRow,
     result: Tasks.TaskResultRow & { readonly commit: string },
+    commandId: CommandId,
     baseRef: string | null,
+    headBranch: string,
+    results: ReadonlyArray<Tasks.TaskResultRow>,
   ) {
+    const previous = yield* deliveryStore
+      .getByCommand(commandId)
+      .pipe(Effect.mapError(deliveryRefusal));
+    if (
+      Option.isSome(previous) &&
+      previous.value.kind === "publish-pr" &&
+      "title" in previous.value.payload
+    ) {
+      return { ...previous.value.payload, closes: null };
+    }
     const cwd = yield* store.projectWorkspace(row.projectId);
-    const subjects =
+    // Publish is refused without a default branch; asking the writer first would only delay that.
+    const baseBranch =
       cwd === null || baseRef === null
+        ? null
+        : yield* git.resolveDefaultBranchName(cwd, "origin").pipe(Effect.orElseSucceed(() => null));
+    const generated =
+      cwd === null || baseRef === null || !baseBranch
+        ? undefined
+        : yield* Effect.gen(function* () {
+            const share = Math.floor(PR_REPORTS_MAX_CHARS / results.length);
+            const reports = yield* Effect.forEach(results, (entry) =>
+              resultReport(row, entry).pipe(
+                Effect.map((report) =>
+                  limitSection(`Result rev ${entry.revision}\n${report}`, share),
+                ),
+              ),
+            );
+            return yield* gitManager.generatePrContent({
+              cwd,
+              projectId: row.projectId,
+              baseBranch,
+              headBranch,
+              baseRef,
+              headRef: result.commit,
+              threadContext: reports.join("\n\n"),
+            });
+          }).pipe(
+            Effect.timeoutOption("3 minutes"),
+            Effect.orElseSucceed(() => Option.none()),
+            Effect.map(Option.getOrUndefined),
+          );
+    const content = generated?.title.trim() && generated.body.trim() ? generated : undefined;
+    const subjects =
+      content !== undefined || cwd === null || baseRef === null
         ? []
         : yield* processes
             .run({
@@ -1863,21 +1926,13 @@ const make = Effect.gen(function* () {
               ),
               Effect.orElseSucceed((): ReadonlyArray<string> => []),
             );
-    const output = yield* executions
-      .readOutput({
-        selection: { ref: planRef(row), revision: result.planRevision, taskId: row.taskId },
-        resultId: result.resultId,
-      })
-      .pipe(Effect.mapError(executionError));
-    // Without the thread's messages, everything the run said is the closest account of it.
-    const report = (
-      (yield* finalAnswer(result.threadId, output.output.runId)) ?? output.text
-    ).trim();
+    const report = content?.body ?? (yield* resultReport(row, result));
     return {
       title:
-        subjects.length === 1
+        content?.title.trim().slice(0, FACTORY_DELIVERY_TITLE_MAX_CHARS) ??
+        (subjects.length === 1
           ? subjects[0]!.trim().slice(0, FACTORY_DELIVERY_TITLE_MAX_CHARS)
-          : row.title,
+          : row.title),
       body: [
         report.length > REPORT_MAX_CHARS ? `${report.slice(0, REPORT_MAX_CHARS)}\n\n…` : report,
         `---\n_Task ${row.displayId} · result rev ${result.revision} · ${result.summary}_`,
@@ -1903,6 +1958,7 @@ const make = Effect.gen(function* () {
     const { task } = yield* requireTask(input.ref);
     const { row } = task;
     const result = yield* deliverable(task, input.revision);
+    const results: Array<Tasks.TaskResultRow> = [result];
     let baseRef =
       task.runs.find((run) => run.purpose === "work" && run.threadId === result.threadId)
         ?.baseRef ?? null;
@@ -1912,6 +1968,7 @@ const make = Effect.gen(function* () {
         (entry) => entry.revision < revision && entry.kind === "code" && entry.commit === baseRef,
       );
       if (continued === undefined) break;
+      results.unshift(continued);
       baseRef =
         task.runs.find((run) => run.purpose === "work" && run.threadId === continued.threadId)
           ?.baseRef ?? null;
@@ -1930,7 +1987,17 @@ const make = Effect.gen(function* () {
         baseRef,
         publish:
           kind === "publish-pr"
-            ? { ...(yield* publication(row, result, baseRef)), headBranch }
+            ? {
+                ...(yield* publication(
+                  row,
+                  result,
+                  derived(input.commandId, kind),
+                  baseRef,
+                  headBranch,
+                  results,
+                )),
+                headBranch,
+              }
             : { title: row.title, body: "", headBranch, closes: null },
         // Inside the grant transaction: a reopen between the click and the grant wins.
         recheck: store.acceptedRevision(row).pipe(

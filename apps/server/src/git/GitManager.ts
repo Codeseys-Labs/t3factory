@@ -119,9 +119,23 @@ interface SourceControlTextGenerationSettings {
   readonly style: SourceControlWritingStyleSettings;
 }
 
+interface GeneratePrContentInput {
+  readonly cwd: string;
+  readonly projectId?: ProjectId;
+  readonly baseBranch: string;
+  readonly headBranch: string;
+  readonly baseRef: string;
+  readonly headRef?: string;
+  readonly threadId?: ThreadId;
+  readonly threadContext?: string;
+}
+
 export class GitManager extends Context.Service<
   GitManager,
   {
+    readonly generatePrContent: (
+      input: GeneratePrContentInput,
+    ) => Effect.Effect<TextGeneration.PrContentGenerationResult, GitManagerServiceError>;
     readonly createWorktree: (
       input: VcsCreateWorktreeInput,
       options?: GitVcsDriver.CreateWorktreeOptions,
@@ -2381,6 +2395,78 @@ export const make = Effect.gen(function* () {
     });
   });
 
+  const resolveTextGenerationSettings = Effect.fn("GitManager.resolveTextGenerationSettings")(
+    function* (input: {
+      readonly cwd: string;
+      readonly projectId?: ProjectId | undefined;
+      readonly threadId?: ThreadId | undefined;
+    }) {
+      const { settings, projectId } = yield* projectSettingsFor(input);
+      return {
+        modelSelection:
+          settings.sourceControlWriterModelSelection === null
+            ? settings.textGenerationModelSelection
+            : ServerSettings.resolveSourceControlWriterModelSelection(
+                settings,
+                yield* providerRegistry.getProviders,
+                projectId,
+              ),
+        projectId,
+        style: settings.sourceControlWritingStyle,
+      };
+    },
+    (effect, input) =>
+      effect.pipe(
+        Effect.mapError(
+          (cause) =>
+            new GitManagerError({
+              operation: "runStackedAction",
+              cwd: input.cwd,
+              detail: "Failed to get server settings.",
+              cause,
+            }),
+        ),
+      ),
+  );
+
+  const generatePrContent = Effect.fn("GitManager.generatePrContent")(function* (
+    input: GeneratePrContentInput,
+    resolvedSettings?: SourceControlTextGenerationSettings,
+  ) {
+    const settings =
+      resolvedSettings ??
+      (yield* resolveTextGenerationSettings({
+        cwd: input.cwd,
+        ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
+        ...(input.threadContext === undefined && input.threadId !== undefined
+          ? { threadId: input.threadId }
+          : {}),
+      }));
+    const provider = yield* sourceControlProvider(input.cwd);
+    const rangeContext = yield* gitCore.readRangeContext(input.cwd, input.baseRef, input.headRef);
+    const policy = yield* resolveStylePolicy(input.cwd, settings);
+    const changeRequestTemplate =
+      settings.style.followChangeRequestTemplates && provider.readChangeRequestTemplate
+        ? Option.getOrUndefined(
+            yield* provider.readChangeRequestTemplate({ cwd: input.cwd, treeish: input.baseRef }),
+          )
+        : undefined;
+    const threadContext = input.threadContext ?? (yield* readThreadContext(input.threadId));
+    return yield* textGeneration.generatePrContent({
+      cwd: input.cwd,
+      baseBranch: input.baseBranch,
+      headBranch: input.headBranch,
+      commitSummary: limitContext(rangeContext.commitSummary, 20_000),
+      diffSummary: limitContext(rangeContext.diffSummary, 20_000),
+      diffPatch: limitContext(rangeContext.diffPatch, 60_000),
+      ...(changeRequestTemplate ? { changeRequestTemplate } : {}),
+      ...(threadContext ? { threadContext } : {}),
+      ...(policy ? { policy } : {}),
+      modelSelection: settings.modelSelection,
+      projectId: settings.projectId,
+    });
+  });
+
   const runPrStep = Effect.fn("runPrStep")(function* (
     settings: SourceControlTextGenerationSettings,
     cwd: string,
@@ -2436,29 +2522,16 @@ export const make = Effect.gen(function* () {
       label: `Generating ${terms.shortLabel} content...`,
     });
     const baseRangeRef = yield* resolveBaseRangeRef(cwd, baseRef);
-    const rangeContext = yield* gitCore.readRangeContext(cwd, baseRangeRef);
-    const policy = yield* resolveStylePolicy(cwd, settings);
-    const changeRequestTemplate =
-      settings.style.followChangeRequestTemplates && provider.readChangeRequestTemplate
-        ? Option.getOrUndefined(
-            yield* provider.readChangeRequestTemplate({ cwd, treeish: baseRangeRef }),
-          )
-        : undefined;
-    const threadContext = yield* readThreadContext(threadId);
-
-    const generated = yield* textGeneration.generatePrContent({
-      cwd,
-      baseBranch,
-      headBranch: headContext.headBranch,
-      commitSummary: limitContext(rangeContext.commitSummary, 20_000),
-      diffSummary: limitContext(rangeContext.diffSummary, 20_000),
-      diffPatch: limitContext(rangeContext.diffPatch, 60_000),
-      ...(changeRequestTemplate ? { changeRequestTemplate } : {}),
-      ...(threadContext ? { threadContext } : {}),
-      ...(policy ? { policy } : {}),
-      modelSelection: settings.modelSelection,
-      projectId: settings.projectId,
-    });
+    const generated = yield* generatePrContent(
+      {
+        cwd,
+        baseBranch,
+        headBranch: headContext.headBranch,
+        baseRef: baseRangeRef,
+        ...(threadId === undefined ? {} : { threadId }),
+      },
+      settings,
+    );
 
     const bodyFile = path.join(
       tempDir,
@@ -3486,36 +3559,7 @@ export const make = Effect.gen(function* () {
         let commitMessageForStep = input.commitMessage;
         let preResolvedCommitSuggestion: CommitAndBranchSuggestion | undefined = undefined;
 
-        const textGenerationSettings = yield* projectSettingsFor(input).pipe(
-          Effect.flatMap(({ settings, projectId }) =>
-            settings.sourceControlWriterModelSelection === null
-              ? Effect.succeed({
-                  modelSelection: settings.textGenerationModelSelection,
-                  projectId,
-                  style: settings.sourceControlWritingStyle,
-                })
-              : providerRegistry.getProviders.pipe(
-                  Effect.map((providers) => ({
-                    modelSelection: ServerSettings.resolveSourceControlWriterModelSelection(
-                      settings,
-                      providers,
-                      projectId,
-                    ),
-                    projectId,
-                    style: settings.sourceControlWritingStyle,
-                  })),
-                ),
-          ),
-          Effect.mapError(
-            (cause) =>
-              new GitManagerError({
-                operation: "runStackedAction",
-                cwd: input.cwd,
-                detail: "Failed to get server settings.",
-                cause,
-              }),
-          ),
-        );
+        const textGenerationSettings = yield* resolveTextGenerationSettings(input);
 
         if (input.featureBranch) {
           yield* Ref.set(currentPhase, Option.some("branch"));
@@ -3643,6 +3687,7 @@ export const make = Effect.gen(function* () {
   );
 
   return GitManager.of({
+    generatePrContent,
     createWorktree,
     localStatus,
     remoteStatus,

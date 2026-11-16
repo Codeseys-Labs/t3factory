@@ -21,6 +21,8 @@ import {
   RunId,
   SourceControlProviderKind,
   ThreadId,
+  TextGenerationError,
+  TurnItemId,
   type FactoryAgentSetup,
   FactoryTaskError,
   type FactoryTaskChange,
@@ -33,6 +35,7 @@ import {
 } from "@t3tools/contracts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { buildPrContentPrompt } from "@t3tools/provider-core/server/textGenerationPrompts";
 import { AcpProviderCapabilitiesV2 } from "@t3tools/provider-acp/server/adapter";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { PosixCgroupController } from "../process/PosixOwnedProcess.ts";
@@ -56,6 +59,14 @@ import * as EffectOutbox from "../orchestration-v2/EffectOutbox.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
+import * as GitManager from "../git/GitManager.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as TextGeneration from "../textGeneration/TextGeneration.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
+import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
+import * as SourceControlProvider from "@t3tools/source-control-core/server/SourceControlProvider";
 import { ProviderAdapterRegistryV2 } from "../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as DeliveryStore from "../persistence/FactoryDeliveryStore.ts";
@@ -95,7 +106,149 @@ const setupOf = (
 const projectHead = "a".repeat(40);
 const remoteHead = "d".repeat(40);
 const resultCommit = "b".repeat(40);
+const generatedPr = {
+  title: "fix(audio): wrap the ring at capacity",
+  body: "## Summary\nFix ring wrapping across all work rounds.\n\n## Testing\nRing tests pass.",
+};
+class GenerationProbe extends Context.Service<
+  GenerationProbe,
+  {
+    readonly inputs: Array<TextGeneration.PrContentGenerationInput>;
+    readonly ranges: Array<ReadonlyArray<string | undefined>>;
+    readonly templates: Array<string>;
+    outcome: Effect.Effect<TextGeneration.PrContentGenerationResult, TextGenerationError>;
+  }
+>()("t3/factory/FactoryTaskService.test/GenerationProbe") {}
+const generationProbe = Layer.sync(GenerationProbe, () => ({
+  inputs: [],
+  ranges: [],
+  templates: [],
+  outcome: Effect.succeed(generatedPr),
+}));
+const generation = Layer.effect(
+  TextGeneration.TextGeneration,
+  Effect.gen(function* () {
+    const probe = yield* GenerationProbe;
+    return TextGeneration.TextGeneration.of({
+      generatePrContent: (input) =>
+        Effect.suspend(() => {
+          probe.inputs.push(input);
+          return probe.outcome;
+        }),
+      generateCommitMessage: () => Effect.die("unused"),
+      generateBranchName: () => Effect.die("unused"),
+      generateThreadTitle: () => Effect.die("unused"),
+      generateReviewGuide: () => Effect.die("unused"),
+      generateTranscriptionPostProcessing: () => Effect.die("unused"),
+    });
+  }),
+);
+const generationGit = Layer.unwrap(
+  Effect.gen(function* () {
+    const probe = yield* GenerationProbe;
+    return Layer.mock(GitVcsDriver.GitVcsDriver)({
+      execute: () =>
+        Effect.succeed({
+          stdout: "fix(audio): preserve ring capacity\n",
+          stderr: "",
+          exitCode: ChildProcessSpawner.ExitCode(0),
+          stdoutTruncated: false,
+          stderrTruncated: false,
+        }),
+      readRangeContext: (...args) =>
+        Effect.sync(() => {
+          probe.ranges.push(args);
+          return {
+            commitSummary: "first work commit\nrevision work commit",
+            diffSummary: "whole-change stat",
+            diffPatch: "whole-change patch",
+          };
+        }),
+    });
+  }),
+);
+const generationHost = Layer.unwrap(
+  Effect.gen(function* () {
+    const probe = yield* GenerationProbe;
+    const provider = yield* SourceControlProvider.SourceControlProvider;
+    return Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
+      resolveLink: () => undefined,
+      resolve: () =>
+        Effect.succeed({
+          ...provider,
+          readChangeRequestTemplate: ({ treeish }) =>
+            Effect.sync(() => {
+              probe.templates.push(treeish);
+              return Option.some("## Summary\n## Testing");
+            }),
+        }),
+    });
+  }),
+).pipe(
+  Layer.provide(
+    Layer.mock(SourceControlProvider.SourceControlProvider)({
+      kind: SourceControlProviderKind.make("github"),
+    }),
+  ),
+);
 const command = (name: string) => CommandId.make(name);
+const recordMessage = Effect.fn("test.recordMessage")(function* (
+  run: FactoryTaskRun,
+  text: string,
+  ordinal = 3,
+  /** A message the person typed in the run's thread, not one the agent wrote. */
+  person = false,
+) {
+  const projection = yield* ProjectionStore.ProjectionStoreV2;
+  const id = `message:${run.runId}:${ordinal}`;
+  if (!person)
+    yield* projection.apply({
+      id: EventId.make(id),
+      type: "turn-item.updated",
+      threadId: run.threadId,
+      occurredAt: DateTime.makeUnsafe(at),
+      payload: {
+        id: TurnItemId.make(id),
+        threadId: run.threadId,
+        runId: run.runId,
+        nodeId: null,
+        type: "assistant_message",
+        messageId: MessageId.make(id),
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal,
+        status: "completed",
+        title: null,
+        startedAt: DateTime.makeUnsafe(at),
+        completedAt: DateTime.makeUnsafe(at),
+        text,
+        streaming: false,
+        updatedAt: DateTime.makeUnsafe(at),
+      },
+    });
+  yield* projection.apply({
+    id: EventId.make(`record:${id}`),
+    type: "message.updated",
+    threadId: run.threadId,
+    occurredAt: DateTime.makeUnsafe(at),
+    payload: {
+      id: MessageId.make(id),
+      threadId: run.threadId,
+      runId: run.runId,
+      nodeId: null,
+      role: person ? "user" : "assistant",
+      text,
+      attachments: [],
+      streaming: false,
+      createdBy: person ? "user" : "agent",
+      creationSource: person ? "web" : "provider",
+      createdAt: DateTime.makeUnsafe(at),
+      updatedAt: DateTime.makeUnsafe(at),
+    },
+  });
+});
 const issueRef = { version: 1, environmentId, kind: "issue", id: "issue-96" } as const;
 const retainedIssue: FactoryWorkReadResult = {
   item: {
@@ -145,6 +298,7 @@ class BaseProbe extends Context.Service<
   BaseProbe,
   {
     branch: string | null;
+    defaultBranch: string | null;
     remote: Git.GitWorktreeBaseRemote | null;
     fetched: string | null;
     ancestor: boolean;
@@ -156,6 +310,7 @@ const baseGit = Layer.unwrap(
   Effect.gen(function* () {
     const probe = yield* BaseProbe;
     return Layer.mock(Git.GitVcsDriver)({
+      resolveDefaultBranchName: () => Effect.sync(() => probe.defaultBranch),
       resolveCommit: () => Effect.succeed({ commitSha: projectHead }),
       execute: (input) =>
         Effect.sync(() => {
@@ -213,6 +368,7 @@ const baseGit = Layer.unwrap(
   Layer.provideMerge(
     Layer.sync(BaseProbe, () => ({
       branch: "main",
+      defaultBranch: "main",
       remote: null,
       fetched: remoteHead,
       ancestor: true,
@@ -413,7 +569,7 @@ const gatedExecutions = Layer.effect(
 const eventStores = EventStore.layerFromOrchestrationEventStore.pipe(
   Layer.provideMerge(OrchestrationEventStore.layer),
 );
-const dependencies = Layer.mergeAll(eventStores, ProjectionStore.layer).pipe(
+const dependencies = Layer.mergeAll(eventStores, ProjectionStore.layer, ProjectStore.layer).pipe(
   Layer.provideMerge(Sqlite.layerMemory),
 );
 type TestSettings = NonNullable<Parameters<typeof ServerSettings.layerTest>[0]>;
@@ -438,6 +594,7 @@ const layerWith = (settings: TestSettings = {}, fileTrusted = true) => {
     NodeServices.layer,
     IdAllocator.layer,
     git,
+    generationProbe,
     baseGit,
     adapters,
     Layer.succeed(ServerEnvironmentIdentity, { getEnvironmentId: Effect.succeed(environmentId) }),
@@ -451,9 +608,24 @@ const layerWith = (settings: TestSettings = {}, fileTrusted = true) => {
           : Effect.fail(new FactoryWorkError({ reason: "missing-work" })),
     }),
   );
-  const engine = Layer.mergeAll(gatedPlans, gatedExecutions, ExecutionStore.layer, deliveries).pipe(
-    Layer.provideMerge(base),
+  const manager = GitManager.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        generation,
+        generationGit,
+        generationHost,
+        Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({}),
+      ).pipe(Layer.provideMerge(base)),
+    ),
   );
+  const engine = Layer.mergeAll(
+    gatedPlans,
+    gatedExecutions,
+    ExecutionStore.layer,
+    deliveries,
+    manager,
+  ).pipe(Layer.provideMerge(base));
   return Layer.mergeAll(Tasks.layer, Profiles.layer, Changes.layer, TaskStore.layer).pipe(
     Layer.provideMerge(engine),
   );
@@ -2457,7 +2629,7 @@ it.effect(
   () =>
     scenario(
       Effect.gen(function* () {
-        const { sql, tasks, start, finish, until } = yield* harness;
+        const { sql, tasks, start, finish, until, feed } = yield* harness;
         const store = yield* DeliveryStore.FactoryDeliveryStore;
         const probe = yield* DeliveryProbe;
         const reason = <A>(effect: Effect.Effect<A, FactoryTaskError>) =>
@@ -2497,11 +2669,39 @@ it.effect(
           }>`SELECT id FROM factory_delivery_intents WHERE request_command_id = ${`factory-task:${name.startsWith("merge") ? "merge-pr" : "publish-pr"}:${name}`}`.pipe(
             Effect.map((rows) => rows[0]!.id),
           );
-        yield* finish(
-          (yield* start(task)).run!,
-          "sealed",
-          "The ring now wraps at its capacity.\n\n`vp test run ring.test.ts` passes 4 of 4.",
-        );
+        const run = (yield* start(task)).run!;
+        yield* recordMessage(run, "Per your private note: the demo laptop is yours.", 1);
+        yield* (yield* ProjectionStore.ProjectionStoreV2).apply({
+          id: EventId.make("private-command"),
+          type: "turn-item.updated",
+          threadId: run.threadId,
+          occurredAt: DateTime.makeUnsafe(at),
+          payload: {
+            id: TurnItemId.make("private-command"),
+            threadId: run.threadId,
+            runId: run.runId,
+            nodeId: null,
+            type: "command_execution",
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal: 2,
+            status: "completed",
+            title: null,
+            startedAt: DateTime.makeUnsafe(at),
+            completedAt: DateTime.makeUnsafe(at),
+            updatedAt: DateTime.makeUnsafe(at),
+            input: "cat private-demo-notes.txt",
+            output: "Private command output: demo laptop owner",
+            exitCode: 0,
+          },
+        });
+        const report =
+          "The ring now wraps at its capacity.\n\n`vp test run ring.test.ts` passes 4 of 4.";
+        yield* recordMessage(run, report);
+        yield* recordMessage(run, "Person's chat note: keep my laptop out of this.", 9, true);
+        yield* finish(run, "sealed", "Captured output also repeats the private note.");
         yield* until(task, (current) => current.status === "in-review");
 
         // Accepting is not publishing: nothing goes out before it, and only a person sends it.
@@ -2513,6 +2713,20 @@ it.effect(
         assert.equal(yield* reason(deliver("merge", "merge-early")), "not-published");
 
         const sending = (yield* deliver("publish", "publish")).task;
+        const writer = (yield* GenerationProbe).inputs[0]!;
+        assert.include(writer.threadContext!, report);
+        // Nothing the person typed, and nothing that quotes it, reaches the writer in any field.
+        const handed = JSON.stringify(writer);
+        for (const kept of [
+          "Operator note",
+          "Person's chat note",
+          "Per your private note",
+          "private-demo-notes.txt",
+          "Private command output",
+          "Captured output",
+        ])
+          assert.notInclude(handed, kept);
+        assert.equal(writer.baseBranch, "main");
         assert.deepEqual(
           [sending.status, sending.result?.pullRequest, sending.result?.delivery],
           ["done", null, { action: "publish", state: "sending", detail: null }],
@@ -2532,9 +2746,8 @@ it.effect(
           [
             {
               branch: `t3/T-1-rev1-${executionDigest([environmentId, projectId, task.ref.rootId, task.ref.taskId]).slice(0, 32)}/audio-ring-demo`,
-              // The result's one commit names the pull request; its report, not the brief, is the body.
-              title: "fix(board): cards keep their width",
-              body: "The ring now wraps at its capacity.\n\n`vp test run ring.test.ts` passes 4 of 4.\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_",
+              title: generatedPr.title,
+              body: `${generatedPr.body}\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_`,
               head: resultCommit,
             },
           ],
@@ -2584,8 +2797,13 @@ it.effect(
             { action: "merge", state: "unconfirmed", detail: null },
           ],
         );
+        let attentionTasks = yield* tasks.list({ attention: true });
+        while (!attentionTasks.items.some((item) => item.displayId === task.displayId)) {
+          yield* PubSub.take(feed);
+          attentionTasks = yield* tasks.list({ attention: true });
+        }
         assert.deepEqual(
-          (yield* tasks.list({ attention: true })).items.map((item) => item.displayId),
+          attentionTasks.items.map((item) => item.displayId),
           [task.displayId],
         );
 
@@ -2789,14 +3007,20 @@ it.effect("a task made from retained Work carries it as its source", () =>
   ),
 );
 
-it.effect(
-  "request changes runs the same assignee again and the next result replaces the one under review",
-  () =>
+it.effect.each([false, true])(
+  "request changes runs the same assignee again and the next result replaces the one under review (long reports: %s)",
+  (longReports) =>
     scenario(
       Effect.gen(function* () {
         const { sql, tasks, create, start, finish, until } = yield* harness;
         const task = yield* create("Audio ring demo", { lane: "ready" });
         const first = (yield* start(task, setupOf("opus"))).run!;
+        yield* recordMessage(first, "Private first-round plan", 1);
+        yield* recordMessage(
+          first,
+          "Implemented ring wrapping in the first round." +
+            (longReports ? "x".repeat(60_000) + "first report tail" : ""),
+        );
         const baseProbe = yield* BaseProbe;
         baseProbe.remote = { remoteName: "origin", branchName: "main" };
         baseProbe.failure = "Continuing code must not fetch";
@@ -2893,7 +3117,13 @@ it.effect(
         assert.equal(baseProbe.fetches, 0);
 
         // The revision changed no file of its own, yet still carries the code under review.
-        yield* finish(third, "sealed");
+        yield* recordMessage(
+          third,
+          "Preserved cursor paging in the revision round." +
+            (longReports ? "y".repeat(60_000) + "second report tail" : ""),
+        );
+        const revisedCommit = "d".repeat(40);
+        yield* finish(third, "sealed", "", revisedCommit);
         const replaced = yield* until(task, (current) => current.result?.revision === 2);
         assert.deepEqual(
           [
@@ -2932,7 +3162,142 @@ it.effect(
           human,
         );
         assert.deepEqual((yield* DeliveryProbe).baseRefs, [projectHead]);
+        const generated = yield* GenerationProbe;
+        assert.lengthOf(generated.inputs, 1);
+        assert.deepEqual(generated.ranges, [[`/${projectId}`, projectHead, revisedCommit]]);
+        assert.include(
+          generated.inputs[0]!.threadContext!,
+          "Implemented ring wrapping in the first round.",
+        );
+        assert.include(
+          generated.inputs[0]!.threadContext!,
+          "Preserved cursor paging in the revision round.",
+        );
+        assert.isBelow(
+          generated.inputs[0]!.threadContext!.indexOf("Implemented ring"),
+          generated.inputs[0]!.threadContext!.indexOf("Preserved cursor"),
+        );
+        // The task's own words and the review note were written for the agent, not for the host.
+        assert.notInclude(generated.inputs[0]!.threadContext!, "Audio ring demo");
+        assert.notInclude(generated.inputs[0]!.threadContext!, "Keep cursor paging");
+        assert.notInclude(generated.inputs[0]!.threadContext!, "Private first-round plan");
+        assert.include(generated.inputs[0]!.threadContext!, "Result rev 1\n");
+        assert.include(generated.inputs[0]!.threadContext!, "Result rev 2\n");
+        // The model reads the prompt, which cuts this context: both rounds must survive the cut.
+        const { prompt } = buildPrContentPrompt(generated.inputs[0]!);
+        assert.include(prompt, "Implemented ring wrapping in the first round.");
+        assert.include(prompt, "Preserved cursor paging in the revision round.");
+        if (longReports) {
+          assert.notInclude(prompt, "first report tail");
+          assert.notInclude(prompt, "second report tail");
+          assert.include(prompt, "[truncated]");
+        }
+        assert.equal(generated.inputs[0]!.commitSummary, "first work commit\nrevision work commit");
+        assert.equal(generated.inputs[0]!.diffSummary, "whole-change stat");
+        assert.equal(generated.inputs[0]!.diffPatch, "whole-change patch");
         assert.equal((yield* tasks.readResult({ ref: task.ref, revision: 1 })).result.revision, 1);
+      }),
+    ),
+);
+
+it.effect("a replayed Publish does not generate again and uses project writer settings", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { tasks, create, start, finish, until, sql } = yield* harness;
+      const task = yield* create("Audio ring demo", { lane: "ready" });
+      yield* finish((yield* start(task)).run!, "sealed", "Original run report");
+      yield* until(task, (current) => current.status === "in-review");
+      yield* tasks.accept({ commandId: command("accept"), ref: task.ref, revision: 1 }, human);
+      const input = { commandId: command("publish"), ref: task.ref, revision: 1 };
+      yield* tasks.publish(input, human);
+      const probe = yield* GenerationProbe;
+      const callsBeforeReplay = probe.inputs.length;
+      assert.isTrue((yield* tasks.publish(input, human)).replayed);
+      assert.equal(probe.inputs.length, callsBeforeReplay);
+      assert.lengthOf(probe.inputs, 1);
+      assert.equal(probe.inputs[0]!.threadContext, "Result rev 1\nOriginal run report");
+      assert.deepEqual(probe.inputs[0]!.modelSelection, model("project-writer"));
+      assert.equal(probe.inputs[0]!.projectId, projectId);
+      assert.include(
+        probe.inputs[0]!.policy!.changeRequestInstructions!,
+        "Explain the user-visible outcome.",
+      );
+      assert.equal(probe.inputs[0]!.changeRequestTemplate, "## Summary\n## Testing");
+      assert.deepEqual(probe.templates, [projectHead]);
+      yield* sql`DELETE FROM factory_task_commands WHERE command_id = ${input.commandId}`;
+      yield* tasks.publish(input, human);
+      assert.equal(probe.inputs.length, callsBeforeReplay);
+    }),
+    {
+      textGenerators: {
+        [instanceId]: {
+          kind: "openaiCompatible",
+          baseUrl: "https://writer.test/v1",
+          apiKey: "test",
+          enabled: true,
+        },
+      },
+      projectSettingsOverrides: {
+        [projectId]: {
+          sourceControlWriterModelSelection: model("project-writer"),
+          sourceControlWritingStyle: {
+            mode: "custom",
+            customInstructions: "Explain the user-visible outcome.",
+            followChangeRequestTemplates: true,
+          },
+        },
+      },
+    },
+  ),
+);
+
+it.effect.each(["provider-error", "empty", "timeout", "no default branch"] as const)(
+  "Publish falls back when generation returns %s",
+  (failure) =>
+    scenario(
+      Effect.gen(function* () {
+        const { tasks, create, start, finish, until, sql } = yield* harness;
+        const probe = yield* GenerationProbe;
+        const generating = yield* Deferred.make<void>();
+        probe.outcome =
+          failure === "empty"
+            ? Effect.succeed({ title: " ", body: " " })
+            : failure === "timeout"
+              ? Deferred.succeed(generating, undefined).pipe(Effect.andThen(Effect.never))
+              : Effect.fail(
+                  new TextGenerationError({
+                    operation: "generatePrContent",
+                    detail: "Writer unavailable",
+                  }),
+                );
+        const task = yield* create("Audio ring demo", { lane: "ready" });
+        yield* finish((yield* start(task)).run!, "sealed", "Original run report");
+        yield* until(task, (current) => current.status === "in-review");
+        yield* tasks.accept({ commandId: command("accept"), ref: task.ref, revision: 1 }, human);
+        // Publish is refused without a default branch, so the writer is not asked first.
+        if (failure === "no default branch") (yield* BaseProbe).defaultBranch = null;
+        const publish = tasks.publish(
+          { commandId: command("publish"), ref: task.ref, revision: 1 },
+          human,
+        );
+        if (failure === "timeout") {
+          const fiber = yield* Effect.forkChild(publish);
+          yield* Deferred.await(generating);
+          yield* TestClock.adjust("3 minutes");
+          yield* Fiber.join(fiber);
+        } else {
+          yield* publish;
+        }
+        assert.deepEqual(
+          yield* sql`SELECT json_extract(payload_json, '$.title') AS title, json_extract(payload_json, '$.body') AS body FROM factory_delivery_intents`,
+          [
+            {
+              title: "fix(board): cards keep their width",
+              body: "Original run report\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_",
+            },
+          ],
+        );
+        assert.lengthOf(probe.inputs, failure === "no default branch" ? 0 : 1);
       }),
     ),
 );

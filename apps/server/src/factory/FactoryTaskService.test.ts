@@ -790,7 +790,7 @@ it.effect.each(["replaced", "revoked"] as const)(
   (stage) =>
     scenario(
       Effect.gen(function* () {
-        const { sql, tasks, executions, create } = yield* harness;
+        const { sql, tasks, executions, create, summary } = yield* harness;
         const task = yield* create("Stale grant", { lane: "ready" });
         const input = {
           commandId: command("old-start"),
@@ -799,15 +799,18 @@ it.effect.each(["replaced", "revoked"] as const)(
           setup: setupOf(),
         };
         const gate = yield* OutputGate;
-        for (const commandId of stage === "replaced"
-          ? [input.commandId, command("later-start")]
-          : [input.commandId]) {
+        for (const [commandId, setup] of stage === "replaced"
+          ? ([
+              [input.commandId, input.setup],
+              [command("later-start"), setupOf("other")],
+            ] as const)
+          : ([[input.commandId, input.setup]] as const)) {
           gate.admission = Effect.fail(
             new FactoryExecutionError({ reason: "persistence-failure" }),
           );
           assert.isTrue(
             Result.isFailure(
-              yield* tasks.start({ ...input, commandId }, human).pipe(Effect.result),
+              yield* tasks.start({ ...input, commandId, setup }, human).pipe(Effect.result),
             ),
           );
         }
@@ -825,6 +828,7 @@ it.effect.each(["replaced", "revoked"] as const)(
           );
         }
         const grants = yield* sql`SELECT * FROM factory_execution_grants`;
+        const assigned = (yield* summary(task)).assignee.key;
         const refused = yield* tasks.start(input, human).pipe(Effect.result);
         assert.isTrue(Result.isFailure(refused));
         if (Result.isFailure(refused)) {
@@ -832,6 +836,7 @@ it.effect.each(["replaced", "revoked"] as const)(
           assert.include(refused.failure.detail!, "Start the task again");
         }
         assert.deepEqual(yield* sql`SELECT * FROM factory_execution_grants`, grants);
+        assert.equal((yield* summary(task)).assignee.key, assigned);
         assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, []);
       }),
     ),

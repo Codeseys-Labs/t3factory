@@ -838,7 +838,8 @@ const make = Effect.gen(function* () {
     readonly commandId: CommandId;
     readonly task: Tasks.TaskView;
     readonly setup: FactoryAgentSetup;
-    readonly profileId: string | null;
+    /** Assigns the agent and yields its profile. Run after the approval check, so a refused Start assigns nothing. */
+    readonly assign: Effect.Effect<string | null, FactoryTaskError>;
     readonly actor: FactoryPlanActor;
     /** A code result to continue from, instead of the project's current commit. */
     readonly baseCommit: string | null;
@@ -870,6 +871,7 @@ const make = Effect.gen(function* () {
               : executionError(error),
           ),
         );
+      const profileId = yield* input.assign;
       if (recorded !== null)
         return {
           grant: recorded,
@@ -884,7 +886,7 @@ const make = Effect.gen(function* () {
         : { type: "root" };
       yield* store.registerLaunch({
         commandId: admitId,
-        profileId: input.profileId,
+        profileId,
         actor: PERSON,
       });
       const next = yield* nextRound(row);
@@ -1011,7 +1013,7 @@ const make = Effect.gen(function* () {
     readonly commandId: CommandId;
     readonly task: Tasks.TaskView;
     readonly setup: FactoryAgentSetup;
-    readonly profileId: string | null;
+    readonly assign: Effect.Effect<string | null, FactoryTaskError>;
     readonly actor: FactoryPlanActor;
     readonly baseCommit: string | null;
     readonly record: (outcome: unknown) => Effect.Effect<void, FactoryTaskError>;
@@ -1512,7 +1514,7 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         task,
         setup: input.setup,
-        profileId: yield* assignFor(task, input.setup),
+        assign: assignFor(task, input.setup),
         actor,
         baseCommit: null,
         record: command.record,
@@ -1551,10 +1553,10 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         task,
         setup,
-        profileId:
+        assign:
           input.setup === undefined
-            ? (previous?.profileId ?? null)
-            : yield* assignFor(task, input.setup),
+            ? Effect.succeed(previous?.profileId ?? null)
+            : assignFor(task, input.setup),
         actor,
         // A failed Request changes run starts again from the result it was changing.
         baseCommit:
@@ -1766,7 +1768,7 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         task,
         setup: author.setup,
-        profileId: author.profileId,
+        assign: Effect.succeed(author.profileId),
         actor,
         // Code continues from the result under review; a document starts from the task again.
         baseCommit: latest.kind === "code" ? latest.commit : null,

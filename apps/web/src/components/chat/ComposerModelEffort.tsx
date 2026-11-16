@@ -556,7 +556,7 @@ function SpeedSegment(props: {
   );
 }
 
-function SpeedControl(props: { traits: TraitsSelectionInput }) {
+export function SpeedControl(props: { traits: TraitsSelectionInput }) {
   const traits = useTraitsSelection(props.traits);
   const { speedSelect, fastToggle } = splitSpeed(
     traits.selectDescriptors,
@@ -593,7 +593,7 @@ function SpeedControl(props: { traits: TraitsSelectionInput }) {
   );
 }
 
-function UltracodeControl(props: { traits: TraitsSelectionInput }) {
+export function UltracodeControl(props: { traits: TraitsSelectionInput }) {
   const traits = useTraitsSelection(props.traits);
   const { ultracodeToggle } = splitSpeed(traits.selectDescriptors, traits.booleanDescriptors);
   if (traits.modelIsUnavailable || !ultracodeToggle) return null;

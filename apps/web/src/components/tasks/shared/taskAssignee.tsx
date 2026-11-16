@@ -14,6 +14,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import { type ReactElement, useState } from "react";
 
 import { factoryTasks, useFactoryAgentProfiles } from "../../../state/factoryTasks";
+import { ComposerEffortColumn } from "../../chat/ComposerModelEffort";
 import { ProviderModelPicker } from "../../chat/ProviderModelPicker";
 import { toastManager } from "../../ui/toast";
 import {
@@ -27,13 +28,15 @@ import { useTaskAssigneeChip } from "./taskAssigneeChip";
 import {
   autoDetailLine,
   pickerValue,
-  pinnedAssignment,
+  pinnedSetupFor,
   presentTaskSetup,
   type TaskAssigneeParent,
   taskAssigneeChipProps,
 } from "./taskAssigneeModel";
 import { useTaskCatalog } from "./taskCatalog";
 import { useTaskDefaultRuntimeMode, useTaskModelChoices } from "./taskModelChoices";
+import { TaskModelOptionsFooter } from "./TaskModelOptionsFooter";
+import { taskTraitsInput, withModelOptions } from "./taskModelOptions.logic";
 
 type Result<A> = AsyncResult.AsyncResult<A, unknown>;
 const NO_PREVIEW: Atom.Atom<Result<FactoryTaskAssignee>> = Atom.make(AsyncResult.initial(false));
@@ -170,6 +173,8 @@ export function TaskAssigneePicker({
   const choices = useTaskModelChoices(environmentId, projectId);
   const defaultMode = useTaskDefaultRuntimeMode(environmentId, projectId);
   const [pinning, setPinning] = useState(false);
+  // The pin in progress, so the option controls follow a pick before the saved task catches up.
+  const [pending, setPending] = useState<FactoryAgentSetup | null>(null);
   const profiles =
     profilesResult._tag === "Success"
       ? profilesResult.value.profiles.map(({ profile }) => {
@@ -179,8 +184,9 @@ export function TaskAssigneePicker({
       : [];
   const pinnedSetup = value.mode === "pinned" ? value.setup : null;
   const pinned = pinnedSetup ? presentTaskSetup(pinnedSetup, catalog) : null;
+  const current = pending ?? pinnedSetup;
   const activeInstanceId =
-    pinnedSetup?.modelSelection.instanceId ??
+    current?.modelSelection.instanceId ??
     choices.instanceEntries.find((entry) => entry.enabled)?.instanceId ??
     null;
 
@@ -201,6 +207,15 @@ export function TaskAssigneePicker({
     }
     setPinning(true);
   };
+  const commit = (setup: FactoryAgentSetup) => {
+    setPending(setup);
+    onChange({ mode: "pinned", setup });
+  };
+  const traits = current
+    ? taskTraitsInput(choices.instanceEntries, current, (options) =>
+        commit(withModelOptions(current, options)),
+      )
+    : null;
 
   return (
     <>
@@ -220,22 +235,36 @@ export function TaskAssigneePicker({
           environmentId={environmentId}
           open
           onOpenChange={(open) => {
-            if (!open) setPinning(false);
+            if (open) return;
+            setPinning(false);
+            setPending(null);
           }}
           activeInstanceId={activeInstanceId}
-          model={pinnedSetup?.modelSelection.model ?? ""}
+          model={current?.modelSelection.model ?? ""}
           lockedProvider={null}
           instanceEntries={choices.instanceEntries}
           modelOptionsByInstance={choices.modelOptionsByInstance}
           isComposerOwned={false}
+          effortColumn={<ComposerEffortColumn traits={traits} />}
+          footer={
+            <TaskModelOptionsFooter
+              traits={traits}
+              chosen={current?.modelSelection.options}
+              onReset={() => current && commit(withModelOptions(current, undefined))}
+            />
+          }
           onInstanceModelChange={(instanceId, model) => {
-            setPinning(false);
-            const modelSelection = choices.normalize({ instanceId, model });
+            // The same model keeps its options; another model has options of its own to choose.
+            const modelSelection =
+              current?.modelSelection.instanceId === instanceId &&
+              current.modelSelection.model === model
+                ? current.modelSelection
+                : choices.normalize({ instanceId, model });
             // A new model keeps what the pin already chose; only a first pin takes the default.
-            onChange(
-              pinnedSetup
-                ? { mode: "pinned", setup: { ...pinnedSetup, modelSelection } }
-                : pinnedAssignment(modelSelection, defaultMode),
+            commit(
+              current
+                ? { ...current, modelSelection }
+                : pinnedSetupFor(modelSelection, defaultMode),
             );
           }}
         />

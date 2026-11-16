@@ -100,17 +100,9 @@ export function pickerValue(assignment: FactoryTaskAssignment): AssigneePickerVa
 }
 
 /** Pinning from the picker takes the project's default permissions, in a new worktree. */
-export function pinnedAssignment(
+export function pinnedSetupFor(
   modelSelection: FactoryAgentSetup["modelSelection"],
   runtimeMode: RuntimeMode,
-): FactoryTaskAssignment {
-  return {
-    mode: "pinned",
-    setup: {
-      modelSelection,
-      runtimeMode,
-      interactionMode: "default",
-      workspace: "worktree",
-    },
-  };
+): FactoryAgentSetup {
+  return { modelSelection, runtimeMode, interactionMode: "default", workspace: "worktree" };
 }

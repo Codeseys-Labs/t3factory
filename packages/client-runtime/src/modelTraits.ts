@@ -1,8 +1,13 @@
-import type { ModelSelection, ProviderOptionDescriptor } from "@t3tools/contracts";
+import type {
+  ModelCapabilities,
+  ModelSelection,
+  ProviderOptionDescriptor,
+} from "@t3tools/contracts";
 import {
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentLabel,
   getProviderOptionCurrentValue,
+  getProviderOptionDescriptors,
   isClaudeUltrathinkPrompt,
 } from "@t3tools/shared/model";
 import { REASONING_EFFORT_OPTION_IDS } from "./state/threadExecution.ts";
@@ -185,4 +190,32 @@ export function buildTraitsTriggerDisplay(input: {
     }
   }
   return { label: labels.join(" · "), speedLabel, ultracode };
+}
+
+/**
+ * The effort a selection chose, in the composer's words: `High`, or `High Fast`. Null when the
+ * selection carries no options, so the provider's default applies, or its model's options are
+ * unknown.
+ */
+export function describeSelectedEffort(
+  selection: ModelSelection,
+  capabilities: ModelCapabilities | null | undefined,
+): string | null {
+  if (!selection.options?.length || !capabilities) return null;
+  const descriptors = getProviderOptionDescriptors({
+    caps: capabilities,
+    selections: selection.options,
+  });
+  const reasoning = descriptors.find(isReasoningSelect) ?? null;
+  const shown = descriptors.filter(
+    (descriptor) =>
+      descriptor === reasoning || descriptor.id === "fastMode" || descriptor.id === "serviceTier",
+  );
+  const { label } = buildTraitsTriggerDisplay({
+    descriptors: shown,
+    primarySelectDescriptorId: reasoning?.id ?? null,
+    ultrathinkPromptControlled: false,
+    modelSelection: selection,
+  });
+  return label || null;
 }

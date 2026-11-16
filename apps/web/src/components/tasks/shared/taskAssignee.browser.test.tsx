@@ -5,6 +5,7 @@ import {
   ProjectId,
   ProviderInstanceId,
 } from "@t3tools/contracts";
+import type { ReactNode } from "react";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
@@ -40,24 +41,63 @@ vi.mock(import("./taskCatalog"), () => ({
 }));
 vi.mock(import("./taskModelChoices"), () => ({
   useTaskModelChoices: (() => ({
-    instanceEntries: [{ instanceId: "codex", enabled: true }],
+    instanceEntries: [
+      {
+        instanceId: "codex",
+        driverKind: "codex",
+        enabled: true,
+        models: [
+          {
+            slug: "terra",
+            name: "Terra",
+            isCustom: false,
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "reasoningEffort",
+                  label: "Reasoning",
+                  type: "select",
+                  options: [
+                    { id: "low", label: "Low", isDefault: true },
+                    { id: "high", label: "High" },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
     modelOptionsByInstance: new Map(),
     normalize: (selection: unknown) => selection,
   })) as never,
   useTaskDefaultRuntimeMode: () => "auto-accept-edits" as const,
 }));
-vi.mock(import("../../chat/ProviderModelPicker"), () => ({
+vi.mock(import("../../chat/ProviderModelPicker"), async () => ({
+  DockedPickerContext: (await import("react")).createContext({ modelLabel: "" }),
   ProviderModelPicker: ((props: {
     onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
+    effortColumn: ReactNode;
+    footer: ReactNode;
   }) => (
-    <button
-      type="button"
-      onClick={() =>
-        props.onInstanceModelChange(ProviderInstanceId.make("claudeAgent"), "claude-opus")
-      }
-    >
-      Choose Claude Opus
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() =>
+          props.onInstanceModelChange(ProviderInstanceId.make("claudeAgent"), "claude-opus")
+        }
+      >
+        Choose Claude Opus
+      </button>
+      <button
+        type="button"
+        onClick={() => props.onInstanceModelChange(ProviderInstanceId.make("codex"), "terra")}
+      >
+        Choose Terra
+      </button>
+      {props.effortColumn}
+      {props.footer}
+    </>
   )) as never,
 }));
 
@@ -141,6 +181,36 @@ it.each([
     expect(onChange).toHaveBeenCalledExactlyOnceWith({ mode: "pinned", setup: pinned });
   },
 );
+
+it("pins a model with the effort chosen for it, and clears it back to the model's default", async () => {
+  const { onChange } = setup();
+  await using _screen = await openPicker(onChange);
+  const pinned = (options?: { id: string; value: string | boolean }[]) => ({
+    mode: "pinned",
+    setup: {
+      modelSelection: {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "terra",
+        ...(options ? { options } : {}),
+      },
+      runtimeMode: "auto-accept-edits",
+      interactionMode: "default",
+      workspace: "worktree",
+    },
+  });
+  await userEvent.click(page.getByRole("option", { name: /Pin a harness and model/ }));
+  await userEvent.click(page.getByRole("button", { name: "Choose Terra" }));
+  await userEvent.click(page.getByRole("radio", { name: "High" }));
+  await userEvent.click(page.getByRole("button", { name: "Use model defaults" }));
+  expect(onChange.mock.calls.map(([assignment]) => assignment)).toEqual([
+    pinned(),
+    pinned([{ id: "reasoningEffort", value: "high" }]),
+    pinned(),
+  ]);
+  await expect
+    .element(page.getByRole("button", { name: "Use model defaults" }))
+    .not.toBeInTheDocument();
+});
 
 it("resolves a pinned parent through the server with its full context", async () => {
   const setupOfArchitect = profile("architect").setup;

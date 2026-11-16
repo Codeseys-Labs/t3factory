@@ -1,5 +1,6 @@
 import type {
   FactoryTaskActivityEntry,
+  ModelCapabilities,
   FactoryTaskAssignee,
   FactoryTaskAttentionReason,
   FactoryTaskLane,
@@ -13,6 +14,7 @@ import type {
   ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
+import { describeSelectedEffort } from "../modelTraits.ts";
 import { resolveModelShortName } from "../providerClients.ts";
 import {
   providerInstanceInitials,
@@ -33,6 +35,7 @@ export type FactoryTaskCatalog = readonly (Pick<
     readonly name: string;
     readonly shortName?: string | undefined;
     readonly subProvider?: string | undefined;
+    readonly capabilities?: ModelCapabilities | null | undefined;
   }[];
 })[];
 
@@ -72,6 +75,7 @@ function presentModelSelection(selection: ModelSelection, catalog: FactoryTaskCa
     modelLabel =
       modelLabel.slice(entry.subProvider.length).replace(/^[\s.:/-]+/u, "") || modelLabel;
   }
+  const effort = entry ? describeSelectedEffort(selection, entry.capabilities) : null;
   const monograms: Readonly<Record<string, string>> = {
     codex: "Cx",
     claudeAgent: "Cl",
@@ -81,7 +85,7 @@ function presentModelSelection(selection: ModelSelection, catalog: FactoryTaskCa
     kimi: "Km",
   };
   return {
-    label: `${providerLabel} · ${modelLabel}`,
+    label: `${providerLabel} · ${modelLabel}${effort ? ` · ${effort}` : ""}`,
     monogram:
       monograms[provider?.driver ?? ""] ??
       monograms[providerLabel.toLowerCase()] ??

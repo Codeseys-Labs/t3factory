@@ -784,6 +784,37 @@ it.effect("refuses a recorded grant replaced before admission with an actionable
   ),
 );
 
+it.effect.each([
+  { name: "another agent", setup: setupOf("other") },
+  { name: "another workspace", setup: setupOf("replay", "root") },
+])("refuses a recorded grant's Start replayed with $name, then admits the original", ({ setup }) =>
+  scenario(
+    Effect.gen(function* () {
+      const { sql, tasks, create, summary } = yield* harness;
+      const task = yield* create("Changed request", { lane: "ready" });
+      const input = {
+        commandId: command("changed-start"),
+        ref: task.ref,
+        expectedVersion: task.version,
+        setup: setupOf(),
+      };
+      const gate = yield* OutputGate;
+      gate.admission = Effect.fail(new FactoryExecutionError({ reason: "persistence-failure" }));
+      assert.isTrue(Result.isFailure(yield* tasks.start(input, human).pipe(Effect.result)));
+      const assigned = (yield* summary(task)).assignee.key;
+      const refused = yield* tasks.start({ ...input, setup }, human).pipe(Effect.result);
+      assert.isTrue(Result.isFailure(refused));
+      if (Result.isFailure(refused)) assert.equal(refused.failure.reason, "command-conflict");
+      assert.equal((yield* summary(task)).assignee.key, assigned);
+      assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, []);
+      const resumed = yield* tasks.start(input, human);
+      assert.deepEqual(yield* sql`SELECT thread_id AS threadId FROM factory_execution_bindings`, [
+        { threadId: resumed.task.run!.threadId },
+      ]);
+    }),
+  ),
+);
+
 it.effect("replays a rejected grant receipt as its original rejection without admitting", () =>
   scenario(
     Effect.gen(function* () {

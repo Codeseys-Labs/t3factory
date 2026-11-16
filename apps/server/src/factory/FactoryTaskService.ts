@@ -75,7 +75,7 @@ import * as Processes from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as Git from "../vcs/GitVcsDriver.ts";
 import * as Delivery from "./FactoryDeliveryService.ts";
-import { executionDigest } from "./FactoryExecutionDigest.ts";
+import { canonicalExecutionJson, executionDigest } from "./FactoryExecutionDigest.ts";
 import * as Executions from "./FactoryExecutionService.ts";
 import type { FactoryPlanActor } from "./FactoryPlanReducer.ts";
 import * as Plans from "./FactoryPlanService.ts";
@@ -814,7 +814,8 @@ const make = Effect.gen(function* () {
     readonly commandId: CommandId;
     readonly task: Tasks.TaskView;
     readonly setup: FactoryAgentSetup;
-    readonly profileId: string | null;
+    /** Pins the task to this setup and names its profile. Run only once the request is accepted. */
+    readonly assign: Effect.Effect<string | null, FactoryTaskError>;
     readonly actor: FactoryPlanActor;
     /** A code result to continue from, instead of the project's current commit. */
     readonly baseCommit: string | null;
@@ -822,7 +823,23 @@ const make = Effect.gen(function* () {
     const { row } = input.task;
     const ref = planRef(row);
     const admitId = derived(input.commandId, "admit");
-    if (yield* store.launched(admitId)) return;
+    if (yield* store.launched(admitId)) {
+      yield* input.assign;
+      return;
+    }
+    const worktree = input.setup.workspace === "worktree";
+    const specFor = (
+      workspaceStrategy: FactoryExecutionTaskSpec["workspaceStrategy"],
+    ): FactoryExecutionTaskSpec => ({
+      taskId: row.taskId,
+      modelSelection: input.setup.modelSelection,
+      runtimeMode: input.setup.runtimeMode,
+      interactionMode: input.setup.interactionMode,
+      workspaceStrategy,
+      setup: "deny",
+      ...(worktree ? { verification: CHECKPOINT_CHECK } : {}),
+      output: { slot: "result", kind: worktree ? "verified-code" : "sealed-draft" },
+    });
     const { grant, prior } = yield* Effect.gen(function* () {
       const recorded = yield* executionStore
         .recordedGrant({
@@ -844,7 +861,20 @@ const make = Effect.gen(function* () {
               : executionError(error),
           ),
         );
-      if (recorded !== null)
+      if (recorded !== null) {
+        const granted = recorded.policy.tasks.find((task) => task.taskId === row.taskId);
+        if (granted === undefined) return yield* refuse("command-conflict");
+        // No receipt exists yet to compare inputs, so the grant's own spec is what this command asked for.
+        const expected = specFor(
+          !worktree
+            ? { type: "root" }
+            : input.baseCommit === null
+              ? granted.workspaceStrategy
+              : { type: "worktree", baseRef: input.baseCommit },
+        );
+        if (canonicalExecutionJson(granted) !== canonicalExecutionJson(expected))
+          return yield* refuse("command-conflict");
+        yield* input.assign;
         return {
           grant: recorded,
           prior: yield* store.engineAttempt({
@@ -853,13 +883,14 @@ const make = Effect.gen(function* () {
             taskId: row.taskId,
           }),
         };
-      const worktree = input.setup.workspace === "worktree";
+      }
+      const profileId = yield* input.assign;
       const workspaceStrategy: FactoryExecutionTaskSpec["workspaceStrategy"] = worktree
         ? { type: "worktree", baseRef: input.baseCommit ?? (yield* worktreeBase(row.projectId)) }
         : { type: "root" };
       yield* store.registerLaunch({
         commandId: admitId,
-        profileId: input.profileId,
+        profileId,
         actor: PERSON,
       });
       const next = yield* nextRound(row);
@@ -884,16 +915,7 @@ const make = Effect.gen(function* () {
         )).plan;
         prior = null;
       }
-      const spec: FactoryExecutionTaskSpec = {
-        taskId: row.taskId,
-        modelSelection: input.setup.modelSelection,
-        runtimeMode: input.setup.runtimeMode,
-        interactionMode: input.setup.interactionMode,
-        workspaceStrategy,
-        setup: "deny",
-        ...(worktree ? { verification: CHECKPOINT_CHECK } : {}),
-        output: { slot: "result", kind: worktree ? "verified-code" : "sealed-draft" },
-      };
+      const spec = specFor(workspaceStrategy);
       const running = yield* store.liveAttempts({
         rootId: row.rootId,
         revision: head.revision,
@@ -986,7 +1008,7 @@ const make = Effect.gen(function* () {
     readonly commandId: CommandId;
     readonly task: Tasks.TaskView;
     readonly setup: FactoryAgentSetup;
-    readonly profileId: string | null;
+    readonly assign: Effect.Effect<string | null, FactoryTaskError>;
     readonly actor: FactoryPlanActor;
     readonly baseCommit: string | null;
     readonly record: (outcome: unknown) => Effect.Effect<void, FactoryTaskError>;
@@ -1486,7 +1508,7 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         task,
         setup: input.setup,
-        profileId: yield* assignFor(task, input.setup),
+        assign: assignFor(task, input.setup),
         actor,
         baseCommit: null,
         record: command.record,
@@ -1524,10 +1546,10 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         task,
         setup,
-        profileId:
+        assign:
           input.setup === undefined
-            ? (previous?.profileId ?? null)
-            : yield* assignFor(task, input.setup),
+            ? Effect.succeed(previous?.profileId ?? null)
+            : assignFor(task, input.setup),
         actor,
         // A failed Request changes run starts again from the result it was changing.
         baseCommit:
@@ -1738,7 +1760,7 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         task,
         setup: author.setup,
-        profileId: author.profileId,
+        assign: Effect.succeed(author.profileId),
         actor,
         // Code continues from the result under review; a document starts from the task again.
         baseCommit: latest.kind === "code" ? latest.commit : null,

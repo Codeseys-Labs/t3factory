@@ -5222,7 +5222,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const checkoutWorkers = configuredCheckoutWorkers ?? "0";
     const fastCheckout = checkoutCache !== undefined && options?.fastCheckout === true;
     const cacheGeneration = fastCheckout ? yield* checkoutCache.currentGeneration : 0;
-    const checkoutPath = worktreePath;
+    // Git resolves a relative worktree path against its own cwd, not the server's.
+    const checkoutPath = path.resolve(input.cwd, worktreePath);
     const checkoutLeftNothing = (error: GitCommandError): Effect.Effect<boolean> =>
       configReadFailures.has(error)
         ? fileSystem.exists(checkoutPath).pipe(

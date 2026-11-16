@@ -172,6 +172,7 @@ export class FactoryIssueError extends Schema.TaggedError<FactoryIssueError>()(
       "not-an-issue",
       "provider-unavailable",
     ]),
+    detail: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
@@ -206,7 +207,9 @@ export class FactoryIssueError extends Schema.TaggedError<FactoryIssueError>()(
       case "override-not-allowed":
         return "This override is not allowed for the current blocker evidence. Re-observe it; only accepted blockers can be disputed and unresolved tombstones can be waived.";
       case "invalid-base-ref":
-        return "The base ref does not resolve to a local commit. Choose an existing branch, tag, or commit.";
+        return this.detail === undefined
+          ? "The base ref does not resolve to a local commit. Choose an existing branch, tag, or commit."
+          : `Could not prepare the worktree base: ${this.detail}`;
       case "launch-authority":
         return "This reserved launch exceeds the caller's runtime authority. Resume it from an authorized client.";
       case "launch-failure":

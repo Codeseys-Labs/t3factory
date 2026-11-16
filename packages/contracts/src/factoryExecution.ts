@@ -224,6 +224,9 @@ export const FactoryExecutionRetryCaptureInput = Schema.Struct({
   expectedResultId: Schema.NullOr(Digest),
 });
 export type FactoryExecutionRetryCaptureInput = typeof FactoryExecutionRetryCaptureInput.Type;
+/** A person gives up the result of a run held because its capture failed; nothing is deleted. */
+export const FactoryExecutionAbandonCaptureInput = FactoryExecutionStopInput;
+export type FactoryExecutionAbandonCaptureInput = typeof FactoryExecutionAbandonCaptureInput.Type;
 export const FactoryExecutionMutationResult = Schema.Struct({
   execution: FactoryExecutionReadResult,
   replayed: Schema.Boolean,

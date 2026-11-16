@@ -157,6 +157,7 @@ import {
   FactoryTaskResultReadResult,
   FactoryTaskRetryInput,
   FactoryTaskRetryCaptureInput,
+  FactoryTaskAbandonCaptureInput,
   FactoryTaskStartInput,
   FactoryTaskStopInput,
   FactoryTaskUpdateInput,
@@ -677,6 +678,7 @@ export const WS_METHODS = {
   factoryStopTask: "factory.stopTask",
   factoryRetryTask: "factory.retryTask",
   factoryRetryTaskCapture: "factory.retryTaskCapture",
+  factoryAbandonTaskCapture: "factory.abandonTaskCapture",
   factoryAcceptTaskResult: "factory.acceptTaskResult",
   factoryRequestTaskChanges: "factory.requestTaskChanges",
   factoryReopenTask: "factory.reopenTask",
@@ -2717,6 +2719,11 @@ const WsFactoryRetryTaskCaptureRpc = Rpc.make(WS_METHODS.factoryRetryTaskCapture
   success: FactoryTaskMutationResult,
   error: factoryTaskError,
 });
+const WsFactoryAbandonTaskCaptureRpc = Rpc.make(WS_METHODS.factoryAbandonTaskCapture, {
+  payload: FactoryTaskAbandonCaptureInput,
+  success: FactoryTaskMutationResult,
+  error: factoryTaskError,
+});
 const WsFactoryAcceptTaskResultRpc = Rpc.make(WS_METHODS.factoryAcceptTaskResult, {
   payload: FactoryTaskAcceptInput,
   success: FactoryTaskMutationResult,
@@ -3006,6 +3013,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsFactoryStopTaskRpc,
   WsFactoryRetryTaskRpc,
   WsFactoryRetryTaskCaptureRpc,
+  WsFactoryAbandonTaskCaptureRpc,
   WsFactoryAcceptTaskResultRpc,
   WsFactoryRequestTaskChangesRpc,
   WsFactoryReopenTaskRpc,

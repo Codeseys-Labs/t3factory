@@ -127,6 +127,7 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.factoryStopTask,
       WS_METHODS.factoryRetryTask,
       WS_METHODS.factoryRetryTaskCapture,
+      WS_METHODS.factoryAbandonTaskCapture,
       WS_METHODS.factoryAcceptTaskResult,
       WS_METHODS.factoryRequestTaskChanges,
       WS_METHODS.factoryReopenTask,

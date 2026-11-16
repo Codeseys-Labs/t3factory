@@ -1,6 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeChildProcessSpawner from "@effect/platform-node-shared/NodeChildProcessSpawner";
+import * as NodeChildProcess from "node:child_process";
 import * as NodeNet from "node:net";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
@@ -8,6 +10,7 @@ import * as NodePath from "node:path";
 import * as NodeCrypto from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
 import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
@@ -274,4 +277,35 @@ it.live.each([
       GIT_CONFIG_VALUE_1: "main",
     }),
   ),
+);
+
+it.live.each([0, 3])(
+  "does not kill the tree of a command that ended on its own (exit code %s) when its scope closes",
+  (exitCode) => {
+    const started: string[] = [];
+    return Effect.gen(function* () {
+      if (windowsHost !== true) return;
+      const native = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const owner = yield* makeWindowsOwnedProcess();
+      const code = yield* owner.spawner
+        .spawn(ChildProcess.make(process.execPath, ["-e", `process.exit(${exitCode})`]), native)
+        .pipe(
+          Effect.flatMap((handle) => handle.exitCode),
+          Effect.scoped,
+        );
+      // The native spawner tree-kills a helper it has not seen exit, which costs about two seconds.
+      assert.deepEqual(
+        [code, yield* owner.quiesce(), started.filter((command) => command === "taskkill")],
+        [exitCode, true, []],
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        NodeChildProcessSpawner.layerWithSpawn((command, args, options) => {
+          started.push(command);
+          return NodeChildProcess.spawn(command, [...args], options);
+        }).pipe(Layer.provide(NodeServices.layer)),
+      ),
+    );
+  },
 );

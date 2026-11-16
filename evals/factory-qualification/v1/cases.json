@@ -1497,7 +1497,7 @@
       "origin": "Synthetic transfer task grounded in checkout source; not a captured failure.",
       "path": "apps/server/src/factory/FactoryIssueService.test.ts",
       "anchor": "refuses $change under an unchanged timestamp",
-      "sha256": "cbe4e9245f922cf2d707a539e70ce8512fbb5270513227c2a590cfa1db0ab103"
+      "sha256": "5fac535123448363fd2024b7871f13f4702e1934ef0aa5e6c17a41a42582b5d3"
     },
     "scenario": "Issue body changes without updatedAt changing after review but before start.",
     "expectedActions": [
@@ -2531,7 +2531,7 @@
       "origin": "Synthetic transfer task grounded in checkout source; not a captured failure.",
       "path": "apps/server/src/factory/FactoryTaskLaunch.test.ts",
       "anchor": "does not treat an SSH transport port as an HTTPS authority port",
-      "sha256": "42f4faf8e905b1efd0cfb14c8db99eaf770e5cfc614068d1daa1824cf8e2aa76"
+      "sha256": "5f7e70dd49cfd14467c205ad508c84306298104358a6506eeb7c6e995bbcd0de"
     },
     "scenario": "Repair the seeded ssh-origin-port behavior in an actual sandbox repository.",
     "expectedActions": [

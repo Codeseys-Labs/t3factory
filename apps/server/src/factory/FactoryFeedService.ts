@@ -334,8 +334,15 @@ const make = Effect.gen(function* () {
         `${identityReference.host}/${identityReference.repository}` === repository.canonicalKey)
     )
       return yield* new FactoryFeedError({ reason: "forge-issue-source" });
-    const base = yield* resolveBase(project.workspaceRoot, input.baseRef).pipe(
-      Effect.mapError((cause) => new FactoryFeedError({ reason: "invalid-base-ref", cause })),
+    const base = yield* resolveBase(project.workspaceRoot, project.id, input.baseRef).pipe(
+      Effect.mapError(
+        (cause) =>
+          new FactoryFeedError({
+            reason: "invalid-base-ref",
+            detail: cause._tag === "WorktreeBaseError" ? cause.detail : undefined,
+            cause,
+          }),
+      ),
     );
     const current = yield* resolve(input.projectId);
     if (

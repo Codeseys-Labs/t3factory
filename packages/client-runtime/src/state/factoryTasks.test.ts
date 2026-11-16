@@ -6,6 +6,7 @@ import {
   CommandId,
   EnvironmentId,
   FactoryTaskError,
+  RunId,
   type AuthSessionState,
   type FactoryTaskChange,
   type FactoryIntakeChange,
@@ -296,11 +297,16 @@ it.effect(
           writes++;
           return Effect.fail(new FactoryTaskError({ reason: "invalid-input" }));
         },
+        [WS_METHODS.factoryAbandonTaskCapture]: () => {
+          writes++;
+          return Effect.fail(new FactoryTaskError({ reason: "invalid-input" }));
+        },
       });
       const query = h.tasks.listTasks({ environmentId, input: {} });
       h.registry.mount(query);
       yield* AtomRegistry.getResult(h.registry, query, { suspendOnWaiting: true });
       expect(h.registry.get(h.tasks.retryTaskCapture.permissionAtom(environmentId))).toBe(true);
+      expect(h.registry.get(h.tasks.abandonTaskCapture.permissionAtom(environmentId))).toBe(true);
       h.registry.set(
         sessions(environmentId),
         AsyncResult.success({
@@ -334,6 +340,18 @@ it.effect(
         }),
       );
       expect(saved._tag).toBe("Failure");
+      expect(h.registry.get(h.tasks.abandonTaskCapture.permissionAtom(environmentId))).toBe(false);
+      const givenUp = yield* Effect.promise(() =>
+        h.tasks.abandonTaskCapture.run(h.registry, {
+          environmentId,
+          input: {
+            commandId: CommandId.make("give-up"),
+            ref: fixtures.tasks[0]!.ref,
+            runId: RunId.make("run:held"),
+          },
+        }),
+      );
+      expect(givenUp._tag).toBe("Failure");
       expect(writes).toBe(0);
     }),
 );

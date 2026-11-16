@@ -234,6 +234,11 @@ export function createFactoryTaskEnvironmentAtoms<R, E>(
       tag: WS_METHODS.factoryRetryTaskCapture,
       onSettled: refreshRoot,
     }),
+    abandonTaskCapture: createEnvironmentRpcCommand(runtime, {
+      label: "factory-tasks:abandon-capture",
+      tag: WS_METHODS.factoryAbandonTaskCapture,
+      onSettled: refreshRoot,
+    }),
     acceptTaskResult: createEnvironmentRpcCommand(runtime, {
       label: "factory-tasks:accept",
       tag: WS_METHODS.factoryAcceptTaskResult,

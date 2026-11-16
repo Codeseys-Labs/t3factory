@@ -26,6 +26,7 @@ export class FactoryWorktreeSetupError extends Schema.TaggedError<FactoryWorktre
   {
     reason: Schema.Literals(["unowned", "start", "exit", "timeout"]),
     detail: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {
@@ -167,7 +168,8 @@ const make = Effect.gen(function* () {
           (cause) =>
             new FactoryWorktreeSetupError({
               reason: "start",
-              detail: withTail(`Setup script could not run: ${cause.message}`, tail.text()),
+              detail: withTail("Setup script could not run.", tail.text()),
+              cause,
             }),
         ),
       );

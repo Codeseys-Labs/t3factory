@@ -1732,6 +1732,11 @@ const make = Effect.gen(function* () {
     return { ...result, commit: result.commit };
   });
 
+  /**
+   * What Publish opens. The text is written from the commits, the diff and what the agents said.
+   * What a person wrote for the agent stays out: the task's own text and review notes may hold
+   * notes not meant for the host, and nobody sees this text before it is public.
+   */
   const publication = Effect.fn("FactoryTaskService.publication")(function* (
     row: Tasks.TaskRow,
     result: Tasks.TaskResultRow & { readonly commit: string },
@@ -1763,6 +1768,7 @@ const make = Effect.gen(function* () {
               baseRef,
               headRef: result.commit,
               threadIds,
+              omitUserMessages: true,
             })
             .pipe(
               Effect.timeoutOption("3 minutes"),

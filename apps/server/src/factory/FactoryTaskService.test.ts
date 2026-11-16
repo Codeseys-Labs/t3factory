@@ -2492,6 +2492,9 @@ it.effect(
           generated.inputs[0]!.threadContext!.indexOf("Implemented ring"),
           generated.inputs[0]!.threadContext!.indexOf("Preserved cursor"),
         );
+        // The task's own words and the review note were written for the agent, not for the host.
+        assert.notInclude(generated.inputs[0]!.threadContext!, "Audio ring demo");
+        assert.notInclude(generated.inputs[0]!.threadContext!, "Keep cursor paging");
         assert.equal(generated.inputs[0]!.commitSummary, "first work commit\nrevision work commit");
         assert.equal(generated.inputs[0]!.diffSummary, "whole-change stat");
         assert.equal(generated.inputs[0]!.diffPatch, "whole-change patch");

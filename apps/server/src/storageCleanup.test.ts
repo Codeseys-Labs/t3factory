@@ -885,6 +885,93 @@ const runTaskCleanupTest = <A, E>(
 ) => runCleanupTest(effect.pipe(Effect.provide(Sqlite.layerMemory)));
 
 describe("merged task worktree cleanup", () => {
+  it.live.each([
+    "document age",
+    "merged code age",
+    "deleted thread",
+    "open delivery",
+    "no result",
+    "wrong identity",
+    "unrelated tip",
+  ])("applies existing cleanup rules to a settled task run: %s", (mode) =>
+    runTaskCleanupTest(
+      Effect.gen(function* () {
+        const f = yield* taskCleanupFixture();
+        yield* f.command(f.worktree, ["read-tree", f.commit]);
+        yield* f.command(f.repo, ["update-ref", `refs/heads/${f.branch}`, f.commit]);
+        if (mode === "document age") {
+          yield* f.sql`UPDATE factory_task_results SET kind = 'document'`;
+          yield* f.sql`DELETE FROM factory_delivery_intents`;
+        }
+        if (mode === "open delivery") yield* f.sql`DELETE FROM factory_delivery_intents`;
+        if (mode === "no result") yield* f.sql`DELETE FROM factory_execution_results`;
+        if (mode === "wrong identity")
+          yield* f.sql`UPDATE factory_execution_results SET output_json = json_set(output_json, '$.checkpoint.tree', ${"0".repeat(40)})`;
+        if (mode === "unrelated tip")
+          yield* f.command(f.worktree, ["commit", "--allow-empty", "-m", "after result"]);
+        const before = yield* f.state;
+        f.setSettings({
+          storageCleanup: {
+            ...DEFAULT_SERVER_SETTINGS.storageCleanup,
+            worktreeAfterDays: mode === "deleted thread" ? null : 14,
+            worktreeOnDelete: mode === "deleted thread",
+            worktreeOnMerge: [
+              "open delivery",
+              "no result",
+              "wrong identity",
+              "unrelated tip",
+            ].includes(mode),
+          },
+        });
+        if (mode === "deleted thread") {
+          f.setThreads([]);
+          const timestamp = DateTime.formatIso(at(0));
+          yield* f.sql`INSERT INTO projection_projects ${f.sql.insert({
+            project_id: f.thread.projectId,
+            title: "Cleanup",
+            workspace_root: f.repo,
+            scripts_json: "[]",
+            created_at: timestamp,
+            updated_at: timestamp,
+          })}`;
+          yield* f.sql`INSERT INTO orchestration_v2_projection_threads ${f.sql.insert({
+            thread_id: f.thread.id,
+            project_id: f.thread.projectId,
+            title: f.thread.title,
+            default_provider: "codex",
+            runtime_mode: "full-access",
+            interaction_mode: "default",
+            created_at: timestamp,
+            updated_at: timestamp,
+            deleted_at: timestamp,
+            payload_json: JSON.stringify({ ...f.thread, activeProviderThreadId: null }),
+          })}`;
+        }
+        const writes: string[] = [];
+        f.beforeGit((input) =>
+          Effect.sync(() => {
+            if (input.args[0] === "read-tree" || input.args[0] === "update-ref")
+              writes.push(input.args[0]);
+          }),
+        );
+        expect((yield* f.service.runNow).entries[0]).toMatchObject({
+          outcome: "removed",
+          reason:
+            mode === "deleted thread"
+              ? "Thread was deleted"
+              : expect.stringMatching(/^Inactive for \d+ days$/),
+        });
+        expect(yield* f.fs.exists(f.worktree)).toBe(false);
+        expect(writes).toEqual([]);
+        expect(
+          (yield* f.command(f.repo, ["rev-parse", f.branch, f.retainedRef])).stdout
+            .trim()
+            .split("\n"),
+        ).toEqual([before.head.trim(), f.commit]);
+      }),
+    ),
+  );
+
   it.live.each(["unstaged", "staged result", "already at result", "interrupted", "superseded"])(
     "removes the %s run and restores its saved result",
     (mode) =>
@@ -960,27 +1047,27 @@ describe("merged task worktree cleanup", () => {
   );
 
   it.live.each([
-    ["open", "The task is not merged"],
-    ["unconfirmed", "The task is not merged"],
-    ["reopened", "The task is not merged"],
+    ["open", "Has uncommitted changes (2 files)"],
+    ["unconfirmed", "Has uncommitted changes (2 files)"],
+    ["reopened", "Has uncommitted changes (2 files)"],
     ["held", "The task run is still running or held"],
     ["live", "The task run is still running or held"],
     ["stopping", "The task run is still running or held"],
     ["missing records", "The task run's state is unavailable"],
     ["unreadable records", "The task run's state is unavailable"],
-    ["no result", "The task run has no saved result"],
-    ["null commit", "The task run has no saved result"],
-    ["document", "The task run has no saved result"],
-    ["wrong ref", "The saved result does not match its record"],
-    ["wrong tree", "The saved result does not match its record"],
-    ["wrong result", "The saved result does not match its record"],
-    ["late commit", "The folder has commits that are not in the saved result"],
-    ["staged third version", "The folder has staged changes that differ from the saved result"],
+    ["no result", "Has uncommitted changes (2 files)"],
+    ["null commit", "Has uncommitted changes (2 files)"],
+    ["document", "Has uncommitted changes (2 files)"],
+    ["wrong ref", "Has uncommitted changes (2 files)"],
+    ["wrong tree", "Has uncommitted changes (2 files)"],
+    ["wrong result", "Has uncommitted changes (2 files)"],
+    ["late commit", "Has uncommitted changes (2 files)"],
+    ["staged third version", "Has uncommitted changes (2 files)"],
     ["unrelated owner", "Shared by 2 threads"],
     ["terminal", "Open terminal"],
-    ["live session", "Provider session is still open"],
-    ["sparse", "The task run uses a sparse checkout or skip-worktree entries"],
-    ["skip-worktree", "The task run uses a sparse checkout or skip-worktree entries"],
+    ["live session", "Has uncommitted changes (2 files)"],
+    ["sparse", "Has uncommitted changes (2 files)"],
+    ["skip-worktree", "Has uncommitted changes (1 file)"],
   ] as const)("keeps %s without moving branch or index", ([mode, reason]) =>
     runTaskCleanupTest(
       Effect.gen(function* () {
@@ -1248,7 +1335,10 @@ describe("merged task worktree cleanup", () => {
           expect(yield* f.state).toEqual(before);
           expect(writes).toEqual([]);
           if (mode === "rule off")
-            expect(report.entries[0]).toMatchObject({ outcome: "kept", reason: "No rules apply" });
+            expect(report.entries[0]).toMatchObject({
+              outcome: "kept",
+              reason: "Has uncommitted changes (2 files)",
+            });
           if (mode === "ordinary thread")
             expect(report.entries[0]).toMatchObject({
               outcome: "kept",

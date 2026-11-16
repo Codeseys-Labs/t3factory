@@ -49,8 +49,8 @@ never overwritten. No dependencies, remotes, hook templates, setup, or T3 launch
 are involved. From the repository root, with the pinned toolchain:
 
 ```powershell
-vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/native.ts hydrate --case repair-cache-expiry --out C:/evidence/cache-sample-1
-vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/native.ts evaluate --sample C:/evidence/cache-sample-1 --result-commit <exact-result-SHA>
+vp env exec --node 26.13.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/native.ts hydrate --case repair-cache-expiry --out C:/evidence/cache-sample-1
+vp env exec --node 26.13.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/native.ts evaluate --sample C:/evidence/cache-sample-1 --result-commit <exact-result-SHA>
 ```
 
 Both hydration and evaluation of `native-parent-child-review` require
@@ -110,13 +110,13 @@ labels or establish model quality.
 
 ## Offline use
 
-Use the checkout's pinned **Node 26.12.1 / pnpm 12.14.0**. From the repository root:
+Use the checkout's pinned **Node 26.13.1 / pnpm 12.14.0**. From the repository root:
 
 ```powershell
-vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/run.ts
-vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 pnpm exec vp test run evals/factory-qualification/dataset.test.ts
-vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/run.ts --split calibration
-vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/run.ts --split holdout --include-holdout
+vp env exec --node 26.13.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/run.ts
+vp env exec --node 26.13.1 --package-manager pnpm@12.14.0 pnpm exec vp test run evals/factory-qualification/dataset.test.ts
+vp env exec --node 26.13.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/run.ts --split calibration
+vp env exec --node 26.13.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/run.ts --split holdout --include-holdout
 ```
 
 The default selector includes development only. Holdout requires both flags. The
@@ -124,13 +124,13 @@ validator checks all splits for integrity but does not run any scenario. Export
 only ready MCP references, preserving the existing payload and grader exactly:
 
 ```powershell
-vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/run.ts --export-replay > C:/evidence/qualification-development.ndjson
+vp env exec --node 26.13.1 --package-manager pnpm@12.14.0 node evals/factory-qualification/run.ts --export-replay > C:/evidence/qualification-development.ndjson
 ```
 
 Then, from `evals/`, use the existing runner for a free request-build check:
 
 ```powershell
-vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 pnpm mcp-tool-use --cases C:/evidence/qualification-development.ndjson --dry-run
+vp env exec --node 26.13.1 --package-manager pnpm@12.14.0 pnpm mcp-tool-use --cases C:/evidence/qualification-development.ndjson --dry-run
 ```
 
 The export command does not call a model. The existing runner calls paid models

@@ -35,7 +35,7 @@ toolchain. Keep the receipt outside the worktree. Each `record` runs one command
 log beside the receipt, and appends the exit code and output SHA-256:
 
 ```sh
-factory() { vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 -- node scripts/factory-check.ts "$@"; }
+factory() { vp env exec --node 26.13.1 --package-manager pnpm@12.14.0 -- node scripts/factory-check.ts "$@"; }
 evidence=(--receipt ../factory-evidence/receipt.json --repository Codeseys-Labs/t3factory --base "$BASE")
 factory record "${evidence[@]}" --kind check-changed -- vp run check:changed "$BASE"
 factory record "${evidence[@]}" --kind test -- vp test run <focused test files>
@@ -83,7 +83,7 @@ and must consume this artifact, never rebuild it.
 2. Record a packaging receipt on Windows x64, in a clean worktree at the candidate:
 
    ```sh
-   build() { vp env exec --node 26.12.1 --package-manager pnpm@12.14.0 -- node scripts/factory-build.ts "$@"; }
+   build() { vp env exec --node 26.13.1 --package-manager pnpm@12.14.0 -- node scripts/factory-build.ts "$@"; }
    evidence=(--receipt ../factory-package/receipt.json --repository Codeseys-Labs/t3factory --base "$BASE")
    build record "${evidence[@]}" --kind check-changed -- vp run check:changed "$BASE"
    build record "${evidence[@]}" --kind test -- vp test run <focused test files>

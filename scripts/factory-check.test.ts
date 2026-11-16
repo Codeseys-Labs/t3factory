@@ -20,7 +20,7 @@ import {
 
 const candidateSha = "a".repeat(40);
 const baseSha = "b".repeat(40);
-const toolchain = { node: "26.12.1", pnpm: "12.14.0" };
+const toolchain = { node: "26.13.1", pnpm: "12.14.0" };
 const expected = { repository: "owner/factory", candidateSha, baseSha, toolchain };
 const digest = (bytes: Uint8Array) => NodeCrypto.createHash("sha256").update(bytes).digest("hex");
 
@@ -68,7 +68,7 @@ describe("validateReceipt", () => {
     [
       "an unpinned Node.js",
       receipt({ toolchain: { ...toolchain, node: "24.13.1" } }),
-      "pinned 26.12.1",
+      "pinned 26.13.1",
     ],
     ["a claim of attestation", receipt({ evidence: "attested" }), "dispatcher-declared"],
     ["a dirty worktree", receipt({ worktreeClean: false }), "clean worktree"],
@@ -280,7 +280,7 @@ describe("evaluateCheckRun", () => {
           { ...laneRecord("test"), toolchain: { ...toolchain, node: "24.13.1" } },
         ],
       },
-      "ran node 24.13.1, pinned 26.12.1",
+      "ran node 24.13.1, pinned 26.13.1",
     ],
     [
       "a lane tested another commit",

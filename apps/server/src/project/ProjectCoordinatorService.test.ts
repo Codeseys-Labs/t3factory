@@ -36,6 +36,7 @@ import * as CloneTracker from "./ProjectCloneTracker.ts";
 import * as SetupTracker from "./WorktreeSetupTracker.ts";
 import * as SetupRunner from "./ProjectSetupScriptRunner.ts";
 import * as Terminal from "../terminal/Manager.ts";
+import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProviderRegistryMock from "../provider/testUtils/providerRegistryMock.ts";
@@ -127,6 +128,7 @@ function harness(
       generateBranchName: () => Effect.succeed({ branch: "coordinator" }),
     }),
     ProviderRegistryMock.layer(),
+    Layer.mock(CheckpointStore.CheckpointStore)({ isGitRepository: () => Effect.succeed(true) }),
     settings,
     setupTracker,
     ThreadCommands.layer,

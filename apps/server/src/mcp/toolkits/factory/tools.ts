@@ -66,7 +66,7 @@ import {
   ProjectCoordinatorGetInput,
   ProjectCoordinatorGetResult,
 } from "@t3tools/contracts";
-import { Tool, Toolkit } from "effect/ai";
+import { McpSchema, Tool, Toolkit } from "effect/ai";
 import * as Factory from "../../../factory/FactoryIssueService.ts";
 import * as Relations from "../../../factory/FactoryIssueRelations.ts";
 import * as Feeds from "../../../factory/FactoryFeedService.ts";
@@ -297,7 +297,8 @@ const applyPlan = Tool.make("factory_apply_plan", {
   success: FactoryPlanMutationResult,
 })
   .annotate(Tool.Readonly, false)
-  .annotate(Tool.Destructive, true);
+  .annotate(Tool.Destructive, true)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 const start = Tool.make("factory_start_issue", {
   ...shared,
   description:
@@ -417,7 +418,8 @@ const recordResearchEvidence = Tool.make("factory_record_research_evidence", {
   success: FactoryResearchEvidenceRecordResult,
 })
   .annotate(Tool.Readonly, false)
-  .annotate(Tool.Destructive, true);
+  .annotate(Tool.Destructive, true)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 const executionDependencies = [
   Execution.FactoryExecutionService,
   Threads.ThreadManagementService,
@@ -463,7 +465,8 @@ const admitExecution = Tool.make("factory_admit_execution", {
 })
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, true)
-  .annotate(Tool.OpenWorld, true);
+  .annotate(Tool.OpenWorld, true)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 const retryExecution = Tool.make("factory_retry_execution", {
   ...shared,
   dependencies: executionDependencies,
@@ -474,7 +477,8 @@ const retryExecution = Tool.make("factory_retry_execution", {
 })
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, true)
-  .annotate(Tool.OpenWorld, true);
+  .annotate(Tool.OpenWorld, true)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 const stopExecution = Tool.make("factory_stop_execution", {
   ...shared,
   dependencies: executionDependencies,
@@ -484,7 +488,8 @@ const stopExecution = Tool.make("factory_stop_execution", {
   success: FactoryExecutionMutationResult,
 })
   .annotate(Tool.Readonly, false)
-  .annotate(Tool.Destructive, true);
+  .annotate(Tool.Destructive, true)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 const proposeSubtasks = Tool.make("factory_propose_subtasks", {
   ...shared,
   dependencies: [
@@ -498,7 +503,8 @@ const proposeSubtasks = Tool.make("factory_propose_subtasks", {
   success: FactoryTaskPlanProposalReadResult,
 })
   .annotate(Tool.Readonly, false)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 export const FactoryToolkit = Toolkit.make(
   proposeSubtasks,

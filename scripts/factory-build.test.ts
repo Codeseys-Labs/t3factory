@@ -29,7 +29,7 @@ const repository = "owner/factory";
 const candidateSha = "a".repeat(40);
 const baseSha = "b".repeat(40);
 const controlSha = "c".repeat(40);
-const toolchain = { node: "26.12.1", pnpm: "12.14.0" };
+const toolchain = { node: "26.13.1", pnpm: "12.14.0" };
 const digest = (bytes: Uint8Array | string) =>
   NodeCrypto.createHash("sha256").update(bytes).digest("hex");
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value));

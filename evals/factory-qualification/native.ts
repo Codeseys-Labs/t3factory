@@ -590,7 +590,7 @@ export const evaluateNative = (options: {
   const failures: string[] = [];
   let capture = { gate: "missing" as Gate, reason: "Capture not inspected" };
   try {
-    if (process.version !== "v26.12.1") throw new Error("Requires Node 26.12.1");
+    if (process.version !== "v26.13.1") throw new Error("Requires Node 26.13.1");
     if (
       !NodeFS.lstatSync(NodePath.join(repo, ".git")).isDirectory() ||
       NodeFS.existsSync(NodePath.join(repo, ".git/objects/info/alternates")) ||
@@ -742,7 +742,7 @@ if (import.meta.main) {
       !values.sample &&
       !values["result-commit"]
     ) {
-      if (process.version !== "v26.12.1") throw new Error("Requires Node 26.12.1");
+      if (process.version !== "v26.13.1") throw new Error("Requires Node 26.13.1");
       const seed = hydrateNative({
         caseId: values.case,
         out: values.out,

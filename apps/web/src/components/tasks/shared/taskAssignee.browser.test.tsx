@@ -245,9 +245,7 @@ it("pins a model with the effort chosen for it, and clears it back to the model'
     pinned([{ id: "reasoningEffort", value: "high" }]),
     pinned(),
   ]);
-  await expect
-    .element(page.getByRole("button", { name: "Use model defaults" }))
-    .not.toBeInTheDocument();
+  await expect.element(page.getByRole("button", { name: "Use model defaults" })).toBeDisabled();
 });
 
 it("keeps the saved pin's other fields when a pick follows a change made elsewhere", async () => {

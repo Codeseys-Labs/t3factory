@@ -251,7 +251,15 @@ export function TaskAssigneePicker({
           instanceEntries={choices.instanceEntries}
           modelOptionsByInstance={choices.modelOptionsByInstance}
           isComposerOwned={false}
-          effortColumn={<ComposerEffortColumn traits={traits} />}
+          effortColumn={
+            current ? (
+              <ComposerEffortColumn traits={traits} />
+            ) : (
+              <p className="px-3 pt-3 text-muted-foreground text-sm">
+                Choose a model to set its options.
+              </p>
+            )
+          }
           footer={
             <TaskModelOptionsFooter
               traits={traits}

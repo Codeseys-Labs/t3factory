@@ -29,6 +29,9 @@ import {
   exceededDispatchModeLimit,
 } from "../orchestration-v2/DispatchModeLimit.ts";
 import * as Git from "../vcs/GitVcsDriver.ts";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import * as Settings from "../serverSettings.ts";
+import { makeWorktreeBaseResolver } from "./FactoryWorktreeBase.ts";
 import * as IssueTrackers from "./IssueTrackerProviderRegistry.ts";
 
 export const FactoryLaunchCore = Schema.Struct({
@@ -63,9 +66,21 @@ type LaunchReason =
   | "provider-unavailable"
   | "launch-failure";
 
+/** The base resolved to a commit, but choosing between it and its remote branch failed. */
+export class WorktreeBaseError extends Schema.TaggedError<WorktreeBaseError>()(
+  "WorktreeBaseError",
+  { detail: Schema.String, cause: Schema.optional(Schema.Defect()) },
+) {}
+
 export const makeBaseResolver = Effect.gen(function* () {
   const git = yield* Git.GitVcsDriver;
-  return Effect.fn("FactoryTaskLaunch.resolveBase")(function* (cwd: string, revision = "HEAD") {
+  const settings = yield* Settings.ServerSettingsService;
+  const resolveWorktreeBase = yield* makeWorktreeBaseResolver;
+  return Effect.fn("FactoryTaskLaunch.resolveBase")(function* (
+    cwd: string,
+    projectId: ProjectId,
+    revision = "HEAD",
+  ) {
     const symbolic = yield* git.execute({
       operation: "FactoryTaskLaunch.resolveBase",
       cwd,
@@ -94,7 +109,22 @@ export const makeBaseResolver = Effect.gen(function* () {
       (yield* git.remoteBranchExists({ cwd, remoteName: "origin", refName: target.branchName }))
         ? target.branchName
         : null;
-    return { baseRef: commitSha, baseBranch };
+    if (!ref.startsWith("refs/heads/")) return { baseRef: commitSha, baseBranch };
+    const current = yield* settings.getSettings.pipe(
+      Effect.mapError(
+        (cause) =>
+          new WorktreeBaseError({ detail: "Could not read the project's settings.", cause }),
+      ),
+    );
+    const baseRef = resolveProjectSettings(current, projectId).settings.newWorktreesStartFromOrigin
+      ? yield* resolveWorktreeBase({
+          cwd,
+          refName: ref.slice("refs/heads/".length),
+          commitSha,
+          remote: target,
+        }).pipe(Effect.mapError((cause) => new WorktreeBaseError({ detail: cause.detail, cause })))
+      : commitSha;
+    return { baseRef, baseBranch };
   });
 });
 

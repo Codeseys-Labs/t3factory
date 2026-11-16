@@ -57,6 +57,7 @@ import {
 } from "@t3tools/contracts";
 import { limitSection } from "@t3tools/provider-core/server/textGenerationUtils";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { makeWorktreeBaseResolver } from "./FactoryWorktreeBase.ts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -498,6 +499,7 @@ const make = Effect.gen(function* () {
   const projections = yield* Projections.ProjectionStoreV2;
   const events = yield* OrchestrationEventStore.OrchestrationEventStore;
   const settings = yield* ServerSettings.ServerSettingsService;
+  const resolveWorktreeBase = yield* makeWorktreeBaseResolver;
   const processes = yield* Processes.ProcessRunner;
   const git = yield* Git.GitVcsDriver;
   const changes = yield* Changes.FactoryTaskChanges;
@@ -806,23 +808,7 @@ const make = Effect.gen(function* () {
       )
         return commitSha;
       const refName = ref.slice("refs/heads/".length);
-      const remote = yield* git.resolveWorktreeBaseRemote({ cwd, refName });
-      if (remote === null) return commitSha;
-      const fetched = yield* git.fetchWorktreeBaseCommit({ cwd, refName, remote });
-      if (fetched === null) return commitSha;
-      const ancestor = yield* git.execute({
-        operation: "FactoryTaskService.worktreeBase",
-        cwd,
-        args: ["merge-base", "--is-ancestor", commitSha, fetched.commitSha],
-        allowNonZeroExit: true,
-        maxOutputBytes: 4096,
-      });
-      if (ancestor.exitCode === 0) return fetched.commitSha;
-      if (ancestor.exitCode === 1) return commitSha;
-      return yield* new FactoryTaskError({
-        reason: "unsupported-capability",
-        detail: "Could not compare the project folder with its remote branch.",
-      });
+      return yield* resolveWorktreeBase({ cwd, refName, commitSha });
     },
     Effect.catchTags({
       GitCommandError: (cause) =>

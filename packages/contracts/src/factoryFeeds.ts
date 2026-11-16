@@ -219,6 +219,7 @@ export class FactoryFeedError extends Schema.TaggedError<FactoryFeedError>()("Fa
     "origin-conflict",
     "persistence-failure",
   ]),
+  detail: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Defect()),
 }) {
   override get message(): string {
@@ -264,7 +265,9 @@ export class FactoryFeedError extends Schema.TaggedError<FactoryFeedError>()("Fa
       case "deleted-task":
         return "The linked thread or its owning project was deleted. Confirm a new attempt to restart this item.";
       case "invalid-base-ref":
-        return "The base ref does not resolve to a local commit. Choose an existing branch, tag, or commit.";
+        return this.detail === undefined
+          ? "The base ref does not resolve to a local commit. Choose an existing branch, tag, or commit."
+          : `Could not prepare the worktree base: ${this.detail}`;
       case "launch-authority":
         return "This reserved launch exceeds the caller's runtime authority. Resume it from an authorized client.";
       case "launch-failure":

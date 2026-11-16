@@ -240,8 +240,15 @@ const make = Effect.gen(function* () {
     if (issue.state !== "open") return yield* new FactoryIssueError({ reason: "closed-issue" });
     if ((yield* revisionOf(repository, issue)) !== input.expectedIssueRevision)
       return yield* new FactoryIssueError({ reason: "issue-changed" });
-    const base = yield* resolveBase(project.workspaceRoot, input.baseRef).pipe(
-      Effect.mapError((cause) => new FactoryIssueError({ reason: "invalid-base-ref", cause })),
+    const base = yield* resolveBase(project.workspaceRoot, project.id, input.baseRef).pipe(
+      Effect.mapError(
+        (cause) =>
+          new FactoryIssueError({
+            reason: "invalid-base-ref",
+            detail: cause._tag === "GitCommandError" ? cause.detail : undefined,
+            cause,
+          }),
+      ),
     );
     const current = yield* resolve(input.projectId);
     if (

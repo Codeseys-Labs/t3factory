@@ -355,6 +355,7 @@ const make = Effect.gen(function* () {
     };
   });
   const repositoryResolver = yield* TaskLaunch.makeRepositoryResolver;
+  const resolveBase = yield* TaskLaunch.makeBaseResolver;
   const resolve = Effect.fn("FactoryResearchService.resolve")(function* (projectId: ProjectId) {
     const resolved = yield* repositoryResolver(projectId).pipe(
       Effect.mapError(
@@ -501,11 +502,20 @@ const make = Effect.gen(function* () {
     }
     if (yield* folders.isScratchProject(input.projectId))
       return yield* new FactoryResearchError({ reason: "missing-repository" });
-    const { commitSha: baseCommit } = yield* git
-      .resolveCommit({ cwd: project.workspaceRoot, revision: input.baseRef ?? "HEAD" })
-      .pipe(
-        Effect.mapError((cause) => new FactoryResearchError({ reason: "invalid-base-ref", cause })),
-      );
+    const { baseRef: baseCommit } = yield* resolveBase(
+      project.workspaceRoot,
+      project.id,
+      input.baseRef,
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new FactoryResearchError({
+            reason: "invalid-base-ref",
+            detail: cause._tag === "GitCommandError" ? cause.detail : undefined,
+            cause,
+          }),
+      ),
+    );
     const evaluators = yield* Effect.forEach(
       input.evaluatorPaths,
       Effect.fn("FactoryResearchService.sealEvaluator")(function* (entry) {

@@ -184,6 +184,7 @@ function harness(
       resolveWorktreeBaseRemote: ({ refName }) =>
         Effect.succeed({ remoteName: "origin", branchName: refName }),
       remoteBranchExists: () => Effect.succeed(true),
+      fetchWorktreeBaseCommit: () => Effect.succeed(null),
       execute:
         options.execute ??
         (({ cwd, args }) =>

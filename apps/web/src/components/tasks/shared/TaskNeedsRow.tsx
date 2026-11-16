@@ -18,6 +18,7 @@ import { factoryTasks, useFactoryTaskRequests } from "../../../state/factoryTask
 import { toastManager } from "../../ui/toast";
 import { openTaskSetup } from "../taskDialogs";
 import { type KitAction, NeedsYouRow } from "../kit";
+import { useGiveUpResult } from "./GiveUpResultDialog";
 import { useTaskActions, useTaskPermissions } from "./taskActions";
 import { useTaskAssigneeChip } from "./taskAssigneeChip";
 
@@ -67,6 +68,7 @@ function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
   const actions = useTaskActions();
   const permissions = useTaskPermissions(need.ref.environmentId);
   const [busy, setBusy] = useState(false);
+  const giveUpResult = useGiveUpResult(task);
   const act = (operation: (task: FactoryTaskSummary) => Promise<unknown>) => () => {
     if (task === null) return;
     setBusy(true);
@@ -104,15 +106,27 @@ function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
                 onClick: act(actions.stop),
               }
             : { label: need.reason === "question" ? "Answer" : "Review", onClick: onOpen };
+  const giveUp: KitAction | undefined =
+    need.reason === "failed" && recovery === "save-again"
+      ? {
+          label: "Give up result",
+          disabled: failedRun === null || !permissions.giveUp || busy,
+          onClick: () => failedRun && giveUpResult.open(failedRun),
+        }
+      : undefined;
   return (
-    <Row
-      need={need}
-      task={task}
-      layout={layout}
-      selected={selected}
-      onOpen={onOpen}
-      action={action}
-    />
+    <>
+      <Row
+        need={need}
+        task={task}
+        layout={layout}
+        selected={selected}
+        onOpen={onOpen}
+        action={action}
+        {...(giveUp ? { secondaryAction: giveUp } : {})}
+      />
+      {giveUpResult.dialog}
+    </>
   );
 }
 
@@ -155,7 +169,15 @@ function ApproveRow({
   );
 }
 
-function Row({ need, task, layout, selected, onOpen, action }: RowProps & { action: KitAction }) {
+function Row({
+  need,
+  task,
+  layout,
+  selected,
+  onOpen,
+  action,
+  secondaryAction,
+}: RowProps & { action: KitAction; secondaryAction?: KitAction | undefined }) {
   const assignee = useTaskAssigneeChip(
     task?.assignee ?? { assignment: { mode: "unassigned" }, key: "unassigned", resolved: null },
     need.ref.environmentId,
@@ -171,6 +193,7 @@ function Row({ need, task, layout, selected, onOpen, action }: RowProps & { acti
       {...(layout ? { layout } : {})}
       {...(selected === undefined ? {} : { selected })}
       action={action}
+      {...(secondaryAction ? { secondaryAction } : {})}
       onOpen={onOpen}
     />
   );

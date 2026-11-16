@@ -13,6 +13,7 @@ import {
   type FactoryTaskRef,
   type FactoryTaskSummary,
   type FactoryTaskUpdateInput,
+  type RunId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { useContext } from "react";
@@ -113,6 +114,14 @@ export function useTaskActions() {
         { commandId: commandId(), ref: task.ref },
         { task },
       ),
+    /** Names the run the person confirmed; the server refuses when it is no longer the held one. */
+    giveUp: (task: FactoryTaskSummary, runId: RunId) =>
+      run(
+        factoryTasks.abandonTaskCapture,
+        task.ref.environmentId,
+        { commandId: commandId(), ref: task.ref, runId },
+        { task },
+      ),
     accept: (task: FactoryTaskSummary, revision: number) =>
       run(
         factoryTasks.acceptTaskResult,
@@ -190,6 +199,7 @@ export function useTaskPermissions(environmentId: EnvironmentId) {
     stop: useAtomValue(factoryTasks.stopTask.permissionAtom(environmentId)),
     retry: useAtomValue(factoryTasks.retryTask.permissionAtom(environmentId)),
     saveAgain: useAtomValue(factoryTasks.retryTaskCapture.permissionAtom(environmentId)),
+    giveUp: useAtomValue(factoryTasks.abandonTaskCapture.permissionAtom(environmentId)),
     breakDown: useAtomValue(factoryTasks.requestTaskBreakdown.permissionAtom(environmentId)),
     accept: useAtomValue(factoryTasks.acceptTaskResult.permissionAtom(environmentId)),
     requestChanges: useAtomValue(factoryTasks.requestTaskChanges.permissionAtom(environmentId)),

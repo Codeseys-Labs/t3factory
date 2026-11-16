@@ -144,6 +144,8 @@ export const FactoryTaskRun = Schema.Struct({
   note: Schema.NullOr(ShortText),
   // A held run whose agent finished but whose result could not be saved. Saving again can move it.
   captureFailed: Schema.optionalKey(Schema.Literal(true)),
+  // A person gave up that result: the run failed, and its files stay in its folder.
+  resultGivenUp: Schema.optionalKey(Schema.Struct({ by: ShortText, at: IsoDateTime })),
 });
 export type FactoryTaskRun = typeof FactoryTaskRun.Type;
 
@@ -407,6 +409,16 @@ export const FactoryTaskRetryCaptureInput = Schema.Struct({
   ref: FactoryTaskRef,
 });
 export type FactoryTaskRetryCaptureInput = typeof FactoryTaskRetryCaptureInput.Type;
+/**
+ * Gives up the result of the held run the person was shown, so the task can run again. Refused
+ * when `runId` is no longer the task's held run. The agent's files stay in the run's folder.
+ */
+export const FactoryTaskAbandonCaptureInput = Schema.Struct({
+  commandId: CommandId,
+  ref: FactoryTaskRef,
+  runId: RunId,
+});
+export type FactoryTaskAbandonCaptureInput = typeof FactoryTaskAbandonCaptureInput.Type;
 /** Accepting records a review of one result revision. It publishes nothing. */
 export const FactoryTaskAcceptInput = Schema.Struct({
   commandId: CommandId,
@@ -414,7 +426,7 @@ export const FactoryTaskAcceptInput = Schema.Struct({
   revision: PositiveInt,
 });
 export type FactoryTaskAcceptInput = typeof FactoryTaskAcceptInput.Type;
-/** Sends the note to the run's agent. The next result replaces the one under review. */
+/** Sends the note to the task's assignee in a new run. The next result replaces the one under review. */
 export const FactoryTaskRequestChangesInput = Schema.Struct({
   commandId: CommandId,
   ref: FactoryTaskRef,

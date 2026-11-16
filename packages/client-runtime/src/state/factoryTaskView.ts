@@ -344,6 +344,7 @@ export interface FactoryTaskBannerAction {
     | "retry"
     | "reassign"
     | "save-again"
+    | "give-up"
     | "stop"
     | "reopen"
     | "break-down"
@@ -433,7 +434,13 @@ export function presentFactoryTaskRunRecovery(
       { kind: "retry", label: "Retry" },
       { kind: "reassign", label: "Reassign" },
     ];
-  return run.captureFailed ? [{ kind: "save-again", label: "Save again" }] : [];
+  // Giving the result up settles the run as failed, which then offers Retry and Reassign.
+  return run.captureFailed
+    ? [
+        { kind: "save-again", label: "Save again" },
+        { kind: "give-up", label: "Give up result" },
+      ]
+    : [];
 }
 
 /** The run a task's `failed` need speaks of: a planning run that came later does not stand in. */

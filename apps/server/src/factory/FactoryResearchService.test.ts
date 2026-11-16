@@ -5,6 +5,7 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
   CommandId,
   EnvironmentId,
+  GitCommandError,
   ProjectId,
   FACTORY_RESEARCH_CITED_LINE_MAX_BYTES,
   ProviderDriverKind,
@@ -117,6 +118,7 @@ const makeHarness = Effect.fn("ResearchTest.harness")(function* (origin: string)
   const root = yield* fs.makeTempDirectoryScoped({ prefix: "factory-research-test-" });
   const commits: string[] = [];
   const gitCalls: string[][] = [];
+  const base = { remote: false, failure: false };
   // The replay harness never executes a provider, so its runs never complete on their own. Tests
   // pin the run lifecycle the service observes here; every other shell field stays real.
   const lifecycle = new Map<
@@ -157,13 +159,30 @@ const makeHarness = Effect.fn("ResearchTest.harness")(function* (origin: string)
       resolveCommit: ({ revision }) =>
         Effect.sync(() => {
           commits.push(revision);
-          return { commitSha: revision === "HEAD" ? B : revision };
+          return {
+            commitSha: revision === "HEAD" || revision === "refs/heads/main" ? B : revision,
+          };
         }),
+      resolveWorktreeBaseRemote: () =>
+        Effect.sync(() => (base.remote ? { remoteName: "origin", branchName: "main" } : null)),
+      remoteBranchExists: () => Effect.succeed(true),
+      fetchWorktreeBaseCommit: () =>
+        base.failure
+          ? Effect.fail(
+              new GitCommandError({
+                operation: "GitVcsDriver.fetchRemote",
+                command: "git fetch",
+                cwd: "/repo",
+                detail: "Could not resolve host: unreachable.example",
+              }),
+            )
+          : Effect.succeed({ commitSha: C1, remoteRefName: "origin/main" }),
       execute: ({ args }) => {
         gitCalls.push([...args]);
         const key = JSON.stringify(args);
         let stdout: string;
         if (key === JSON.stringify(["remote", "get-url", "--", "origin"])) stdout = origin;
+        else if (args.includes("--symbolic-full-name")) stdout = "refs/heads/main";
         else if (
           key === JSON.stringify(["rev-parse", "--verify", `${B}:prepare.py`]) ||
           key === JSON.stringify(["rev-parse", "--verify", `${C1}:prepare.py`])
@@ -273,7 +292,7 @@ const makeHarness = Effect.fn("ResearchTest.harness")(function* (origin: string)
     Layer.provideMerge(NodeCrypto.layer),
     Layer.provideMerge(NodeServices.layer),
   );
-  return { layer, commits, gitCalls, lifecycle };
+  return { layer, commits, gitCalls, lifecycle, base };
 });
 const harness = makeHarness("git@github.com:owner/factory.git");
 const seed = Effect.gen(function* () {
@@ -288,6 +307,33 @@ const seed = Effect.gen(function* () {
   const factory = yield* Factory.FactoryResearchService;
   return { factory, protocol: (yield* factory.sealProtocol(sealInput)).protocol };
 });
+
+it.effect.each(["behind", "failed fetch"])(
+  "resolves the research base before sealing: %s",
+  (state) =>
+    Effect.gen(function* () {
+      const test = yield* harness;
+      test.base.remote = true;
+      test.base.failure = state === "failed fetch";
+      yield* Effect.gen(function* () {
+        if (test.base.failure) {
+          const failure = yield* seed.pipe(Effect.flip);
+          assert(failure._tag === "FactoryResearchError");
+          assert.equal(failure.reason, "invalid-base-ref");
+          assert.include(failure.message, "Could not resolve host: unreachable.example");
+          const sql = yield* SqlClient.SqlClient;
+          assert.deepEqual(yield* sql`SELECT * FROM factory_research_protocols`, []);
+          assert.deepEqual(yield* sql`SELECT * FROM factory_research_launches`, []);
+          return;
+        }
+        const { factory, protocol } = yield* seed;
+        assert.equal(protocol.baseCommit, C1);
+        const launched = yield* factory.launchRun(launchInput(protocol, "remote-base"));
+        assert.equal(launched.task.baseRef, C1);
+        assert.equal(launched.task.baseBranch, null);
+      }).pipe(Effect.provide(test.layer));
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
 const writeLog = Effect.fn("ResearchTest.writeLog")(function* (threadId: ThreadId, text: string) {
   const threads = yield* Threads.ThreadManagementService;
   yield* threads.streamStoredEventsFrom({ threadId }).pipe(

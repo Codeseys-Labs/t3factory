@@ -124,6 +124,7 @@ import Migration0209 from "./Migrations/209_FactoryTasks.ts";
 import Migration0210 from "./Migrations/210_FactoryTaskProposals.ts";
 import Migration0211 from "./Migrations/211_FactoryIntake.ts";
 import Migration0212 from "./Migrations/212_FactoryTaskDefaultModes.ts";
+import Migration0213 from "./Migrations/213_FactoryCaptureAbandonments.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -243,6 +244,7 @@ const migrationEntries = [
   [210, "FactoryTaskProposals", Migration0210],
   [211, "FactoryIntake", Migration0211],
   [212, "FactoryTaskDefaultModes", Migration0212],
+  [213, "FactoryCaptureAbandonments", Migration0213],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

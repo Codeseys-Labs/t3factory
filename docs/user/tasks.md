@@ -33,8 +33,14 @@ review or a result to review. It sits above the board and fills the **Inbox**, w
 counts. You can answer and approve from either place, or from the task page. A run whose agent
 stopped while the run still says running shows as **Lost**: **Stop** it, then **Retry** the task.
 Stopping happens on the desktop and web. A run whose agent finished but whose result could not be
-saved says so and keeps the agent's work: fix what stopped the save, then **Save again**, on the
-desktop or web. Until then the task cannot be retried or reassigned.
+saved says so and keeps the agent's work: fix what stopped the save, then **Save again**, which
+saves the same run's result without running the agent again. If saving keeps failing, **Give up
+result** ends the run as failed so you can retry, reassign or cancel the task; an earlier result can
+be reviewed again. The task never uses that run's work, and nothing is removed: the agent's files stay
+in the run's folder, which the confirmation names. Once the run has ended, that folder is like any
+other thread's, so your **Storage** cleanup settings can remove it, untracked files included. Copy
+anything you want to keep first. Both actions are on the desktop and web. Until you choose one, the
+task cannot be retried, reassigned or canceled.
 
 A task's **Thread** tab shows the agent's conversation. Replies to a working agent go through its
 question and approval cards; to change the result, use **Request changes** with a note, which starts a
@@ -43,8 +49,10 @@ new run with it.
 ## Review a result
 
 **Accept** records your review of that revision and marks the task Done. **Request changes** runs the
-task again with your note; it waits while another sub-task of the same task is running. **Reopen**,
-in the task page's menu, takes a Done task back to In review.
+task again with your note. While another sub-task of the same task is running it is refused: send it
+again when that one has finished. The new run goes to the agent the task is assigned to at that
+moment, so to hand a result to another agent, change the assignee first. **Reopen**, in the task
+page's menu, takes a Done task back to In review.
 
 Accepting does not publish anything. A code result is the agent's own commits; changes it left
 uncommitted are committed for it under the task's title. For an accepted code result, **Publish**

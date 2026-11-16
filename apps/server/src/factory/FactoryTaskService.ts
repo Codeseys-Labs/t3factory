@@ -18,6 +18,7 @@ import {
   FactoryTaskResultReadInput,
   FactoryTaskRetryInput,
   FactoryTaskRetryCaptureInput,
+  FactoryTaskAbandonCaptureInput,
   FactoryTaskStartInput,
   FactoryTaskStopInput,
   FactoryTaskUpdateInput,
@@ -56,6 +57,7 @@ import {
 } from "@t3tools/contracts";
 import { limitSection } from "@t3tools/provider-core/server/textGenerationUtils";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { makeWorktreeBaseResolver } from "./FactoryWorktreeBase.ts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -139,6 +141,14 @@ export class FactoryTaskService extends Context.Service<
     /** Saves again the result of a run held because its capture failed. */
     readonly retryCapture: (
       input: FactoryTaskRetryCaptureInput,
+      actor: FactoryPlanActor,
+    ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
+    /**
+     * Gives up the result of the held run the person was shown, so the task can run again. A
+     * person's act only: no MCP tool or schedule reaches it. Nothing is deleted.
+     */
+    readonly abandonCapture: (
+      input: FactoryTaskAbandonCaptureInput,
       actor: FactoryPlanActor,
     ) => Effect.Effect<FactoryTaskMutationResult, FactoryTaskError>;
     readonly accept: (
@@ -252,6 +262,7 @@ const decodeStart = Schema.decodeEffect(FactoryTaskStartInput);
 const decodeStop = Schema.decodeEffect(FactoryTaskStopInput);
 const decodeRetry = Schema.decodeEffect(FactoryTaskRetryInput);
 const decodeRetryCapture = Schema.decodeEffect(FactoryTaskRetryCaptureInput);
+const decodeAbandonCapture = Schema.decodeEffect(FactoryTaskAbandonCaptureInput);
 const decodeAccept = Schema.decodeEffect(FactoryTaskAcceptInput);
 const decodeRequestChanges = Schema.decodeEffect(FactoryTaskRequestChangesInput);
 const decodeReopen = Schema.decodeEffect(FactoryTaskReopenInput);
@@ -360,6 +371,24 @@ const captureRefusal = (error: FactoryExecutionError) => {
       return executionError(error);
   }
 };
+const GIVEN_UP_ALREADY = "This run's result was given up, so it can't be saved again.";
+const STALE_RUN = "This is no longer the run waiting on you. Look at the task again.";
+/** Giving up's refusals in plain words. */
+const giveUpRefusal = (error: FactoryExecutionError) => {
+  const refused = (reason: FactoryTaskError["reason"], detail: string) =>
+    new FactoryTaskError({ reason, detail, cause: error });
+  switch (error.reason) {
+    case "not-quiescent":
+      return refused(
+        "run-active",
+        "The run is still finishing, or its result is being saved again. Try again when it stops.",
+      );
+    case "task-conflict":
+      return refused("invalid-transition", NOTHING_TO_SAVE);
+    default:
+      return executionError(error);
+  }
+};
 
 /** Plain words for what stopped a Publish or Merge; the client shows `detail` as it is. */
 const deliveryRefusal = (error: FactoryDeliveryError): FactoryTaskError => {
@@ -431,6 +460,7 @@ const plainRun = (run: Tasks.TaskRunRow): FactoryTaskRun => ({
   endedAt: run.endedAt,
   note: run.note,
   ...(run.captureFailed ? { captureFailed: true } : {}),
+  ...(run.resultGivenUp ? { resultGivenUp: run.resultGivenUp } : {}),
 });
 const firstLine = (text: string) =>
   text
@@ -469,6 +499,7 @@ const make = Effect.gen(function* () {
   const projections = yield* Projections.ProjectionStoreV2;
   const events = yield* OrchestrationEventStore.OrchestrationEventStore;
   const settings = yield* ServerSettings.ServerSettingsService;
+  const resolveWorktreeBase = yield* makeWorktreeBaseResolver;
   const processes = yield* Processes.ProcessRunner;
   const git = yield* Git.GitVcsDriver;
   const changes = yield* Changes.FactoryTaskChanges;
@@ -592,23 +623,30 @@ const make = Effect.gen(function* () {
     };
   });
 
+  /** Records a receipt once: one already there for the same command is kept, another conflicts. */
+  const recordOnce = Effect.fn("FactoryTaskService.recordOnce")(function* (receipt: {
+    readonly commandId: CommandId;
+    readonly kind: string;
+    readonly digest: string;
+    readonly outcome: unknown;
+  }) {
+    let existing = yield* store.receipt(receipt.commandId);
+    if (existing === null) {
+      const recorded = yield* store.recordReceipt(receipt).pipe(Effect.result);
+      if (Result.isSuccess(recorded)) return;
+      existing = yield* store.receipt(receipt.commandId);
+      if (existing === null) return yield* recorded.failure;
+    }
+    if (existing.kind !== receipt.kind || existing.digest !== receipt.digest)
+      return yield* refuse("command-conflict");
+  });
+
   const pinInput = Effect.fn("FactoryTaskService.pinInput")(function* (
     commandId: CommandId,
     kind: string,
     digest: string,
   ) {
-    const pinId = derived(commandId, "input");
-    let existing = yield* store.receipt(pinId);
-    if (existing === null) {
-      const recorded = yield* store
-        .recordReceipt({ commandId: pinId, kind, digest, outcome: null })
-        .pipe(Effect.result);
-      if (Result.isSuccess(recorded)) return;
-      existing = yield* store.receipt(pinId);
-      if (existing === null) return yield* recorded.failure;
-    }
-    if (existing.kind !== kind || existing.digest !== digest)
-      return yield* refuse("command-conflict");
+    yield* recordOnce({ commandId: derived(commandId, "input"), kind, digest, outcome: null });
   });
 
   const applyPlan = Effect.fn("FactoryTaskService.applyPlan")(function* (input: {
@@ -770,23 +808,7 @@ const make = Effect.gen(function* () {
       )
         return commitSha;
       const refName = ref.slice("refs/heads/".length);
-      const remote = yield* git.resolveWorktreeBaseRemote({ cwd, refName });
-      if (remote === null) return commitSha;
-      const fetched = yield* git.fetchWorktreeBaseCommit({ cwd, refName, remote });
-      if (fetched === null) return commitSha;
-      const ancestor = yield* git.execute({
-        operation: "FactoryTaskService.worktreeBase",
-        cwd,
-        args: ["merge-base", "--is-ancestor", commitSha, fetched.commitSha],
-        allowNonZeroExit: true,
-        maxOutputBytes: 4096,
-      });
-      if (ancestor.exitCode === 0) return fetched.commitSha;
-      if (ancestor.exitCode === 1) return commitSha;
-      return yield* new FactoryTaskError({
-        reason: "unsupported-capability",
-        detail: "Could not compare the project folder with its remote branch.",
-      });
+      return yield* resolveWorktreeBase({ cwd, refName, commitSha });
     },
     Effect.catchTags({
       GitCommandError: (cause) =>
@@ -833,7 +855,9 @@ const make = Effect.gen(function* () {
     const retryable =
       prior !== null &&
       prior.latestStatus !== "sealed" &&
-      (FAILED_NATIVE.has(prior.nativeStatus ?? "") || prior.latestStatus === "failed");
+      (FAILED_NATIVE.has(prior.nativeStatus ?? "") ||
+        prior.latestStatus === "failed" ||
+        prior.abandoned);
     const round = prior !== null && !retryable;
     if (round) yield* requireIdleSiblings(row, head.revision);
     return { head, prior, round };
@@ -1626,15 +1650,23 @@ const make = Effect.gen(function* () {
       if (latest?.attemptId !== retried) return yield* refuse("command-conflict");
     } else {
       if (latest === undefined) return yield* refuse("no-run");
-      if (
-        latest.captureFailed !== true ||
-        latest.attemptId === null ||
-        latest.planRevision === null
-      )
+      const attemptId = latest.attemptId;
+      // Read again on a refusal: giving up may have committed since the task was loaded.
+      const givenUp =
+        attemptId === null
+          ? Effect.succeed(false)
+          : executionStore.abandonment(attemptId).pipe(
+              Effect.map((found) => found !== null),
+              Effect.mapError(executionError),
+            );
+      const nothingToSave = Effect.gen(function* () {
         return yield* new FactoryTaskError({
           reason: "invalid-transition",
-          detail: NOTHING_TO_SAVE,
+          detail: (yield* givenUp) ? GIVEN_UP_ALREADY : NOTHING_TO_SAVE,
         });
+      });
+      if (latest.captureFailed !== true || attemptId === null || latest.planRevision === null)
+        return yield* nothingToSave;
       yield* executions
         .retryCapture(
           {
@@ -1645,16 +1677,75 @@ const make = Effect.gen(function* () {
               taskId: task.row.taskId,
             },
             runId: latest.runId,
-            runAttemptId: latest.attemptId,
+            runAttemptId: attemptId,
             expectedResultId: latest.latestResultId,
           },
           actor,
         )
-        .pipe(Effect.mapError(captureRefusal));
+        .pipe(
+          Effect.catchTags({
+            FactoryExecutionError: (error) =>
+              error.reason === "task-conflict" ? nothingToSave : Effect.fail(captureRefusal(error)),
+          }),
+        );
     }
     yield* transact(command.record(task.row));
     yield* sync(task.row.rootId);
     return { task: yield* summaryOf(task.row), replayed: false };
+  });
+
+  const abandonCapture: FactoryTaskService["Service"]["abandonCapture"] = Effect.fn(
+    "FactoryTaskService.abandonCapture",
+  )(function* (raw, actor) {
+    yield* requireHuman(actor);
+    const input = yield* decodeAbandonCapture(raw).pipe(Effect.mapError(invalid));
+    const command = yield* begin("abandonCapture", input.commandId, actor, input);
+    // Holds the command id before the engine can take it, against a crash before the receipt.
+    if (!command.replayed) yield* pinInput(input.commandId, "abandonCapture", command.digest);
+    const { task } = yield* requireTask(input.ref);
+    const abandonId = derived(input.commandId, "abandon");
+    // The run is the one the person confirmed, found by its id: never the latest one again.
+    const run = task.runs.find((entry) => entry.purpose === "work" && entry.runId === input.runId);
+    const recorded = yield* store.abandonedAttempt(abandonId);
+    if (command.replayed || recorded !== null) {
+      // The engine already took it. Finish: ask for settlement again, then record the receipt.
+      if (run?.attemptId == null || run.planRevision === null || run.attemptId !== recorded)
+        return yield* refuse("command-conflict");
+    } else {
+      if (run === undefined) return yield* refuse("no-run");
+      if (task.runs.findLast((entry) => entry.purpose === "work") !== run)
+        return yield* new FactoryTaskError({ reason: "invalid-transition", detail: STALE_RUN });
+      if (run.captureFailed !== true || run.attemptId === null || run.planRevision === null)
+        return yield* new FactoryTaskError({
+          reason: "invalid-transition",
+          detail: NOTHING_TO_SAVE,
+        });
+    }
+    yield* executions
+      .abandonCapture(
+        {
+          commandId: abandonId,
+          selection: {
+            ref: planRef(task.row),
+            revision: run.planRevision,
+            taskId: task.row.taskId,
+          },
+          runId: run.runId,
+          runAttemptId: run.attemptId,
+        },
+        actor,
+      )
+      .pipe(Effect.mapError(giveUpRefusal));
+    // A delivery of the same command that overlapped this one may have recorded it first.
+    if (!command.replayed)
+      yield* recordOnce({
+        commandId: input.commandId,
+        kind: "abandonCapture",
+        digest: command.digest,
+        outcome: task.row,
+      });
+    yield* sync(task.row.rootId);
+    return { task: yield* summaryOf(task.row), replayed: command.replayed };
   });
 
   /** A review command names the result it saw; a newer one means the reviewer must look again. */
@@ -1770,14 +1861,24 @@ const make = Effect.gen(function* () {
           });
         }),
       );
+      const assignee = task.assignee.resolved;
+      const code = latest.kind === "code";
       return yield* run({
         commandId: input.commandId,
         task,
-        setup: author.setup,
-        assign: Effect.succeed(author.profileId),
+        // The round goes to the agent the task names now; the result's author stands in when it names none.
+        setup:
+          assignee === null
+            ? author.setup
+            : code
+              ? { ...assignee.setup, workspace: "worktree" }
+              : assignee.setup,
+        assign: Effect.succeed(
+          assignee === null ? author.profileId : (assignee.profile?.id ?? null),
+        ),
         actor,
-        // Code continues from the result under review; a document starts from the task again.
-        baseCommit: latest.kind === "code" ? latest.commit : null,
+        // Code continues from the result under review, in a worktree; a document starts from the task again.
+        baseCommit: code ? latest.commit : null,
         record: command.record,
       }).pipe(
         // A run that was never admitted leaves no trace for a later one; an Accept that won says so.
@@ -2452,6 +2553,7 @@ const make = Effect.gen(function* () {
     stop,
     retry,
     retryCapture,
+    abandonCapture,
     accept,
     requestChanges,
     reopen,

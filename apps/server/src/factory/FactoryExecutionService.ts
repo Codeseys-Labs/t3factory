@@ -9,6 +9,7 @@ import {
   FactoryExecutionRetryInput,
   FactoryExecutionStopInput,
   FactoryExecutionRetryCaptureInput,
+  FactoryExecutionAbandonCaptureInput,
   FactoryExecutionReadInput,
   FactoryExecutionOutputsInput,
   FactoryExecutionOutputReadInput,
@@ -29,6 +30,7 @@ import * as Schema from "effect/Schema";
 import * as Store from "../persistence/FactoryExecutionStore.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as Capture from "./FactoryExecutionCapture.ts";
+import * as Lifecycle from "./FactoryExecutionLifecycle.ts";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import {
   planNativeExecution,
@@ -66,6 +68,14 @@ export class FactoryExecutionService extends Context.Service<
     ) => Effect.Effect<FactoryExecutionMutationResult, FactoryExecutionError>;
     readonly retryCapture: (
       input: FactoryExecutionRetryCaptureInput,
+      actor: FactoryPlanActor,
+    ) => Effect.Effect<FactoryExecutionMutationResult, FactoryExecutionError>;
+    /**
+     * Records that a person gave up the result of an attempt held by a failed capture, then asks
+     * the lifecycle to settle it. Safe to repeat: a replay only asks for settlement again.
+     */
+    readonly abandonCapture: (
+      input: FactoryExecutionAbandonCaptureInput,
       actor: FactoryPlanActor,
     ) => Effect.Effect<FactoryExecutionMutationResult, FactoryExecutionError>;
     readonly requestStop: (
@@ -106,6 +116,7 @@ const decodeAdmit = Schema.decodeEffect(FactoryExecutionAdmitInput);
 const decodeRetry = Schema.decodeEffect(FactoryExecutionRetryInput);
 const decodeStop = Schema.decodeEffect(FactoryExecutionStopInput);
 const decodeRetryCapture = Schema.decodeEffect(FactoryExecutionRetryCaptureInput);
+const decodeAbandonCapture = Schema.decodeEffect(FactoryExecutionAbandonCaptureInput);
 const decodeReadExecution = Schema.decodeEffect(FactoryExecutionReadInput);
 const decodeReadOutputs = Schema.decodeEffect(FactoryExecutionOutputsInput);
 const decodeReadOutput = Schema.decodeEffect(FactoryExecutionOutputReadInput);
@@ -117,6 +128,7 @@ const make = Effect.gen(function* () {
   const adapters = yield* ProviderAdapterRegistryV2;
   const ids = yield* IdAllocator.IdAllocatorV2;
   const projections = yield* Projections.ProjectionStoreV2;
+  const lifecycle = yield* Lifecycle.FactoryExecutionLifecycle;
   const assertEnvironment = Effect.fn("FactoryExecutionService.assertEnvironment")(function* (
     ref: FactoryPlanRef,
   ) {
@@ -330,6 +342,37 @@ const make = Effect.gen(function* () {
       },
     );
   });
+  // Skips the retry budget and the root_run scope check on purpose: either can refuse Save again
+  // forever, which is what leaves a person no way out.
+  const abandonCapture = Effect.fn("FactoryExecutionService.abandonCapture")(function* (
+    raw: FactoryExecutionAbandonCaptureInput,
+    actor: FactoryPlanActor,
+  ) {
+    if (actor.kind !== "human") return yield* new FactoryExecutionError({ reason: "forbidden" });
+    const input = yield* decodeAbandonCapture(raw).pipe(Effect.mapError(invalid));
+    yield* assertEnvironment(input.selection.ref);
+    const binding = yield* store.getBinding(input.runAttemptId);
+    const committed = yield* commit(
+      { type: "abandonCapture", input },
+      actor,
+      input.selection.ref,
+      input.selection.revision,
+      input.commandId,
+      executionDigest(["abandonCapture", actor, input]),
+    );
+    yield* lifecycle.retryHeld({
+      threadId: binding.threadId,
+      runId: binding.runId,
+      runAttemptId: binding.runAttemptId,
+    });
+    return {
+      execution: yield* store.readExecution({
+        ref: input.selection.ref,
+        revision: input.selection.revision,
+      }),
+      replayed: committed.replayed,
+    };
+  });
   const readExecution = Effect.fn("FactoryExecutionService.readExecution")(function* (
     raw: FactoryExecutionReadInput,
   ) {
@@ -421,6 +464,7 @@ const make = Effect.gen(function* () {
     admit,
     retry,
     retryCapture,
+    abandonCapture,
     requestStop,
     readExecution,
     readOutputs,

@@ -330,6 +330,7 @@ export class FactoryResearchError extends Schema.TaggedError<FactoryResearchErro
       "provider-unavailable",
       "persistence-failure",
     ]),
+    detail: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
@@ -344,7 +345,9 @@ export class FactoryResearchError extends Schema.TaggedError<FactoryResearchErro
       case "repository-changed":
         return "The repository changed since this protocol was reviewed. Refresh before continuing.";
       case "invalid-base-ref":
-        return "The base ref does not resolve to a local commit. Choose an existing branch, tag, or commit.";
+        return this.detail === undefined
+          ? "The base ref does not resolve to a local commit. Choose an existing branch, tag, or commit."
+          : `Could not prepare the worktree base: ${this.detail}`;
       case "evaluator-missing":
         return "An evaluator path does not exist at the base commit. Commit the evaluator before sealing.";
       case "missing-protocol":

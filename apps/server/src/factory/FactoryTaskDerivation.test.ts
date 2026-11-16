@@ -412,6 +412,7 @@ describe("workRunState", () => {
     effectsPending: false,
     sessionEnded: false,
     captureFailed: false,
+    givenUp: false,
   } as const;
   type Marks = { readonly lost?: true; readonly captureFailed?: true; readonly note?: string };
   const cases: ReadonlyArray<
@@ -487,6 +488,18 @@ describe("workRunState", () => {
       "a settled run a person stopped is stopped",
       { quiescent: true, engineStop: true, stopByPerson: true, outputStatus: "failed" },
       "stopped",
+    ],
+    [
+      "a given-up result waits on the processes and offers nothing more",
+      { engineStop: true, nativeStatus: "completed", captureFailed: true, givenUp: true },
+      "held",
+      { note: "Waiting for the run's processes to exit" },
+    ],
+    [
+      "a settled run whose result was given up is failed, even one a person stopped",
+      { quiescent: true, engineStop: true, stopByPerson: true, givenUp: true },
+      "failed",
+      { note: "Result given up" },
     ],
     [
       "a settled interrupted run is stopped",

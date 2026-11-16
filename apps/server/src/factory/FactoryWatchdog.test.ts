@@ -22,6 +22,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
+import * as Result from "effect/Result";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -224,6 +225,60 @@ it.effect(
           }),
       }),
       // Linux cgroups can outlive the server, so a missing owner never expires a claim here.
+      Effect.provideService(HostProcess.Platform, "linux"),
+    );
+  },
+);
+
+it.effect(
+  "a given-up result settles only once its owned processes are quiet, and only then can its thread go",
+  () => {
+    let quiet = true;
+    return Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const lifecycle = yield* FactoryExecutionLifecycle.FactoryExecutionLifecycle;
+      // This server ran the turn; the capture ran and kept nothing.
+      const held = yield* admit("given-up", false);
+      yield* lifecycle.runPhase({ ...held, phase: "turn" }, Effect.void);
+      yield* sql`UPDATE factory_execution_bindings SET stop_requested = 1 WHERE attempt_id = ${held.runAttemptId}`;
+      yield* sql`INSERT INTO factory_execution_phases(attempt_id, phase, claimant_id, observation, detail) VALUES (${held.runAttemptId}, 'capture', 'worker', 'quiescent', '')`;
+      const settled = sql<{
+        quiescent: number;
+      }>`SELECT quiescent FROM factory_execution_bindings WHERE attempt_id = ${held.runAttemptId}`.pipe(
+        Effect.map((rows) => rows[0]!.quiescent === 1),
+      );
+      const deletion = lifecycle
+        .guardCommand({
+          type: "thread.delete",
+          commandId: CommandId.make("delete"),
+          threadId: held.threadId,
+        })
+        .pipe(Effect.result);
+
+      // Quiet, but nothing was captured: still held.
+      yield* lifecycle.retryHeld(held);
+      assert.isFalse(yield* settled);
+      yield* sql`INSERT INTO factory_execution_capture_abandonments(attempt_id, capture_key, command_id, session_id, abandoned_at) VALUES (${held.runAttemptId}, 'native-final/1', 'give-up', 'human', ${at})`;
+      // Given up, but the owned job is not observed empty.
+      quiet = false;
+      yield* lifecycle.retryHeld(held);
+      assert.isFalse(yield* settled);
+      const refused = yield* deletion;
+      assert.isTrue(Result.isFailure(refused) && refused.failure.reason === "not-quiescent");
+      quiet = true;
+      yield* lifecycle.retryHeld(held);
+      assert.isTrue(yield* settled);
+      assert.isTrue(Result.isSuccess(yield* deletion));
+    }).pipe(
+      Effect.provide(storage),
+      Effect.provideService(FactoryExecutionLifecycle.FactoryOwnedProcessFactory, {
+        make: () =>
+          Effect.succeed({
+            awaitRootExits: Effect.void,
+            spawner: { spawn: () => Effect.die("This test must not spawn a process.") },
+            quiesce: () => Effect.sync(() => quiet),
+          }),
+      }),
       Effect.provideService(HostProcess.Platform, "linux"),
     );
   },

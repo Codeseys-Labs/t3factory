@@ -241,19 +241,30 @@ describe("runProcess", () => {
 
   it.effect("truncates output when outputMode is truncate", () =>
     Effect.gen(function* () {
-      const spawner = makeSpawner(() => Effect.succeed(makeHandle({ stdout: "x".repeat(2048) })));
+      const spawner = makeSpawner(() =>
+        Effect.succeed(makeHandle({ stdout: "x".repeat(2048), stderr: "y".repeat(1024) })),
+      );
+      const observed = { stdout: 0, stderr: 0 };
 
       const result = yield* runWith(spawner)({
         command: "fake",
         args: ["stdout-bytes", "2048"],
         maxOutputBytes: 128,
         outputMode: "truncate",
+        onStdoutChunk: (chunk) => {
+          observed.stdout += chunk.byteLength;
+        },
+        onStderrChunk: (chunk) => {
+          observed.stderr += chunk.byteLength;
+        },
       });
 
       expect(result.code).toBe(0);
       expect(result.stdout.length).toBeLessThanOrEqual(128);
       expect(result.stdoutTruncated).toBe(true);
-      expect(result.stderrTruncated).toBe(false);
+      expect(result.stderrTruncated).toBe(true);
+      // The chunk callbacks see every byte, not only what the buffer kept.
+      expect(observed).toEqual({ stdout: 2048, stderr: 1024 });
     }),
   );
 

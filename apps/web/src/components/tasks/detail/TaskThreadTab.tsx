@@ -24,6 +24,8 @@ import {
   useThreadStatus,
 } from "../../../state/entities";
 import { useFactoryTaskLiveState } from "../../../state/factoryTasks";
+import { useEnvironmentQuery } from "../../../state/query";
+import { vcsEnvironment } from "../../../state/vcs";
 import { buildThreadRouteParams } from "../../../threadRoutes";
 import type { ExpandedImagePreview } from "../../chat/ExpandedImagePreview";
 import { ThreadTimeline } from "../../chat/ThreadTimeline";
@@ -124,6 +126,13 @@ function TaskThreadTimeline({
   const workStartedAt =
     deriveActiveWorkStartedAt(activityRun, runtime, null) ?? runlessWorkStartedAt;
   const runningRunId = runtime?.activeRunId ?? null;
+  // A task run sets up its worktree before its agent starts; show that as the thread view does.
+  const worktreeSetup =
+    useEnvironmentQuery(
+      activityRun?.status === "preparing"
+        ? vcsEnvironment.worktreeSetup({ environmentId, input: { threadId } })
+        : null,
+    ).data ?? null;
   const follow = useTimelineFollow({
     legendListRef: listRef,
     composerTimelineInset: 0,
@@ -165,6 +174,7 @@ function TaskThreadTimeline({
         runningRunId={runningRunId}
         turnDiffSummaries={NO_TURN_DIFFS}
         runs={projection?.runs ?? []}
+        worktreeSetup={worktreeSetup}
         routeThreadKey={threadKey}
         onOpenThread={openThread}
         supportsConversationRollback={false}

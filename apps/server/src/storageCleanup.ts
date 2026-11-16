@@ -60,6 +60,9 @@ import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import { isNonRepositoryGitStderr } from "./vcs/GitVcsDriverCore.ts";
 import { isLinkedWorktree, removeLinkedWorktree } from "./vcs/worktreeRemoval.ts";
 import { withWorkspaceLease } from "./workspace/workspaceLease.ts";
+import { deliveryState, type TaskDeliveryFact } from "./factory/FactoryTaskDerivation.ts";
+import { taskResultOriginKey } from "./factory/FactoryOriginKey.ts";
+import { executionDigest } from "./factory/FactoryExecutionDigest.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { isNetworkPath } from "@t3tools/shared/path";
@@ -105,6 +108,46 @@ const ORPHAN_WORKTREE_GRACE_MS = 60 * 60 * 1_000;
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 const REPORT_ENTRY_LIMIT = 200;
 const CLEANUP_BRANCH_PREFIXES = ["t3/", "t3-factory/"];
+
+interface CleanupTaskRun {
+  threadId: string;
+  rootId: string;
+  taskId: string;
+  runId: string;
+  attemptId: string | null;
+  quiescent: number | null;
+  taskPresent: string | null;
+  kind: string | null;
+  resultThreadId: string | null;
+  resultId: string | null;
+  resultCommit: string | null;
+  captureId: string | null;
+  captureRunId: string | null;
+  captureAttemptId: string | null;
+  captureCommit: string | null;
+  captureTree: string | null;
+  retainedRef: string | null;
+}
+
+const decodeCleanupDelivery = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    kind: Schema.Literals(["publish-pr", "merge-pr"]),
+    status: Schema.Literals(["pending", "sending", "confirmed", "failed", "unknown"]),
+    remote: Schema.NullOr(
+      Schema.fromJsonString(
+        Schema.Struct({
+          number: Schema.Number,
+          url: Schema.String,
+          merged: Schema.optional(Schema.Literal(true)),
+        }),
+      ),
+    ),
+    repository: Schema.fromJsonString(
+      Schema.Struct({ host: Schema.String, repository: Schema.String }),
+    ),
+    failure: Schema.NullOr(Schema.String),
+  }),
+);
 const isGitCommandError = Schema.is(GitCommandError);
 const errorCode = (error: PlatformError) =>
   error.cause instanceof Error && "code" in error.cause ? error.cause.code : undefined;
@@ -114,6 +157,9 @@ function cleanupFailureReason(error: { readonly message: string }) {
     ? `${error.command}: ${error.detail.split(/\r?\n/)[0]}${error.reason ? ` (${error.reason})` : ""}`
     : (error.message.split(/\r?\n/)[0] ?? error.message);
 }
+
+const taskAdoptionFailureReason = (detail: string) =>
+  `the saved result could not be adopted: ${detail.trim().split(/\r?\n/)[0]?.slice(0, 1000) || "git could not complete the update"}`;
 
 // "Off" promises a project keeps its worktrees, so machine-wide rules skip it too.
 const projectCleanupOff = (settings: ServerSettings, projectId: ProjectId) =>
@@ -1296,6 +1342,183 @@ const make = Effect.gen(function* () {
     );
   });
 
+  const readTaskWorktree = Effect.fn("StorageCleanup.readTaskWorktree")(
+    function* (members: ReadonlyArray<Pick<OrchestrationV2ThreadShell, "id" | "branch">>) {
+      const runs: CleanupTaskRun[] = [];
+      let unavailable = false;
+      let missingRun = false;
+      for (const member of members) {
+        const rows = yield* sql<CleanupTaskRun>`
+        SELECT r.thread_id AS "threadId", r.root_id AS "rootId", r.task_id AS "taskId",
+          r.run_id AS "runId", r.attempt_id AS "attemptId", b.quiescent,
+          t.task_id AS "taskPresent", v.kind, v.thread_id AS "resultThreadId",
+          v.result_id AS "resultId", v.commit_sha AS "resultCommit", o.result_id AS "captureId",
+          json_extract(o.output_json, '$.runId') AS "captureRunId",
+          json_extract(o.output_json, '$.runAttemptId') AS "captureAttemptId",
+          json_extract(o.output_json, '$.checkpoint.commit') AS "captureCommit",
+          json_extract(o.output_json, '$.checkpoint.tree') AS "captureTree",
+          json_extract(o.output_json, '$.checkpoint.retainedRef') AS "retainedRef"
+        FROM factory_task_runs r
+        LEFT JOIN factory_execution_bindings b ON b.attempt_id = r.attempt_id
+          AND b.thread_id = r.thread_id AND b.run_id = r.run_id
+          AND b.root_id = r.root_id AND b.task_id = r.task_id
+        LEFT JOIN factory_tasks t ON t.root_id = r.root_id AND t.task_id = r.task_id
+        LEFT JOIN factory_task_results v ON v.attempt_id = r.attempt_id
+          AND v.root_id = r.root_id AND v.task_id = r.task_id
+        LEFT JOIN factory_execution_results o ON o.result_id = (
+          SELECT result_id FROM factory_execution_results
+          WHERE attempt_id = r.attempt_id AND root_id = r.root_id AND task_id = r.task_id
+          ORDER BY rowid DESC LIMIT 1
+        )
+        WHERE r.thread_id = ${member.id} AND r.purpose = 'work'
+      `.pipe(NodeSqliteClient.readOnly, Effect.option);
+        if (Option.isNone(rows)) unavailable = true;
+        else runs.push(...rows.value);
+        if (Option.isNone(rows) || rows.value.length === 0) {
+          // A binding can precede its task-run mirror; it cannot inherit another run's result.
+          const bindings = yield* sql`
+            SELECT 1 FROM factory_execution_bindings WHERE thread_id = ${member.id} LIMIT 1
+          `.pipe(NodeSqliteClient.readOnly, Effect.option);
+          if (Option.isNone(bindings)) unavailable = true;
+          else if (bindings.value.length > 0) missingRun = true;
+        }
+      }
+      const task =
+        runs.length > 0 ||
+        missingRun ||
+        members.some((member) => member.branch?.startsWith("t3-factory/"));
+      if (!task) return { runs, reason: null, blocked: false };
+      if (
+        unavailable ||
+        missingRun ||
+        runs.length === 0 ||
+        runs.some((run) => run.taskPresent === null || run.quiescent === null)
+      )
+        return { runs, reason: "the task run's state is unavailable", blocked: true };
+      // Side chats and subagents without Factory records inherit the run along the checked owner chain.
+      if (runs[0]?.threadId !== members[0]?.id)
+        return { runs, reason: "the task run's state is unavailable", blocked: true };
+      if (runs.some((run) => run.quiescent !== 1))
+        return { runs, reason: "the task run is still running or held", blocked: true };
+      for (const run of runs) {
+        const latest = yield* sql<{ revision: number }>`
+        SELECT revision FROM factory_task_results WHERE root_id = ${run.rootId}
+          AND task_id = ${run.taskId} ORDER BY revision DESC LIMIT 1
+      `.pipe(NodeSqliteClient.readOnly);
+        if (latest[0] === undefined)
+          return { runs, reason: "the task run has no saved result", blocked: false };
+        const rows = yield* sql<{
+          kind: string;
+          status: string;
+          remote: string | null;
+          repository: string;
+          failure: string | null;
+        }>`
+        SELECT kind, status, remote_json AS remote, repository_json AS repository, failure
+        FROM factory_delivery_intents
+        WHERE origin_key = ${taskResultOriginKey(run.rootId, run.taskId, latest[0].revision)}
+        ORDER BY granted_at, rowid
+      `.pipe(NodeSqliteClient.readOnly);
+        const deliveries: TaskDeliveryFact[] = [];
+        for (const row of rows) {
+          const { repository, ...delivery } = yield* decodeCleanupDelivery(row);
+          deliveries.push({
+            ...delivery,
+            host: repository.host,
+            repository: repository.repository,
+          });
+        }
+        const delivery = deliveryState(deliveries);
+        if (delivery.pullRequest?.state !== "merged" || delivery.delivery !== null)
+          return { runs, reason: "the task is not merged", blocked: false };
+      }
+      return { runs, reason: null, blocked: false };
+    },
+    Effect.orElseSucceed(() => ({
+      runs: [] as CleanupTaskRun[],
+      reason: "the task run's state is unavailable",
+      blocked: true,
+    })),
+  );
+
+  const taskResultReason = Effect.fn("StorageCleanup.taskResultReason")(function* (
+    cwd: string,
+    runs: ReadonlyArray<CleanupTaskRun>,
+  ) {
+    for (const run of runs) {
+      if (
+        run.kind !== "code" ||
+        run.resultCommit === null ||
+        run.captureCommit === null ||
+        run.captureTree === null ||
+        run.retainedRef === null
+      )
+        return "the task run has no saved result";
+      if (
+        run.resultThreadId !== run.threadId ||
+        run.captureId !== run.resultId ||
+        run.captureRunId !== run.runId ||
+        run.captureAttemptId !== run.attemptId ||
+        run.resultCommit !== run.captureCommit ||
+        run.resultCommit !== runs[0]?.resultCommit ||
+        run.retainedRef !== `refs/t3/factory/outputs/${executionDigest(run.attemptId)}` ||
+        !/^[a-f0-9]{40,64}$/.test(run.resultCommit) ||
+        !/^[a-f0-9]{40,64}$/.test(run.captureTree)
+      )
+        return "the saved result does not match its record";
+      const resolved = yield* git.execute({
+        operation: "StorageCleanup.taskResult",
+        cwd,
+        args: ["rev-parse", "--verify", `${run.retainedRef}^{commit}`],
+        allowNonZeroExit: true,
+      });
+      const tree = yield* git.execute({
+        operation: "StorageCleanup.taskResult",
+        cwd,
+        args: ["rev-parse", "--verify", `${run.resultCommit}^{tree}`],
+        allowNonZeroExit: true,
+      });
+      if (
+        resolved.exitCode !== 0 ||
+        resolved.stdout.trim() !== run.resultCommit ||
+        tree.exitCode !== 0 ||
+        tree.stdout.trim() !== run.captureTree
+      )
+        return "the saved result does not match its record";
+    }
+    return null;
+  });
+
+  const taskBranch = Effect.fn("StorageCleanup.taskBranch")(function* (
+    cwd: string,
+    branch: string,
+    commit: string,
+  ) {
+    const current = yield* git.execute({
+      operation: "StorageCleanup.taskBranch",
+      cwd,
+      args: ["symbolic-ref", "--quiet", "HEAD"],
+      allowNonZeroExit: true,
+    });
+    const head = yield* git.execute({
+      operation: "StorageCleanup.taskBranch",
+      cwd,
+      args: ["rev-parse", "--verify", "HEAD"],
+    });
+    const parent = yield* git.execute({
+      operation: "StorageCleanup.taskBranch",
+      cwd,
+      args: ["rev-parse", "--verify", `${commit}^1`],
+      allowNonZeroExit: true,
+    });
+    const tip = head.stdout.trim();
+    return current.exitCode === 0 &&
+      current.stdout.trim() === `refs/heads/${branch}` &&
+      (tip === commit || (parent.exitCode === 0 && tip === parent.stdout.trim()))
+      ? tip
+      : null;
+  });
+
   const cleanWorktrees = Effect.fn("StorageCleanup.cleanWorktrees")(function* (
     serverSettings: ServerSettings,
     now: number,
@@ -1663,9 +1886,110 @@ const make = Effect.gen(function* () {
           if (!deleted) yield* followBranch(worktreePath);
           return keep("repository or branch changed");
         }
-        const changes = yield* localChangesReason(worktreePath, settings);
+        const taskMembers = [thread, ...members.filter((member) => member.id !== thread.id)];
+        const taskWorktree = yield* readTaskWorktree(taskMembers);
+        if (taskWorktree.blocked) return keep(taskWorktree.reason!);
+        const taskRuns = taskWorktree.runs;
+        const taskCommit = taskRuns[0]?.resultCommit ?? null;
+        let taskMergeReason = taskWorktree.reason;
+        let taskResultAdopted = false;
+        if (taskRuns.length > 0 && settings.worktreeOnMerge && taskMergeReason === null) {
+          taskMergeReason = yield* Effect.gen(function* () {
+            const resultReason = yield* taskResultReason(worktreePath, taskRuns);
+            if (resultReason !== null) return resultReason;
+            const sparse = yield* git.execute({
+              operation: "StorageCleanup.taskIndex",
+              cwd: worktreePath,
+              args: ["config", "--bool", "--get", "core.sparseCheckout"],
+              allowNonZeroExit: true,
+            });
+            const flags = yield* git.execute({
+              operation: "StorageCleanup.taskIndex",
+              cwd: worktreePath,
+              args: ["ls-files", "-v", "-z"],
+              maxOutputBytes: 16 * 1024 * 1024,
+            });
+            if (
+              sparse.exitCode > 1 ||
+              sparse.stdout.trim() === "true" ||
+              flags.stdoutTruncated ||
+              flags.stdout.split("\0").some((entry) => /^[Ss] /.test(entry))
+            )
+              return "the task run uses a sparse checkout or skip-worktree entries";
+            const tip = yield* taskBranch(worktreePath, thread.branch!, taskCommit!);
+            if (tip === null) return "the folder has commits that are not in the saved result";
+            const moveReason = yield* withWorkspaceLease(
+              worktreePath,
+              Effect.gen(function* () {
+                const blocked = yield* blockedSinceCheck();
+                if (blocked !== null) return blocked;
+                if (yield* settingsChangedSinceCheck) return "settings changed since check";
+                const latest = yield* readTaskWorktree(taskMembers);
+                if (latest.reason !== null) return latest.reason;
+                if (!Equal.equals(latest.runs, taskRuns))
+                  return "the saved result does not match its record";
+                const tip = yield* taskBranch(worktreePath, thread.branch!, taskCommit!);
+                if (tip === null) return "the folder has commits that are not in the saved result";
+                const submodules = yield* submoduleRemoval(worktreePath, settings);
+                if (submodules.reason !== null) return submodules.reason;
+                if (submodules.force)
+                  return "the task run has submodules that require forced removal";
+                if (tip === taskCommit) return null;
+                // Index first: an interrupted branch update leaves staged changes and can be retried.
+                const merged = yield* git.execute({
+                  operation: "StorageCleanup.taskIndex",
+                  cwd: worktreePath,
+                  args: ["read-tree", "-m", "-i", tip, taskCommit!],
+                  allowNonZeroExit: true,
+                });
+                if (merged.exitCode !== 0) return taskAdoptionFailureReason(merged.stderr);
+                // Invalidate even if the CAS, refresh, or a later check keeps the folder.
+                return yield* Effect.gen(function* () {
+                  const moved = yield* git.execute({
+                    operation: "StorageCleanup.taskBranch",
+                    cwd: worktreePath,
+                    args: [
+                      "update-ref",
+                      "-m",
+                      "storage cleanup: name the saved task result",
+                      `refs/heads/${thread.branch}`,
+                      taskCommit!,
+                      tip,
+                    ],
+                    allowNonZeroExit: true,
+                  });
+                  if (moved.exitCode !== 0) return taskAdoptionFailureReason(moved.stderr);
+                  // A late edit makes refresh exit nonzero; localChangesReason explains it below.
+                  yield* git.execute({
+                    operation: "StorageCleanup.taskIndex",
+                    cwd: worktreePath,
+                    args: ["update-index", "-q", "--refresh"],
+                    allowNonZeroExit: true,
+                  });
+                  return null;
+                }).pipe(Effect.ensuring(gitManager.invalidateStatus(worktreePath)));
+              }),
+            ).pipe(
+              Effect.catchTags({
+                GitCommandError: (error) => Effect.succeed(taskAdoptionFailureReason(error.detail)),
+              }),
+            );
+            return moveReason;
+          });
+          if (taskMergeReason === null) {
+            taskResultAdopted = true;
+            eligible = true;
+            removalReason = "the task's pull request was merged";
+          }
+        }
+        const checkChangesAfterEligibility = !eligible && taskMergeReason !== null;
+        const changes = checkChangesAfterEligibility
+          ? null
+          : yield* localChangesReason(worktreePath, settings);
         if (changes !== null) return keep(changes);
         const head = yield* git.resolveCommit({ cwd: worktreePath, revision: "HEAD" });
+        if (taskResultAdopted && head.commitSha !== taskCommit)
+          return keep("the folder has commits that are not in the saved result");
         if (!eligible) {
           const repositoryCwd = path.resolve(project.workspaceRoot);
           const remotes = yield* git.execute({
@@ -1684,7 +2008,7 @@ const make = Effect.gen(function* () {
               return keep(
                 settings.worktreeUnchanged
                   ? notDueReason
-                  : "no remote is configured for merged-worktree cleanup",
+                  : (taskMergeReason ?? "no remote is configured for merged-worktree cleanup"),
               );
             const projectHead = yield* git.execute({
               operation: "StorageCleanup.resolveProjectBranch",
@@ -1726,9 +2050,16 @@ const make = Effect.gen(function* () {
             if (eligible) removalReason = "pull request was merged";
           }
           if (!eligible && remote === null)
-            return keep(integrated ? notDueReason : "has commits beyond the project branch");
+            return keep(
+              taskMergeReason ??
+                (integrated ? notDueReason : "has commits beyond the project branch"),
+            );
         }
-        if (!eligible) return keep(notDueReason);
+        if (!eligible) return keep(taskMergeReason ?? notDueReason);
+        if (checkChangesAfterEligibility) {
+          const changes = yield* localChangesReason(worktreePath, settings);
+          if (changes !== null) return keep(changes);
+        }
         const blocked = yield* blockedSinceCheck();
         if (blocked !== null) return keep(blocked);
         // Inspect before the lease; provider startup must not wait for directory traversal.
@@ -1754,11 +2085,20 @@ const make = Effect.gen(function* () {
             if (yield* settingsChangedSinceCheck) return keep("settings changed since check");
             const submodules = yield* submoduleRemoval(worktreePath, settings);
             if (submodules.reason !== null) return keep(submodules.reason);
+            if (taskResultAdopted && submodules.force)
+              return keep("the task run has submodules that require forced removal");
             if (submodules.force) {
               const changes = yield* localChangesReason(worktreePath, settings);
               if (changes !== null) return keep(changes);
             }
             const repository = yield* worktreeRepository(worktreePath);
+            if (taskRuns.length > 0) {
+              const latest = yield* readTaskWorktree(taskMembers);
+              if (latest.blocked || (taskResultAdopted && latest.reason !== null))
+                return keep(latest.reason!);
+              if (!Equal.equals(latest.runs, taskRuns))
+                return keep("the saved result does not match its record");
+            }
             // Forced removal already discards local files; do not widen its final-check window.
             if (settings.worktreeKeepWhen === "tracked-changes" && !submodules.force)
               yield* cleanupGit(worktreePath, ["clean", "-ffdx"], "git clean");

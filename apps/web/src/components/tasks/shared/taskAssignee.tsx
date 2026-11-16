@@ -11,7 +11,7 @@ import type {
   ProjectId,
 } from "@t3tools/contracts";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { type ReactElement, useState } from "react";
+import { type ReactElement, useRef, useState } from "react";
 
 import { factoryTasks, useFactoryAgentProfiles } from "../../../state/factoryTasks";
 import { ComposerEffortColumn } from "../../chat/ComposerModelEffort";
@@ -173,8 +173,9 @@ export function TaskAssigneePicker({
   const choices = useTaskModelChoices(environmentId, projectId);
   const defaultMode = useTaskDefaultRuntimeMode(environmentId, projectId);
   const [pinning, setPinning] = useState(false);
-  // The pin in progress, so the option controls follow a pick before the saved task catches up.
-  const [pending, setPending] = useState<FactoryAgentSetup | null>(null);
+  // The model picks made while the popup is open, so the controls follow them before the saved
+  // task catches up. Only what this picker edits: the rest of the setup is read from the saved pin.
+  const [pending, setPending] = useState<FactoryAgentSetup["modelSelection"] | null>(null);
   const profiles =
     profilesResult._tag === "Success"
       ? profilesResult.value.profiles.map(({ profile }) => {
@@ -184,7 +185,11 @@ export function TaskAssigneePicker({
       : [];
   const pinnedSetup = value.mode === "pinned" ? value.setup : null;
   const pinned = pinnedSetup ? presentTaskSetup(pinnedSetup, catalog) : null;
-  const current = pending ?? pinnedSetup;
+  const current: FactoryAgentSetup | null = pending
+    ? pinnedSetup
+      ? { ...pinnedSetup, modelSelection: pending }
+      : pinnedSetupFor(pending, defaultMode)
+    : pinnedSetup;
   const activeInstanceId =
     current?.modelSelection.instanceId ??
     choices.instanceEntries.find((entry) => entry.enabled)?.instanceId ??
@@ -208,7 +213,7 @@ export function TaskAssigneePicker({
     setPinning(true);
   };
   const commit = (setup: FactoryAgentSetup) => {
-    setPending(setup);
+    setPending(setup.modelSelection);
     onChange({ mode: "pinned", setup });
   };
   const traits = current
@@ -300,6 +305,8 @@ export function TaskAssigneeEditor({ task }: { task: FactoryTaskSummary }) {
   const canUpdate = useAtomValue(factoryTasks.updateTask.permissionAtom(environmentId));
   const parent = useParentAssignee(task);
   const actions = useTaskActions();
+  // One save at a time, in the order chosen: a slower earlier save must not land after a later one.
+  const saves = useRef<Promise<unknown>>(Promise.resolve());
   const running =
     task.liveRuns.some((run) => run.taskId === task.ref.taskId) ||
     task.run?.state === "running" ||
@@ -318,7 +325,9 @@ export function TaskAssigneeEditor({ task }: { task: FactoryTaskSummary }) {
       projectId={projectId}
       type={task.type}
       value={task.assignee.assignment}
-      onChange={(assignment) => void actions.update(task, { assignment })}
+      onChange={(assignment) => {
+        saves.current = saves.current.then(() => actions.update(task, { assignment }));
+      }}
       trigger={<AssigneeChip assignee={chip} render={<button type="button" />} />}
       allowUnassigned
       {...(parent ? { parent } : {})}

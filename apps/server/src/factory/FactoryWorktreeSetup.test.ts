@@ -6,6 +6,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import { OwnedProcess, type OwnedProcessSpawner } from "@t3tools/shared/ownedProcess";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -165,7 +166,7 @@ it.effect("keeps the newest lines when the last output is long", () =>
           return {
             stdout: "",
             stderr: "",
-            code: 1,
+            code: ChildProcessSpawner.ExitCode(1),
             timedOut: false,
             stdoutTruncated: false,
             stderrTruncated: false,

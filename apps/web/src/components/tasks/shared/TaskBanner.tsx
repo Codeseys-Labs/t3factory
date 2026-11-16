@@ -28,6 +28,7 @@ import {
 import { Textarea } from "../../ui/textarea";
 import { assigneeText, type KitAction, StatusBanner, type StatusBannerState } from "../kit";
 import { openTaskSetup } from "../taskDialogs";
+import { useGiveUpResult } from "./GiveUpResultDialog";
 import { TaskAsk } from "./TaskAsk";
 import { useTaskActions, useTaskPermissions } from "./taskActions";
 import { useTaskAssigneeChip } from "./taskAssigneeChip";
@@ -81,6 +82,7 @@ export function TaskBanner({
   const checks = useTaskPullRequestChecks(task);
   const [busy, setBusy] = useState(false);
   const [requestingChanges, setRequestingChanges] = useState(false);
+  const giveUp = useGiveUpResult(task);
   const need = needs[0];
   const wantsPlan = needs.some(
     (entry) => entry.reason === "plan" && entry.ref.taskId === task.ref.taskId,
@@ -160,6 +162,8 @@ export function TaskBanner({
         return kit(() => runAction(() => actions.retry(task)), permissions.retry);
       case "save-again":
         return kit(() => runAction(() => actions.saveAgain(task)), permissions.saveAgain);
+      case "give-up":
+        return kit(() => run && giveUp.open(run), permissions.giveUp && run !== null);
       case "break-down":
         return kit(() => openTaskSetup(task.ref, "break-down"), permissions.breakDown);
       case "stop":
@@ -228,6 +232,7 @@ export function TaskBanner({
         {...(primary ? { primary } : {})}
         {...(secondary ? { secondary } : {})}
       />
+      {giveUp.dialog}
       {requestingChanges && revision !== undefined ? (
         <RequestChangesDialog
           agent={

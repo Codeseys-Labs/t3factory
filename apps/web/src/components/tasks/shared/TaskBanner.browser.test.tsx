@@ -430,9 +430,12 @@ it("gives up the run the person confirmed even when a newer run is held meanwhil
   await expect.element(confirmation.getByText("Give up the result of run 1?")).toBeVisible();
   await screen.rerender(<TaskBanner task={held(2)} />);
   await expect.element(confirmation.getByText("Give up the result of run 1?")).toBeVisible();
+  // The same banner showing another task must not send that task with the confirmed run.
+  await screen.rerender(<TaskBanner task={{ ...fixture("T-41"), run: held(2).run }} />);
+  await expect.element(confirmation.getByText("Give up the result of run 1?")).toBeVisible();
   await userEvent.click(confirmation.getByRole("button", { name: "Give up result" }));
   expect(mocks.actions.giveUp).toHaveBeenCalledExactlyOnceWith(
-    expect.anything(),
+    expect.objectContaining({ ref: failed.ref }),
     RunId.make("run-29-1"),
   );
 });

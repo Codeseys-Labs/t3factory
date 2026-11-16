@@ -17,21 +17,26 @@ import { presentGiveUpFolder } from "./GiveUpResultDialog.logic";
 import { useTaskActions } from "./taskActions";
 
 /**
- * Opens the confirmation for giving up a held run's result. The run is copied when the
- * confirmation opens, so a live update cannot swap in a run the person never confirmed; the
+ * Opens the confirmation for giving up a held run's result. The task and run are copied when the
+ * confirmation opens, so a live update cannot swap in a pair the person never confirmed; the
  * server refuses that copy once it is no longer the held run.
  */
 export function useGiveUpResult(task: FactoryTaskSummary | null): {
   open: (run: FactoryTaskRun) => void;
   dialog: ReactNode;
 } {
-  const [run, setRun] = useState<FactoryTaskRun | null>(null);
+  const [confirming, setConfirming] = useState<{
+    readonly task: FactoryTaskSummary;
+    readonly run: FactoryTaskRun;
+  } | null>(null);
   return {
-    open: setRun,
+    open: (run) => {
+      if (task !== null) setConfirming({ task, run });
+    },
     dialog:
-      task !== null && run !== null ? (
-        <GiveUpResultDialog task={task} run={run} onClose={() => setRun(null)} />
-      ) : null,
+      confirming === null ? null : (
+        <GiveUpResultDialog {...confirming} onClose={() => setConfirming(null)} />
+      ),
   };
 }
 

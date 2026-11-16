@@ -1927,6 +1927,8 @@ const make = Effect.gen(function* () {
               Effect.orElseSucceed((): ReadonlyArray<string> => []),
             );
     const report = content?.body ?? (yield* resultReport(row, result));
+    const selections = yield* sql<{ model: string | null; instanceId: string | null }>`SELECT json_extract(setup_json, '$.modelSelection.model') AS model, json_extract(setup_json, '$.modelSelection.instanceId') AS instanceId FROM factory_task_runs WHERE thread_id = ${result.threadId}`.pipe(Effect.mapError((cause) => new FactoryTaskError({ reason: "persistence-failure", cause })));
+    const selection = selections[0];
     return {
       title:
         content?.title.trim().slice(0, FACTORY_DELIVERY_TITLE_MAX_CHARS) ??
@@ -1936,6 +1938,9 @@ const make = Effect.gen(function* () {
       body: [
         report.length > REPORT_MAX_CHARS ? `${report.slice(0, REPORT_MAX_CHARS)}\n\n…` : report,
         `---\n_Task ${row.displayId} · result rev ${result.revision} · ${result.summary}_`,
+        selection?.model && selection.instanceId
+          ? `Model \`${selection.model}\` in \`${selection.instanceId}\` via T3 Factory.`
+          : "",
       ]
         .filter((part) => part !== "")
         .join("\n\n"),

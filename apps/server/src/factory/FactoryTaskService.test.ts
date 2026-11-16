@@ -2747,7 +2747,7 @@ it.effect(
             {
               branch: `t3/T-1-rev1-${executionDigest([environmentId, projectId, task.ref.rootId, task.ref.taskId]).slice(0, 32)}/audio-ring-demo`,
               title: generatedPr.title,
-              body: `${generatedPr.body}\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_`,
+              body: `${generatedPr.body}\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_\n\nModel \`replay\` in \`devReplay\` via T3 Factory.`,
               head: resultCommit,
             },
           ],
@@ -3271,7 +3271,8 @@ it.effect.each(["provider-error", "empty", "timeout", "no default branch"] as co
                   }),
                 );
         const task = yield* create("Audio ring demo", { lane: "ready" });
-        yield* finish((yield* start(task)).run!, "sealed", "Original run report");
+        const run = (yield* start(task)).run!;
+        yield* finish(run, "sealed", "Original run report");
         yield* until(task, (current) => current.status === "in-review");
         yield* tasks.accept({ commandId: command("accept"), ref: task.ref, revision: 1 }, human);
         // Publish is refused without a default branch, so the writer is not asked first.
@@ -3293,7 +3294,7 @@ it.effect.each(["provider-error", "empty", "timeout", "no default branch"] as co
           [
             {
               title: "fix(board): cards keep their width",
-              body: "Original run report\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_",
+              body: "Original run report\n\n---\n_Task T-1 · result rev 1 · +184 −20 · 2 files_\n\nModel `replay` in `devReplay` via T3 Factory.",
             },
           ],
         );

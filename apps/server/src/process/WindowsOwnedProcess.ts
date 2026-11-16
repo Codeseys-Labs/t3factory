@@ -328,6 +328,11 @@ exit 125
             },
             catch: platformError,
           }).pipe(
+            // The helper ends itself right after reporting empty. Closing the native scope before
+            // Node has seen that exit makes the spawner kill the helper's tree: two seconds a command.
+            Effect.tap(() =>
+              handle.exitCode.pipe(Effect.timeoutOption("5 seconds"), Effect.ignore),
+            ),
             Effect.ensuring(
               Effect.sync(() => {
                 socket?.destroy();

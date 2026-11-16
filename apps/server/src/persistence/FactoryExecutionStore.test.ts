@@ -604,17 +604,37 @@ it.effect(
 );
 
 it.effect(
-  "CASes nullable retry result against every captured result, including unselected failure captures",
+  "admits a retry once an unprompted attempt settles, CASing its result against every captured result",
   () =>
     Effect.gen(function* () {
       yield* seed;
       yield* grant;
       const admitted = yield* bindingFor();
       yield* decide({ type: "admit", ...admitted });
-      yield* nativeTerminal(admitted.binding, "failed");
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`UPDATE factory_execution_bindings SET quiescent = 1, stop_requested = 1`;
       const store = yield* Store.FactoryExecutionStore;
+      // A start that opened its session and native thread but never claimed its turn.
+      const phases = (["session", "native-thread"] as const).map((phase) => ({
+        runAttemptId: admitted.binding.runAttemptId,
+        phase,
+        claimantId: phase,
+      }));
+      for (const phase of phases) assert.equal((yield* store.claimPhase(phase)).status, "claimed");
+      assert.isFalse(
+        yield* store.stopUnprompted({
+          ...admitted.binding,
+          runAttemptId: RunAttemptId.make("attempt:replaced"),
+        }),
+      );
+      assert.isFalse((yield* store.getBinding(admitted.binding.runAttemptId)).stopRequested);
+      assert.isTrue(yield* store.stopUnprompted(admitted.binding));
+      assert.deepInclude(yield* store.getBinding(admitted.binding.runAttemptId), {
+        stopRequested: true,
+        quiescent: false,
+      });
+      const turn = { ...phases[0]!, phase: "turn", claimantId: "turn" } as const;
+      assert.equal((yield* store.claimPhase(turn)).status, "suppressed");
+      assert.isFalse(yield* store.stopUnprompted(admitted.binding));
+      yield* nativeTerminal(admitted.binding, "failed");
       const retry = {
         commandId: CommandId.make("retry"),
         selection,
@@ -625,6 +645,16 @@ it.effect(
         priorResultId: null,
         intent: "retry",
       } as const;
+      const early = yield* store.prepareAdmission(retry, human, at).pipe(Effect.result);
+      assert.isTrue(Result.isFailure(early));
+      if (Result.isFailure(early)) assert.equal(early.failure.reason, "not-quiescent");
+      for (const phase of phases)
+        yield* store.settlePhase({ ...phase, observation: "quiescent", detail: "joined" });
+      yield* store.settleAttempt({
+        runAttemptId: admitted.binding.runAttemptId,
+        observation: "quiescent",
+        detail: "joined",
+      });
       assert.equal((yield* store.prepareAdmission(retry, human, at)).taskVersion, 2);
       yield* store.retainCapture({
         runId: admitted.binding.runId,
@@ -902,6 +932,187 @@ it.effect(
       );
       assert.equal((yield* store.getBinding(id)).runId, admitted.binding.runId);
       assert.isFalse((yield* store.getBinding(id)).quiescent);
+    }).pipe(Effect.provide(layer)),
+);
+
+/** An attempt whose turn ended and whose capture ran and kept nothing: held, every writer gone. */
+const heldForCapture = Effect.gen(function* () {
+  yield* seed;
+  yield* grant;
+  const admitted = yield* bindingFor();
+  yield* decide({ type: "admit", ...admitted });
+  yield* nativeTerminal(admitted.binding);
+  const store = yield* Store.FactoryExecutionStore;
+  const sql = yield* SqlClient.SqlClient;
+  const id = admitted.binding.runAttemptId;
+  yield* store.requestNativeStop({ threadId: admitted.binding.threadId, detail: "turn ended" });
+  for (const phase of ["turn", "capture"])
+    yield* sql`INSERT INTO factory_execution_phases(attempt_id, phase, claimant_id, observation, detail) VALUES (${id}, ${phase}, 'worker', 'quiescent', '')`;
+  const giveUp = (commandId: string, runId = admitted.binding.runId) =>
+    decide({
+      type: "abandonCapture",
+      input: { commandId: CommandId.make(commandId), selection, runId, runAttemptId: id },
+    });
+  const saveAgain = (commandId: string) =>
+    decide({
+      type: "retryCapture",
+      input: {
+        commandId: CommandId.make(commandId),
+        selection,
+        runId: admitted.binding.runId,
+        runAttemptId: id,
+        expectedResultId: null,
+      },
+    });
+  const abandonments = sql<{
+    captureKey: string;
+    commandId: string;
+  }>`SELECT capture_key AS captureKey, command_id AS commandId FROM factory_execution_capture_abandonments WHERE attempt_id = ${id}`;
+  return { admitted, store, sql, id, giveUp, saveAgain, abandonments };
+});
+
+it.effect.each([
+  ["an agent", "forbidden"],
+  ["no stop requested", "not-quiescent"],
+  ["no capture phase", "not-quiescent"],
+  ["a phase still claimed", "not-quiescent"],
+  ["a phase not observed", "not-quiescent"],
+  ["an effect pending on the thread", "not-quiescent"],
+  ["an attempt already settled", "task-conflict"],
+  ["a sealed result", "task-conflict"],
+  ["another run named", "task-conflict"],
+] as const)("refuses to give up a held result with %s", ([condition, reason]) =>
+  Effect.gen(function* () {
+    const held = yield* heldForCapture;
+    const { sql, id, admitted } = held;
+    let runId = admitted.binding.runId;
+    let actor: Store.FactoryExecutionActor = human;
+    if (condition === "an agent") actor = { kind: "agent", threadId: admitted.binding.threadId };
+    if (condition === "no stop requested")
+      yield* sql`UPDATE factory_execution_bindings SET stop_requested = 0 WHERE attempt_id = ${id}`;
+    if (condition === "no capture phase")
+      yield* sql`DELETE FROM factory_execution_phases WHERE attempt_id = ${id} AND phase = 'capture'`;
+    if (condition === "a phase still claimed")
+      yield* sql`UPDATE factory_execution_phases SET observation = 'claimed' WHERE attempt_id = ${id} AND phase = 'turn'`;
+    if (condition === "a phase not observed")
+      yield* sql`UPDATE factory_execution_phases SET observation = 'unknown' WHERE attempt_id = ${id} AND phase = 'turn'`;
+    if (condition === "an effect pending on the thread")
+      yield* sql`INSERT INTO orchestration_v2_effect_outbox (effect_id, command_id, thread_id, effect_type, payload_json, status, attempt_count, available_at, created_at, updated_at) VALUES ('effect:finalize', 'command:finalize', ${admitted.binding.threadId}, 'factory.execution.finalize', '{}', 'pending', 0, ${at}, ${at}, ${at})`;
+    if (condition === "an attempt already settled")
+      yield* sql`UPDATE factory_execution_bindings SET quiescent = 1 WHERE attempt_id = ${id}`;
+    if (condition === "a sealed result")
+      yield* held.store.retainCapture({
+        runId,
+        runAttemptId: id,
+        captureKey: "native-final/1",
+        slot: "draft",
+        text: "Sealed",
+        status: "sealed",
+        checkpoint: null,
+      });
+    if (condition === "another run named") runId = RunId.make("run:other");
+    const refused = yield* decide(
+      {
+        type: "abandonCapture",
+        input: { commandId: CommandId.make("give-up"), selection, runId, runAttemptId: id },
+      },
+      actor,
+    ).pipe(
+      Effect.map((decision) => decision.error),
+      Effect.catchTags({ FactoryExecutionError: (error) => Effect.succeed(error.reason) }),
+    );
+    assert.equal(refused, reason);
+    assert.deepEqual(yield* held.abandonments, []);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "gives up a held result once, past the retry budget, and settles it only through the proof",
+  () =>
+    Effect.gen(function* () {
+      const { store, sql, id, admitted, giveUp, saveAgain, abandonments } = yield* heldForCapture;
+      // Save again has used the grant's two tries, and the second also kept nothing.
+      for (const generation of [1, 2])
+        yield* sql`INSERT INTO factory_execution_capture_retries(attempt_id, generation, command_id, prior_phase_json) VALUES (${id}, ${generation}, ${`retry-${generation}`}, '{}')`;
+      assert.equal((yield* saveAgain("save-again")).error, "budget-exhausted");
+      const retry = {
+        commandId: CommandId.make("retry"),
+        selection,
+        grantVersion: 1,
+        expectedTaskVersion: 1,
+        priorRunId: admitted.binding.runId,
+        priorRunAttemptId: id,
+        priorResultId: null,
+        intent: "retry",
+      } as const;
+      const retryRefusal = store.prepareAdmission(retry, human, at).pipe(
+        Effect.flip,
+        Effect.map((error) => error.reason),
+      );
+
+      const given = yield* giveUp("give-up");
+      assert.deepEqual([given.error, given.executeNative, given.replayed], [null, false, false]);
+      assert.deepEqual(yield* abandonments, [
+        { captureKey: "native-final/3", commandId: "give-up" },
+      ]);
+      // Recorded, not settled: the run stays held and keeps its capacity.
+      assert.deepEqual(
+        [given.result!.tasks[0]!.status, given.result!.tasks[0]!.hold],
+        ["held", "writer-quiescence-unconfirmed"],
+      );
+      assert.isFalse((yield* store.getBinding(id)).quiescent);
+      assert.equal(yield* retryRefusal, "not-quiescent");
+
+      const replayed = yield* giveUp("give-up");
+      assert.deepEqual([replayed.replayed, replayed.error], [true, null]);
+      assert.deepEqual(replayed.result, given.result);
+      assert.equal(
+        (yield* giveUp("give-up", RunId.make("run:other")).pipe(Effect.flip)).reason,
+        "command-conflict",
+      );
+      assert.equal((yield* giveUp("give-up-twice")).error, "task-conflict");
+      assert.equal((yield* saveAgain("save-after-give-up")).error, "task-conflict");
+      assert.equal(
+        (yield* store.claimPhase({
+          runAttemptId: id,
+          phase: "capture",
+          claimantId: "late-capture",
+          captureGeneration: 3,
+        })).status,
+        "held",
+      );
+
+      // Settlement still needs every phase observed.
+      for (const observation of ["unknown", "claimed"]) {
+        yield* sql`UPDATE factory_execution_phases SET observation = ${observation} WHERE attempt_id = ${id} AND phase = 'turn'`;
+        const refused = yield* store
+          .settleAttempt({ runAttemptId: id, observation: "no-start", detail: "Recovery" })
+          .pipe(Effect.flip);
+        assert.equal(refused.reason, "not-quiescent");
+      }
+      yield* sql`UPDATE factory_execution_phases SET observation = 'quiescent' WHERE attempt_id = ${id} AND phase = 'turn'`;
+      yield* store.settleAttempt({ runAttemptId: id, observation: "no-start", detail: "Recovery" });
+      assert.isTrue((yield* store.getBinding(id)).quiescent);
+      const state = (yield* store.readExecution({ ref, revision: 1 })).tasks[0]!;
+      assert.deepEqual([state.status, state.hold, state.selectedResult], ["failed", null, null]);
+      assert.equal((yield* store.prepareAdmission(retry, human, at)).taskVersion, 2);
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect.each(["save again", "give up"] as const)(
+  "lets the first of Save again and give up win when %s commits first",
+  (first) =>
+    Effect.gen(function* () {
+      const { giveUp, saveAgain, abandonments } = yield* heldForCapture;
+      if (first === "save again") {
+        assert.equal((yield* saveAgain("save-again")).error, null);
+        assert.equal((yield* giveUp("give-up")).error, "not-quiescent");
+        assert.deepEqual(yield* abandonments, []);
+      } else {
+        assert.equal((yield* giveUp("give-up")).error, null);
+        assert.equal((yield* saveAgain("save-again")).error, "task-conflict");
+        assert.equal((yield* abandonments).length, 1);
+      }
     }).pipe(Effect.provide(layer)),
 );
 

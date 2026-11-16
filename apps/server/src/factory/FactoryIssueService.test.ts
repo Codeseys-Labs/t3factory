@@ -185,6 +185,7 @@ function harness(
       resolveWorktreeBaseRemote: ({ refName }) =>
         Effect.succeed({ remoteName: "origin", branchName: refName }),
       remoteBranchExists: () => Effect.succeed(true),
+      fetchWorktreeBaseCommit: () => Effect.succeed(null),
       execute:
         options.execute ??
         (({ cwd, args }) =>
@@ -1093,11 +1094,16 @@ it.effect("refuses an unresolved local base without leaving a reservation", () =
   Effect.gen(function* () {
     yield* seed;
     const factory = yield* Factory.FactoryIssueService;
-    assert.equal(
-      (yield* factory
-        .start({ ...(yield* reviewedInput("bad-base")), baseRef: "missing" })
-        .pipe(Effect.flip)).reason,
-      "invalid-base-ref",
+    const refused = yield* factory
+      .start({ ...(yield* reviewedInput("bad-base")), baseRef: "missing" })
+      .pipe(Effect.flip);
+    // Git's own words for a ref that does not exist say nothing a person can act on.
+    assert.deepEqual(
+      [refused.reason, refused.message],
+      [
+        "invalid-base-ref",
+        "The base ref does not resolve to a local commit. Choose an existing branch, tag, or commit.",
+      ],
     );
     const sql = yield* SqlClient.SqlClient;
     assert.equal((yield* sql`SELECT * FROM factory_issue_launches`).length, 0);

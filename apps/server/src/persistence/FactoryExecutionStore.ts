@@ -17,6 +17,7 @@ import {
   type FactoryExecutionStopInput,
   type FactoryPreparationAcceptInput,
   type FactoryExecutionRetryCaptureInput,
+  type FactoryExecutionAbandonCaptureInput,
   type FactoryPreparationReopenInput,
   type FactoryExecutionReadInput,
   type FactoryExecutionOutputsInput,
@@ -89,6 +90,7 @@ export type ExecutionOperation =
     }
   | { readonly type: "stop"; readonly input: FactoryExecutionStopInput }
   | { readonly type: "retryCapture"; readonly input: FactoryExecutionRetryCaptureInput }
+  | { readonly type: "abandonCapture"; readonly input: FactoryExecutionAbandonCaptureInput }
   | { readonly type: "accept"; readonly input: FactoryPreparationAcceptInput }
   | { readonly type: "reopen"; readonly input: FactoryPreparationReopenInput }
   | { readonly type: "observe"; readonly input: ObserveResultInput }
@@ -222,6 +224,12 @@ export class FactoryExecutionStore extends Context.Service<
       readonly runId?: RunId;
       readonly detail: string;
     }) => Effect.Effect<void, FactoryExecutionError>;
+    /** Fences an attempt that never claimed its turn; false once a prompt may have been sent. */
+    readonly stopUnprompted: (input: {
+      readonly threadId: ThreadId;
+      readonly runId: RunId;
+      readonly runAttemptId: RunAttemptId;
+    }) => Effect.Effect<boolean, FactoryExecutionError>;
     readonly retainCapture: (
       input: ObserveResultInput,
     ) => Effect.Effect<void, FactoryExecutionError>;
@@ -229,6 +237,13 @@ export class FactoryExecutionStore extends Context.Service<
       attemptId: RunAttemptId,
     ) => Effect.Effect<ObserveResultInput | null, FactoryExecutionError>;
     readonly captureKey: (attemptId: RunAttemptId) => Effect.Effect<string, FactoryExecutionError>;
+    /** Who gave up the attempt's result, and when; null when nobody did. */
+    readonly abandonment: (
+      attemptId: RunAttemptId,
+    ) => Effect.Effect<
+      { readonly commandId: CommandId; readonly abandonedAt: string } | null,
+      FactoryExecutionError
+    >;
     readonly preparationHistory: (
       input: FactoryExecutionReadInput,
     ) => Effect.Effect<
@@ -503,6 +518,15 @@ const make = Effect.gen(function* () {
     }>`SELECT output_json AS json FROM factory_execution_results WHERE attempt_id = ${attemptId} ORDER BY rowid DESC LIMIT 1`;
     return rows[0] ? yield* decodeOutput(rows[0].json) : null;
   }, Effect.mapError(failure));
+  const abandonment = Effect.fn("FactoryExecutionStore.abandonment")(function* (
+    attemptId: RunAttemptId,
+  ) {
+    const rows = yield* sql<{
+      commandId: CommandId;
+      abandonedAt: string;
+    }>`SELECT command_id AS commandId, abandoned_at AS abandonedAt FROM factory_execution_capture_abandonments WHERE attempt_id = ${attemptId}`;
+    return rows[0] ?? null;
+  }, Effect.mapError(failure));
   const nativeStatus = Effect.fn("FactoryExecutionStore.nativeStatus")(function* (
     binding: FactoryExecutionBinding,
   ) {
@@ -543,8 +567,11 @@ const make = Effect.gen(function* () {
       )
         return yield* new FactoryExecutionError({ reason: "task-conflict" });
       if (!prior.quiescent) return yield* new FactoryExecutionError({ reason: "not-quiescent" });
+      // A given-up result counts as a failed run, whatever the turn itself reported.
       if (
-        (!isFailed(yield* nativeStatus(prior)) && result?.status !== "failed") ||
+        (!isFailed(yield* nativeStatus(prior)) &&
+          result?.status !== "failed" &&
+          (yield* abandonment(prior.runAttemptId)) === null) ||
         result?.status === "sealed"
       )
         return yield* new FactoryExecutionError({ reason: "task-conflict" });
@@ -705,6 +732,7 @@ const make = Effect.gen(function* () {
       const selectedResult = row?.resultId ? yield* outputById(row.resultId) : null;
       const captured = binding ? yield* latestCapture(binding.runAttemptId) : null;
       const status = binding ? yield* nativeStatus(binding) : null;
+      const abandoned = binding ? (yield* abandonment(binding.runAttemptId)) !== null : false;
       const dependencyMissing =
         !binding &&
         plan.edges.some(
@@ -727,7 +755,7 @@ const make = Effect.gen(function* () {
                 status === "completed" ||
                 isFailed(status ?? ""))
             ? "writer-quiescence-unconfirmed"
-            : captured?.status === "held"
+            : captured?.status === "held" && !abandoned
               ? "capture-held"
               : null;
       tasks.push({
@@ -740,7 +768,7 @@ const make = Effect.gen(function* () {
           : hold
             ? "held"
             : binding
-              ? isFailed(status ?? "") || captured?.status === "failed"
+              ? isFailed(status ?? "") || captured?.status === "failed" || abandoned
                 ? "failed"
                 : "running"
               : "idle",
@@ -1037,7 +1065,8 @@ const make = Effect.gen(function* () {
         state.acceptance ||
         state.reopened ||
         (latest?.resultId ?? null) !== op.input.expectedResultId ||
-        latest?.status === "sealed"
+        latest?.status === "sealed" ||
+        (yield* abandonment(binding.runAttemptId)) !== null
       )
         return yield* new FactoryExecutionError({ reason: "task-conflict" });
       const phases = yield* sql<{
@@ -1087,6 +1116,46 @@ const make = Effect.gen(function* () {
         Effect.mapError(failure),
       );
       return { executeNative: true, advance: false };
+    } else if (op.type === "abandonCapture") {
+      // It records the loss and nothing else: no capture and no quiescence is written here, so
+      // the attempt settles only once the lifecycle observes its owned processes again.
+      if (commit.actor.kind !== "human")
+        return yield* new FactoryExecutionError({ reason: "forbidden" });
+      const binding = yield* getBinding(op.input.runAttemptId);
+      const state = yield* readExecution({ ref: commit.ref, revision: commit.revision });
+      const current = state.tasks.find((task) => task.taskId === binding.selection.taskId);
+      if (
+        binding.runId !== op.input.runId ||
+        canonicalExecutionJson(binding.selection) !== canonicalExecutionJson(op.input.selection) ||
+        current?.binding?.runAttemptId !== binding.runAttemptId ||
+        current.selectedResult !== null ||
+        state.acceptance ||
+        state.reopened ||
+        binding.quiescent ||
+        (yield* latestCapture(binding.runAttemptId))?.status === "sealed" ||
+        (yield* abandonment(binding.runAttemptId)) !== null
+      )
+        return yield* new FactoryExecutionError({ reason: "task-conflict" });
+      const phases = yield* sql<{
+        phase: string;
+        observation: string;
+      }>`SELECT phase, observation FROM factory_execution_phases WHERE attempt_id = ${binding.runAttemptId}`.pipe(
+        Effect.mapError(failure),
+      );
+      const pending =
+        yield* sql`SELECT effect_id FROM orchestration_v2_effect_outbox WHERE thread_id = ${binding.threadId} AND status IN ('pending','running') LIMIT 1`.pipe(
+          Effect.mapError(failure),
+        );
+      if (
+        !binding.stopRequested ||
+        !phases.some((phase) => phase.phase === "capture") ||
+        phases.some((phase) => !["quiescent", "no-start"].includes(phase.observation)) ||
+        pending.length > 0
+      )
+        return yield* new FactoryExecutionError({ reason: "not-quiescent" });
+      yield* sql`INSERT INTO factory_execution_capture_abandonments(attempt_id, capture_key, command_id, session_id, abandoned_at) VALUES (${binding.runAttemptId}, ${yield* captureKey(binding.runAttemptId)}, ${commit.commandId}, ${commit.actor.sessionId}, ${commit.now})`.pipe(
+        Effect.mapError(failure),
+      );
     } else if (op.type === "stop") {
       const binding = yield* getBinding(op.input.runAttemptId);
       if (
@@ -1186,7 +1255,9 @@ const make = Effect.gen(function* () {
     yield* authorize(
       commit.actor,
       commit.ref,
-      ["grant", "revoke", "accept", "reopen", "retryCapture"].includes(commit.operation.type),
+      ["grant", "revoke", "accept", "reopen", "retryCapture", "abandonCapture"].includes(
+        commit.operation.type,
+      ),
     );
     const receipts = yield* sql<{
       digest: string;
@@ -1290,6 +1361,24 @@ const make = Effect.gen(function* () {
     (effect) => sql.withTransaction(effect),
     Effect.mapError(failure),
   );
+  const stopUnprompted = Effect.fn("FactoryExecutionStore.stopUnprompted")(
+    function* (input: {
+      readonly threadId: ThreadId;
+      readonly runId: RunId;
+      readonly runAttemptId: RunAttemptId;
+    }) {
+      const binding = yield* findNativeBinding(input);
+      if (binding?.runId !== input.runId || binding.runAttemptId !== input.runAttemptId)
+        return false;
+      const turn =
+        yield* sql`SELECT phase FROM factory_execution_phases WHERE attempt_id = ${input.runAttemptId} AND phase = 'turn'`;
+      if (turn.length > 0) return false;
+      yield* sql`UPDATE factory_execution_bindings SET stop_requested = 1 WHERE attempt_id = ${input.runAttemptId}`;
+      return true;
+    },
+    (effect) => sql.withTransaction(effect),
+    Effect.mapError(failure),
+  );
   const claimPhase = Effect.fn("FactoryExecutionStore.claimPhase")(
     function* (
       input: Claim,
@@ -1316,7 +1405,9 @@ const make = Effect.gen(function* () {
       }
       if (
         input.phase === "capture" &&
-        (yield* captureKey(input.runAttemptId)) !== `native-final/${input.captureGeneration ?? 1}`
+        ((yield* captureKey(input.runAttemptId)) !==
+          `native-final/${input.captureGeneration ?? 1}` ||
+          (yield* abandonment(input.runAttemptId)) !== null)
       )
         return { status: "held" };
       const rows =
@@ -1387,7 +1478,8 @@ const make = Effect.gen(function* () {
         (yield* readCapture(input.runAttemptId)) !== null;
       if (
         phases.some((phase) => phase.phase === "turn" && phase.observation !== "no-start") &&
-        !captured
+        !captured &&
+        (yield* abandonment(input.runAttemptId)) === null
       )
         return yield* new FactoryExecutionError({ reason: "not-quiescent" });
       const pending = yield* sql<{
@@ -1448,7 +1540,8 @@ const make = Effect.gen(function* () {
     attemptId: RunAttemptId,
   ) {
     const binding = yield* getBinding(attemptId);
-    if (!binding.stopRequested || binding.quiescent) return false;
+    if (binding.quiescent || !binding.stopRequested || (yield* abandonment(attemptId)) !== null)
+      return false;
     const retries =
       yield* sql`SELECT attempt_id FROM factory_execution_capture_retries WHERE attempt_id = ${attemptId} LIMIT 1`;
     const phases = yield* sql<{
@@ -1482,9 +1575,11 @@ const make = Effect.gen(function* () {
     settleAttempt,
     expireOrphanClaims,
     requestNativeStop,
+    stopUnprompted,
     retainCapture,
     readCapture,
     captureKey,
+    abandonment,
     preparationHistory,
     settlements: Stream.fromPubSub(settled),
   });

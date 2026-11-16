@@ -43,6 +43,7 @@ export function NeedsYouRow({
   assignee,
   layout = "row",
   action,
+  secondaryAction,
   onOpen,
   selected = false,
 }: {
@@ -55,6 +56,8 @@ export function NeedsYouRow({
   layout?: "row" | "stacked";
   /** The row's one action, such as Answer or Retry. Shown only in the `row` layout. */
   action?: KitAction;
+  /** A second choice beside it, such as Give up result next to Save again. */
+  secondaryAction?: KitAction;
   /** Opens the task (`row`) or selects the row (`stacked`). */
   onOpen?: () => void;
   selected?: boolean;
@@ -109,6 +112,7 @@ export function NeedsYouRow({
         <AssigneeChip assignee={assignee} />
       </span>
       {action ? <KitActionButton action={action} size="xs" /> : null}
+      {secondaryAction ? <KitActionButton action={secondaryAction} size="xs" /> : null}
     </div>
   );
 }

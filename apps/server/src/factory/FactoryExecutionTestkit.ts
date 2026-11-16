@@ -30,6 +30,9 @@ export const layerUnmanagedExecutionLifecycle = Layer.succeed(
     recover: Effect.fn("FactoryExecutionTestkit.recover")(() => Effect.void),
     retryHeld: Effect.fn("FactoryExecutionTestkit.retryHeld")(() => Effect.void),
     stop: Effect.fn("FactoryExecutionTestkit.stop")(() => Effect.succeed(true)),
+    stopUnprompted: Effect.fn("FactoryExecutionTestkit.stopUnprompted")(() =>
+      Effect.succeed(false),
+    ),
     quiesce: Effect.fn("FactoryExecutionTestkit.quiesce")(() => Effect.succeed(true)),
     complete: Effect.fn("FactoryExecutionTestkit.complete")(() => Effect.succeed(true)),
   }),

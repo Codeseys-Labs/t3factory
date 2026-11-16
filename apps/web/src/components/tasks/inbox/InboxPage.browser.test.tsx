@@ -125,6 +125,7 @@ vi.mock(import("../shared/taskActions"), () => ({
     stop: state.permission,
     retry: state.permission,
     saveAgain: state.permission,
+    giveUp: state.permission,
     breakDown: state.permission,
     accept: state.permission,
     requestChanges: state.permission,

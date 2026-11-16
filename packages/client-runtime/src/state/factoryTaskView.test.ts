@@ -244,7 +244,7 @@ describe("task presentation", () => {
     });
     expect([planned.primary?.kind, planned.secondary?.kind]).toEqual(["retry", "reassign"]);
   });
-  it("offers Save again, never Retry or Reassign, on a held run whose result could not be saved", () => {
+  it("offers Save again and Give up result, never Retry or Reassign, on a held run whose result could not be saved", () => {
     const failed = task("T-29");
     const held = (run: Partial<NonNullable<FactoryTaskSummary["run"]>>) => {
       const banner = presentFactoryTaskBanner({
@@ -257,7 +257,7 @@ describe("task presentation", () => {
     expect(held({ note: "The result could not be saved", captureFailed: true })).toEqual([
       "Run 2: The result could not be saved",
       { kind: "save-again", label: "Save again" },
-      null,
+      { kind: "give-up", label: "Give up result" },
     ]);
     expect(held({ note: "Waiting for the run's processes to exit" })).toEqual([
       "Run 2: Waiting for the run's processes to exit",
@@ -282,7 +282,27 @@ describe("task presentation", () => {
     expect([later.title, later.primary, later.secondary]).toEqual([
       "Run 2: The result could not be saved",
       { kind: "save-again", label: "Save again" },
-      null,
+      { kind: "give-up", label: "Give up result" },
+    ]);
+    // Given up, it reads as failed; a newer planning run must not hide it or its Retry.
+    const givenUp = presentFactoryTaskBanner({
+      task: {
+        ...failed,
+        run: { ...failed.run!, ordinal: 3, purpose: "planning", state: "running", note: null },
+        failedRun: {
+          ...failed.run!,
+          state: "failed",
+          note: "Result given up",
+          resultGivenUp: { by: "You", at: failed.run!.startedAt },
+        },
+      },
+      attention: state("T-29").attention,
+      assigneeLabel: "Agent",
+    });
+    expect([givenUp.title, givenUp.primary?.kind, givenUp.secondary?.kind]).toEqual([
+      "Run 2 failed: Result given up",
+      "retry",
+      "reassign",
     ]);
   });
   it.each([

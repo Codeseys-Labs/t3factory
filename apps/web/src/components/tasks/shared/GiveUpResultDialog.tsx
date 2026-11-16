@@ -2,6 +2,7 @@ import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environ
 import type { FactoryTaskRun, FactoryTaskSummary } from "@t3tools/contracts";
 import { type ReactNode, useState } from "react";
 
+import { useArchivedThreadSnapshots } from "../../../lib/archivedThreadsState";
 import { useProject, useThreadShell } from "../../../state/entities";
 import {
   AlertDialog,
@@ -52,14 +53,19 @@ function GiveUpResultDialog({
   const actions = useTaskActions();
   const [sending, setSending] = useState(false);
   const shell = useThreadShell(scopeThreadRef(task.ref.environmentId, run.threadId));
+  // An archived thread is not among the live shells; its folder is read from the archive.
+  const archive = useArchivedThreadSnapshots(shell === null ? [task.ref.environmentId] : []);
   const project = useProject(scopeProjectRef(task.ref.environmentId, task.ref.projectId));
-  const [folder] = useState(() =>
-    presentGiveUpFolder({
-      workspace: run.setup.workspace,
-      worktreePath: shell?.worktreePath ?? null,
-      projectRoot: project?.workspaceRoot ?? null,
-    }),
-  );
+  const folder = presentGiveUpFolder({
+    workspace: run.setup.workspace,
+    worktreePath:
+      shell?.worktreePath ??
+      archive.snapshots
+        .flatMap((entry) => entry.snapshot.threads)
+        .find((thread) => thread.id === run.threadId)?.worktreePath ??
+      null,
+    projectRoot: project?.workspaceRoot ?? null,
+  });
   const confirm = async () => {
     setSending(true);
     const given = await actions.giveUp(task, run.runId);

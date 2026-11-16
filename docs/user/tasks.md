@@ -37,9 +37,9 @@ saved says so and keeps the agent's work: fix what stopped the save, then **Save
 saves the same run's result without running the agent again. If saving keeps failing, **Give up
 result** ends the run as failed so you can retry, reassign or cancel the task; an earlier result can
 be reviewed again. The task never uses that run's work, and nothing is removed: the agent's files stay
-in the run's folder, which the confirmation names unless the run's thread is archived. Once the
-run has ended, that folder is like any other thread's, so your **Storage** cleanup settings can
-remove it, untracked files included. Copy anything you want to keep first. Both actions are on the desktop and web. Until you choose one, the
+in the run's folder, which the confirmation names. Once the run has ended, that folder is like any
+other thread's, so your **Storage** cleanup settings can remove it, untracked files included. Copy
+anything you want to keep first. Both actions are on the desktop and web. Until you choose one, the
 task cannot be retried, reassigned or canceled.
 
 A task's **Thread** tab shows the agent's conversation. Replies to a working agent go through its

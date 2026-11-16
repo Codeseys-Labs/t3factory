@@ -54,6 +54,7 @@ import {
   type ServerSettings as Settings,
   type ThreadId,
 } from "@t3tools/contracts";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -72,6 +73,7 @@ import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as Processes from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as Git from "../vcs/GitVcsDriver.ts";
 import * as Delivery from "./FactoryDeliveryService.ts";
 import { executionDigest } from "./FactoryExecutionDigest.ts";
 import * as Executions from "./FactoryExecutionService.ts";
@@ -290,7 +292,6 @@ const FAILED_NATIVE = new Set(["failed", "interrupted", "cancelled"]);
 const GRANT_EXPIRES_AT = "9999-12-31T23:59:59.999Z";
 // The engine keeps a code checkpoint only behind a check. This one changes nothing.
 const CHECKPOINT_CHECK = { command: "git", args: ["rev-parse", "--verify", "HEAD"] };
-const SHA = /^[a-f0-9]{40,64}$/;
 // Leaves the pull request body (FACTORY_DELIVERY_BODY_MAX_CHARS) room for the closing line and footer.
 const REPORT_MAX_CHARS = 60_000;
 
@@ -465,6 +466,7 @@ const make = Effect.gen(function* () {
   const events = yield* OrchestrationEventStore.OrchestrationEventStore;
   const settings = yield* ServerSettings.ServerSettingsService;
   const processes = yield* Processes.ProcessRunner;
+  const git = yield* Git.GitVcsDriver;
   const changes = yield* Changes.FactoryTaskChanges;
   const delivery = yield* Delivery.FactoryDeliveryService;
   const deliveryStore = yield* DeliveryStore.FactoryDeliveryStore;
@@ -712,26 +714,61 @@ const make = Effect.gen(function* () {
     }
   });
 
-  const headCommit = Effect.fn("FactoryTaskService.headCommit")(function* (projectId: ProjectId) {
-    const cwd = yield* store.projectWorkspace(projectId);
-    if (cwd === null) return yield* refuse("missing-project");
-    const head = yield* processes
-      .run({
-        command: "git",
-        args: ["rev-parse", "--verify", "HEAD^{commit}"],
+  const worktreeBase = Effect.fn("FactoryTaskService.headCommit")(
+    function* (projectId: ProjectId) {
+      const cwd = yield* store.projectWorkspace(projectId);
+      if (cwd === null) return yield* refuse("missing-project");
+      const symbolic = yield* git.execute({
+        operation: "FactoryTaskService.worktreeBase",
         cwd,
-        maxOutputBytes: 256,
-        outputMode: "error",
-      })
-      .pipe(
-        Effect.mapError(
-          (cause) => new FactoryTaskError({ reason: "unsupported-capability", cause }),
+        args: ["rev-parse", "--symbolic-full-name", "--verify", "HEAD"],
+        maxOutputBytes: 4096,
+      });
+      if (symbolic.stdoutTruncated || symbolic.stderrTruncated)
+        return yield* new FactoryTaskError({
+          reason: "unsupported-capability",
+          detail: "Could not read which branch the project folder is on.",
+        });
+      const ref = symbolic.stdout.trim();
+      const branch = ref.startsWith("refs/heads/");
+      // The commit comes from the branch just named, so a checkout in between cannot split them.
+      const { commitSha } = yield* git.resolveCommit({ cwd, revision: branch ? ref : "HEAD" });
+      const current = yield* settings.getSettings.pipe(Effect.mapError(asTaskError));
+      if (
+        !branch ||
+        !resolveProjectSettings(current, projectId).settings.newWorktreesStartFromOrigin
+      )
+        return commitSha;
+      const refName = ref.slice("refs/heads/".length);
+      const remote = yield* git.resolveWorktreeBaseRemote({ cwd, refName });
+      if (remote === null) return commitSha;
+      const fetched = yield* git.fetchWorktreeBaseCommit({ cwd, refName, remote });
+      if (fetched === null) return commitSha;
+      const ancestor = yield* git.execute({
+        operation: "FactoryTaskService.worktreeBase",
+        cwd,
+        args: ["merge-base", "--is-ancestor", commitSha, fetched.commitSha],
+        allowNonZeroExit: true,
+        maxOutputBytes: 4096,
+      });
+      if (ancestor.exitCode === 0) return fetched.commitSha;
+      if (ancestor.exitCode === 1) return commitSha;
+      return yield* new FactoryTaskError({
+        reason: "unsupported-capability",
+        detail: "Could not compare the project folder with its remote branch.",
+      });
+    },
+    Effect.catchTags({
+      GitCommandError: (cause) =>
+        Effect.fail(
+          new FactoryTaskError({
+            reason: "unsupported-capability",
+            detail: cause.detail,
+            cause,
+          }),
         ),
-      );
-    const sha = head.stdout.trim();
-    if (head.code !== 0 || !SHA.test(sha)) return yield* refuse("unsupported-capability");
-    return sha;
-  });
+    }),
+  );
 
   const requireIdleSiblings = Effect.fn("FactoryTaskService.requireIdleSiblings")(function* (
     row: Tasks.TaskRow,
@@ -785,8 +822,12 @@ const make = Effect.gen(function* () {
     const { row } = input.task;
     const ref = planRef(row);
     const admitId = derived(input.commandId, "admit");
-    yield* store.registerLaunch({ commandId: admitId, profileId: input.profileId, actor: PERSON });
     if (yield* store.launched(admitId)) return;
+    const worktree = input.setup.workspace === "worktree";
+    const workspaceStrategy: FactoryExecutionTaskSpec["workspaceStrategy"] = worktree
+      ? { type: "worktree", baseRef: input.baseCommit ?? (yield* worktreeBase(row.projectId)) }
+      : { type: "root" };
+    yield* store.registerLaunch({ commandId: admitId, profileId: input.profileId, actor: PERSON });
     const next = yield* nextRound(row);
     let { head, prior } = next;
     if (next.round) {
@@ -809,15 +850,12 @@ const make = Effect.gen(function* () {
       )).plan;
       prior = null;
     }
-    const worktree = input.setup.workspace === "worktree";
     const spec: FactoryExecutionTaskSpec = {
       taskId: row.taskId,
       modelSelection: input.setup.modelSelection,
       runtimeMode: input.setup.runtimeMode,
       interactionMode: input.setup.interactionMode,
-      workspaceStrategy: worktree
-        ? { type: "worktree", baseRef: input.baseCommit ?? (yield* headCommit(row.projectId)) }
-        : { type: "root" },
+      workspaceStrategy,
       setup: "deny",
       ...(worktree ? { verification: CHECKPOINT_CHECK } : {}),
       output: { slot: "result", kind: worktree ? "verified-code" : "sealed-draft" },

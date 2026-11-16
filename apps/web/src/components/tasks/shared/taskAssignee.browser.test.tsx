@@ -348,15 +348,12 @@ it.each([
     await userEvent.click(page.getByRole("button", { name: "Choose Terra" }));
     await userEvent.click(page.getByRole("radio", { name: "High" }));
     await vi.waitFor(() => expect(state.server.release).not.toBeNull());
-    await using _last = remount
-      ? await (async () => {
-          await screen.unmount();
-          const again = await render(<TaskAssigneeEditor task={task} />);
-          await userEvent.click(again.getByRole("button", { name: /Unassigned/ }));
-          await userEvent.click(page.getByRole("option", { name: /Pin a harness and model/ }));
-          return again;
-        })()
-      : screen;
+    if (remount) await screen.unmount();
+    await using again = remount ? await render(<TaskAssigneeEditor task={task} />) : null;
+    if (again !== null) {
+      await userEvent.click(again.getByRole("button", { name: /Unassigned/ }));
+      await userEvent.click(page.getByRole("option", { name: /Pin a harness and model/ }));
+    }
     await userEvent.click(page.getByRole("button", { name: "Choose Claude Opus" }));
     state.server.release?.();
     await vi.waitFor(() => expect(state.server.applied).toHaveLength(3));

@@ -3,6 +3,7 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { AgentScope } from "@t3tools/shared/AgentScope";
+import { pendingBackgroundTurnItems } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import {
   EnvironmentId,
   type ModelSelection,
@@ -12,6 +13,7 @@ import {
   type OrchestrationV2ProviderCapabilities,
   type OrchestrationV2ProviderSession,
   type OrchestrationV2ProviderThread,
+  type OrchestrationV2Subagent,
   type OrchestrationV2TurnItem,
   type Project,
   ProjectId,
@@ -3573,15 +3575,32 @@ it.effect.each(["detach", "stream failure", "provider stop", "early close"] as c
 );
 
 it.effect.each(["a runtime whose tasks can outlive it", "server shutdown"] as const)(
-  "ProviderSessionManagerV2 keeps the background work after the release of %s",
+  "ProviderSessionManagerV2 keeps the background work after the release of %s until its processes are proven gone",
   (release) =>
     Effect.gen(function* () {
       const state = yield* Ref.make(emptyState);
       const effect = Effect.gen(function* () {
         const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
-        const { providerSessionId, rosters, toolCalls } = yield* openSessionWithBackgroundCommand(
-          "provider-session-manager-outliving-roster",
-        );
+        const eventSink = yield* EventSink.EventSinkV2;
+        const {
+          threadId,
+          providerSessionId,
+          providerThreads,
+          rosters,
+          seededToolCalls,
+          writeToolCall,
+          toolCalls,
+          toolCallStatus,
+          nativeSubagentStatus,
+        } = yield* openSessionWithBackgroundCommand("provider-session-manager-outliving-roster");
+        const { toolName: _toolName, input: _input, ...cutOff } = seededToolCalls.cutOff;
+        const command = {
+          ...cutOff,
+          id: TurnItemId.make("turn-item:outliving-command"),
+          type: "command_execution" as const,
+          input: "vp test run",
+        };
+        yield* writeToolCall(command);
 
         yield* release === "server shutdown"
           ? manager.release({ providerSessionId, reason: "server_shutdown" })
@@ -3589,6 +3608,27 @@ it.effect.each(["a runtime whose tasks can outlive it", "server shutdown"] as co
 
         assert.deepStrictEqual(yield* rosters, [["dev-server"], ["dev-server"]]);
         assert.equal((yield* toolCalls).cutOff, "running");
+        assert.equal(yield* toolCallStatus(command.id), "running");
+
+        // T3Factory: a settled task run proved every process it started gone.
+        const settle = manager.closeSettledWork({
+          threadId,
+          providerThreadId: providerThreads[0]!.id,
+          provenAt: yield* DateTime.now,
+        });
+        yield* settle;
+        assert.deepStrictEqual(yield* rosters, [[], ["dev-server"]]);
+        assert.deepStrictEqual(yield* toolCalls, {
+          cutOff: "interrupted",
+          finished: "completed",
+          otherSession: "running",
+          replacement: "running",
+        });
+        assert.equal(yield* toolCallStatus(command.id), "interrupted");
+        assert.equal(yield* nativeSubagentStatus, "interrupted");
+        const settled = yield* eventSink.latestSequence({ threadId });
+        yield* settle;
+        assert.equal(yield* eventSink.latestSequence({ threadId }), settled);
       });
 
       yield* effect.pipe(
@@ -3600,6 +3640,248 @@ it.effect.each(["a runtime whose tasks can outlive it", "server shutdown"] as co
           }),
         ),
       );
+    }),
+);
+
+// T3Factory: Codex records a native child, and its item in the parent, under the child's provider thread.
+it.effect(
+  "ProviderSessionManagerV2 closes the native children a settled provider thread started, and only those",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      const effect = Effect.gen(function* () {
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const eventSink = yield* EventSink.EventSinkV2;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+        const now = yield* DateTime.now;
+        const threadId = ThreadId.make("settled-parent");
+        const runId = idAllocator.derive.run({ threadId, ordinal: 1 });
+        const sessionOf = () =>
+          idAllocator.allocate.providerSession({
+            providerInstanceId: modelSelection.instanceId,
+            threadId,
+          });
+        const root = makeProviderThread({
+          idAllocator,
+          threadId,
+          providerSessionId: yield* sessionOf(),
+          now,
+        });
+        const otherRoot = makeProviderThread({
+          idAllocator,
+          threadId,
+          providerSessionId: yield* sessionOf(),
+          now,
+          nativeThreadId: "native-thread-other",
+        });
+        const events: Array<OrchestrationV2DomainEvent> = [
+          yield* makeThreadCreatedEvent({ idAllocator, threadId, now }),
+        ];
+        const write = (eventThreadId: ThreadId, event: Record<string, unknown>) =>
+          Effect.gen(function* () {
+            events.push({
+              id: yield* idAllocator.allocate.event({ threadId: eventThreadId }),
+              threadId: eventThreadId,
+              driver: CODEX_DRIVER,
+              occurredAt: now,
+              ...event,
+            } as OrchestrationV2DomainEvent);
+          });
+        yield* write(threadId, { type: "provider-thread.updated", payload: root });
+        yield* write(threadId, { type: "provider-thread.updated", payload: otherRoot });
+        // The shape CodexAdapterV2's registerSubagentThread and emitSubagentTaskUpdate write.
+        const nativeChild = Effect.fnUntraced(function* (
+          name: string,
+          parent: OrchestrationV2ProviderThread,
+        ) {
+          const childThreadId = idAllocator.derive.subagentThread({
+            driver: CODEX_DRIVER,
+            nativeThreadId: name,
+          });
+          const childThreadCreated = yield* makeThreadCreatedEvent({
+            idAllocator,
+            threadId: childThreadId,
+            now,
+          });
+          events.push({
+            ...childThreadCreated,
+            payload: {
+              ...childThreadCreated.payload,
+              createdBy: "agent",
+              creationSource: "provider",
+              lineage: {
+                parentThreadId: threadId,
+                relationshipToParent: "subagent",
+                rootThreadId: threadId,
+              },
+            },
+          });
+          const providerThread = {
+            ...makeProviderThread({
+              idAllocator,
+              threadId: childThreadId,
+              providerSessionId: parent.providerSessionId!,
+              now,
+              nativeThreadId: name,
+            }),
+            forkedFrom: { providerThreadId: parent.id },
+          };
+          yield* write(childThreadId, { type: "provider-thread.updated", payload: providerThread });
+          const nativeTaskRef = {
+            driver: CODEX_DRIVER,
+            nativeId: name,
+            strength: "strong" as const,
+          };
+          const subagent = {
+            id: idAllocator.derive.nodeFromProviderItem({
+              driver: CODEX_DRIVER,
+              nativeItemId: name,
+            }),
+            threadId,
+            runId,
+            parentNodeId: idAllocator.derive.rootNode({ runId }),
+            origin: "provider_native",
+            createdBy: "agent",
+            driver: CODEX_DRIVER,
+            providerInstanceId: modelSelection.instanceId,
+            providerThreadId: providerThread.id,
+            childThreadId,
+            nativeTaskRef,
+            prompt: "Run the tests",
+            title: name,
+            model: null,
+            status: "running",
+            result: null,
+            startedAt: now,
+            completedAt: null,
+            updatedAt: now,
+          } satisfies OrchestrationV2Subagent;
+          const item = {
+            id: idAllocator.derive.turnItemFromProviderItem({
+              driver: CODEX_DRIVER,
+              nativeItemId: name,
+            }),
+            threadId,
+            runId,
+            nodeId: subagent.id,
+            providerThreadId: subagent.providerThreadId,
+            providerTurnId: null,
+            nativeItemRef: nativeTaskRef,
+            parentItemId: null,
+            ordinal: 1,
+            status: "running",
+            title: name,
+            startedAt: now,
+            completedAt: null,
+            updatedAt: now,
+            type: "subagent",
+            subagentId: subagent.id,
+            origin: subagent.origin,
+            driver: subagent.driver,
+            providerInstanceId: subagent.providerInstanceId,
+            childThreadId,
+            prompt: subagent.prompt,
+            result: null,
+          } satisfies OrchestrationV2TurnItem;
+          yield* write(threadId, { type: "subagent.updated", payload: subagent });
+          yield* write(threadId, { type: "turn-item.updated", payload: item });
+          // Its first turn ended with a command left running; its second turn is still running.
+          const commands = [];
+          for (const [turn, status] of [
+            ["first", "completed"],
+            ["second", "running"],
+          ] as const) {
+            const nodeId = idAllocator.derive.nodeFromProviderItem({
+              driver: CODEX_DRIVER,
+              nativeItemId: `${name}:${turn}:thread-root`,
+            });
+            yield* write(childThreadId, {
+              type: "node.updated",
+              nodeId,
+              payload: {
+                id: nodeId,
+                threadId: childThreadId,
+                runId: null,
+                parentNodeId: null,
+                rootNodeId: nodeId,
+                kind: "root_turn",
+                status,
+                countsForRun: false,
+                providerThreadId: providerThread.id,
+                providerTurnId: null,
+                nativeItemRef: nativeTaskRef,
+                runtimeRequestId: null,
+                checkpointScopeId: null,
+                startedAt: now,
+                completedAt: status === "completed" ? now : null,
+              },
+            });
+            const command = {
+              id: idAllocator.derive.turnItemFromProviderItem({
+                driver: CODEX_DRIVER,
+                nativeItemId: `${name}:${turn}:command`,
+              }),
+              threadId: childThreadId,
+              runId: null,
+              nodeId,
+              providerThreadId: providerThread.id,
+              providerTurnId: null,
+              nativeItemRef: null,
+              parentItemId: null,
+              ordinal: 1,
+              status: "running",
+              title: null,
+              startedAt: now,
+              completedAt: null,
+              updatedAt: now,
+              type: "command_execution",
+              input: "vp test run",
+            } satisfies OrchestrationV2TurnItem;
+            yield* write(childThreadId, { type: "turn-item.updated", nodeId, payload: command });
+            commands.push(command.id);
+          }
+          return { subagent: subagent.id, item: item.id, childThreadId, commands };
+        });
+        const settledChild = yield* nativeChild("settled-child", root);
+        const unrelatedChild = yield* nativeChild("unrelated-child", otherRoot);
+        yield* eventSink.write({ events });
+
+        yield* manager.closeSettledWork({
+          threadId,
+          providerThreadId: root.id,
+          provenAt: yield* DateTime.now,
+        });
+
+        const parent = yield* projectionStore.getThreadProjection(threadId);
+        const statusOf = (child: typeof settledChild) =>
+          Effect.gen(function* () {
+            const { turnItems } = yield* projectionStore.getThreadProjection(child.childThreadId);
+            return {
+              subagent: parent.subagents.find(({ id }) => id === child.subagent)?.status,
+              item: parent.turnItems.find(({ id }) => id === child.item)?.status,
+              commands: child.commands.map(
+                (id) => turnItems.find((item) => item.id === id)?.status,
+              ),
+            };
+          });
+        assert.deepStrictEqual(yield* statusOf(settledChild), {
+          subagent: "interrupted",
+          item: "interrupted",
+          commands: ["interrupted", "interrupted"],
+        });
+        assert.deepStrictEqual(yield* statusOf(unrelatedChild), {
+          subagent: "running",
+          item: "running",
+          commands: ["running", "running"],
+        });
+        assert.deepStrictEqual(
+          pendingBackgroundTurnItems(parent).map(({ id }) => id),
+          [unrelatedChild.item],
+        );
+      });
+
+      yield* effect.pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 60_000 })));
     }),
 );
 

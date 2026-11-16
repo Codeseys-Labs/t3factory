@@ -136,6 +136,7 @@ function layerExecutorFor(input: {
         close: () => Effect.void,
         closeInstance: () => Effect.void,
         release: (request) => record(`release:${request.reason}:${request.providerSessionId}`),
+        closeSettledWork: (request) => record(`close-settled-work:${request.providerThreadId}`),
         detach: () => record("detach"),
         otherWorkingThreads: () => Effect.succeed([]),
         releaseUnlessBusy: () => Effect.succeed(true),
@@ -808,12 +809,31 @@ it.effect.each(["confirmed", "unconfirmed", "failed"] as const)(
 );
 
 it.effect.each([
-  { name: "live session", live: true, attemptStatus: "completed", released: true },
-  { name: "session no longer live", live: false, attemptStatus: "completed", released: false },
-  { name: "attempt still running", live: true, attemptStatus: "running", released: false },
+  { name: "live session", live: true, attemptStatus: "completed", released: true, quiet: true },
+  {
+    name: "session no longer live",
+    live: false,
+    attemptStatus: "completed",
+    released: false,
+    quiet: true,
+  },
+  {
+    name: "attempt still running",
+    live: true,
+    attemptStatus: "running",
+    released: false,
+    quiet: true,
+  },
+  {
+    name: "ownership unknown",
+    live: false,
+    attemptStatus: "completed",
+    released: false,
+    quiet: false,
+  },
 ] as const)(
-  "factory finalization releases only a live terminal session before quiesce: $name",
-  ({ live, attemptStatus, released }) =>
+  "factory finalization releases only a live terminal session before quiesce and closes its open work once quiet: $name",
+  ({ live, attemptStatus, released, quiet }) =>
     Effect.gen(function* () {
       const now = yield* DateTime.now;
       const events = yield* Ref.make<ReadonlyArray<string>>([]);
@@ -839,7 +859,7 @@ it.effect.each([
               spec: { modelSelection: { instanceId: providerInstanceId } },
             } as FactoryExecutionBinding),
           runPhase: (_input, work) => work,
-          quiesce: () => record("quiesce").pipe(Effect.as(true)),
+          quiesce: () => record("quiesce").pipe(Effect.as(quiet)),
           complete: () => record("complete").pipe(Effect.as(true)),
         },
         execution: {
@@ -855,7 +875,7 @@ it.effect.each([
           checkpoints: [],
         } as unknown as OrchestrationV2ThreadProjection,
       });
-      yield* Effect.gen(function* () {
+      const finalized = yield* Effect.gen(function* () {
         const executor = yield* EffectWorker.OrchestrationEffectExecutorV2;
         yield* executor.execute({
           ...restartEffect(now, { type: "detach" }),
@@ -870,13 +890,20 @@ it.effect.each([
             providerInstanceId,
           },
         });
-      }).pipe(Effect.provide(layer));
+      }).pipe(Effect.provide(layer), Effect.exit);
+      assert.equal(Exit.isSuccess(finalized), quiet);
+      // Codex keeps a command that outlives its turn open; a quiet run's cannot be running.
       assert.deepEqual(yield* Ref.get(events), [
         ...(released ? [`release:manual_shutdown:${oldSessionId}`] : []),
         "quiesce",
-        "capture",
-        "complete",
-        "observe:native-final/1",
+        ...(quiet
+          ? [
+              `close-settled-work:${providerThreadId}`,
+              "capture",
+              "complete",
+              "observe:native-final/1",
+            ]
+          : []),
       ]);
     }),
 );

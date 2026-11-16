@@ -56,7 +56,7 @@ function GiveUpResultDialog({
   // An archived thread is not among the live shells; its folder is read from the archive.
   const archive = useArchivedThreadSnapshots(shell === null ? [task.ref.environmentId] : []);
   const project = useProject(scopeProjectRef(task.ref.environmentId, task.ref.projectId));
-  const folder = presentGiveUpFolder({
+  const current = presentGiveUpFolder({
     workspace: run.setup.workspace,
     worktreePath:
       shell?.worktreePath ??
@@ -66,6 +66,9 @@ function GiveUpResultDialog({
       null,
     projectRoot: project?.workspaceRoot ?? null,
   });
+  // Held once it names a folder: the archive may answer after opening, and nothing later may rename it.
+  const [folder, setFolder] = useState(current);
+  if (folder.path === null && current.path !== null) setFolder(current);
   const confirm = async () => {
     setSending(true);
     const given = await actions.giveUp(task, run.runId);

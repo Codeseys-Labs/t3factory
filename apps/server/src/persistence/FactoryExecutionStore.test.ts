@@ -144,7 +144,7 @@ const decide = Effect.fn("test.decide")(function* (
       revision: 1,
       actor,
       now: at,
-      digest: executionDigest(operation.input),
+      digest: executionDigest([operation.type, actor, operation.input]),
       operation,
     }),
   );
@@ -243,6 +243,94 @@ it.effect(
         ),
       );
     }).pipe(Effect.provide(layer)),
+);
+
+it.effect.each([
+  "current",
+  "replaced",
+  "revoked",
+  "edited",
+  "expired",
+  "rejected",
+  "admitted",
+] as const)("reads a committed grant receipt only while it is current: %s", (state) =>
+  Effect.gen(function* () {
+    yield* seed;
+    const store = yield* Store.FactoryExecutionStore;
+    const sql = yield* SqlClient.SqlClient;
+    const input = { commandId: CommandId.make("grant"), ref, actor: human, now: at };
+    assert.equal(yield* store.recordedGrant(input), null);
+    if (state === "rejected") {
+      assert.equal(
+        (yield* decide({
+          type: "grant",
+          input: {
+            commandId: input.commandId,
+            ref,
+            expectedRevision: 1,
+            expectedGrantVersion: 1,
+            policy,
+          },
+        })).error,
+        "grant-conflict",
+      );
+    } else yield* grant;
+    if (state === "replaced") {
+      yield* decide({
+        type: "grant",
+        input: {
+          commandId: CommandId.make("replacement"),
+          ref,
+          expectedRevision: 1,
+          expectedGrantVersion: 1,
+          policy,
+        },
+      });
+    }
+    if (state === "revoked") {
+      yield* decide({
+        type: "revoke",
+        input: {
+          commandId: CommandId.make("revoke"),
+          ref,
+          expectedRevision: 1,
+          expectedGrantVersion: 1,
+        },
+      });
+    }
+    if (state === "edited")
+      yield* sql`UPDATE factory_plan_heads SET revision = 2, snapshot_json = json_set(snapshot_json, '$.revision', 2) WHERE root_id = ${ref.rootId}`;
+    if (state === "admitted") yield* decide({ type: "admit", ...(yield* bindingFor()) });
+    const outcome = yield* store
+      .recordedGrant({
+        ...input,
+        commandId: state === "admitted" ? CommandId.make("start") : input.commandId,
+        now: state === "expired" ? policy.expiresAt : at,
+      })
+      .pipe(Effect.result);
+    if (state === "current") {
+      assert.isTrue(Result.isSuccess(outcome));
+      if (Result.isSuccess(outcome)) {
+        assert.equal(outcome.success?.version, 1);
+        assert.deepEqual(outcome.success?.policy, policy);
+      }
+    } else {
+      assert.isTrue(Result.isFailure(outcome));
+      if (Result.isFailure(outcome))
+        assert.equal(
+          outcome.failure.reason,
+          state === "revoked"
+            ? "grant-inactive"
+            : state === "edited"
+              ? "revision-conflict"
+              : state === "expired"
+                ? "grant-expired"
+                : state === "admitted"
+                  ? "command-conflict"
+                  : "grant-conflict",
+        );
+    }
+  }).pipe(Effect.provide(layer)),
 );
 
 it.effect(

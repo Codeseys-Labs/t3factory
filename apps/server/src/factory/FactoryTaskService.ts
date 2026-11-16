@@ -576,11 +576,37 @@ const make = Effect.gen(function* () {
     const existing = yield* store.receipt(commandId);
     if (existing !== null && (existing.kind !== kind || existing.digest !== digest))
       return yield* refuse("command-conflict");
+    if (existing === null) {
+      // An unfinished run command holds its id through its input pin, against every kind of command.
+      const pin = yield* store.receipt(derived(commandId, "input"));
+      if (pin !== null && (pin.kind !== kind || pin.digest !== digest))
+        return yield* refuse("command-conflict");
+    }
     return {
+      digest,
       replayed: existing !== null,
       outcome: existing?.outcome,
       record: (outcome: unknown) => store.recordReceipt({ commandId, kind, digest, outcome }),
     };
+  });
+
+  const pinInput = Effect.fn("FactoryTaskService.pinInput")(function* (
+    commandId: CommandId,
+    kind: string,
+    digest: string,
+  ) {
+    const pinId = derived(commandId, "input");
+    let existing = yield* store.receipt(pinId);
+    if (existing === null) {
+      const recorded = yield* store
+        .recordReceipt({ commandId: pinId, kind, digest, outcome: null })
+        .pipe(Effect.result);
+      if (Result.isSuccess(recorded)) return;
+      existing = yield* store.receipt(pinId);
+      if (existing === null) return yield* recorded.failure;
+    }
+    if (existing.kind !== kind || existing.digest !== digest)
+      return yield* refuse("command-conflict");
   });
 
   const applyPlan = Effect.fn("FactoryTaskService.applyPlan")(function* (input: {
@@ -816,7 +842,8 @@ const make = Effect.gen(function* () {
     readonly commandId: CommandId;
     readonly task: Tasks.TaskView;
     readonly setup: FactoryAgentSetup;
-    readonly profileId: string | null;
+    /** Assigns the agent and yields its profile. Run after the approval check, so a refused Start assigns nothing. */
+    readonly assign: Effect.Effect<string | null, FactoryTaskError>;
     readonly actor: FactoryPlanActor;
     /** A code result to continue from, instead of the project's current commit. */
     readonly baseCommit: string | null;
@@ -826,79 +853,117 @@ const make = Effect.gen(function* () {
     const admitId = derived(input.commandId, "admit");
     if (yield* store.launched(admitId)) return;
     const worktree = input.setup.workspace === "worktree";
-    const workspaceStrategy: FactoryExecutionTaskSpec["workspaceStrategy"] = worktree
-      ? { type: "worktree", baseRef: input.baseCommit ?? (yield* worktreeBase(row.projectId)) }
-      : { type: "root" };
-    yield* store.registerLaunch({ commandId: admitId, profileId: input.profileId, actor: PERSON });
-    const next = yield* nextRound(row);
-    let { head, prior } = next;
-    if (next.round) {
-      const title = head.tasks.find((task) => task.id === row.taskId)?.title ?? row.title;
-      head = (yield* transact(
-        Effect.gen(function* () {
-          yield* requireIdleSiblings(row, head.revision);
-          return yield* plans
-            .apply(
-              {
-                commandId: derived(input.commandId, "round"),
-                ref,
-                expectedRevision: head.revision,
-                operations: [{ type: "task.update", id: row.taskId, title }],
-              },
-              input.actor,
-            )
-            .pipe(Effect.mapError(planError));
-        }),
-      )).plan;
-      prior = null;
-    }
-    const spec: FactoryExecutionTaskSpec = {
-      taskId: row.taskId,
-      modelSelection: input.setup.modelSelection,
-      runtimeMode: input.setup.runtimeMode,
-      interactionMode: input.setup.interactionMode,
-      workspaceStrategy,
-      setup: "deny",
-      ...(worktree ? { verification: CHECKPOINT_CHECK } : {}),
-      output: { slot: "result", kind: worktree ? "verified-code" : "sealed-draft" },
-    };
-    const running = yield* store.liveAttempts({
-      rootId: row.rootId,
-      revision: head.revision,
-      exceptTaskId: row.taskId,
-    });
-    const policy: FactoryExecutionPolicy = {
-      version: 1,
-      requesterThreadIds: [],
-      tasks: [spec, ...running.map((attempt) => attempt.spec)],
-      edges: [],
-      advisoryEdges: true,
-      // A new grant replaces the last one; naming the running attempts keeps them authorized.
-      ...(running.length === 0
-        ? {}
-        : { continues: running.map((attempt) => attempt.runAttemptId) }),
-      maxAttempts: MAX_TASKS,
-      maxRetriesPerTask: MAX_TASKS,
-      maxConcurrent: MAX_TASKS,
-      expiresAt: GRANT_EXPIRES_AT,
-      requiredCapabilities: [],
-    };
-    const granted = yield* executions
-      .issueGrant(
-        {
+    const { grant, prior } = yield* Effect.gen(function* () {
+      const recorded = yield* executionStore
+        .recordedGrant({
           commandId: derived(input.commandId, "grant"),
           ref,
-          expectedRevision: head.revision,
-          expectedGrantVersion: yield* store.grantVersion(row.rootId),
-          policy,
-        },
-        input.actor,
-      )
-      .pipe(Effect.mapError(executionError));
+          actor: input.actor,
+          now: yield* now,
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            ["grant-conflict", "grant-inactive", "grant-expired", "revision-conflict"].includes(
+              error.reason,
+            )
+              ? // A revoked or expired approval is not a permission problem: starting again fixes it.
+                new FactoryTaskError({
+                  reason: "version-conflict",
+                  detail: "This Start's approval is no longer current. Start the task again.",
+                  cause: error,
+                })
+              : executionError(error),
+          ),
+        );
+      const profileId = yield* input.assign;
+      if (recorded !== null)
+        return {
+          grant: recorded,
+          prior: yield* store.engineAttempt({
+            rootId: row.rootId,
+            revision: recorded.revision,
+            taskId: row.taskId,
+          }),
+        };
+      const workspaceStrategy: FactoryExecutionTaskSpec["workspaceStrategy"] = worktree
+        ? { type: "worktree", baseRef: input.baseCommit ?? (yield* worktreeBase(row.projectId)) }
+        : { type: "root" };
+      yield* store.registerLaunch({
+        commandId: admitId,
+        profileId,
+        actor: PERSON,
+      });
+      const next = yield* nextRound(row);
+      let { head, prior } = next;
+      if (next.round) {
+        const title = head.tasks.find((task) => task.id === row.taskId)?.title ?? row.title;
+        head = (yield* transact(
+          Effect.gen(function* () {
+            yield* requireIdleSiblings(row, head.revision);
+            return yield* plans
+              .apply(
+                {
+                  commandId: derived(input.commandId, "round"),
+                  ref,
+                  expectedRevision: head.revision,
+                  operations: [{ type: "task.update", id: row.taskId, title }],
+                },
+                input.actor,
+              )
+              .pipe(Effect.mapError(planError));
+          }),
+        )).plan;
+        prior = null;
+      }
+      const spec: FactoryExecutionTaskSpec = {
+        taskId: row.taskId,
+        modelSelection: input.setup.modelSelection,
+        runtimeMode: input.setup.runtimeMode,
+        interactionMode: input.setup.interactionMode,
+        workspaceStrategy,
+        setup: "deny",
+        ...(worktree ? { verification: CHECKPOINT_CHECK } : {}),
+        output: { slot: "result", kind: worktree ? "verified-code" : "sealed-draft" },
+      };
+      const running = yield* store.liveAttempts({
+        rootId: row.rootId,
+        revision: head.revision,
+        exceptTaskId: row.taskId,
+      });
+      const policy: FactoryExecutionPolicy = {
+        version: 1,
+        requesterThreadIds: [],
+        tasks: [spec, ...running.map((attempt) => attempt.spec)],
+        edges: [],
+        advisoryEdges: true,
+        // A new grant replaces the last one; naming the running attempts keeps them authorized.
+        ...(running.length === 0
+          ? {}
+          : { continues: running.map((attempt) => attempt.runAttemptId) }),
+        maxAttempts: MAX_TASKS,
+        maxRetriesPerTask: MAX_TASKS,
+        maxConcurrent: MAX_TASKS,
+        expiresAt: GRANT_EXPIRES_AT,
+        requiredCapabilities: [],
+      };
+      const granted = yield* executions
+        .issueGrant(
+          {
+            commandId: derived(input.commandId, "grant"),
+            ref,
+            expectedRevision: head.revision,
+            expectedGrantVersion: yield* store.grantVersion(row.rootId),
+            policy,
+          },
+          input.actor,
+        )
+        .pipe(Effect.mapError(executionError));
+      return { grant: granted.execution.grant!, prior };
+    });
     const admission = {
       commandId: admitId,
-      selection: { ref, revision: head.revision, taskId: row.taskId },
-      grantVersion: granted.execution.grant!.version,
+      selection: { ref, revision: grant.revision, taskId: row.taskId },
+      grantVersion: grant.version,
     };
     yield* (
       prior === null
@@ -952,7 +1017,7 @@ const make = Effect.gen(function* () {
     readonly commandId: CommandId;
     readonly task: Tasks.TaskView;
     readonly setup: FactoryAgentSetup;
-    readonly profileId: string | null;
+    readonly assign: Effect.Effect<string | null, FactoryTaskError>;
     readonly actor: FactoryPlanActor;
     readonly baseCommit: string | null;
     readonly record: (outcome: unknown) => Effect.Effect<void, FactoryTaskError>;
@@ -1434,6 +1499,7 @@ const make = Effect.gen(function* () {
       const input = yield* decodeStart(raw).pipe(Effect.mapError(invalid));
       const command = yield* begin("start", input.commandId, actor, input);
       if (command.replayed) return yield* replay(input.ref);
+      yield* pinInput(input.commandId, "start", command.digest);
       const { root, task } = yield* requireTask(input.ref);
       // A command that already admitted its run only has to finish recording it.
       if (!(yield* store.launched(derived(input.commandId, "admit")))) {
@@ -1452,7 +1518,7 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         task,
         setup: input.setup,
-        profileId: yield* assignFor(task, input.setup),
+        assign: assignFor(task, input.setup),
         actor,
         baseCommit: null,
         record: command.record,
@@ -1466,6 +1532,7 @@ const make = Effect.gen(function* () {
       const input = yield* decodeRetry(raw).pipe(Effect.mapError(invalid));
       const command = yield* begin("retry", input.commandId, actor, input);
       if (command.replayed) return yield* replay(input.ref);
+      yield* pinInput(input.commandId, "retry", command.digest);
       const { root, task } = yield* requireTask(input.ref);
       const work = task.runs.filter((entry) => entry.purpose === "work");
       const resumed = yield* store.launched(derived(input.commandId, "admit"));
@@ -1490,10 +1557,10 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         task,
         setup,
-        profileId:
+        assign:
           input.setup === undefined
-            ? (previous?.profileId ?? null)
-            : yield* assignFor(task, input.setup),
+            ? Effect.succeed(previous?.profileId ?? null)
+            : assignFor(task, input.setup),
         actor,
         // A failed Request changes run starts again from the result it was changing.
         baseCommit:
@@ -1658,6 +1725,7 @@ const make = Effect.gen(function* () {
     const input = yield* decodeRequestChanges(raw).pipe(Effect.mapError(invalid));
     const command = yield* begin("requestChanges", input.commandId, actor, input);
     if (command.replayed) return yield* replay(input.ref);
+    yield* pinInput(input.commandId, "requestChanges", command.digest);
     const { root, task } = yield* requireTask(input.ref);
     const { row } = task;
     // A failed request clears the pending note, so two in flight on one task could clear the other's.
@@ -1704,7 +1772,7 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         task,
         setup: author.setup,
-        profileId: author.profileId,
+        assign: Effect.succeed(author.profileId),
         actor,
         // Code continues from the result under review; a document starts from the task again.
         baseCommit: latest.kind === "code" ? latest.commit : null,

@@ -48,6 +48,18 @@
     "why": "expects path.resolve(\"/workspace\"), which adds a drive letter on Windows, while the adapter passes the cwd through unchanged"
   },
   {
+    "file": "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts",
+    "name": "ClaudeAdapterV2 background wake turns > persists a todo_list from inline Claude task-tool frames",
+    "issue": 128,
+    "why": "its scenario sets no workspace, so it checkpoints the folder the tests run from: about 19 s alone on a Windows host, and past the scenario's 60 s bound under load. On unmodified upstream it passes alone and fails 14 of 14 when 14 run at once"
+  },
+  {
+    "file": "apps/server/src/cloud/selfUpdate.test.ts",
+    "name": "server self update > keeps preparing after the progress stream closes",
+    "issue": 128,
+    "why": "intermittent on a Windows host: ENOTEMPTY removing the test's temp folder while the update the test leaves running still writes there; 1 of 18 runs under load on unmodified upstream"
+  },
+  {
     "file": "apps/desktop/src/app/DesktopCliCommand.test.ts",
     "name": "DesktopCliCommand > links the launcher onto PATH and removes only that link",
     "issue": 128,

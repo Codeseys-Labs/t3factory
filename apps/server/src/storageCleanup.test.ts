@@ -1110,10 +1110,21 @@ describe("merged task worktree cleanup", () => {
     "new staged file",
     "held before removal",
     "reopened before removal",
+    "reopened before clean",
   ])("handles a %s after the move", (mode) =>
     runTaskCleanupTest(
       Effect.gen(function* () {
         const f = yield* taskCleanupFixture();
+        if (mode === "reopened before clean") {
+          f.setSettings({
+            storageCleanup: {
+              ...DEFAULT_SERVER_SETTINGS.storageCleanup,
+              worktreeOnMerge: true,
+              worktreeKeepWhen: "tracked-changes",
+            },
+          });
+          yield* f.fs.writeFileString(`${f.worktree}/notes.txt`, "keep my notes\n");
+        }
         const child = {
           ...f.thread,
           id: ThreadId.make("child"),
@@ -1150,7 +1161,7 @@ describe("merged task worktree cleanup", () => {
             if (checks !== 2) return;
             if (mode === "held before removal")
               yield* f.sql`UPDATE factory_execution_bindings SET quiescent = 0`;
-            if (mode === "reopened before removal")
+            if (mode === "reopened before removal" || mode === "reopened before clean")
               yield* f.sql`UPDATE factory_delivery_intents SET remote_json = '{"number":1,"url":"https://github.com/test/repo/pull/1"}'`;
           }).pipe(Effect.orDie),
         );
@@ -1189,6 +1200,8 @@ describe("merged task worktree cleanup", () => {
           );
         if (mode === "late edit")
           expect(yield* f.fs.readFileString(`${f.worktree}/tracked.txt`)).toBe("late edit\n");
+        if (mode === "reopened before clean")
+          expect(yield* f.fs.readFileString(`${f.worktree}/notes.txt`)).toBe("keep my notes\n");
       }),
     ),
   );

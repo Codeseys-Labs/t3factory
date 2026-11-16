@@ -2065,15 +2065,15 @@ const make = Effect.gen(function* () {
               if (changes !== null) return keep(changes);
             }
             const repository = yield* worktreeRepository(worktreePath);
-            // Forced removal already discards local files; do not widen its final-check window.
-            if (settings.worktreeKeepWhen === "tracked-changes" && !submodules.force)
-              yield* cleanupGit(worktreePath, ["clean", "-ffdx"], "git clean");
             if (taskRuns.length > 0) {
               const latest = yield* readTaskWorktree(taskMembers);
               if (latest.reason !== null) return keep(latest.reason);
               if (!Equal.equals(latest.runs, taskRuns))
                 return keep("the saved result does not match its record");
             }
+            // Forced removal already discards local files; do not widen its final-check window.
+            if (settings.worktreeKeepWhen === "tracked-changes" && !submodules.force)
+              yield* cleanupGit(worktreePath, ["clean", "-ffdx"], "git clean");
             yield* removeLinkedWorktree({
               operation: "StorageCleanup.cleanupGit",
               cwd: repository,

@@ -256,6 +256,15 @@ export interface ProviderSessionManagerV2Shape {
     readonly reason: ProviderSessionReleaseReason;
     readonly detail?: string;
   }) => Effect.Effect<void, ProviderSessionManagerV2Error>;
+  /**
+   * T3Factory: ends what a release ends on one provider thread, for any runtime, once the caller
+   * proved every process its sessions started gone. Work started after `provenAt` stays open.
+   */
+  readonly closeSettledWork: (input: {
+    readonly threadId: ThreadId;
+    readonly providerThreadId: ProviderThreadId;
+    readonly provenAt: DateTime.Utc;
+  }) => Effect.Effect<void>;
   readonly detach: (input: {
     readonly providerSessionId: ProviderSessionId;
     readonly threadId: ThreadId;
@@ -3527,6 +3536,41 @@ export const layerWithOptions = (
                     cause,
                   }),
                 ),
+              ),
+            ),
+        ),
+        closeSettledWork: Effect.fn("ProviderSessionManager.closeSettledWork")(
+          function* (input) {
+            const { providerThreads } = yield* projectionStore.getThreadRecords(input.threadId, [
+              "providerThreads",
+            ]);
+            const providerThread = providerThreads.find(
+              (candidate) => candidate.id === input.providerThreadId,
+            );
+            if (providerThread?.providerSessionId == null) return;
+            yield* writeReleasedBackgroundWorkEvents(
+              [
+                {
+                  threadId: input.threadId,
+                  providerSessionId: providerThread.providerSessionId,
+                  providerThreadId: providerThread.id,
+                  driver: providerThread.driver,
+                  taskIds: new Set(
+                    (providerThread.pendingBackgroundTasks ?? []).map((task) => task.taskId),
+                  ),
+                },
+              ],
+              input.provenAt,
+            );
+          },
+          (effect, input) =>
+            effect.pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("orchestration-v2.provider-thread-settled-work-failed", {
+                  threadId: input.threadId,
+                  providerThreadId: input.providerThreadId,
+                  cause,
+                }),
               ),
             ),
         ),

@@ -3573,15 +3573,32 @@ it.effect.each(["detach", "stream failure", "provider stop", "early close"] as c
 );
 
 it.effect.each(["a runtime whose tasks can outlive it", "server shutdown"] as const)(
-  "ProviderSessionManagerV2 keeps the background work after the release of %s",
+  "ProviderSessionManagerV2 keeps the background work after the release of %s until its processes are proven gone",
   (release) =>
     Effect.gen(function* () {
       const state = yield* Ref.make(emptyState);
       const effect = Effect.gen(function* () {
         const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
-        const { providerSessionId, rosters, toolCalls } = yield* openSessionWithBackgroundCommand(
-          "provider-session-manager-outliving-roster",
-        );
+        const eventSink = yield* EventSink.EventSinkV2;
+        const {
+          threadId,
+          providerSessionId,
+          providerThreads,
+          rosters,
+          seededToolCalls,
+          writeToolCall,
+          toolCalls,
+          toolCallStatus,
+          nativeSubagentStatus,
+        } = yield* openSessionWithBackgroundCommand("provider-session-manager-outliving-roster");
+        const { toolName: _toolName, input: _input, ...cutOff } = seededToolCalls.cutOff;
+        const command = {
+          ...cutOff,
+          id: TurnItemId.make("turn-item:outliving-command"),
+          type: "command_execution" as const,
+          input: "vp test run",
+        };
+        yield* writeToolCall(command);
 
         yield* release === "server shutdown"
           ? manager.release({ providerSessionId, reason: "server_shutdown" })
@@ -3589,6 +3606,27 @@ it.effect.each(["a runtime whose tasks can outlive it", "server shutdown"] as co
 
         assert.deepStrictEqual(yield* rosters, [["dev-server"], ["dev-server"]]);
         assert.equal((yield* toolCalls).cutOff, "running");
+        assert.equal(yield* toolCallStatus(command.id), "running");
+
+        // T3Factory: a settled task run proved every process it started gone.
+        const settle = manager.closeSettledWork({
+          threadId,
+          providerThreadId: providerThreads[0]!.id,
+          provenAt: yield* DateTime.now,
+        });
+        yield* settle;
+        assert.deepStrictEqual(yield* rosters, [[], ["dev-server"]]);
+        assert.deepStrictEqual(yield* toolCalls, {
+          cutOff: "interrupted",
+          finished: "completed",
+          otherSession: "running",
+          replacement: "running",
+        });
+        assert.equal(yield* toolCallStatus(command.id), "interrupted");
+        assert.equal(yield* nativeSubagentStatus, "interrupted");
+        const settled = yield* eventSink.latestSequence({ threadId });
+        yield* settle;
+        assert.equal(yield* eventSink.latestSequence({ threadId }), settled);
       });
 
       yield* effect.pipe(

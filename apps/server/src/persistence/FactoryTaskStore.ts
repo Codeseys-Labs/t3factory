@@ -54,6 +54,8 @@ export const LOCAL_TASK_SOURCE: FactoryTaskSource = {
 
 export type TaskActor = FactoryTaskActivityEntry["actor"];
 const SYSTEM_ACTOR: TaskActor = { kind: "system", label: "T3 Factory" };
+// Every person acting on a task reads as `You`, as FactoryTaskService records them.
+const PERSON_ACTOR: TaskActor = { kind: "person", label: "You" };
 
 /** Default permissions as settings hold them: the environment's, and each project's override. */
 export interface TaskDefaultModes {
@@ -174,6 +176,8 @@ export interface EngineAttempt {
   readonly nativeStatus: string | null;
   readonly latestResultId: string | null;
   readonly latestStatus: "sealed" | "failed" | "held" | null;
+  /** A person gave up the result its capture could not keep. */
+  readonly abandoned: boolean;
 }
 
 export class FactoryTaskStore extends Context.Service<
@@ -259,6 +263,10 @@ export class FactoryTaskStore extends Context.Service<
     readonly launched: (commandId: CommandId) => Effect.Effect<boolean, FactoryTaskError>;
     /** The attempt whose capture retry the engine took for this command id, if it took one. */
     readonly captureRetryAttempt: (
+      commandId: CommandId,
+    ) => Effect.Effect<RunAttemptId | null, FactoryTaskError>;
+    /** The attempt whose result the engine recorded as given up for this command id, if any. */
+    readonly abandonedAttempt: (
       commandId: CommandId,
     ) => Effect.Effect<RunAttemptId | null, FactoryTaskError>;
     readonly markStopRequested: (threadId: ThreadId) => Effect.Effect<void, FactoryTaskError>;
@@ -457,6 +465,7 @@ interface RunRecord {
   effectsPending: number;
   sessionEnded: number;
   captureFailed: number;
+  givenUpAt: string | null;
   latestResultId: string | null;
 }
 
@@ -596,7 +605,7 @@ const make = Effect.gen(function* () {
     // `captureFailed` spells the current capture key the way FactoryExecutionStore.captureKey does.
     // A capture claim reads `no-start` only once recovery expired a claimant that died mid-capture.
     const runRecords =
-      yield* sql<RunRecord>`SELECT r.thread_id AS threadId, r.root_id AS rootId, r.task_id AS taskId, r.ordinal, r.purpose, r.run_id AS runId, r.attempt_id AS attemptId, r.setup_json AS setup, r.profile_id AS profileId, r.started_at AS startedAt, r.stop_requested AS stopRequested, r.ended_at AS endedAt, b.revision AS planRevision, json_extract(b.binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef, b.quiescent, b.stop_requested AS engineStop, json_extract(n.payload_json, '$.status') AS nativeStatus, n.completed_at AS nativeCompletedAt, (SELECT json_extract(o.output_json, '$.status') FROM factory_execution_results o WHERE o.attempt_id = r.attempt_id ORDER BY o.rowid DESC LIMIT 1) AS outputStatus, EXISTS (SELECT 1 FROM orchestration_v2_effect_outbox e WHERE e.thread_id = r.thread_id AND e.status IN ('pending', 'running')) AS effectsPending, EXISTS (SELECT 1 FROM orchestration_v2_projection_run_attempts a JOIN orchestration_v2_projection_provider_threads p ON p.provider_thread_id = a.provider_thread_id JOIN orchestration_v2_projection_provider_sessions s ON s.provider_session_id = p.provider_session_id WHERE a.attempt_id = r.attempt_id AND s.status IN ('stopped', 'error')) AS sessionEnded, (EXISTS (SELECT 1 FROM factory_execution_phases p WHERE p.attempt_id = r.attempt_id AND p.phase = 'capture' AND p.observation IN ('quiescent', 'no-start')) AND NOT EXISTS (SELECT 1 FROM factory_execution_phases p WHERE p.attempt_id = r.attempt_id AND p.observation NOT IN ('quiescent', 'no-start')) AND NOT EXISTS (SELECT 1 FROM factory_execution_results o WHERE o.attempt_id = r.attempt_id AND o.capture_key = 'native-final/' || (1 + (SELECT count(*) FROM factory_execution_capture_retries c WHERE c.attempt_id = r.attempt_id)))) AS captureFailed, (SELECT o.result_id FROM factory_execution_results o WHERE o.attempt_id = r.attempt_id ORDER BY o.rowid DESC LIMIT 1) AS latestResultId FROM factory_task_runs r LEFT JOIN factory_execution_bindings b ON b.attempt_id = r.attempt_id LEFT JOIN orchestration_v2_projection_runs n ON n.run_id = r.run_id WHERE r.root_id IN ${sql.in(rootIds)} ORDER BY r.root_id, r.task_id, r.ordinal`;
+      yield* sql<RunRecord>`SELECT r.thread_id AS threadId, r.root_id AS rootId, r.task_id AS taskId, r.ordinal, r.purpose, r.run_id AS runId, r.attempt_id AS attemptId, r.setup_json AS setup, r.profile_id AS profileId, r.started_at AS startedAt, r.stop_requested AS stopRequested, r.ended_at AS endedAt, b.revision AS planRevision, json_extract(b.binding_json, '$.spec.workspaceStrategy.baseRef') AS baseRef, b.quiescent, b.stop_requested AS engineStop, json_extract(n.payload_json, '$.status') AS nativeStatus, n.completed_at AS nativeCompletedAt, (SELECT json_extract(o.output_json, '$.status') FROM factory_execution_results o WHERE o.attempt_id = r.attempt_id ORDER BY o.rowid DESC LIMIT 1) AS outputStatus, EXISTS (SELECT 1 FROM orchestration_v2_effect_outbox e WHERE e.thread_id = r.thread_id AND e.status IN ('pending', 'running')) AS effectsPending, EXISTS (SELECT 1 FROM orchestration_v2_projection_run_attempts a JOIN orchestration_v2_projection_provider_threads p ON p.provider_thread_id = a.provider_thread_id JOIN orchestration_v2_projection_provider_sessions s ON s.provider_session_id = p.provider_session_id WHERE a.attempt_id = r.attempt_id AND s.status IN ('stopped', 'error')) AS sessionEnded, (EXISTS (SELECT 1 FROM factory_execution_phases p WHERE p.attempt_id = r.attempt_id AND p.phase = 'capture' AND p.observation IN ('quiescent', 'no-start')) AND NOT EXISTS (SELECT 1 FROM factory_execution_phases p WHERE p.attempt_id = r.attempt_id AND p.observation NOT IN ('quiescent', 'no-start')) AND NOT EXISTS (SELECT 1 FROM factory_execution_results o WHERE o.attempt_id = r.attempt_id AND o.capture_key = 'native-final/' || (1 + (SELECT count(*) FROM factory_execution_capture_retries c WHERE c.attempt_id = r.attempt_id)))) AS captureFailed, (SELECT g.abandoned_at FROM factory_execution_capture_abandonments g WHERE g.attempt_id = r.attempt_id) AS givenUpAt, (SELECT o.result_id FROM factory_execution_results o WHERE o.attempt_id = r.attempt_id ORDER BY o.rowid DESC LIMIT 1) AS latestResultId FROM factory_task_runs r LEFT JOIN factory_execution_bindings b ON b.attempt_id = r.attempt_id LEFT JOIN orchestration_v2_projection_runs n ON n.run_id = r.run_id WHERE r.root_id IN ${sql.in(rootIds)} ORDER BY r.root_id, r.task_id, r.ordinal`;
     const resultRecords = yield* sql<{
       rootId: string;
       taskId: string;
@@ -689,6 +698,7 @@ const make = Effect.gen(function* () {
                 effectsPending: record.effectsPending === 1,
                 sessionEnded: record.sessionEnded === 1,
                 captureFailed: record.captureFailed === 1,
+                givenUp: record.givenUpAt !== null,
               });
         const runs = runsByTask.get(record.taskId) ?? [];
         runs.push({
@@ -708,6 +718,9 @@ const make = Effect.gen(function* () {
           latestResultId: record.latestResultId,
           ...(lost ? { lost } : {}),
           ...(captureFailed ? { captureFailed } : {}),
+          ...(record.givenUpAt !== null && state === "failed"
+            ? { resultGivenUp: { by: PERSON_ACTOR.label, at: record.givenUpAt } }
+            : {}),
         });
         runsByTask.set(record.taskId, runs);
       }
@@ -1004,7 +1017,8 @@ const make = Effect.gen(function* () {
         yield* appendActivity({
           key: task.row,
           at: now,
-          actor: yield* agentActor(run.setup, run.profileId),
+          // A given-up result ends the run by a person's act, not the agent's.
+          actor: run.resultGivenUp ? PERSON_ACTOR : yield* agentActor(run.setup, run.profileId),
           event: {
             type: "run-ended",
             ordinal: run.ordinal,
@@ -1215,6 +1229,12 @@ const make = Effect.gen(function* () {
       }>`SELECT attempt_id AS attemptId FROM factory_execution_capture_retries WHERE command_id = ${commandId}`;
       return rows[0]?.attemptId ?? null;
     }, Effect.mapError(failure)),
+    abandonedAttempt: Effect.fn("FactoryTaskStore.abandonedAttempt")(function* (commandId) {
+      const rows = yield* sql<{
+        attemptId: RunAttemptId;
+      }>`SELECT attempt_id AS attemptId FROM factory_execution_capture_abandonments WHERE command_id = ${commandId}`;
+      return rows[0]?.attemptId ?? null;
+    }, Effect.mapError(failure)),
     markStopRequested: Effect.fn("FactoryTaskStore.markStopRequested")(function* (threadId) {
       yield* sql`UPDATE factory_task_runs SET stop_requested = 1 WHERE thread_id = ${threadId}`;
     }, Effect.mapError(failure)),
@@ -1252,7 +1272,8 @@ const make = Effect.gen(function* () {
         quiescent: number;
         nativeStatus: string | null;
         latest: string | null;
-      }>`SELECT t.version, b.run_id AS runId, b.attempt_id AS runAttemptId, b.quiescent, (SELECT json_extract(n.payload_json, '$.status') FROM orchestration_v2_projection_runs n WHERE n.run_id = b.run_id) AS nativeStatus, (SELECT o.output_json FROM factory_execution_results o WHERE o.attempt_id = b.attempt_id ORDER BY o.rowid DESC LIMIT 1) AS latest FROM factory_execution_tasks t JOIN factory_execution_bindings b ON b.attempt_id = t.attempt_id WHERE t.root_id = ${input.rootId} AND t.revision = ${input.revision} AND t.task_id = ${input.taskId}`;
+        abandoned: number;
+      }>`SELECT t.version, b.run_id AS runId, b.attempt_id AS runAttemptId, b.quiescent, EXISTS (SELECT 1 FROM factory_execution_capture_abandonments g WHERE g.attempt_id = b.attempt_id) AS abandoned, (SELECT json_extract(n.payload_json, '$.status') FROM orchestration_v2_projection_runs n WHERE n.run_id = b.run_id) AS nativeStatus, (SELECT o.output_json FROM factory_execution_results o WHERE o.attempt_id = b.attempt_id ORDER BY o.rowid DESC LIMIT 1) AS latest FROM factory_execution_tasks t JOIN factory_execution_bindings b ON b.attempt_id = t.attempt_id WHERE t.root_id = ${input.rootId} AND t.revision = ${input.revision} AND t.task_id = ${input.taskId}`;
       const row = rows[0];
       if (row === undefined) return null;
       const latest = row.latest === null ? null : yield* decodeOutput(row.latest);
@@ -1264,6 +1285,7 @@ const make = Effect.gen(function* () {
         nativeStatus: row.nativeStatus,
         latestResultId: latest?.resultId ?? null,
         latestStatus: latest?.status ?? null,
+        abandoned: row.abandoned === 1,
       };
     }, Effect.mapError(failure)),
     liveAttempts: Effect.fn("FactoryTaskStore.liveAttempts")(function* (input) {

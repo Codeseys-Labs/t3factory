@@ -61,6 +61,7 @@ vi.mock(import("./taskActions"), () => ({
     stop: true,
     retry: true,
     saveAgain: true,
+    giveUp: true,
     breakDown: true,
     accept: true,
     requestChanges: true,

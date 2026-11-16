@@ -1,3 +1,4 @@
+export { GiveUpResultDialog } from "./GiveUpResultDialog";
 export { TaskAsk } from "./TaskAsk";
 export { TaskBanner } from "./TaskBanner";
 export { TaskNeedsRow } from "./TaskNeedsRow";

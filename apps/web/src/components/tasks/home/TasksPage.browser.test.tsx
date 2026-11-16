@@ -192,6 +192,7 @@ vi.mock(import("../shared/taskActions"), () => ({
     stop: true,
     retry: true,
     saveAgain: true,
+    giveUp: true,
     breakDown: true,
     accept: true,
     requestChanges: true,

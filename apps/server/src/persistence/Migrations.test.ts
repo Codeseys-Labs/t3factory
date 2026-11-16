@@ -120,6 +120,34 @@ describe("runMigrations", () => {
         assert.deepEqual(yield* runMigrations(), []);
       }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
+  it.effect("adds the place to record a given-up result beside a held run, in place", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 212 });
+      yield* sql`INSERT INTO factory_execution_bindings(attempt_id, run_id, thread_id, root_id, revision, task_id, grant_version, binding_json, stop_requested) VALUES ('attempt', 'run', 'thread', 'root', 1, 'task', 1, '{}', 1)`;
+      yield* sql`INSERT INTO factory_execution_phases(attempt_id, phase, claimant_id, observation, detail) VALUES ('attempt', 'capture', 'worker', 'quiescent', '')`;
+      const held = Effect.gen(function* () {
+        return [
+          yield* sql`SELECT attempt_id, stop_requested, quiescent FROM factory_execution_bindings`,
+          yield* sql`SELECT attempt_id, phase, observation FROM factory_execution_phases`,
+        ];
+      });
+      const before = yield* held;
+      assert.deepStrictEqual(yield* runMigrations(), [[213, "FactoryCaptureAbandonments"]]);
+      assert.deepStrictEqual(yield* held, before);
+      yield* sql`INSERT INTO factory_execution_capture_abandonments(attempt_id, capture_key, command_id, session_id, abandoned_at) VALUES ('attempt', 'native-final/1', 'give-up', 'session', 'at')`;
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(
+            sql`INSERT INTO factory_execution_capture_abandonments(attempt_id, capture_key, command_id, session_id, abandoned_at) VALUES ('attempt', 'native-final/1', 'give-up-again', 'session', 'at')`,
+          ),
+        ),
+      );
+      assert.deepStrictEqual(yield* runMigrations(), []);
+      assert.deepStrictEqual(yield* history, migrationManifest);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
   it.effect(
     "upgrades known legacy Factory histories without replaying their schema or losing data",
     () =>

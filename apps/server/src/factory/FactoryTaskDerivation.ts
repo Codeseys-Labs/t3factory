@@ -23,10 +23,14 @@ interface WorkRunFacts {
   readonly sessionEnded: boolean;
   /** Every phase settled after the capture, yet nothing was kept for the current capture. */
   readonly captureFailed: boolean;
+  /** A person gave up the result the capture failed to keep. */
+  readonly givenUp: boolean;
 }
 
 const INTERRUPTED = new Set(["interrupted", "cancelled", "rolled_back"]);
 const ENDED = new Set(["completed", "failed", ...INTERRUPTED]);
+
+const GIVEN_UP = "Result given up";
 
 export function workRunState(facts: WorkRunFacts): {
   readonly state: FactoryTaskRunState;
@@ -39,6 +43,8 @@ export function workRunState(facts: WorkRunFacts): {
   const interrupted = facts.stopByPerson || INTERRUPTED.has(facts.nativeStatus ?? "");
   if (facts.quiescent) {
     if (facts.outputStatus === "sealed") return { state: "completed", note: null };
+    // Failed, never stopped: a stopped run stays out of `failedRun`, which offers Retry.
+    if (facts.givenUp) return { state: "failed", note: GIVEN_UP };
     return interrupted ? { state: "stopped", note: null } : { state: "failed", note: "Run failed" };
   }
   if (!facts.engineStop && !ENDED.has(facts.nativeStatus ?? ""))
@@ -49,7 +55,7 @@ export function workRunState(facts: WorkRunFacts): {
       : { state: "running", note: null };
   // The run ended or was told to stop. With no effect left to finish it, it waits on a person.
   if (!facts.effectsPending)
-    return facts.captureFailed
+    return facts.captureFailed && !facts.givenUp
       ? { state: "held", note: "The result could not be saved", captureFailed: true }
       : { state: "held", note: "Waiting for the run's processes to exit" };
   return { state: interrupted ? "stopping" : "running", note: null };

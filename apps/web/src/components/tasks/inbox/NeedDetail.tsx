@@ -21,6 +21,7 @@ import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
 import { ActivityItem, assigneeText, ResultCard } from "../kit";
 import {
+  GiveUpResultDialog,
   TaskAsk,
   TaskAssigneeChip,
   useTaskActions,
@@ -125,25 +126,40 @@ function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSu
   return <p className="text-muted-foreground text-sm">{need.detail}</p>;
 }
 
-/** Retry and Reassign, or Save again for a run held only because its result was not saved. */
+/** Retry and Reassign, or Save again and Give up result on a run whose result was not saved. */
 function RecoverRun({ task }: { task: FactoryTaskSummary }) {
   const actions = useTaskActions();
   const permissions = useTaskPermissions(task.ref.environmentId);
   const [busy, setBusy] = useState(false);
-  const recovery = presentFactoryTaskRunRecovery(factoryTaskFailedRun(task));
+  const [givingUp, setGivingUp] = useState(false);
+  const run = factoryTaskFailedRun(task);
+  const recovery = presentFactoryTaskRunRecovery(run);
   if (recovery.length === 0) return null;
   if (recovery[0]?.kind === "save-again")
     return (
-      <Button
-        size="sm"
-        disabled={busy || !permissions.saveAgain}
-        onClick={() => {
-          setBusy(true);
-          void actions.saveAgain(task).then(() => setBusy(false));
-        }}
-      >
-        Save again
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          disabled={busy || !permissions.saveAgain}
+          onClick={() => {
+            setBusy(true);
+            void actions.saveAgain(task).then(() => setBusy(false));
+          }}
+        >
+          Save again
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy || !permissions.giveUp || run === null}
+          onClick={() => setGivingUp(true)}
+        >
+          Give up result
+        </Button>
+        {givingUp && run !== null ? (
+          <GiveUpResultDialog task={task} run={run} onClose={() => setGivingUp(false)} />
+        ) : null}
+      </div>
     );
   return (
     <div className="flex gap-2">

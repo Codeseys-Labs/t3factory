@@ -82,6 +82,7 @@ import * as Profiles from "./FactoryAgentProfileService.ts";
 import * as Delivery from "./FactoryDeliveryService.ts";
 import { canonicalExecutionJson, executionDigest } from "./FactoryExecutionDigest.ts";
 import * as Executions from "./FactoryExecutionService.ts";
+import * as Lifecycle from "./FactoryExecutionLifecycle.ts";
 import * as Plans from "./FactoryPlanService.ts";
 import * as Changes from "./FactoryTaskChanges.ts";
 import * as Tasks from "./FactoryTaskService.ts";
@@ -563,7 +564,10 @@ const gatedExecutions = Layer.effect(
     });
   }),
 ).pipe(
-  Layer.provide(Executions.layer),
+  // Settles a given-up result as the server does: by observing the attempt again.
+  Layer.provide(
+    Executions.layer.pipe(Layer.provide(Lifecycle.layer.pipe(Layer.provide(ExecutionStore.layer)))),
+  ),
   Layer.provideMerge(Layer.sync(OutputGate, () => ({ next: null, admission: null, grant: null }))),
 );
 const eventStores = EventStore.layerFromOrchestrationEventStore.pipe(
@@ -2620,6 +2624,195 @@ it.effect(
           yield* sql`SELECT json_extract(payload_json, '$.captureGeneration') AS generation FROM orchestration_v2_effect_outbox WHERE thread_id = ${run.threadId} AND effect_type = 'factory.execution.finalize' AND status = 'pending'`,
           [{ generation: 3 }],
         );
+      }),
+    ),
+);
+
+it.effect(
+  "giving up a held run's result lets the task retry on the same plan revision and review its earlier result",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, start, finish, summary, attemptOf, until } = yield* harness;
+        const sink = yield* EventSink.EventSinkV2;
+        const task = yield* create("Resample the ticks", { lane: "ready" });
+        const first = (yield* start(task)).run!;
+        yield* finish(first, "sealed", "First result");
+        yield* until(task, (current) => current.result?.revision === 1);
+        const run = (yield* tasks.requestChanges(
+          { commandId: command("changes"), ref: task.ref, revision: 1, note: "Use UTC" },
+          human,
+        )).task.run!;
+        // Its turn ended and its capture kept nothing; the thread has no root_run scope either.
+        const attemptId = yield* attemptOf(run);
+        yield* sql`UPDATE orchestration_v2_projection_runs SET status = 'completed', payload_json = json_set(payload_json, '$.status', 'completed') WHERE run_id = ${run.runId}`;
+        yield* sql`UPDATE factory_execution_bindings SET stop_requested = 1 WHERE attempt_id = ${attemptId}`;
+        yield* sql`UPDATE orchestration_v2_effect_outbox SET status = 'succeeded' WHERE thread_id = ${run.threadId}`;
+        for (const phase of ["turn", "capture"])
+          yield* sql`INSERT INTO factory_execution_phases(attempt_id, phase, claimant_id, observation, detail) VALUES (${attemptId}, ${phase}, 'worker', 'quiescent', '')`;
+        const held = yield* summary(task);
+        assert.deepEqual([held.run?.state, held.run?.captureFailed], ["held", true]);
+        const refusal = <A>(effect: Effect.Effect<A, FactoryTaskError>) =>
+          effect.pipe(
+            Effect.flip,
+            Effect.map((error) => [error.reason, error.detail]),
+          );
+        // Every way out is refused while it is held, and Save again can't reach the engine.
+        assert.equal(
+          (yield* refusal(
+            tasks.retry(
+              { commandId: command("retry-held"), ref: task.ref, expectedVersion: held.version },
+              human,
+            ),
+          ))[0],
+          "run-active",
+        );
+        assert.equal(
+          (yield* refusal(
+            tasks.update(
+              {
+                commandId: command("cancel-held"),
+                ref: task.ref,
+                expectedVersion: held.version,
+                lane: "canceled",
+              },
+              human,
+            ),
+          ))[0],
+          "run-active",
+        );
+        assert.equal(
+          (yield* refusal(
+            tasks.retryCapture({ commandId: command("save-unscoped"), ref: task.ref }, human),
+          ))[0],
+          "blocked",
+        );
+
+        // The engine took the command, and the server stopped before settling or recording it.
+        const revision = (yield* sql<{
+          revision: number;
+        }>`SELECT revision FROM factory_execution_bindings WHERE attempt_id = ${attemptId}`)[0]!
+          .revision;
+        const engineInput = {
+          commandId: CommandId.make(`factory-task:abandon:${command("give-up")}`),
+          selection: {
+            ref: { environmentId, projectId, rootId: task.ref.rootId },
+            revision,
+            taskId: task.ref.taskId,
+          },
+          runId: run.runId,
+          runAttemptId: attemptId,
+        };
+        yield* sink.commitFactoryExecutionCommand({
+          command: {
+            commandId: engineInput.commandId,
+            ref: engineInput.selection.ref,
+            revision,
+            actor: human,
+            digest: executionDigest(["abandonCapture", human, engineInput]),
+            now: at,
+            operation: { type: "abandonCapture", input: engineInput },
+          },
+          events: [],
+          effects: [],
+        });
+        const recorded = yield* summary(task);
+        assert.deepEqual(
+          [recorded.run?.state, recorded.run?.captureFailed, recorded.run?.note],
+          ["held", undefined, "Waiting for the run's processes to exit"],
+        );
+        const giveUp = (name: string, runId = run.runId) =>
+          tasks.abandonCapture({ commandId: command(name), ref: task.ref, runId }, human);
+        const given = yield* giveUp("give-up");
+        assert.isFalse(given.replayed);
+        assert.deepEqual(
+          [
+            given.task.run?.ordinal,
+            given.task.run?.state,
+            given.task.run?.note,
+            given.task.run?.resultGivenUp?.by,
+            given.task.liveRuns,
+            given.task.attention.map((need) => [need.reason, need.detail]),
+          ],
+          [
+            2,
+            "failed",
+            "Result given up",
+            "You",
+            [],
+            // The earlier result is back under review.
+            [
+              ["failed", "Result given up"],
+              ["review", "+184 −20 · 2 files"],
+            ],
+          ],
+        );
+        assert.isTrue((yield* giveUp("give-up")).replayed);
+        assert.equal((yield* refusal(giveUp("give-up", first.runId)))[0], "command-conflict");
+        assert.deepEqual(
+          yield* refusal(
+            tasks.retryCapture({ commandId: command("save-given-up"), ref: task.ref }, human),
+          ),
+          ["invalid-transition", "This run's result was given up, so it can't be saved again."],
+        );
+        const ended = (yield* tasks.activity({ ref: task.ref })).entries.flatMap((entry) =>
+          entry.event.type === "run-ended"
+            ? [[entry.event.ordinal, entry.event.outcome, entry.actor.kind]]
+            : [],
+        );
+        assert.deepEqual(ended, [
+          [1, "completed", "agent"],
+          [2, "failed", "person"],
+        ]);
+
+        // A breakdown asked for afterwards does not hide the given-up run, which still offers Retry.
+        yield* tasks.recordPlanningRun({
+          ref: task.ref,
+          threadId: ThreadId.make("thread:planning-after-give-up"),
+          runId: RunId.make("run:planning-after-give-up"),
+          setup: setupOf(),
+        });
+        const planned = yield* summary(task);
+        assert.deepEqual(
+          [planned.run?.purpose, planned.failedRun?.ordinal, planned.failedRun?.state],
+          ["planning", 2, "failed"],
+        );
+        yield* sql`INSERT INTO orchestration_v2_projection_runs(run_id, thread_id, ordinal, provider, provider_instance_id, provider_thread_id, status, requested_at, payload_json) VALUES ('run:planning-after-give-up', 'thread:planning-after-give-up', 1, 'devReplay', 'devReplay', 'native', 'completed', ${at}, '{"status":"completed"}')`;
+        const brokenDown = yield* summary(task);
+        const retried = (yield* tasks.retry(
+          { commandId: command("retry"), ref: task.ref, expectedVersion: brokenDown.version },
+          human,
+        )).task;
+        const third = retried.run!;
+        assert.deepEqual([third.ordinal, third.state], [4, "running"]);
+        assert.deepEqual(
+          yield* sql`SELECT revision FROM factory_execution_bindings WHERE thread_id = ${third.threadId}`,
+          [{ revision }],
+        );
+        assert.deepEqual(yield* refusal(giveUp("give-up-stale")), [
+          "invalid-transition",
+          "This is no longer the run waiting on you. Look at the task again.",
+        ]);
+
+        // The earlier result can be reviewed again, and the task can be canceled.
+        yield* finish(third, "failed");
+        const reviewable = yield* until(task, (current) => current.liveRuns.length === 0);
+        const accepted = (yield* tasks.accept(
+          { commandId: command("accept"), ref: task.ref, revision: 1 },
+          human,
+        )).task;
+        assert.equal(accepted.result?.state, "accepted");
+        assert.isAbove(accepted.version, reviewable.version);
+        const canceled = (yield* tasks.update(
+          {
+            commandId: command("cancel"),
+            ref: task.ref,
+            expectedVersion: accepted.version,
+            lane: "canceled",
+          },
+          human,
+        )).task;
+        assert.equal(canceled.status, "canceled");
       }),
     ),
 );

@@ -391,14 +391,19 @@ it.effect.each([212, 213])(
         schemaVersion: originalMetadata.schemaVersion + 1,
         journalMode: "delete",
       });
-      const originalAfter = yield* Effect.gen(function* () {
+      // The old runner stamps the rows it adds with the wall clock, and the two copies run at different moments.
+      const afterOldBuild = Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
         yield* oldBuild.runMigrations();
+        yield* sql`UPDATE effect_sql_migrations SET created_at = '2026-08-01 00:00:00' WHERE migration_id > ${head}`;
         return yield* inspect;
-      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: original })));
-      const restoredAfter = yield* Effect.gen(function* () {
-        yield* oldBuild.runMigrations();
-        return yield* inspect;
-      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: restored })));
+      });
+      const originalAfter = yield* afterOldBuild.pipe(
+        Effect.provide(NodeSqliteClient.layer({ filename: original })),
+      );
+      const restoredAfter = yield* afterOldBuild.pipe(
+        Effect.provide(NodeSqliteClient.layer({ filename: restored })),
+      );
       assert.deepStrictEqual(restoredAfter, originalAfter);
       yield* Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;

@@ -26,6 +26,7 @@ import * as ServerOwnership from "../serverOwnership.ts";
 import { migrationManifest, runMigrations } from "./Migrations.ts";
 import * as SqlitePersistence from "./Sqlite.ts";
 import * as oldBuild from "./test-fixtures/factoryMigrationsBeforeBand.ts";
+import { databaseSnapshot } from "./test-fixtures/databaseSnapshot.ts";
 import * as ThreadSearch from "../orchestration-v2/ThreadSearch.ts";
 import {
   DATABASE_MIGRATIONS_STARTED_MESSAGE,
@@ -277,6 +278,12 @@ it.effect.each([212, 213])(
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const { dbPath } = yield* ServerConfig.ServerConfig;
+      const backupMetadata = Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const [schema] = yield* sql<{ schema_version: number }>`PRAGMA schema_version`;
+        const [journal] = yield* sql<{ journal_mode: string }>`PRAGMA journal_mode`;
+        return { schemaVersion: schema!.schema_version, journalMode: journal!.journal_mode };
+      });
       const inspect = Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         const ledger = yield* sql<{
@@ -298,13 +305,22 @@ it.effect.each([212, 213])(
           userVersion: version?.user_version,
           applicationId: application?.application_id,
           search,
+          database: yield* databaseSnapshot,
         };
       });
       const before = yield* Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
+        yield* sql`PRAGMA journal_mode = WAL`;
         yield* oldBuild.runMigrations({ toMigrationInclusive: head });
         yield* sql`PRAGMA user_version = 712`;
         yield* sql`PRAGMA application_id = 132`;
+        yield* sql`CREATE TABLE unindexed_restore_probe (value TEXT)`;
+        yield* sql`INSERT INTO unindexed_restore_probe(rowid, value) VALUES (1, 'one'), (3, 'three'), (5, 'five')`;
+        yield* sql`CREATE TABLE sequence_restore_probe (id INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT)`;
+        yield* sql`INSERT INTO sequence_restore_probe(id, value) VALUES (1, 'one'), (9, 'deleted')`;
+        yield* sql`DELETE FROM sequence_restore_probe WHERE id = 9`;
+        yield* sql`CREATE TABLE primary_key_restore_probe (a TEXT, b INTEGER, value TEXT, PRIMARY KEY(a, b)) WITHOUT ROWID`;
+        yield* sql`INSERT INTO primary_key_restore_probe VALUES ('b', 2, 'two'), ('a', 1, 'one')`;
         yield* sql`INSERT INTO projection_projects (project_id, title, workspace_root, scripts_json, created_at, updated_at) VALUES ('p', 'Project', '/scratch', '[]', '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')`;
         yield* sql`INSERT INTO orchestration_v2_projection_threads (thread_id, project_id, title, default_provider, runtime_mode, interaction_mode, created_at, updated_at, payload_json) VALUES ('t', 'p', 'Thread', 'codex', 'full-access', 'default', '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z', '{}')`;
         for (const id of [1, 2, 3, 4, 5]) {
@@ -321,6 +337,10 @@ it.effect.each([212, 213])(
       assert.strictEqual(before.search.matches[0]?.hits, 3);
       const original = path.join(path.dirname(dbPath), "original.sqlite");
       yield* fs.copyFile(dbPath, original);
+      const originalMetadata = yield* backupMetadata.pipe(
+        Effect.provide(NodeSqliteClient.layer({ filename: original })),
+      );
+      assert.strictEqual(originalMetadata.journalMode, "wal");
       messages.length = 0;
       yield* ownT3Home();
       const startedBefore = workerData.length;
@@ -364,6 +384,13 @@ it.effect.each([212, 213])(
         Effect.provide(NodeSqliteClient.layer({ filename: restored })),
       );
       assert.deepStrictEqual(restoredBefore, before);
+      const restoredMetadata = yield* backupMetadata.pipe(
+        Effect.provide(NodeSqliteClient.layer({ filename: restored })),
+      );
+      assert.deepStrictEqual(restoredMetadata, {
+        schemaVersion: originalMetadata.schemaVersion + 1,
+        journalMode: "delete",
+      });
       const originalAfter = yield* Effect.gen(function* () {
         yield* oldBuild.runMigrations();
         return yield* inspect;
@@ -373,6 +400,12 @@ it.effect.each([212, 213])(
         return yield* inspect;
       }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: restored })));
       assert.deepStrictEqual(restoredAfter, originalAfter);
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        assert.deepStrictEqual(yield* sql`PRAGMA journal_mode`, [{ journal_mode: "wal" }]);
+        const after = yield* inspect;
+        assert.deepStrictEqual(after.search, before.search);
+      }).pipe(Effect.provide(SqlitePersistence.layerFromPath(restored)));
     }).pipe(
       Effect.scoped,
       Effect.provide(

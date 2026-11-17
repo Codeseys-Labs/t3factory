@@ -1,11 +1,14 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Injects filesystem failures into migration backup publication.
 import * as NodeFSP from "node:fs/promises";
+import * as NodeCrypto from "node:crypto";
 import { vi } from "vite-plus/test";
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Cause from "effect/Cause";
+import * as Logger from "effect/Logger";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -28,6 +31,11 @@ import FactoryMigration203 from "./Migrations/10011_FactoryArtifactDeliveries.ts
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof NodeFSP>();
+  return { ...actual };
+});
+
+vi.mock("node:crypto", async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeCrypto>();
   return { ...actual };
 });
 
@@ -91,74 +99,177 @@ const schema = Effect.gen(function* () {
 });
 
 describe("Factory migration band", () => {
-  it.effect.each(["success", "publish failure", "vacuum failure", "unknown history"])(
-    "publishes one complete backup before conversion: %s",
-    (scenario) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-factory-band-" });
-        const filename = path.join(root, "statev2.sqlite");
-        const backups = () =>
-          fs
-            .readDirectory(root)
-            .pipe(
-              Effect.map((names) =>
-                names.filter((name) => name.includes(".before-factory-migration-band")),
-              ),
-            );
+  it.effect.each([
+    "success",
+    "stale cleanup failure",
+    "publish failure",
+    "cleanup failure",
+    "vacuum failure",
+    "unknown history",
+  ])("publishes one complete backup before conversion: %s", (scenario) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-factory-band-" });
+      const filename = path.join(root, "statev2.sqlite");
+      const stale = path.join(
+        root,
+        "statev2.sqlite.partial-factory-band-backup-20261116T000000Z-deadbeef",
+      );
+      yield* fs.writeFileString(stale, "interrupted backup");
+      const backups = () =>
+        fs
+          .readDirectory(root)
+          .pipe(
+            Effect.map((names) =>
+              names.filter((name) => name.includes(".before-factory-migration-band")),
+            ),
+          );
+      assert.deepStrictEqual(yield* backups(), []);
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`PRAGMA journal_mode = WAL`;
+        yield* oldBuild.runMigrations();
+        if (scenario === "unknown history") {
+          yield* sql`UPDATE effect_sql_migrations SET name = 'UnrecognizedMigration' WHERE migration_id = 200`;
+        }
+        const before = yield* history;
+        const originalOpen = NodeFSP.open;
+        using open = vi.spyOn(NodeFSP, "open");
+        using rename = vi.spyOn(NodeFSP, "rename");
+        const originalRm = NodeFSP.rm;
+        using rm = vi.spyOn(NodeFSP, "rm");
+        if (scenario === "cleanup failure") {
+          rm.mockImplementation(async (...args) => {
+            if (String(args[0]) !== stale) throw new Error("injected cleanup failure");
+            return originalRm(...args);
+          });
+        }
+        if (scenario === "stale cleanup failure") {
+          rm.mockImplementation(async (...args) => {
+            if (String(args[0]) === stale) throw new Error("stale cleanup denied");
+            return originalRm(...args);
+          });
+        }
+        if (scenario === "publish failure" || scenario === "cleanup failure") {
+          rename.mockRejectedValueOnce(
+            Object.assign(new Error("backup device full"), { code: "ENOSPC" }),
+          );
+        }
+        if (scenario === "vacuum failure") {
+          open.mockImplementationOnce(async (...args) => {
+            const file = await originalOpen(...args);
+            await file.writeFile("injected interrupted vacuum output");
+            return file;
+          });
+        }
+        const warnings: string[] = [];
+        const exit = yield* Effect.exit(runMigrations()).pipe(
+          Effect.provide(
+            Logger.layer(
+              [
+                Logger.make(({ logLevel, message }) => {
+                  if (logLevel === "Warn") warnings.push(String(message));
+                }),
+              ],
+              { mergeWithExisting: false },
+            ),
+          ),
+        );
+        if (scenario === "cleanup failure" || scenario === "stale cleanup failure")
+          assert.isTrue(
+            warnings.some((message) =>
+              message.includes("Cannot remove the staged Factory migration backup"),
+            ),
+          );
+        if (scenario !== "success" && scenario !== "stale cleanup failure") {
+          assert.isTrue(Exit.isFailure(exit));
+          if (scenario === "cleanup failure" && Exit.isFailure(exit)) {
+            assert.deepStrictEqual(exit.cause.reasons.filter(Cause.isDieReason), []);
+            assert.lengthOf(exit.cause.reasons, 1);
+            assert.include(String(exit), "backup device full");
+            rm.mockRestore();
+          }
+          assert.deepStrictEqual(yield* history, before);
+          assert.deepStrictEqual(yield* backups(), []);
+          if (scenario === "unknown history") return;
+          assert.include(String(exit), filename);
+          assert.include(String(exit), "retry");
+          yield* runMigrations();
+        } else assert.isTrue(Exit.isSuccess(exit));
+        const names = yield* backups();
+        assert.lengthOf(names, 1);
+        assert.match(
+          names[0]!,
+          /^statev2\.sqlite\.before-factory-migration-band-\d{8}T\d{6}Z-[a-f0-9]{8}$/,
+        );
+        assert.isFalse(names[0]!.endsWith(".staging"));
+        assert.strictEqual(yield* fs.exists(stale), scenario === "stale cleanup failure");
+        assert.deepStrictEqual(
+          (yield* fs.readDirectory(root)).filter((name) =>
+            name.startsWith("statev2.sqlite.partial-"),
+          ),
+          scenario === "stale cleanup failure" ? [path.basename(stale)] : [],
+        );
+        const backup = path.join(root, names[0]!);
+        assert.isTrue((yield* fs.stat(backup)).type === "File");
         yield* Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          yield* sql`PRAGMA journal_mode = WAL`;
-          yield* oldBuild.runMigrations();
-          if (scenario === "unknown history") {
-            yield* sql`UPDATE effect_sql_migrations SET name = 'UnrecognizedMigration' WHERE migration_id = 200`;
-          }
-          const before = yield* history;
-          const originalOpen = NodeFSP.open;
-          using open = vi.spyOn(NodeFSP, "open");
-          using rename = vi.spyOn(NodeFSP, "rename");
-          if (scenario === "publish failure") {
-            rename.mockRejectedValueOnce(
-              Object.assign(new Error("backup device full"), { code: "ENOSPC" }),
-            );
-          }
-          if (scenario === "vacuum failure") {
-            open.mockImplementationOnce(async (...args) => {
-              const file = await originalOpen(...args);
-              await file.writeFile("injected interrupted vacuum output");
-              return file;
-            });
-          }
-          const exit = yield* Effect.exit(runMigrations());
-          if (scenario !== "success") {
-            assert.isTrue(Exit.isFailure(exit));
-            assert.deepStrictEqual(yield* history, before);
-            assert.deepStrictEqual(yield* backups(), []);
-            if (scenario === "unknown history") return;
-            assert.include(String(exit), filename);
-            assert.include(String(exit), "retry");
-            yield* runMigrations();
-          }
-          const names = yield* backups();
-          assert.lengthOf(names, 1);
-          assert.match(names[0]!, /^statev2\.sqlite\.before-factory-migration-band-.+/);
-          assert.isFalse(names[0]!.endsWith(".staging"));
-          const backup = path.join(root, names[0]!);
-          assert.isTrue((yield* fs.stat(backup)).type === "File");
-          yield* Effect.gen(function* () {
-            const backupSql = yield* SqlClient.SqlClient;
-            assert.deepStrictEqual(yield* history, before);
-            assert.deepStrictEqual(yield* backupSql`PRAGMA integrity_check`, [
-              { integrity_check: "ok" },
-            ]);
-          }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: backup, readonly: true })));
-          assert.deepStrictEqual(yield* history, expectedBandHistory);
-          assert.deepStrictEqual(yield* runMigrations(), []);
-          assert.isFalse(yield* hasPendingMigrations());
-          assert.deepStrictEqual(yield* backups(), names);
-        }).pipe(Effect.provide(NodeSqliteClient.layer({ filename })));
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+          const backupSql = yield* SqlClient.SqlClient;
+          assert.deepStrictEqual(yield* history, before);
+          assert.deepStrictEqual(yield* backupSql`PRAGMA integrity_check`, [
+            { integrity_check: "ok" },
+          ]);
+        }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: backup, readonly: true })));
+        assert.deepStrictEqual(yield* history, expectedBandHistory);
+        assert.deepStrictEqual(yield* runMigrations(), []);
+        assert.isFalse(yield* hasPendingMigrations());
+        assert.deepStrictEqual(yield* backups(), names);
+      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename })));
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("removes stale staged backups without overwriting an existing final name", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-factory-band-collision-" });
+      const filename = path.join(root, "statev2.sqlite");
+      const existing = path.join(
+        root,
+        "statev2.sqlite.before-factory-migration-band-19700101T000000Z-deadbeef",
+      );
+      const stale = path.join(
+        root,
+        "statev2.sqlite.partial-factory-band-backup-19691231T235959Z-deadbeef",
+      );
+      const unrelated = path.join(
+        root,
+        "other.sqlite.partial-factory-band-backup-19691231T235959Z-deadbeef",
+      );
+      yield* fs.writeFileString(existing, "previous finished backup");
+      yield* fs.writeFileString(stale, "interrupted backup");
+      yield* fs.writeFileString(unrelated, "another database's file");
+      using _random = vi
+        .spyOn(NodeCrypto, "randomUUID")
+        .mockReturnValueOnce("deadbeef-0000-4000-8000-000000000000")
+        .mockReturnValueOnce("cafebabe-0000-4000-8000-000000000000");
+      yield* Effect.gen(function* () {
+        yield* oldBuild.runMigrations();
+        yield* runMigrations();
+      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename })));
+      assert.strictEqual(yield* fs.readFileString(existing), "previous finished backup");
+      assert.isFalse(yield* fs.exists(stale));
+      assert.strictEqual(yield* fs.readFileString(unrelated), "another database's file");
+      assert.deepStrictEqual(
+        (yield* fs.readDirectory(root))
+          .filter((name) => name.startsWith("statev2.sqlite.before-factory-migration-band-"))
+          .sort(),
+        [
+          "statev2.sqlite.before-factory-migration-band-19700101T000000Z-cafebabe",
+          path.basename(existing),
+        ],
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
   it.effect.each(["failed translation", "restored backup"])(
@@ -214,7 +325,7 @@ describe("Factory migration band", () => {
         const second = yield* backups();
         assert.lengthOf(second, 2);
         const newer = second.find((name) => name !== first[0])!;
-        assert.strictEqual(newer.slice(0, -36), first[0]!.slice(0, -36));
+        assert.strictEqual(newer.slice(0, -8), first[0]!.slice(0, -8));
         for (const [name, count] of [
           [first[0]!, 1],
           [newer, 2],

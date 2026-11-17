@@ -78,8 +78,9 @@ installer, npm, relay, store or release step, and no publishing credential. Publ
 and must consume this artifact, never rebuild it.
 
 Release notes for the Factory migration-band upgrade must link the
-[database upgrade and restore instructions](../user/updating.md#factory-database-upgrade-and-restore)
-and call out the backup location and older-build refusal before users install it.
+[database upgrade and restore instructions](../user/install.md#factory-database-upgrade-and-restore),
+name the last version that opens an un-upgraded database, and call out the backup location
+and older-version refusal before users install it.
 
 1. Validate from the trusted branch with every lane requested, including `lane_windows=true`.
    Note the run ID, its current attempt, its head SHA and the digest in

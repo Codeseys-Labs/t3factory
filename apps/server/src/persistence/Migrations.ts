@@ -2,6 +2,7 @@
 import * as Migrator from "effect/sql/Migrator";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   DATABASE_MIGRATION_PROGRESS_MESSAGE,
   DATABASE_MIGRATIONS_FINISHED_MESSAGE,
@@ -9,6 +10,7 @@ import {
 } from "@t3tools/shared/databaseMigrationLog";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeCrypto from "node:crypto";
+import * as NodePath from "node:path";
 import * as DateTime from "effect/DateTime";
 import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
 
@@ -365,6 +367,18 @@ const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function*
   });
 });
 
+const removeStagedFactoryBackup = Effect.fn("removeStagedFactoryBackup")((path: string) =>
+  Effect.tryPromise({
+    try: () => NodeFSP.rm(path, { force: true }),
+    catch: (cause) =>
+      new Migrator.MigrationError({
+        kind: "Failed",
+        message: `Cannot remove the staged Factory migration backup at ${path}; the next upgrade attempt will retry cleanup.`,
+        cause,
+      }),
+  }).pipe(Effect.catch((error) => Effect.logWarning(error.message))),
+);
+
 // Translation commits separately; the existing upstream backfill remains one transaction.
 const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(function* (
   throughId?: number,
@@ -398,35 +412,76 @@ const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(funct
     const filename = databases.find((database) => database.name === "main")?.file;
     let backupPath: string | undefined;
     if (filename && !disposableDevSeedSnapshot) {
-      const timestamp = DateTime.formatIso(yield* DateTime.now).replaceAll(":", "-");
-      backupPath = `${filename}.before-factory-migration-band-${timestamp}-${NodeCrypto.randomUUID()}`;
-      const stagedPath = `${backupPath}.staging`;
+      const platform = yield* HostProcess.Platform;
+      const directory = NodePath.dirname(filename);
+      const stagedPrefix = `${NodePath.basename(filename)}.partial-factory-band-backup-`;
+      const siblings = yield* Effect.tryPromise({
+        try: () => NodeFSP.readdir(directory),
+        catch: (cause) =>
+          new Migrator.MigrationError({
+            kind: "Failed",
+            message: `Cannot list staged Factory migration backups in ${directory}; the next upgrade attempt will retry cleanup.`,
+            cause,
+          }),
+      }).pipe(
+        Effect.catch((error) => Effect.logWarning(error.message).pipe(Effect.as([] as string[]))),
+      );
+      for (const name of siblings) {
+        if (
+          name.startsWith(stagedPrefix) &&
+          /^\d{8}T\d{6}Z-[a-f0-9]{8}$/.test(name.slice(stagedPrefix.length))
+        )
+          yield* removeStagedFactoryBackup(NodePath.join(directory, name));
+      }
+      const timestamp = DateTime.formatIso(yield* DateTime.now)
+        .replaceAll(/[-:]/g, "")
+        .replace(/\.\d{3}Z$/, "Z");
+      let stagedPath: string | undefined;
       let stagedCreated = false;
       yield* Effect.gen(function* () {
         yield* Effect.tryPromise({
           try: async () => {
-            const file = await NodeFSP.open(stagedPath, "wx", 0o600);
+            for (;;) {
+              const suffix = `${timestamp}-${NodeCrypto.randomUUID().slice(0, 8)}`;
+              backupPath = `${filename}.before-factory-migration-band-${suffix}`;
+              stagedPath = NodePath.join(directory, `${stagedPrefix}${suffix}`);
+              try {
+                await NodeFSP.lstat(backupPath);
+              } catch (cause) {
+                if ((cause as NodeJS.ErrnoException).code === "ENOENT") break;
+                throw cause;
+              }
+            }
+            const file = await NodeFSP.open(stagedPath!, "wx", 0o600);
             stagedCreated = true;
             await file.close();
           },
           catch: (cause) =>
             new Migrator.MigrationError({
               kind: "Failed",
-              message: `Cannot create the staged Factory migration backup at ${stagedPath}. Check free disk space and directory permissions, then retry; the migration history was not converted.`,
+              message: `Cannot create the staged Factory migration backup at ${stagedPath ?? filename}. Check free disk space and directory permissions, then retry; the migration history was not converted.`,
               cause,
             }),
         });
         // The writer owns this snapshot; VACUUM must precede the translation transaction.
-        yield* sql`VACUUM INTO ${stagedPath}`;
+        yield* sql`VACUUM INTO ${stagedPath!}`;
         yield* Effect.tryPromise({
           try: async () => {
-            const file = await NodeFSP.open(stagedPath, "r+");
+            const file = await NodeFSP.open(stagedPath!, "r+");
             try {
               await file.sync();
             } finally {
               await file.close();
             }
-            await NodeFSP.rename(stagedPath, backupPath!);
+            await NodeFSP.rename(stagedPath!, backupPath!);
+            if (platform !== "win32") {
+              const folder = await NodeFSP.open(directory, "r");
+              try {
+                await folder.sync();
+              } finally {
+                await folder.close();
+              }
+            }
           },
           catch: (cause) =>
             new Migrator.MigrationError({
@@ -437,17 +492,9 @@ const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(funct
         });
       }).pipe(
         Effect.ensuring(
-          Effect.tryPromise({
-            try: async () => {
-              if (stagedCreated) await NodeFSP.rm(stagedPath, { force: true });
-            },
-            catch: (cause) =>
-              new Migrator.MigrationError({
-                kind: "Failed",
-                message: `Cannot remove the staged Factory migration backup at ${stagedPath}. Check directory permissions and remove that staged file before retrying; the migration history was not converted.`,
-                cause,
-              }),
-          }).pipe(Effect.orDie),
+          Effect.suspend(() =>
+            stagedCreated ? removeStagedFactoryBackup(stagedPath!) : Effect.void,
+          ),
         ),
         Effect.mapError((cause) =>
           cause instanceof Migrator.MigrationError

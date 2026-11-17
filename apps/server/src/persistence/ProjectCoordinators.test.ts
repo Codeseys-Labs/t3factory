@@ -344,12 +344,12 @@ it.effect(
 );
 
 it.effect(
-  "migration 194 is empty and additive; legacy SQL and deletion leave coordinator provenance intact",
+  "migration 10002 is empty and additive; legacy SQL and deletion leave coordinator provenance intact",
   () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`PRAGMA foreign_keys = ON`;
-      yield* runMigrations({ toMigrationInclusive: 193 });
+      yield* runMigrations({ toMigrationInclusive: 10001 });
       const original = intent("legacy-project");
       // These are the existing project/thread writes, unchanged by coordinator persistence.
       yield* sql`
@@ -362,10 +362,10 @@ it.effect(
         (thread_id, project_id, title, default_provider, runtime_mode, interaction_mode, created_at, updated_at, payload_json)
       VALUES (${original.threadId}, ${projectId}, 'Legacy thread', 'codex', 'approval-required', 'default', ${original.createdAt}, ${original.createdAt}, '{}')
     `;
-      yield* runMigrations({ toMigrationInclusive: 194 });
+      yield* runMigrations({ toMigrationInclusive: 10002 });
       assert.deepEqual(yield* sql`SELECT * FROM project_coordinators`, []);
       assert.deepEqual(
-        yield* sql`SELECT name FROM effect_sql_migrations WHERE migration_id = 194`,
+        yield* sql`SELECT name FROM effect_sql_migrations WHERE migration_id = 10002`,
         [{ name: "ProjectCoordinators" }],
       );
       const legacyReplacement = intent("replacement", original.threadId);

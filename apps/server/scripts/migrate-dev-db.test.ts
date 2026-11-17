@@ -8,6 +8,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { runMigrations } from "../src/persistence/Migrations.ts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { runMigrateDevDb } from "./migrate-dev-db.ts";
+import * as oldBuild from "../src/persistence/test-fixtures/factoryMigrationsBeforeBand.ts";
 
 const withDatabase = <A, E, R>(
   databasePath: string,
@@ -149,6 +150,61 @@ const createFixtureSource = Effect.fn("createMigrateDevDbFixtureSource")(functio
 });
 
 it.layer(NodeServices.layer)("migrate-dev-db", (it) => {
+  it.effect("Factory band seeds successive unconverted sources without retaining backups", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const sourceDir = yield* fs.makeTempDirectoryScoped({ prefix: "migrate-band-src-" });
+      const destDir = yield* fs.makeTempDirectoryScoped({ prefix: "migrate-band-dest-" });
+      const source = path.join(sourceDir, "statev2.sqlite");
+      yield* withDatabase(source, oldBuild.runMigrations());
+      for (const title of ["First source contents", "Second source contents"]) {
+        yield* withDatabase(
+          source,
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`PRAGMA journal_mode = WAL`;
+            yield* sql`INSERT OR REPLACE INTO projection_projects (project_id, title, workspace_root, scripts_json, created_at, updated_at) VALUES ('p', ${title}, '/scratch', '[]', '2026-08-01', '2026-08-01')`;
+            assert.deepStrictEqual(yield* sql`SELECT title FROM projection_projects`, [{ title }]);
+            const sourceBytes = Effect.forEach([source, `${source}-wal`, `${source}-shm`], (file) =>
+              Effect.gen(function* () {
+                return (yield* fs.exists(file)) ? yield* fs.readFile(file) : null;
+              }),
+            );
+            const sourceBefore = yield* sourceBytes;
+            assert.isNotNull(sourceBefore[1]);
+            assert.isNotNull(sourceBefore[2]);
+            const result = yield* runMigrateDevDb(
+              { baseDir: destDir, source, projects: 5, threadsPerProject: 2 },
+              { sharedHome: sourceDir },
+            );
+            assert.deepStrictEqual(yield* sourceBytes, sourceBefore);
+            yield* withDatabase(
+              result.databasePath,
+              Effect.gen(function* () {
+                const sql = yield* SqlClient.SqlClient;
+                assert.deepStrictEqual(yield* sql`SELECT title FROM projection_projects`, [
+                  { title },
+                ]);
+              }),
+            );
+            assert.deepStrictEqual(
+              (yield* fs.readDirectory(path.dirname(result.databasePath))).filter(
+                (name) =>
+                  name.includes("before-factory-migration-band") ||
+                  name.includes("migrate-dev-db-tmp"),
+              ),
+              [],
+            );
+            assert.deepStrictEqual(
+              yield* sql`SELECT MAX(migration_id) AS id FROM effect_sql_migrations`,
+              [{ id: 213 }],
+            );
+          }),
+        );
+      }
+    }).pipe(Effect.scoped),
+  );
   it.effect("keeps stopped and settled thread families and clears pending work", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

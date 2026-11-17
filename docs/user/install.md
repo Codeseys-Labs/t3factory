@@ -308,6 +308,40 @@ which reads those agents' own history ([Welcome wizard](./welcome-wizard.md#impo
 Worktree locations, cleanup rules, remote access and device hosts are not imported; set them in
 each app.
 
+## Factory database upgrade and restore
+
+The first start of this version upgrades the database of an existing T3 Factory and saves
+a copy first. Older versions of T3 Factory then refuse to open the upgraded database.
+Allow enough free space for another copy of your database. If the copy cannot be saved,
+startup stops before the upgrade; check free space and folder permissions, then try again.
+
+**Keep the folder of the version you are replacing until you are sure you will not go back.**
+The preview is a portable folder; you need that folder to start the older version.
+
+Your database and its saved copies are in `~/.t3factory/userdata`
+(`%USERPROFILE%\.t3factory\userdata` on Windows), or the `userdata` folder of the home you
+chose. Each saved copy is named
+`statev2.sqlite.before-factory-migration-band-<time>-<short id>`. The date and time at the
+end of the name are in UTC: for example, `20261117T000401Z` means 17 November 2026 at
+00:04:01 UTC, followed by a short identifier. Choose the copy made by the upgrade you want
+to undo, normally the newest. Files whose names start with `statev2.sqlite.partial-` are
+unfinished copies; delete them while T3 Factory is closed.
+
+To go back to the older version:
+
+1. Close every T3 Factory window and server that uses that folder.
+2. Move the current `statev2.sqlite`, `statev2.sqlite-wal`, and `statev2.sqlite-shm` somewhere
+   else. Some of these files may not exist.
+3. Make a copy of your chosen backup in the `userdata` folder and name the copy
+   `statev2.sqlite`. Keep the backup itself.
+4. Make sure no `statev2.sqlite-wal` or `statev2.sqlite-shm` is left in the folder. Left
+   behind, these files belong to the upgraded database and can damage the restored one.
+5. Start the older version from the folder you kept.
+
+Everything done since that copy was made is lost from the restored database. Starting the
+newer version again upgrades the database again and makes a new copy. Ordinary restarts
+after the upgrade do not make another copy.
+
 ## Next steps
 
 - [Working with threads](./thread-sidebar.md): start tasks and organize parallel work.

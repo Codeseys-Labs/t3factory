@@ -172,8 +172,14 @@ lanes is real and blocks the merge.
 - **A test install under `%TEMP%` lost its files overnight**, including its database and the
   `.git` folder of its repository clone. Keep test installs and database backups out of temporary
   folders.
-- **Factory migrations.** Read [#132](https://github.com/Codeseys-Labs/t3factory/issues/132) before
-  a sync that brings upstream migrations.
+- **Factory migrations.** Keep upstream ids below 10001 and Factory ids at 10001 and up;
+  each new Factory id is the highest Factory id plus one. Preserve each migration's name: startup translates old
+  Factory ledger rows by exact id and name. Keep the manifest and filename prefixes aligned.
+  Read [#132](https://github.com/Codeseys-Labs/t3factory/issues/132) before a sync that brings
+  upstream migrations; the upstream backfill still commits as one transaction.
+  An older checkout cannot seed from a database converted to the Factory band; upgrade the
+  checkout before running dev seeding. For an installed app downgrade, follow the
+  [database restore procedure](../user/install.md#factory-database-upgrade-and-restore).
 - **A fork test that failed on the merge commit, unnoticed.** The merge was checked with typecheck
   and a chosen set of tests. The fork's test for restart recovery of a managed run was not in the
   set and failed there; nobody saw it until a reviewer asked whether that file had been run.

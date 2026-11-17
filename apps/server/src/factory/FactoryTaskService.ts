@@ -607,6 +607,11 @@ const make = Effect.gen(function* () {
     effect: Effect.Effect<A, E, R>,
     input: { readonly commandId: CommandId },
   ) => commands.run(input.commandId, effect);
+  const guardedDelivery = <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+    _kind: unknown,
+    input: { readonly commandId: CommandId },
+  ) => guarded(effect, input);
 
   /** Records a receipt once: one already there for the same command is kept, another conflicts. */
   const recordOnce = Effect.fn("FactoryTaskService.recordOnce")(function* (receipt: {
@@ -2069,86 +2074,83 @@ const make = Effect.gen(function* () {
     };
   });
 
-  const deliver = Effect.fn("FactoryTaskService.deliver")(
-    function* (
-      kind: "publish-pr" | "merge-pr",
-      raw: FactoryTaskDeliverInput,
-      actor: FactoryPlanActor,
-    ) {
-      yield* requireHuman(actor);
-      const input = yield* decodeDeliver(raw).pipe(Effect.mapError(invalid));
-      const command = yield* begin(kind, input.commandId, actor, input);
-      if (command.replayed) return yield* replay(input.ref);
-      const { task } = yield* requireTask(input.ref);
-      const { row } = task;
-      const result = yield* deliverable(task, input.revision);
-      const results: Array<Tasks.TaskResultRow> = [result];
-      const resultRun = task.runs.find(
-        (run) => run.purpose === "work" && run.threadId === result.threadId,
+  const deliver = Effect.fn("FactoryTaskService.deliver")(function* (
+    kind: "publish-pr" | "merge-pr",
+    raw: FactoryTaskDeliverInput,
+    actor: FactoryPlanActor,
+  ) {
+    yield* requireHuman(actor);
+    const input = yield* decodeDeliver(raw).pipe(Effect.mapError(invalid));
+    const command = yield* begin(kind, input.commandId, actor, input);
+    if (command.replayed) return yield* replay(input.ref);
+    const { task } = yield* requireTask(input.ref);
+    const { row } = task;
+    const result = yield* deliverable(task, input.revision);
+    const results: Array<Tasks.TaskResultRow> = [result];
+    const resultRun = task.runs.find(
+      (run) => run.purpose === "work" && run.threadId === result.threadId,
+    );
+    let baseRef = resultRun?.baseRef ?? null;
+    let revision = result.revision;
+    while (baseRef !== null) {
+      const continued = task.results.findLast(
+        (entry) => entry.revision < revision && entry.kind === "code" && entry.commit === baseRef,
       );
-      let baseRef = resultRun?.baseRef ?? null;
-      let revision = result.revision;
-      while (baseRef !== null) {
-        const continued = task.results.findLast(
-          (entry) => entry.revision < revision && entry.kind === "code" && entry.commit === baseRef,
-        );
-        if (continued === undefined) break;
-        results.unshift(continued);
-        baseRef =
-          task.runs.find((run) => run.purpose === "work" && run.threadId === continued.threadId)
-            ?.baseRef ?? null;
-        revision = continued.revision;
-      }
-      const headBranch = deliveryBranch(input.ref, row.displayId, row.title, result.revision);
-      yield* delivery
-        .grantCommit({
-          kind,
-          commandId: derived(input.commandId, kind),
-          originKey: taskResultOriginKey(row.rootId, row.taskId, result.revision),
-          acceptanceId: `task:${row.rootId}/${row.taskId}@${result.revision}`,
-          projectId: row.projectId,
-          threadId: result.threadId,
-          headSha: result.commit,
-          baseRef,
-          publish:
-            kind === "publish-pr"
-              ? {
-                  ...(yield* publication(
-                    row,
-                    result,
-                    derived(input.commandId, kind),
-                    baseRef,
-                    headBranch,
-                    results,
-                    resultRun?.setup.modelSelection ?? null,
-                  )),
+      if (continued === undefined) break;
+      results.unshift(continued);
+      baseRef =
+        task.runs.find((run) => run.purpose === "work" && run.threadId === continued.threadId)
+          ?.baseRef ?? null;
+      revision = continued.revision;
+    }
+    const headBranch = deliveryBranch(input.ref, row.displayId, row.title, result.revision);
+    yield* delivery
+      .grantCommit({
+        kind,
+        commandId: derived(input.commandId, kind),
+        originKey: taskResultOriginKey(row.rootId, row.taskId, result.revision),
+        acceptanceId: `task:${row.rootId}/${row.taskId}@${result.revision}`,
+        projectId: row.projectId,
+        threadId: result.threadId,
+        headSha: result.commit,
+        baseRef,
+        publish:
+          kind === "publish-pr"
+            ? {
+                ...(yield* publication(
+                  row,
+                  result,
+                  derived(input.commandId, kind),
+                  baseRef,
                   headBranch,
-                }
-              : { title: row.title, body: "", headBranch, closes: null },
-          // Inside the grant transaction: a reopen between the click and the grant wins.
-          recheck: store.acceptedRevision(row).pipe(
-            Effect.mapError(
-              (cause) => new FactoryDeliveryError({ reason: "persistence-failure", cause }),
-            ),
-            Effect.flatMap((accepted) =>
-              accepted === result.revision
-                ? Effect.void
-                : Effect.fail(new FactoryDeliveryError({ reason: "not-accepted" })),
-            ),
+                  results,
+                  resultRun?.setup.modelSelection ?? null,
+                )),
+                headBranch,
+              }
+            : { title: row.title, body: "", headBranch, closes: null },
+        // Inside the grant transaction: a reopen between the click and the grant wins.
+        recheck: store.acceptedRevision(row).pipe(
+          Effect.mapError(
+            (cause) => new FactoryDeliveryError({ reason: "persistence-failure", cause }),
           ),
-        })
-        .pipe(Effect.mapError(deliveryRefusal));
-      yield* transact(
-        Effect.gen(function* () {
-          yield* store.refreshRoots([row.rootId]);
-          yield* command.record(row);
-          yield* changes.announce({ rootIds: [row.rootId] });
-        }),
-      );
-      return { task: yield* summaryOf(row), replayed: false };
-    },
-    (effect, _kind, raw) => guarded(effect, raw),
-  );
+          Effect.flatMap((accepted) =>
+            accepted === result.revision
+              ? Effect.void
+              : Effect.fail(new FactoryDeliveryError({ reason: "not-accepted" })),
+          ),
+        ),
+      })
+      .pipe(Effect.mapError(deliveryRefusal));
+    yield* transact(
+      Effect.gen(function* () {
+        yield* store.refreshRoots([row.rootId]);
+        yield* command.record(row);
+        yield* changes.announce({ rootIds: [row.rootId] });
+      }),
+    );
+    return { task: yield* summaryOf(row), replayed: false };
+  }, guardedDelivery);
 
   const publish: FactoryTaskService["Service"]["publish"] = (input, actor) =>
     deliver("publish-pr", input, actor);

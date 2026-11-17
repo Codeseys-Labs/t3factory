@@ -1,4 +1,3 @@
-import type { ProviderOptionDescriptor } from "@t3tools/contracts";
 import { ZapIcon } from "lucide-react";
 
 import type { ComposerControlSize } from "./ComposerControl";
@@ -7,39 +6,6 @@ const GLYPH_HEIGHT_SM = 14;
 const GLYPH_HEIGHT_XS = 12;
 // Bars stop this far above the box's bottom, which puts their flat base on the text baseline.
 const BASELINE_INSET = 2;
-
-type SelectDescriptor = Extract<ProviderOptionDescriptor, { type: "select" }>;
-
-// Older servers offer Ultracode as a level. It changes the workflow, so it keeps its name.
-// Max is named too, so the full scale stops short of it.
-const NAMED_LEVELS = new Set(["ultracode", "max"]);
-const OFF_LEVELS = new Set(["off", "none"]);
-// More bars than this no longer fit the glyph's height in whole pixels.
-const MAX_BARS = 7;
-
-/**
- * Maps a reasoning select to bars: one per ordinary level, filled up to the current one, with an
- * off level as none filled. Max, prompt-injected and workflow levels are named instead of drawn.
- */
-export function resolveEffortGlyph(descriptor: SelectDescriptor, current: string | null) {
-  const special = new Set([...(descriptor.promptInjectedValues ?? []), ...NAMED_LEVELS]);
-  const levels = descriptor.options.filter((option) => !special.has(option.id));
-  if (levels.length < 2 || levels.length > MAX_BARS || current === null) return null;
-  const startsAtOff = OFF_LEVELS.has(levels[0]!.id);
-  const count = startsAtOff ? levels.length - 1 : levels.length;
-  if (special.has(current)) {
-    const label = descriptor.options.find((option) => option.id === current)?.label ?? current;
-    return { count, filled: count, special: label, label };
-  }
-  const index = levels.findIndex((option) => option.id === current);
-  if (index < 0) return null;
-  return {
-    count,
-    filled: startsAtOff ? index : index + 1,
-    special: null,
-    label: levels[index]!.label,
-  };
-}
 
 /** Bar heights that rise by one whole-pixel step, from about half height up to `maxBar`. */
 export function effortBarHeights(count: number, maxBar: number): number[] {

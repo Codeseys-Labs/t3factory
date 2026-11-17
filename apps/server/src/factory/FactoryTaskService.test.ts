@@ -113,6 +113,10 @@ const setupOf = (
 const projectHead = "a".repeat(40);
 const remoteHead = "d".repeat(40);
 const resultCommit = "b".repeat(40);
+const setupScript = (command: string) =>
+  JSON.stringify([
+    { id: "setup", name: "Setup", command, icon: "configure", runOnWorktreeCreate: true },
+  ]);
 const generatedPr = {
   title: "fix(audio): wrap the ring at capacity",
   body: "## Summary\nFix ring wrapping across all work rounds.\n\n## Testing\nRing tests pass.",
@@ -945,6 +949,7 @@ it.effect.each(["first start", "retry", "document result"] as const)(
     scenario(
       Effect.gen(function* () {
         const { sql, tasks, create, start, finish, until, summary } = yield* harness;
+        yield* sql`UPDATE projection_projects SET scripts_json = ${setupScript("vp i")} WHERE project_id = ${projectId}`;
         const task = yield* create("Resume recorded grant", { lane: "ready" });
         if (stage !== "first start") {
           yield* finish(
@@ -1008,9 +1013,15 @@ it.effect.each(["first start", "retry", "document result"] as const)(
           assert.deepEqual(yield* sql`SELECT * FROM factory_execution_bindings`, runs);
         }
         probe.fetched = "e".repeat(40);
+        // The recorded grant keeps the setup command it pinned.
+        yield* sql`UPDATE projection_projects SET scripts_json = ${setupScript("changed")} WHERE project_id = ${projectId}`;
         const resumed = yield* request;
         const replayed = yield* request;
         assert.equal(replayed.task.run?.threadId, resumed.task.run?.threadId);
+        assert.deepEqual(
+          yield* sql`SELECT json_extract(binding_json, '$.spec.setup.command') AS command FROM factory_execution_bindings WHERE thread_id = ${resumed.task.run!.threadId}`,
+          [{ command: "vp i" }],
+        );
         if (stage === "document result") {
           const bindings = yield* sql<{
             text: string;
@@ -1044,6 +1055,56 @@ it.effect.each(["first start", "retry", "document result"] as const)(
         }
       }),
     ),
+);
+
+it.effect.each([
+  { name: "start with a setup script", round: "start", expected: "vp i" },
+  { name: "start without a setup script", round: "start", scripts: "[]", expected: null },
+  { name: "start in the project folder", round: "start", workspace: "root", expected: null },
+  { name: "retry of a first round", round: "retry", expected: "vp i" },
+  { name: "changes at full access", round: "changes", mode: "full-access", expected: "vp i" },
+  { name: "changes below full access", round: "changes", expected: null },
+  { name: "retry of changes below full access", round: "retry-changes", expected: null },
+] as const)("pins the project's setup command into the grant: $name", (test) =>
+  scenario(
+    Effect.gen(function* () {
+      const { sql, tasks, create, start, finish, until } = yield* harness;
+      yield* sql`UPDATE projection_projects SET scripts_json = ${"scripts" in test ? test.scripts : setupScript("vp i")} WHERE project_id = ${projectId}`;
+      const task = yield* create("Pinned setup", { lane: "ready" });
+      const setup = {
+        ...setupOf("replay", "workspace" in test ? test.workspace : "worktree"),
+        runtimeMode: "mode" in test ? test.mode : "approval-required",
+      } satisfies FactoryAgentSetup;
+      let run = (yield* start(task, setup)).run!;
+      if (test.round !== "start") {
+        const changes = test.round !== "retry";
+        yield* finish(run, changes ? "sealed" : "failed");
+        let current = yield* until(task, (value) =>
+          changes ? value.result?.kind === "code" : value.run?.state === "failed",
+        );
+        if (changes) {
+          run = (yield* tasks.requestChanges(
+            { commandId: command("pinned-changes"), ref: task.ref, revision: 1, note: "Again" },
+            human,
+          )).task.run!;
+        }
+        if (test.round !== "changes") {
+          if (changes) {
+            yield* finish(run, "failed");
+            current = yield* until(task, (value) => value.run?.state === "failed");
+          }
+          run = (yield* tasks.retry(
+            { commandId: command("pinned-retry"), ref: task.ref, expectedVersion: current.version },
+            human,
+          )).task.run!;
+        }
+      }
+      assert.deepEqual(
+        yield* sql`SELECT json_extract(binding_json, '$.spec.setup.command') AS command FROM factory_execution_bindings WHERE thread_id = ${run.threadId}`,
+        [{ command: test.expected }],
+      );
+    }),
+  ),
 );
 
 it.effect.each(["replaced", "revoked"] as const)(

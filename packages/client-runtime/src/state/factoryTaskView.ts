@@ -1,5 +1,6 @@
 import type {
   FactoryTaskActivityEntry,
+  ModelCapabilities,
   FactoryTaskAssignee,
   FactoryTaskAttentionReason,
   FactoryTaskLane,
@@ -13,6 +14,7 @@ import type {
   ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
+import { describeSelectedEffort } from "../modelTraits.ts";
 import { resolveModelShortName } from "../providerClients.ts";
 import {
   providerInstanceInitials,
@@ -33,12 +35,19 @@ export type FactoryTaskCatalog = readonly (Pick<
     readonly name: string;
     readonly shortName?: string | undefined;
     readonly subProvider?: string | undefined;
+    readonly capabilities?: ModelCapabilities | null | undefined;
   }[];
 })[];
+
+/** A label that stands for several tasks passes `options: false`: no one task's options speak for it. */
+export interface FactoryTaskLabelOptions {
+  readonly options?: boolean | undefined;
+}
 
 export function presentFactoryTaskAssignee(
   assignee: FactoryTaskAssignee,
   catalog: FactoryTaskCatalog,
+  labelOptions?: FactoryTaskLabelOptions,
 ) {
   const mode = assignee.assignment.mode;
   if (mode === "person") return { label: "You", monogram: "", key: assignee.key };
@@ -52,7 +61,7 @@ export function presentFactoryTaskAssignee(
       monogram: "",
       key: assignee.key,
     };
-  const presented = presentModelSelection(setup.modelSelection, catalog);
+  const presented = presentModelSelection(setup.modelSelection, catalog, labelOptions);
   return {
     ...presented,
     label: `${mode === "auto" ? "Auto → " : ""}${presented.label}`,
@@ -60,7 +69,11 @@ export function presentFactoryTaskAssignee(
   };
 }
 
-function presentModelSelection(selection: ModelSelection, catalog: FactoryTaskCatalog) {
+function presentModelSelection(
+  selection: ModelSelection,
+  catalog: FactoryTaskCatalog,
+  labelOptions?: FactoryTaskLabelOptions,
+) {
   const { instanceId, model } = selection;
   const provider = catalog.find((entry) => entry.instanceId === instanceId);
   const providerLabel = provider
@@ -72,6 +85,10 @@ function presentModelSelection(selection: ModelSelection, catalog: FactoryTaskCa
     modelLabel =
       modelLabel.slice(entry.subProvider.length).replace(/^[\s.:/-]+/u, "") || modelLabel;
   }
+  const effort =
+    entry && labelOptions?.options !== false
+      ? describeSelectedEffort(selection, entry.capabilities)
+      : null;
   const monograms: Readonly<Record<string, string>> = {
     codex: "Cx",
     claudeAgent: "Cl",
@@ -81,7 +98,7 @@ function presentModelSelection(selection: ModelSelection, catalog: FactoryTaskCa
     kimi: "Km",
   };
   return {
-    label: `${providerLabel} · ${modelLabel}`,
+    label: `${providerLabel} · ${modelLabel}${effort ? ` · ${effort}` : ""}`,
     monogram:
       monograms[provider?.driver ?? ""] ??
       monograms[providerLabel.toLowerCase()] ??

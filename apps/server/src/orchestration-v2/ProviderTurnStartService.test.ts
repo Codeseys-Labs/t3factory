@@ -1629,7 +1629,7 @@ const layerFinalizeWorker = (
     harness,
     {},
     {
-      sessions: { isLive: () => Effect.succeed(false) },
+      sessions: { isLive: () => Effect.succeed(false), closeSettledWork: () => Effect.void },
       threads: {
         dispatch: (command) =>
           Effect.sync(() => {

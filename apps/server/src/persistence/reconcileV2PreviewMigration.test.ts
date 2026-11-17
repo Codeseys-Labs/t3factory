@@ -203,7 +203,10 @@ describe("Factory history upgrade", () => {
       assert.deepStrictEqual(skippedV2Migrations(before), []);
       assert.isTrue(yield* hasPendingMigrations());
 
-      assert.deepStrictEqual(yield* runMigrations(), synced);
+      // A Factory migration newer than this fixture's history runs after the synced ones.
+      const recorded = new Set(before.map((row) => row.id));
+      const newer = migrationManifest.filter(([id]) => id >= 193 && !recorded.has(id));
+      assert.deepStrictEqual(yield* runMigrations(), [...synced, ...newer]);
 
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.isFalse(yield* hasPendingMigrations());

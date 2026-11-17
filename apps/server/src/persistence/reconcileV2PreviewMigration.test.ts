@@ -223,28 +223,30 @@ describe("Factory history upgrade", () => {
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
-  it.effect("leaves the history unchanged when an install fails, then retries", () =>
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 73 });
-      yield* Migrator.make({})({ loader: Migrator.fromRecord(factoryMigrations) });
-      yield* sql`CREATE TABLE orchestration_v2_projection_turn_item_counts (thread_id TEXT)`;
-      const before = (yield* recordedHistory).map(
-        ([id, name]) => [id >= 193 ? id + 9808 : id, name] as const,
-      );
+  it.effect(
+    "keeps the translated history and rolls back failed upstream installs, then retries",
+    () =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: 73 });
+        yield* Migrator.make({})({ loader: Migrator.fromRecord(factoryMigrations) });
+        yield* sql`CREATE TABLE orchestration_v2_projection_turn_item_counts (thread_id TEXT)`;
+        const before = (yield* recordedHistory).map(
+          ([id, name]) => [id >= 193 ? id + 9808 : id, name] as const,
+        );
 
-      assert.isTrue(Exit.isFailure(yield* Effect.exit(runMigrations())));
-      assert.deepStrictEqual(yield* recordedHistory, before);
-      assert.deepStrictEqual(
-        yield* sql`
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(runMigrations())));
+        assert.deepStrictEqual(yield* recordedHistory, before);
+        assert.deepStrictEqual(
+          yield* sql`
           SELECT name FROM sqlite_master WHERE name = 'idx_orch_events_correlation_id'
         `,
-        [{ name: "idx_orch_events_correlation_id" }],
-      );
+          [{ name: "idx_orch_events_correlation_id" }],
+        );
 
-      yield* sql`DROP TABLE orchestration_v2_projection_turn_item_counts`;
-      yield* runMigrations();
-      assert.deepStrictEqual(yield* recordedHistory, migrationManifest);
-    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+        yield* sql`DROP TABLE orchestration_v2_projection_turn_item_counts`;
+        yield* runMigrations();
+        assert.deepStrictEqual(yield* recordedHistory, migrationManifest);
+      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 });

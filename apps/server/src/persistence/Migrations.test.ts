@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off -- Injects a filesystem failure into the shared offline backup helper.
+// @effect-diagnostics nodeBuiltinImport:off -- Injects filesystem failures into migration backup publication.
 import * as NodeFSP from "node:fs/promises";
 import { vi } from "vite-plus/test";
 import { assert, describe, it } from "@effect/vitest";
@@ -91,16 +91,22 @@ const schema = Effect.gen(function* () {
 });
 
 describe("Factory migration band", () => {
-  it.effect.each(["success", "backup failure", "unknown history", "incomplete backup"])(
-    "backs up before conversion: %s",
+  it.effect.each(["success", "publish failure", "vacuum failure", "unknown history"])(
+    "publishes one complete backup before conversion: %s",
     (scenario) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-factory-band-" });
         const filename = path.join(root, "statev2.sqlite");
-        const backup = `${filename}.before-factory-migration-band`;
-        if (scenario === "incomplete backup") yield* fs.makeDirectory(backup);
+        const backups = () =>
+          fs
+            .readDirectory(root)
+            .pipe(
+              Effect.map((names) =>
+                names.filter((name) => name.includes(".before-factory-migration-band")),
+              ),
+            );
         yield* Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           yield* sql`PRAGMA journal_mode = WAL`;
@@ -109,51 +115,138 @@ describe("Factory migration band", () => {
             yield* sql`UPDATE effect_sql_migrations SET name = 'UnrecognizedMigration' WHERE migration_id = 200`;
           }
           const before = yield* history;
-          assert.isTrue(yield* hasPendingMigrations());
-          assert.deepStrictEqual(yield* history, before);
-          assert.strictEqual(yield* fs.exists(backup), scenario === "incomplete backup");
+          const originalOpen = NodeFSP.open;
+          using open = vi.spyOn(NodeFSP, "open");
           using rename = vi.spyOn(NodeFSP, "rename");
-          if (scenario === "backup failure") {
+          if (scenario === "publish failure") {
             rename.mockRejectedValueOnce(
               Object.assign(new Error("backup device full"), { code: "ENOSPC" }),
             );
           }
+          if (scenario === "vacuum failure") {
+            open.mockImplementationOnce(async (...args) => {
+              const file = await originalOpen(...args);
+              await file.writeFile("injected interrupted vacuum output");
+              return file;
+            });
+          }
           const exit = yield* Effect.exit(runMigrations());
           if (scenario !== "success") {
             assert.isTrue(Exit.isFailure(exit));
-            if (scenario === "backup failure") assert.include(String(exit), "backup");
             assert.deepStrictEqual(yield* history, before);
-            assert.strictEqual(yield* fs.exists(backup), scenario === "incomplete backup");
-            assert.isFalse(yield* fs.exists(`${backup}.staging`));
-            return;
+            assert.deepStrictEqual(yield* backups(), []);
+            if (scenario === "unknown history") return;
+            assert.include(String(exit), filename);
+            assert.include(String(exit), "retry");
+            yield* runMigrations();
           }
-          assert.isTrue(Exit.isSuccess(exit));
-          assert.deepStrictEqual(yield* history, expectedBandHistory);
-          assert.deepStrictEqual((yield* fs.readDirectory(backup)).sort(), [
-            "database",
-            "database-shm",
-            "database-wal",
-          ]);
+          const names = yield* backups();
+          assert.lengthOf(names, 1);
+          assert.match(names[0]!, /^statev2\.sqlite\.before-factory-migration-band-.+/);
+          assert.isFalse(names[0]!.endsWith(".staging"));
+          const backup = path.join(root, names[0]!);
+          assert.isTrue((yield* fs.stat(backup)).type === "File");
           yield* Effect.gen(function* () {
             const backupSql = yield* SqlClient.SqlClient;
             assert.deepStrictEqual(yield* history, before);
             assert.deepStrictEqual(yield* backupSql`PRAGMA integrity_check`, [
               { integrity_check: "ok" },
             ]);
-          }).pipe(
-            Effect.provide(
-              NodeSqliteClient.layer({ filename: path.join(backup, "database"), readonly: true }),
-            ),
-          );
-          const bytes = yield* fs.readFile(path.join(backup, "database"));
+          }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: backup, readonly: true })));
+          assert.deepStrictEqual(yield* history, expectedBandHistory);
           assert.deepStrictEqual(yield* runMigrations(), []);
           assert.isFalse(yield* hasPendingMigrations());
-          assert.deepStrictEqual(yield* fs.readFile(path.join(backup, "database")), bytes);
-          assert.strictEqual(rename.mock.calls.length, 1);
+          assert.deepStrictEqual(yield* backups(), names);
         }).pipe(Effect.provide(NodeSqliteClient.layer({ filename })));
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
+  it.effect.each(["failed translation", "restored backup"])(
+    "takes a distinct current backup after %s",
+    (scenario) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-factory-band-retry-" });
+        const filename = path.join(root, "statev2.sqlite");
+        const withDatabase = <A, E, R>(program: Effect.Effect<A, E, R | SqlClient.SqlClient>) =>
+          program.pipe(Effect.provide(NodeSqliteClient.layer({ filename })));
+        const backups = () =>
+          fs
+            .readDirectory(root)
+            .pipe(
+              Effect.map((names) =>
+                names
+                  .filter((name) =>
+                    name.startsWith("statev2.sqlite.before-factory-migration-band-"),
+                  )
+                  .sort(),
+              ),
+            );
+        yield* withDatabase(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* oldBuild.runMigrations();
+            yield* sql`CREATE TABLE retained_work (id INTEGER PRIMARY KEY, text TEXT)`;
+            yield* sql`INSERT INTO retained_work VALUES (1, 'before')`;
+            if (scenario === "failed translation") {
+              yield* sql`CREATE TRIGGER fail_translation BEFORE UPDATE OF migration_id ON effect_sql_migrations WHEN NEW.migration_id = 10002 BEGIN SELECT RAISE(ABORT, 'interrupted translation'); END`;
+              assert.isTrue(Exit.isFailure(yield* Effect.exit(runMigrations())));
+              yield* sql`DROP TRIGGER fail_translation`;
+            } else yield* runMigrations();
+          }),
+        );
+        const first = yield* backups();
+        assert.lengthOf(first, 1);
+        if (scenario === "restored backup") {
+          yield* fs.copyFile(path.join(root, first[0]!), filename);
+          for (const suffix of ["-wal", "-shm"])
+            yield* fs.remove(`${filename}${suffix}`, { force: true });
+        }
+        yield* withDatabase(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            assert.deepStrictEqual(yield* oldBuild.runMigrations(), []);
+            yield* sql`INSERT INTO retained_work VALUES (2, 'between upgrades')`;
+            yield* runMigrations();
+          }),
+        );
+        const second = yield* backups();
+        assert.lengthOf(second, 2);
+        const newer = second.find((name) => name !== first[0])!;
+        assert.strictEqual(newer.slice(0, -36), first[0]!.slice(0, -36));
+        for (const [name, count] of [
+          [first[0]!, 1],
+          [newer, 2],
+        ] as const) {
+          yield* Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            assert.deepStrictEqual(yield* sql`SELECT count(*) AS count FROM retained_work`, [
+              { count },
+            ]);
+            assert.deepStrictEqual(yield* history, oldBuild.migrationManifest);
+          }).pipe(
+            Effect.provide(
+              NodeSqliteClient.layer({ filename: path.join(root, name), readonly: true }),
+            ),
+          );
+        }
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("rolls back when a translation update changes no row", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* oldBuild.runMigrations();
+      yield* sql`CREATE TRIGGER ignore_translation BEFORE UPDATE OF migration_id ON effect_sql_migrations WHEN NEW.migration_id = 10002 BEGIN SELECT RAISE(IGNORE); END`;
+      const before = yield* history;
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(runMigrations())));
+      assert.deepStrictEqual(yield* history, before);
+      yield* sql`DROP TRIGGER ignore_translation`;
+      yield* runMigrations();
+      assert.deepStrictEqual(yield* history, expectedBandHistory);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
   it.effect("preserves the default branch schema on a fresh database", () =>
     Effect.gen(function* () {
       const oldSchema = yield* Effect.gen(function* () {

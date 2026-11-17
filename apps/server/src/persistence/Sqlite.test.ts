@@ -12,6 +12,8 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
+import * as Path from "effect/Path";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -24,6 +26,11 @@ import * as ServerOwnership from "../serverOwnership.ts";
 import { migrationManifest, runMigrations } from "./Migrations.ts";
 import * as SqlitePersistence from "./Sqlite.ts";
 import * as oldBuild from "./test-fixtures/factoryMigrationsBeforeBand.ts";
+import * as ThreadSearch from "../orchestration-v2/ThreadSearch.ts";
+import {
+  DATABASE_MIGRATIONS_STARTED_MESSAGE,
+  DATABASE_MIGRATIONS_FINISHED_MESSAGE,
+} from "@t3tools/shared/databaseMigrationLog";
 
 const workerData = vi.hoisted((): Array<unknown> => []);
 
@@ -258,6 +265,127 @@ const latestRecordedMigrationId = Effect.gen(function* () {
 });
 
 const layerT3Home = ServerConfig.layerTest(process.cwd(), { prefix: "t3-sqlite-cli-" });
+
+it.effect.each([212, 213])(
+  "Factory band worker startup and faithful old-build restore through %s",
+  (head) => {
+    const messages: string[] = [];
+    const logger = Logger.make(({ message }) => {
+      messages.push(String(message));
+    });
+    return Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const { dbPath } = yield* ServerConfig.ServerConfig;
+      const inspect = Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const ledger = yield* sql<{
+          migration_id: number;
+          name: string;
+        }>`SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id`;
+        const rowids = yield* sql<{
+          rowid: number;
+          message_id: string;
+        }>`SELECT rowid, message_id FROM orchestration_v2_projection_messages ORDER BY rowid`;
+        const [version] = yield* sql<{ user_version: number }>`PRAGMA user_version`;
+        const [application] = yield* sql<{ application_id: number }>`PRAGMA application_id`;
+        const search = yield* Effect.flatMap(ThreadSearch.ThreadSearch, (service) =>
+          service.search({ query: "needle" }),
+        ).pipe(Effect.provide(ThreadSearch.layer));
+        return {
+          ledger: ledger.map((row) => [row.migration_id, row.name]),
+          rowids: rowids.map((row) => [row.rowid, row.message_id]),
+          userVersion: version?.user_version,
+          applicationId: application?.application_id,
+          search,
+        };
+      });
+      const before = yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* oldBuild.runMigrations({ toMigrationInclusive: head });
+        yield* sql`PRAGMA user_version = 712`;
+        yield* sql`PRAGMA application_id = 132`;
+        yield* sql`INSERT INTO projection_projects (project_id, title, workspace_root, scripts_json, created_at, updated_at) VALUES ('p', 'Project', '/scratch', '[]', '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')`;
+        yield* sql`INSERT INTO orchestration_v2_projection_threads (thread_id, project_id, title, default_provider, runtime_mode, interaction_mode, created_at, updated_at, payload_json) VALUES ('t', 'p', 'Thread', 'codex', 'full-access', 'default', '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z', '{}')`;
+        for (const id of [1, 2, 3, 4, 5]) {
+          yield* sql`INSERT INTO orchestration_v2_projection_messages (message_id, thread_id, role, streaming, created_at, updated_at, payload_json) VALUES (${String(id)}, 't', 'user', 0, '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z', ${JSON.stringify({ text: `needle ${id}` })})`;
+        }
+        yield* sql`DELETE FROM orchestration_v2_projection_messages WHERE message_id IN ('2', '4')`;
+        return yield* inspect;
+      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: dbPath })));
+      assert.deepStrictEqual(before.rowids, [
+        [1, "1"],
+        [3, "3"],
+        [5, "5"],
+      ]);
+      assert.strictEqual(before.search.matches[0]?.hits, 3);
+      const original = path.join(path.dirname(dbPath), "original.sqlite");
+      yield* fs.copyFile(dbPath, original);
+      messages.length = 0;
+      yield* ownT3Home();
+      const startedBefore = workerData.length;
+      yield* Effect.gen(function* () {
+        const after = yield* inspect;
+        assert.deepStrictEqual(after.ledger, migrationManifest);
+        assert.deepStrictEqual(after.search, before.search);
+        assert.deepStrictEqual(after.rowids, before.rowids);
+      }).pipe(Effect.provide(SqlitePersistence.layerFromPath(dbPath)));
+      assert.include(messages, DATABASE_MIGRATIONS_STARTED_MESSAGE);
+      assert.include(messages, DATABASE_MIGRATIONS_FINISHED_MESSAGE);
+      assert.deepInclude(workerData.slice(startedBefore), {
+        filename: dbPath,
+        readOnly: false,
+        requireWal: false,
+        allowExtension: false,
+        prepareCacheSize: 200,
+      });
+      assert.deepInclude(workerData.slice(startedBefore), {
+        filename: dbPath,
+        readOnly: true,
+        requireWal: true,
+        allowExtension: false,
+        prepareCacheSize: 200,
+      });
+      const backups = (yield* fs.readDirectory(path.dirname(dbPath))).filter((name) =>
+        name.startsWith(`${path.basename(dbPath)}.before-factory-migration-band-`),
+      );
+      assert.lengthOf(backups, 1);
+      const backup = path.join(path.dirname(dbPath), backups[0]!);
+      assert.isTrue((yield* fs.stat(backup)).type === "File");
+      assert.lengthOf(
+        messages.filter((message) => message.includes(backup) && message.includes("older builds")),
+        1,
+      );
+      const restored = path.join(path.dirname(dbPath), "restored.sqlite");
+      yield* fs.copyFile(backup, restored);
+      for (const suffix of ["-wal", "-shm"])
+        yield* fs.remove(`${restored}${suffix}`, { force: true });
+      const restoredBefore = yield* inspect.pipe(
+        Effect.provide(NodeSqliteClient.layer({ filename: restored })),
+      );
+      assert.deepStrictEqual(restoredBefore, before);
+      const originalAfter = yield* Effect.gen(function* () {
+        yield* oldBuild.runMigrations();
+        return yield* inspect;
+      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: original })));
+      const restoredAfter = yield* Effect.gen(function* () {
+        yield* oldBuild.runMigrations();
+        return yield* inspect;
+      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: restored })));
+      assert.deepStrictEqual(restoredAfter, originalAfter);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(layerT3Home),
+      Effect.provide(
+        Layer.mergeAll(
+          NodeServices.layer,
+          NodeCrypto.layer,
+          Logger.layer([logger], { mergeWithExisting: false }),
+        ),
+      ),
+    );
+  },
+);
 
 it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("layerCliConfig", (it) => {
   it.effect.each([false, true])(

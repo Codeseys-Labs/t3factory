@@ -563,7 +563,7 @@ export const runMigrateDevDb = Effect.fn("runMigrateDevDb")(function* (
       const sql = yield* SqlClient.SqlClient;
       yield* sql.unsafe("PRAGMA foreign_keys = ON").unprepared;
       yield* forgetPeerLinksPreviewHistory();
-      return yield* runMigrations();
+      return yield* runMigrations({ disposableDevSeedSnapshot: true });
     }).pipe(
       Effect.provide(NodeSqliteClient.layer({ filename: snapshotPath })),
       wrapPhase("migrate", snapshotPath),

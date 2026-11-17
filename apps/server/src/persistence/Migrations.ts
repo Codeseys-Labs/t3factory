@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off -- Backup-only exclusive file handles and UUIDs keep database caller layers unchanged.
 import * as Migrator from "effect/sql/Migrator";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -6,7 +7,9 @@ import {
   DATABASE_MIGRATIONS_FINISHED_MESSAGE,
   DATABASE_MIGRATIONS_STARTED_MESSAGE,
 } from "@t3tools/shared/databaseMigrationLog";
-import { backupDatabaseOnce, databaseBackupFile, pathExists } from "../databaseBackup.ts";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeCrypto from "node:crypto";
+import * as DateTime from "effect/DateTime";
 import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
 
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
@@ -225,7 +228,7 @@ const migrationEntries = [
   [94, "TurnItemMessageOrdinalIndex", Migration0094],
   [95, "TurnItemInlineWorkOutput", Migration0095],
   [96, "RepairStaleTitleRegeneration", Migration0096],
-  // Factory migrations use ids 10001 and up; the next Factory migration is 10022.
+  // Factory migrations use ids 10001 and up; each new Factory id is the highest Factory id plus one.
   [10001, "FactoryIssueLaunches", Migration10001],
   [10002, "ProjectCoordinators", Migration10002],
   [10003, "FactoryFeeds", Migration10003],
@@ -283,14 +286,14 @@ const includesFactory = (throughId?: number) =>
 
 // The migrator skips ids below the highest recorded, so Factory histories need upstream backfill.
 function reconciledFactoryHistory(recorded: ReadonlyArray<MigrationRow>) {
-  const legacy = recorded.flatMap((row) => {
+  const unconvertedRows = recorded.flatMap((row) => {
     const id = translatedFactoryId(row);
     return id === undefined ? [] : [{ ...row, destination: id }];
   });
   const translated = recorded.map((row) => ({ ...row, id: translatedFactoryId(row) ?? row.id }));
   const recordedIds = new Set(translated.map((row) => row.id));
   const unconverted =
-    legacy.length > 0 ||
+    unconvertedRows.length > 0 ||
     (!recorded.some((row) => row.id >= FIRST_FACTORY_MIGRATION_ID) &&
       recorded.some((row) => row.id >= 193 && row.id <= 213));
   if (
@@ -309,7 +312,7 @@ function reconciledFactoryHistory(recorded: ReadonlyArray<MigrationRow>) {
       !recordedIds.has(id),
   );
   return {
-    legacy,
+    unconvertedRows,
     install,
     history: [...translated, ...install.map(([id, name]) => ({ id, name }))],
   };
@@ -321,7 +324,7 @@ export function skippedV2Migrations(
 ): string[] {
   // Startup reconciles Factory history before this check, so check what it will see.
   const reconciled = includesFactory(throughId) ? reconciledFactoryHistory(history) : { history };
-  if (reconciled === null) return ["an unrecognized or newer Factory migration history"];
+  if (reconciled === null) return ["an unrecognized or newer migration history"];
   const recorded = reconciled.history;
   const latestRecordedId = Math.max(0, ...recorded.map((row) => row.id));
   const recordedNames = new Map(recorded.map((row) => [row.id, row.name]));
@@ -365,6 +368,7 @@ const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function*
 // Translation commits separately; the existing upstream backfill remains one transaction.
 const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(function* (
   throughId?: number,
+  disposableDevSeedSnapshot?: true,
 ) {
   if (!includesFactory(throughId)) return [];
   const sql = yield* SqlClient.SqlClient;
@@ -381,49 +385,98 @@ const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(funct
     return yield* new Migrator.MigrationError({
       kind: "BadState",
       message:
-        "Unrecognized or newer Factory migration history; refusing to rewrite it. Start the build that wrote this database or restore a compatible backup.",
+        "Unrecognized or newer migration history; refusing to rewrite it. Start the build that wrote this database or restore a compatible backup.",
     });
   }
   // assertV2MigrationsCanRun reports a history that would still skip migrations, unchanged.
   if (skippedV2Migrations(recorded, throughId).length > 0) return [];
-  if (reconciled.legacy.length > 0) {
+  if (reconciled.unconvertedRows.length > 0) {
     const databases = yield* sql<{
       readonly name: string;
       readonly file: string;
     }>`PRAGMA database_list`;
     const filename = databases.find((database) => database.name === "main")?.file;
-    if (filename) {
-      const backupDir = `${filename}.before-factory-migration-band`;
-      // Ownership excludes writers; finish checkpoints before the offline main/WAL/SHM copy.
-      const checkpoint = yield* sql<{ readonly busy: number }>`PRAGMA wal_checkpoint(TRUNCATE)`;
-      if (checkpoint.some((row) => row.busy !== 0)) {
-        return yield* new Migrator.MigrationError({
-          kind: "Failed",
-          message: `Cannot prepare the Factory migration backup for ${filename}. Close other database connections and retry; the migration history was not converted.`,
+    let backupPath: string | undefined;
+    if (filename && !disposableDevSeedSnapshot) {
+      const timestamp = DateTime.formatIso(yield* DateTime.now).replaceAll(":", "-");
+      backupPath = `${filename}.before-factory-migration-band-${timestamp}-${NodeCrypto.randomUUID()}`;
+      const stagedPath = `${backupPath}.staging`;
+      let stagedCreated = false;
+      yield* Effect.gen(function* () {
+        yield* Effect.tryPromise({
+          try: async () => {
+            const file = await NodeFSP.open(stagedPath, "wx", 0o600);
+            stagedCreated = true;
+            await file.close();
+          },
+          catch: (cause) =>
+            new Migrator.MigrationError({
+              kind: "Failed",
+              message: `Cannot create the staged Factory migration backup at ${stagedPath}. Check free disk space and directory permissions, then retry; the migration history was not converted.`,
+              cause,
+            }),
         });
-      }
-      yield* Effect.tryPromise({
-        try: async (signal) => {
-          await backupDatabaseOnce(filename, backupDir, signal);
-          if (!(await pathExists(databaseBackupFile(backupDir, "")))) {
-            throw new Error("The completed backup is missing its database file.");
-          }
-        },
-        catch: (cause) =>
-          new Migrator.MigrationError({
-            kind: "Failed",
-            message: `Cannot write the Factory migration backup at ${backupDir}. Check free disk space and directory permissions, then retry; the migration history was not converted.`,
-            cause,
-          }),
-      });
+        // The writer owns this snapshot; VACUUM must precede the translation transaction.
+        yield* sql`VACUUM INTO ${stagedPath}`;
+        yield* Effect.tryPromise({
+          try: async () => {
+            const file = await NodeFSP.open(stagedPath, "r+");
+            try {
+              await file.sync();
+            } finally {
+              await file.close();
+            }
+            await NodeFSP.rename(stagedPath, backupPath!);
+          },
+          catch: (cause) =>
+            new Migrator.MigrationError({
+              kind: "Failed",
+              message: `Cannot publish the Factory migration backup at ${backupPath} (staging: ${stagedPath}). Check free disk space and directory permissions, then retry; the migration history was not converted.`,
+              cause,
+            }),
+        });
+      }).pipe(
+        Effect.ensuring(
+          Effect.tryPromise({
+            try: async () => {
+              if (stagedCreated) await NodeFSP.rm(stagedPath, { force: true });
+            },
+            catch: (cause) =>
+              new Migrator.MigrationError({
+                kind: "Failed",
+                message: `Cannot remove the staged Factory migration backup at ${stagedPath}. Check directory permissions and remove that staged file before retrying; the migration history was not converted.`,
+                cause,
+              }),
+          }).pipe(Effect.orDie),
+        ),
+        Effect.mapError((cause) =>
+          cause instanceof Migrator.MigrationError
+            ? cause
+            : new Migrator.MigrationError({
+                kind: "Failed",
+                message: `Cannot write or publish the Factory migration backup at ${backupPath} (staging: ${stagedPath}). Check free disk space and directory permissions, then retry; the migration history was not converted.`,
+                cause,
+              }),
+        ),
+      );
     }
     yield* sql.withTransaction(
       Effect.gen(function* () {
-        for (const row of reconciled.legacy) {
-          yield* sql`UPDATE effect_sql_migrations SET migration_id = ${row.destination} WHERE migration_id = ${row.id} AND name = ${row.name}`;
+        for (const row of reconciled.unconvertedRows) {
+          const changed =
+            yield* sql`UPDATE effect_sql_migrations SET migration_id = ${row.destination} WHERE migration_id = ${row.id} AND name = ${row.name} RETURNING migration_id`;
+          if (changed.length !== 1)
+            return yield* new Migrator.MigrationError({
+              kind: "BadState",
+              message: `Factory migration ${row.id}_${row.name} did not update exactly one row; the translation was rolled back.`,
+            });
         }
       }),
     );
+    if (backupPath)
+      yield* Effect.log(
+        `Factory migration backup: ${backupPath}; older builds will refuse this database from now on.`,
+      );
   }
   return yield* sql.withTransaction(
     Effect.gen(function* () {
@@ -476,17 +529,22 @@ export const hasPendingMigrations = Effect.fn("hasPendingMigrations")(function* 
   const reconciled = reconciledFactoryHistory(
     recorded.map((entry) => ({ id: entry.migration_id, name: entry.name })),
   );
-  return reconciled === null || reconciled.legacy.length > 0 || reconciled.install.length > 0;
+  return (
+    reconciled === null || reconciled.unconvertedRows.length > 0 || reconciled.install.length > 0
+  );
 });
 
 const run = Migrator.make({});
 
 export interface RunMigrationsOptions {
   readonly toMigrationInclusive?: number | undefined;
+  /** Only migrate-dev-db uses this for its disposable copy of a read-only source. */
+  readonly disposableDevSeedSnapshot?: true;
 }
 
 export const runMigrations = Effect.fn("runMigrations")(function* ({
   toMigrationInclusive,
+  disposableDevSeedSnapshot,
 }: RunMigrationsOptions = {}) {
   // The desktop waits past its readiness budget until the finished line follows this one.
   const hadPendingMigrations = yield* hasPendingMigrations();
@@ -495,7 +553,7 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
     toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
   const previewMigrations = includesV2 ? yield* reconcileV2PreviewMigration() : [];
   const factoryMigrations = includesV2
-    ? yield* reconcileFactoryMigrations(toMigrationInclusive)
+    ? yield* reconcileFactoryMigrations(toMigrationInclusive, disposableDevSeedSnapshot)
     : [];
   if (includesV2) {
     yield* assertV2MigrationsCanRun(toMigrationInclusive);

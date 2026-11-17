@@ -179,7 +179,7 @@ lanes is real and blocks the merge.
   upstream migrations; the upstream backfill still commits as one transaction.
   An older checkout cannot seed from a database converted to the Factory band; upgrade the
   checkout before running dev seeding. For an installed app downgrade, follow the
-  [database restore procedure](../user/updating.md#factory-database-upgrade-and-restore).
+  [database restore procedure](../user/install.md#factory-database-upgrade-and-restore).
 - **A fork test that failed on the merge commit, unnoticed.** The merge was checked with typecheck
   and a chosen set of tests. The fork's test for restart recovery of a managed run was not in the
   set and failed there; nobody saw it until a reviewer asked whether that file had been run.

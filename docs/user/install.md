@@ -325,7 +325,7 @@ chose. Each saved copy is named
 end of the name are in UTC: for example, `20261117T000401Z` means 17 November 2026 at
 00:04:01 UTC, followed by a short identifier. Choose the copy made by the upgrade you want
 to undo, normally the newest. Files whose names start with `statev2.sqlite.partial-` are
-unfinished copies and can be deleted.
+unfinished copies; delete them while T3 Factory is closed.
 
 To go back to the older version:
 

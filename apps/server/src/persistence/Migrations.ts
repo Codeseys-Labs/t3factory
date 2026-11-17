@@ -474,14 +474,6 @@ const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(funct
               await file.close();
             }
             await NodeFSP.rename(stagedPath!, backupPath!);
-            if (platform !== "win32") {
-              const folder = await NodeFSP.open(directory, "r");
-              try {
-                await folder.sync();
-              } finally {
-                await folder.close();
-              }
-            }
           },
           catch: (cause) =>
             new Migrator.MigrationError({
@@ -490,6 +482,24 @@ const reconcileFactoryMigrations = Effect.fn("reconcileFactoryMigrations")(funct
               cause,
             }),
         });
+        // The copy's bytes are synced; a file system that refuses a folder sync must not block the upgrade.
+        if (platform !== "win32")
+          yield* Effect.tryPromise({
+            try: async () => {
+              const folder = await NodeFSP.open(directory, "r");
+              try {
+                await folder.sync();
+              } finally {
+                await folder.close();
+              }
+            },
+            catch: (cause) =>
+              new Migrator.MigrationError({
+                kind: "Failed",
+                message: `Could not sync the folder of the Factory migration backup at ${backupPath}; the backup file itself is saved.`,
+                cause,
+              }),
+          }).pipe(Effect.catch((error) => Effect.logWarning(error.message)));
       }).pipe(
         Effect.ensuring(
           Effect.suspend(() =>

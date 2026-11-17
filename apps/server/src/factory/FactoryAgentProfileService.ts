@@ -15,6 +15,7 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Tasks from "../persistence/FactoryTaskStore.ts";
 import { executionDigest } from "./FactoryExecutionDigest.ts";
+import * as CommandGuard from "./FactoryTaskCommandGuard.ts";
 import type { FactoryPlanActor } from "./FactoryPlanReducer.ts";
 import * as Changes from "./FactoryTaskChanges.ts";
 
@@ -43,6 +44,7 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const store = yield* Tasks.FactoryTaskStore;
   const changes = yield* Changes.FactoryTaskChanges;
+  const commands = yield* CommandGuard.FactoryTaskCommandGuard;
   const transact = <A, R>(effect: Effect.Effect<A, FactoryTaskError, R>) =>
     sql
       .withTransaction(effect)
@@ -54,7 +56,7 @@ const make = Effect.gen(function* () {
         ),
       );
 
-  /** A command id answers once: the same input replays, a different one conflicts. */
+  /** Shares the task commands' answer rule, since it shares their receipts. */
   const begin = Effect.fn("FactoryAgentProfileService.begin")(function* (
     kind: string,
     commandId: CommandId,
@@ -62,20 +64,21 @@ const make = Effect.gen(function* () {
     input: unknown,
   ) {
     if (actor.kind !== "human") return yield* new FactoryTaskError({ reason: "forbidden" });
-    const digest = executionDigest([kind, actor, input]);
-    const existing = yield* store.receipt(commandId);
-    if (existing !== null && (existing.kind !== kind || existing.digest !== digest))
-      return yield* new FactoryTaskError({ reason: "command-conflict" });
+    const command = yield* commands.begin(kind, commandId, actor, input);
     return {
-      replayed: existing !== null,
+      replayed: command.replayed,
       record: Effect.fn("FactoryAgentProfileService.record")(function* (id: string) {
         // Every task resolves its assignee through the profiles, so all of them are refreshed.
         yield* store.refreshAll;
-        yield* store.recordReceipt({ commandId, kind, digest, outcome: id });
+        yield* command.record(id);
         yield* changes.announce({ rootIds: [], profiles: true });
       }),
     };
   });
+  const guarded = <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+    input: { readonly commandId: CommandId },
+  ) => commands.run(input.commandId, effect);
   const find = (profiles: ReadonlyArray<FactoryAgentProfile>, id: string) =>
     profiles.find((profile) => profile.id === id) ?? null;
 
@@ -130,7 +133,7 @@ const make = Effect.gen(function* () {
         }),
       );
       return { profile: saved, replayed: false };
-    }),
+    }, guarded),
     delete: Effect.fn("FactoryAgentProfileService.delete")(function* (raw, actor) {
       const input = yield* decodeDelete(raw).pipe(Effect.mapError(invalid));
       const command = yield* begin("profile.delete", input.commandId, actor, input);
@@ -149,10 +152,10 @@ const make = Effect.gen(function* () {
         }),
       );
       return { profile: null, replayed: false };
-    }),
+    }, guarded),
   });
 });
 
 export const layer = Layer.effect(FactoryAgentProfileService, make).pipe(
-  Layer.provide(Layer.merge(Changes.layer, Tasks.layer)),
+  Layer.provide(Layer.mergeAll(Changes.layer, Tasks.layer, CommandGuard.layer)),
 );

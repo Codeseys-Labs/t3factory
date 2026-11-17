@@ -33,6 +33,7 @@ import * as Threads from "../orchestration-v2/ThreadManagementService.ts";
 import * as Launch from "../orchestration-v2/ThreadLaunchService.ts";
 import * as Tasks from "./FactoryTaskService.ts";
 import * as Profiles from "./FactoryAgentProfileService.ts";
+import * as CommandGuard from "./FactoryTaskCommandGuard.ts";
 import { buildPlanningPrompt } from "./FactoryTaskPlanningPrompt.ts";
 import type { FactoryPlanActor } from "./FactoryPlanReducer.ts";
 
@@ -103,6 +104,7 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const tasks = yield* Tasks.FactoryTaskService;
   const profiles = yield* Profiles.FactoryAgentProfileService;
+  const commands = yield* CommandGuard.FactoryTaskCommandGuard;
   const launcher = yield* Launch.ThreadLaunchService;
   const threads = yield* Threads.ThreadManagementService;
   const sessions = yield* AuthSessions.AuthSessionRepository;
@@ -370,6 +372,7 @@ const make = Effect.gen(function* () {
       )
       .pipe(Effect.mapError(persistence));
   });
+  // An approve creates sub-tasks under its command id, so it holds that id before its transaction.
   const mutate = Effect.fn("FactoryTaskPlanningService.mutate")(function* (
     input: FactoryTaskPlanProposalUpdateInput | FactoryTaskPlanProposalResolveInput,
     actor: FactoryPlanActor,
@@ -429,7 +432,9 @@ const make = Effect.gen(function* () {
           return result;
         }),
       )
-      .pipe(Effect.mapError(persistence));
+      .pipe(Effect.mapError(persistence), (transaction) =>
+        commands.run(input.commandId, transaction),
+      );
   });
   return FactoryTaskPlanningService.of({
     requestBreakdown,
@@ -451,6 +456,5 @@ const make = Effect.gen(function* () {
   });
 });
 export const layer = Layer.effect(FactoryTaskPlanningService, make).pipe(
-  Layer.provide(Store.layer),
-  Layer.provide(AuthSessions.layer),
+  Layer.provide(Layer.mergeAll(Store.layer, AuthSessions.layer, CommandGuard.layer)),
 );

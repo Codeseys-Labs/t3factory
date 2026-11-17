@@ -204,10 +204,14 @@ export const comparisonBase = Effect.fn("checkChanged.comparisonBase")(function*
 ) {
   const candidates = Option.isSome(explicitRef)
     ? [{ ref: explicitRef.value, rev: explicitRef.value }]
-    : (yield* gitLines(root, ["remote"])).map((name) => ({
-        ref: name + "/main",
-        rev: "refs/remotes/" + name + "/main",
-      }));
+    : yield* Effect.forEach(yield* gitLines(root, ["remote"]), (name) =>
+        git(root, ["symbolic-ref", "--quiet", "refs/remotes/" + name + "/HEAD"]).pipe(
+          Effect.map((stdout) => stdout.toString().trim()),
+          Effect.tap((rev) => git(root, ["rev-parse", "--verify", "--quiet", rev + "^{commit}"])),
+          Effect.orElseSucceed(() => "refs/remotes/" + name + "/main"),
+          Effect.map((rev) => ({ ref: rev.slice("refs/remotes/".length), rev })),
+        ),
+      );
   let closest: { ref: string; base: string; ahead: number } | undefined;
   for (const { ref, rev } of candidates) {
     const base = yield* git(root, ["merge-base", "HEAD", rev]).pipe(

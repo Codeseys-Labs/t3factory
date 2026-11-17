@@ -293,7 +293,7 @@ it.effect.each([212, 213])(
           service.search({ query: "needle" }),
         ).pipe(Effect.provide(ThreadSearch.layer));
         return {
-          ledger: ledger.map((row) => [row.migration_id, row.name]),
+          ledger: ledger.map((row) => [row.migration_id, row.name] as const),
           rowids: rowids.map((row) => [row.rowid, row.message_id]),
           userVersion: version?.user_version,
           applicationId: application?.application_id,
@@ -375,12 +375,15 @@ it.effect.each([212, 213])(
       assert.deepStrictEqual(restoredAfter, originalAfter);
     }).pipe(
       Effect.scoped,
-      Effect.provide(layerT3Home),
       Effect.provide(
-        Layer.mergeAll(
-          NodeServices.layer,
-          NodeCrypto.layer,
-          Logger.layer([logger], { mergeWithExisting: false }),
+        layerT3Home.pipe(
+          Layer.provideMerge(
+            Layer.mergeAll(
+              NodeServices.layer,
+              NodeCrypto.layer,
+              Logger.layer([logger], { mergeWithExisting: false }),
+            ),
+          ),
         ),
       ),
     );

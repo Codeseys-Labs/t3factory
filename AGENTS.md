@@ -100,6 +100,7 @@ An empty database is a bad test. Seed your worktree's `.t3` with a copy of real 
 ## Verifying
 
 - Before you push, run `vp run check:changed`. It runs CI's fast checks for changed files: format, lint, knip, typecheck of affected packages and dependents, tests beside changes, and the cross-file checks those miss. T3Factory's hosted validation is dispatch-only; run the relevant local tests and build on the exact candidate first. See [manual validation](docs/operations/release.md#t3factory-manual-validation).
+- `check:changed` runs the tests beside what you changed, not the tests elsewhere that mock it or walk it. After adding a method to a service or a migration to the manifest, also run the test files that name that service or read the manifest: `rg -l "<Name>" -g "*.test.ts"`.
 - While you iterate, run `vp test run <files>`. For big files, add `-t "<name>"`.
 - Use `vp run typecheck`; it caches per package. Each package runs `effect-tsgo tsrs --noEmit`, the Rust TypeScript 7 checker with Effect's diagnostics built in. There is no `typescript` package to run.
 - Run `node -e` snippets from `apps/server` or the owning package. `effect` does not resolve from the repo root.

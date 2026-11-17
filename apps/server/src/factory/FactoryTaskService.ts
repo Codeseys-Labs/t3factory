@@ -87,6 +87,7 @@ import * as Plans from "./FactoryPlanService.ts";
 import type { FactoryIntakeScheduleAuthority } from "./FactoryIntakeSchedule.ts";
 import { resolveAssignee, setupKey } from "./FactoryTaskAssignee.ts";
 import * as Changes from "./FactoryTaskChanges.ts";
+import * as CommandGuard from "./FactoryTaskCommandGuard.ts";
 import {
   parseIssueOriginKey,
   parseTaskResultOriginKey,
@@ -504,6 +505,7 @@ const make = Effect.gen(function* () {
   const processes = yield* Processes.ProcessRunner;
   const git = yield* Git.GitVcsDriver;
   const changes = yield* Changes.FactoryTaskChanges;
+  const commands = yield* CommandGuard.FactoryTaskCommandGuard;
   const delivery = yield* Delivery.FactoryDeliveryService;
   const deliveryStore = yield* DeliveryStore.FactoryDeliveryStore;
   const environmentId = yield* (yield* ServerEnvironmentIdentity).getEnvironmentId;
@@ -599,30 +601,17 @@ const make = Effect.gen(function* () {
     return summarize(root, task);
   });
 
-  /** A command id answers once: the same input replays, a different one conflicts. */
-  const begin = Effect.fn("FactoryTaskService.begin")(function* (
-    kind: string,
-    commandId: CommandId,
-    actor: FactoryPlanActor,
-    input: unknown,
-  ) {
-    const digest = executionDigest([kind, actor, input]);
-    const existing = yield* store.receipt(commandId);
-    if (existing !== null && (existing.kind !== kind || existing.digest !== digest))
-      return yield* refuse("command-conflict");
-    if (existing === null) {
-      // An unfinished run command holds its id through its input pin, against every kind of command.
-      const pin = yield* store.receipt(derived(commandId, "input"));
-      if (pin !== null && (pin.kind !== kind || pin.digest !== digest))
-        return yield* refuse("command-conflict");
-    }
-    return {
-      digest,
-      replayed: existing !== null,
-      outcome: existing?.outcome,
-      record: (outcome: unknown) => store.recordReceipt({ commandId, kind, digest, outcome }),
-    };
-  });
+  const begin = commands.begin;
+  /** A command method runs as the only execution of its command id. */
+  const guarded = <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+    input: { readonly commandId: CommandId },
+  ) => commands.run(input.commandId, effect);
+  const guardedDelivery = <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+    _kind: unknown,
+    input: { readonly commandId: CommandId },
+  ) => guarded(effect, input);
 
   /** Records a receipt once: one already there for the same command is kept, another conflicts. */
   const recordOnce = Effect.fn("FactoryTaskService.recordOnce")(function* (receipt: {
@@ -647,7 +636,7 @@ const make = Effect.gen(function* () {
     kind: string,
     digest: string,
   ) {
-    yield* recordOnce({ commandId: derived(commandId, "input"), kind, digest, outcome: null });
+    yield* recordOnce({ commandId: CommandGuard.inputPin(commandId), kind, digest, outcome: null });
   });
 
   const applyPlan = Effect.fn("FactoryTaskService.applyPlan")(function* (input: {
@@ -1356,6 +1345,7 @@ const make = Effect.gen(function* () {
       );
       return { task: yield* summaryOf(key), replayed: false };
     },
+    guarded,
   );
 
   const createSubtasks: FactoryTaskService["Service"]["createSubtasks"] = Effect.fn(
@@ -1437,7 +1427,7 @@ const make = Effect.gen(function* () {
       }),
     );
     return yield* answer();
-  });
+  }, guarded);
 
   const update: FactoryTaskService["Service"]["update"] = Effect.fn("FactoryTaskService.update")(
     function* (raw, actor) {
@@ -1527,6 +1517,7 @@ const make = Effect.gen(function* () {
       );
       return { task: yield* summaryOf(row), replayed: false };
     },
+    guarded,
   );
 
   const requireRunnable = Effect.fn("FactoryTaskService.requireRunnable")(function* (
@@ -1571,6 +1562,7 @@ const make = Effect.gen(function* () {
         record: command.record,
       });
     },
+    guarded,
   );
 
   const retry: FactoryTaskService["Service"]["retry"] = Effect.fn("FactoryTaskService.retry")(
@@ -1615,6 +1607,7 @@ const make = Effect.gen(function* () {
         record: command.record,
       });
     },
+    guarded,
   );
 
   const stop: FactoryTaskService["Service"]["stop"] = Effect.fn("FactoryTaskService.stop")(
@@ -1653,6 +1646,7 @@ const make = Effect.gen(function* () {
       yield* sync(task.row.rootId);
       return { task: yield* summaryOf(task.row), replayed: false };
     },
+    guarded,
   );
 
   const retryCapture: FactoryTaskService["Service"]["retryCapture"] = Effect.fn(
@@ -1688,6 +1682,8 @@ const make = Effect.gen(function* () {
       });
       if (latest.captureFailed !== true || attemptId === null || latest.planRevision === null)
         return yield* nothingToSave;
+      // Holds the command id before the engine can take it, against a crash before the receipt.
+      yield* pinInput(input.commandId, "retryCapture", command.digest);
       yield* executions
         .retryCapture(
           {
@@ -1710,10 +1706,15 @@ const make = Effect.gen(function* () {
           }),
         );
     }
-    yield* transact(command.record(task.row));
+    yield* recordOnce({
+      commandId: input.commandId,
+      kind: "retryCapture",
+      digest: command.digest,
+      outcome: task.row,
+    });
     yield* sync(task.row.rootId);
     return { task: yield* summaryOf(task.row), replayed: false };
-  });
+  }, guarded);
 
   const abandonCapture: FactoryTaskService["Service"]["abandonCapture"] = Effect.fn(
     "FactoryTaskService.abandonCapture",
@@ -1767,7 +1768,7 @@ const make = Effect.gen(function* () {
       });
     yield* sync(task.row.rootId);
     return { task: yield* summaryOf(task.row), replayed: command.replayed };
-  });
+  }, guarded);
 
   /** A review command names the result it saw; a newer one means the reviewer must look again. */
   const reviewed = Effect.fn("FactoryTaskService.reviewed")(function* (
@@ -1830,6 +1831,7 @@ const make = Effect.gen(function* () {
       );
       return { task: yield* summaryOf(row), replayed: false };
     },
+    guarded,
   );
 
   const requestChanges: FactoryTaskService["Service"]["requestChanges"] = Effect.fn(
@@ -1919,7 +1921,7 @@ const make = Effect.gen(function* () {
         ),
       );
     }).pipe(Effect.ensuring(Effect.sync(() => requestingChanges.delete(pendingKey))));
-  });
+  }, guarded);
 
   const reopen: FactoryTaskService["Service"]["reopen"] = Effect.fn("FactoryTaskService.reopen")(
     function* (raw, actor) {
@@ -1947,6 +1949,7 @@ const make = Effect.gen(function* () {
       );
       return { task: yield* summaryOf(row), replayed: false };
     },
+    guarded,
   );
 
   /** The accepted code result a Publish or Merge names; any other revision is refused. */
@@ -2147,7 +2150,7 @@ const make = Effect.gen(function* () {
       }),
     );
     return { task: yield* summaryOf(row), replayed: false };
-  });
+  }, guardedDelivery);
 
   const publish: FactoryTaskService["Service"]["publish"] = (input, actor) =>
     deliver("publish-pr", input, actor);
@@ -2329,6 +2332,7 @@ const make = Effect.gen(function* () {
       );
       return { entry, replayed: false };
     },
+    guarded,
   );
 
   const activity: FactoryTaskService["Service"]["activity"] = Effect.fn(
@@ -2595,6 +2599,12 @@ const make = Effect.gen(function* () {
 
 export const layer = Layer.effect(FactoryTaskService, make).pipe(
   Layer.provide(
-    Layer.mergeAll(Changes.layer, Tasks.layer, ExecutionStore.layer, EffectOutbox.layer),
+    Layer.mergeAll(
+      Changes.layer,
+      Tasks.layer,
+      ExecutionStore.layer,
+      EffectOutbox.layer,
+      CommandGuard.layer,
+    ),
   ),
 );

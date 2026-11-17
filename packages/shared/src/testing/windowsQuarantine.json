@@ -298,5 +298,209 @@
     "name": "PiProvider > reports unknown authentication when Pi discovery returns mixed valid and invalid models",
     "issue": 128,
     "why": "the faked pi CLI reports that it failed to run, or the probe outlasts 5 s, on a Windows host; fails the same way on unmodified upstream"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > waits for disk recovery during startup without losing the update lifecycle",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > waits for disk recovery during log write fails without losing the update lifecycle",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > waits for disk recovery during home probe error without losing the update lifecycle",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > waits for disk recovery during database probe error without losing the update lifecycle",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > waits for disk recovery during pending update without losing the update lifecycle",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > waits for disk recovery during update handoff without losing the update lifecycle",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > a fresh launcher clears a restart deferred by t3 update",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > holds its lock while it serves and stops the server over IPC, marker set",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > waits for disk recovery during trial exit without losing the update lifecycle",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > waits for disk recovery during failed trial start without losing the update lifecycle",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > starts no trial when stopped during the pre-update backup",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > finds its unit through the manager's environment, not service.env",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > repoints the systemd unit the manager loads when environment.d moves XDG_CONFIG_HOME",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > keeps the service manager's append log bounded when it starts",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > adopts a legacy install record without rewriting it",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > starts the runtime in a T3 home whose name ends in a space",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > recovers a rolled-back update with unit 1.0.0 and preserves an intentional downgrade",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > recovers a rolled-back update with unit 1.2.0 and preserves another T3 home",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > waits without exiting and restarts once the other owner releases the T3 home",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > keeps a pending update while owned and rolls a failed resumed trial back to the other owner's writes",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > fails a pending update when its backup cannot be dropped while owned",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > commits and repoints systemd after a protocol-3 local upgrade only after the trial reports prepared",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > commits and repoints launchd only after the trial reports prepared",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > commits and repoints Task Scheduler only after the trial reports prepared",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > keeps a durable commit through unit failure and retries a failed reload on restart",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > rolls back invalid trials with the startup environment",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > restores the database when a migrating trial exits, with the database a file",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > restores the database when a migrating trial exits, with the database a symlink",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > restores the database when a migrating trial exits, with the database a dangling symlink",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > backs up a wal-mode database (online when WAL) and restores its final state",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > backs up a delete-mode database (online when WAL) and restores its final state",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > refuses a backup that cannot fit and leaves the server running",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > refuses the update when free space cannot be checked",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "apps/server/src/serviceLauncher.test.ts",
+    "name": "service state persistence > records no update when the server exits during the backup check",
+    "issue": 189,
+    "why": "POSIX service and runtime fixtures do not run on Windows"
   }
 ]

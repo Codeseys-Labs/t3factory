@@ -4,6 +4,7 @@ import * as NodeCrypto from "node:crypto";
 import { vi } from "vite-plus/test";
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -102,6 +103,7 @@ describe("Factory migration band", () => {
   it.effect.each([
     "success",
     "stale cleanup failure",
+    "folder sync failure",
     "publish failure",
     "cleanup failure",
     "vacuum failure",
@@ -163,8 +165,19 @@ describe("Factory migration band", () => {
             return file;
           });
         }
+        if (scenario === "folder sync failure") {
+          open.mockImplementation(async (...args) => {
+            if (String(args[0]) === path.dirname(filename))
+              throw Object.assign(new Error("folder sync refused"), { code: "EINVAL" });
+            return originalOpen(...args);
+          });
+        }
         const warnings: string[] = [];
-        const exit = yield* Effect.exit(runMigrations()).pipe(
+        const exit = yield* Effect.exit(
+          scenario === "folder sync failure"
+            ? runMigrations().pipe(Effect.provideService(HostProcess.Platform, "linux"))
+            : runMigrations(),
+        ).pipe(
           Effect.provide(
             Logger.layer(
               [
@@ -182,7 +195,17 @@ describe("Factory migration band", () => {
               message.includes("Cannot remove the staged Factory migration backup"),
             ),
           );
-        if (scenario !== "success" && scenario !== "stale cleanup failure") {
+        if (scenario === "folder sync failure")
+          assert.isTrue(
+            warnings.some((message) =>
+              message.includes("Could not sync the folder of the Factory migration backup"),
+            ),
+          );
+        if (
+          scenario !== "success" &&
+          scenario !== "stale cleanup failure" &&
+          scenario !== "folder sync failure"
+        ) {
           assert.isTrue(Exit.isFailure(exit));
           if (scenario === "cleanup failure" && Exit.isFailure(exit)) {
             assert.deepStrictEqual(exit.cause.reasons.filter(Cause.isDieReason), []);

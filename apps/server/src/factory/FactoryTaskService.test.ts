@@ -27,7 +27,6 @@ import {
   FactoryTaskError,
   type FactoryTaskChange,
   type FactoryTaskCreateInput,
-  type FactoryTaskMutationResult,
   type FactoryTaskRun,
   type FactoryTaskSummary,
   type FactoryWorkReadResult,
@@ -40,6 +39,7 @@ import { AcpProviderCapabilitiesV2 } from "@t3tools/provider-acp/server/adapter"
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { PosixCgroupController } from "../process/PosixOwnedProcess.ts";
 import * as Context from "effect/Context";
+import * as Digest from "effect/crypto/Digest";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -69,10 +69,13 @@ import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.t
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as SourceControlProvider from "@t3tools/source-control-core/server/SourceControlProvider";
 import { ProviderAdapterRegistryV2 } from "../orchestration-v2/ProviderAdapterRegistry.ts";
+import * as Launch from "../orchestration-v2/ThreadLaunchService.ts";
+import * as Threads from "../orchestration-v2/ThreadManagementService.ts";
 import * as AuthSessions from "../persistence/AuthSessions.ts";
 import * as DeliveryStore from "../persistence/FactoryDeliveryStore.ts";
 import * as ExecutionStore from "../persistence/FactoryExecutionStore.ts";
 import * as IntakeStore from "../persistence/FactoryIntakeStore.ts";
+import * as ProposalStore from "../persistence/FactoryTaskProposalStore.ts";
 import * as TaskStore from "../persistence/FactoryTaskStore.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
@@ -85,7 +88,9 @@ import { canonicalExecutionJson, executionDigest } from "./FactoryExecutionDiges
 import * as Executions from "./FactoryExecutionService.ts";
 import * as Lifecycle from "./FactoryExecutionLifecycle.ts";
 import * as Plans from "./FactoryPlanService.ts";
+import * as Planning from "./FactoryTaskPlanningService.ts";
 import * as Changes from "./FactoryTaskChanges.ts";
+import * as CommandGuard from "./FactoryTaskCommandGuard.ts";
 import * as Tasks from "./FactoryTaskService.ts";
 import * as Work from "./FactoryWorkService.ts";
 
@@ -310,6 +315,8 @@ class BaseProbe extends Context.Service<
     ancestor: boolean;
     failure: string | null;
     fetches: number;
+    /** Runs once inside the next fetch, so a test can hold a Start between its profile and its registration. */
+    gate: Effect.Effect<void> | null;
   }
 >()("t3/factory/FactoryTaskService.test/BaseProbe") {}
 const baseGit = Layer.unwrap(
@@ -350,23 +357,29 @@ const baseGit = Layer.unwrap(
             refName: probe.branch!,
             remote: probe.remote!,
           });
-          return probe.failure === null
-            ? Effect.succeed(
-                probe.fetched === null
-                  ? null
-                  : {
-                      commitSha: probe.fetched,
-                      remoteRefName: `${probe.remote!.remoteName}/${probe.remote!.branchName}`,
-                    },
-              )
-            : Effect.fail(
-                new GitCommandError({
-                  operation: "GitVcsDriver.fetchRemote",
-                  command: "git fetch",
-                  cwd: input.cwd,
-                  detail: probe.failure,
-                }),
-              );
+          const gate = probe.gate ?? Effect.void;
+          probe.gate = null;
+          return gate.pipe(
+            Effect.andThen(
+              probe.failure === null
+                ? Effect.succeed(
+                    probe.fetched === null
+                      ? null
+                      : {
+                          commitSha: probe.fetched,
+                          remoteRefName: `${probe.remote!.remoteName}/${probe.remote!.branchName}`,
+                        },
+                  )
+                : Effect.fail(
+                    new GitCommandError({
+                      operation: "GitVcsDriver.fetchRemote",
+                      command: "git fetch",
+                      cwd: input.cwd,
+                      detail: probe.failure,
+                    }),
+                  ),
+            ),
+          );
         }),
     });
   }),
@@ -380,6 +393,7 @@ const baseGit = Layer.unwrap(
       ancestor: true,
       failure: null,
       fetches: 0,
+      gate: null,
     })),
   ),
 );
@@ -535,6 +549,8 @@ class OutputGate extends Context.Service<
     grant: Effect.Effect<void, FactoryExecutionError> | null;
     /** Runs once after the engine took a give-up, before the task records it. */
     abandoned: Effect.Effect<void> | null;
+    /** Runs once after the engine took a Save again, before the task records it. */
+    recaptured: Effect.Effect<void> | null;
   }
 >()("t3/factory/FactoryTaskService.test/OutputGate") {}
 const gatedExecutions = Layer.effect(
@@ -578,6 +594,16 @@ const gatedExecutions = Layer.effect(
             }),
           ),
         ),
+      retryCapture: (input, actor) =>
+        executions.retryCapture(input, actor).pipe(
+          Effect.tap(() =>
+            Effect.suspend(() => {
+              const next = gate.recaptured ?? Effect.void;
+              gate.recaptured = null;
+              return next;
+            }),
+          ),
+        ),
     });
   }),
 ).pipe(
@@ -586,9 +612,47 @@ const gatedExecutions = Layer.effect(
     Executions.layer.pipe(Layer.provide(Lifecycle.layer.pipe(Layer.provide(ExecutionStore.layer)))),
   ),
   Layer.provideMerge(
-    Layer.sync(OutputGate, () => ({ next: null, admission: null, grant: null, abandoned: null })),
+    Layer.sync(OutputGate, () => ({
+      next: null,
+      admission: null,
+      grant: null,
+      abandoned: null,
+      recaptured: null,
+    })),
   ),
 );
+class PlanningDigest extends Context.Service<
+  PlanningDigest,
+  {
+    /** Runs once after planning's next digest, its last step before an approve waits for its id. */
+    next: Effect.Effect<unknown> | null;
+  }
+>()("t3/factory/FactoryTaskService.test/PlanningDigest") {}
+const planning = Layer.unwrap(
+  Effect.gen(function* () {
+    const probe = yield* PlanningDigest;
+    const digest = yield* Digest.Digest;
+    return Planning.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(Digest.Digest, {
+            ...digest,
+            digest: (algorithm, data) =>
+              digest.digest(algorithm, data).pipe(
+                Effect.tap(() => {
+                  const next = probe.next ?? Effect.void;
+                  probe.next = null;
+                  return next;
+                }),
+              ),
+          }),
+          Layer.mock(Launch.ThreadLaunchService)({}),
+          Layer.mock(Threads.ThreadManagementService)({}),
+        ),
+      ),
+    );
+  }),
+).pipe(Layer.provideMerge(Layer.sync(PlanningDigest, () => ({ next: null }))));
 const eventStores = EventStore.layerFromOrchestrationEventStore.pipe(
   Layer.provideMerge(OrchestrationEventStore.layer),
 );
@@ -649,9 +713,15 @@ const layerWith = (settings: TestSettings = {}, fileTrusted = true) => {
     deliveries,
     manager,
   ).pipe(Layer.provideMerge(base));
-  return Layer.mergeAll(Tasks.layer, Profiles.layer, Changes.layer, TaskStore.layer).pipe(
-    Layer.provideMerge(engine),
-  );
+  return Layer.mergeAll(
+    Tasks.layer,
+    Profiles.layer,
+    Changes.layer,
+    TaskStore.layer,
+    ProposalStore.layer,
+    CommandGuard.layer,
+    planning.pipe(Layer.provide(Layer.merge(Tasks.layer, Profiles.layer))),
+  ).pipe(Layer.provideMerge(engine));
 };
 
 const harness = Effect.gen(function* () {
@@ -2961,16 +3031,19 @@ it.effect("two overlapping deliveries of one give-up answer alike and record it 
       );
       const first = yield* Effect.forkChild(tasks.abandonCapture(giveUp, human));
       yield* Deferred.await(reached);
-      const second = yield* tasks.abandonCapture(giveUp, human);
+      const second = yield* Effect.forkChild(tasks.abandonCapture(giveUp, human), {
+        startImmediately: true,
+      });
       yield* Deferred.succeed(release, undefined);
-      const answered = [yield* Fiber.join(first), second].map((given) => [
+      const answered = [yield* Fiber.join(first), yield* Fiber.join(second)].map((given) => [
         given.replayed,
         given.task.run?.state,
         given.task.run?.resultGivenUp?.by,
       ]);
+      // The second waits for the first and answers from its receipt.
       assert.deepEqual(answered, [
         [false, "failed", "You"],
-        [false, "failed", "You"],
+        [true, "failed", "You"],
       ]);
       assert.deepEqual(
         yield* sql`SELECT COUNT(*) AS count FROM factory_execution_capture_abandonments`,
@@ -2984,6 +3057,489 @@ it.effect("two overlapping deliveries of one give-up answer alike and record it 
         (entry) => entry.event.type === "run-ended" && entry.event.ordinal === run.ordinal,
       );
       assert.equal(ended.length, 1);
+    }),
+  ),
+);
+
+/** A held run whose result Save again can ask the engine for: its thread has a root_run scope. */
+const savable = Effect.fn("test.savable")(function* (tools: Effect.Success<typeof harness>) {
+  const held = yield* heldForCapture(tools);
+  yield* (yield* EventSink.EventSinkV2).write({
+    events: [
+      {
+        id: EventId.make("scope:savable"),
+        type: "checkpoint-scope.created",
+        threadId: held.run.threadId,
+        occurredAt: DateTime.makeUnsafe(at),
+        payload: {
+          id: CheckpointScopeId.make("scope:savable"),
+          threadId: held.run.threadId,
+          runId: held.run.runId,
+          nodeId: NodeId.make("node:savable"),
+          parentScopeId: null,
+          providerThreadId: null,
+          kind: "root_run",
+          ordinalWithinParent: 0,
+          advancesAppRunCount: true,
+          cwd: "/task-project",
+          createdAt: DateTime.makeUnsafe(at),
+        },
+      },
+    ],
+  });
+  return held;
+});
+
+it.effect(
+  "a Save again stopped after the engine took it keeps its command id until it is replayed",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const tools = yield* harness;
+        const { tasks, summary } = tools;
+        const { task } = yield* savable(tools);
+        const save = { commandId: command("save"), ref: task.ref };
+        // The server stops after the engine takes the retry and before the task records the command.
+        (yield* OutputGate).recaptured = Effect.interrupt;
+        const stopped = yield* Effect.forkChild(tasks.retryCapture(save, human));
+        assert.isTrue(Exit.hasInterrupts(yield* Fiber.await(stopped)));
+        const other = yield* tasks
+          .update(
+            {
+              commandId: save.commandId,
+              ref: task.ref,
+              expectedVersion: (yield* summary(task)).version,
+              title: "Another command with the same id",
+            },
+            human,
+          )
+          .pipe(Effect.flip);
+        assert.equal(other.reason, "command-conflict");
+        const replayed = yield* tasks.retryCapture(save, human);
+        assert.deepEqual(
+          [replayed.replayed, replayed.task.title, replayed.task.run?.state],
+          [false, "Resample the ticks", "running"],
+        );
+      }),
+    ),
+);
+
+it.effect("two overlapping deliveries of one Save again: the second answers from the first", () =>
+  scenario(
+    Effect.gen(function* () {
+      const tools = yield* harness;
+      const { sql, tasks } = tools;
+      const { task, run } = yield* savable(tools);
+      const save = { commandId: command("save"), ref: task.ref };
+      const reached = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      (yield* OutputGate).recaptured = Deferred.succeed(reached, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+      );
+      const first = yield* Effect.forkChild(tasks.retryCapture(save, human));
+      yield* Deferred.await(reached);
+      const second = yield* Effect.forkChild(tasks.retryCapture(save, human), {
+        startImmediately: true,
+      });
+      yield* Deferred.succeed(release, undefined);
+      const answered = [yield* Fiber.join(first), yield* Fiber.join(second)].map((saved) => [
+        saved.replayed,
+        saved.task.run?.state,
+      ]);
+      assert.deepEqual(answered, [
+        [false, "running"],
+        [true, "running"],
+      ]);
+      assert.deepEqual(
+        yield* sql`SELECT kind FROM factory_task_commands WHERE command_id = ${save.commandId}`,
+        [{ kind: "retryCapture" }],
+      );
+      assert.deepEqual(
+        yield* sql`SELECT COUNT(*) AS count FROM orchestration_v2_effect_outbox WHERE thread_id = ${run.threadId} AND effect_type = 'factory.execution.finalize' AND status = 'pending'`,
+        [{ count: 1 }],
+      );
+    }),
+  ),
+);
+
+/**
+ * Sends two commands at once. Both wait at their first database read behind a transaction the
+ * test holds, so whatever orders them afterwards is the service's, not the database's.
+ */
+const sentAtOnce = Effect.fn("test.sentAtOnce")(function* <A, B>(
+  first: Effect.Effect<A, FactoryTaskError>,
+  second: Effect.Effect<B, FactoryTaskError>,
+) {
+  const sql = yield* SqlClient.SqlClient;
+  const holding = yield* Deferred.make<void>();
+  const release = yield* Deferred.make<void>();
+  const hold = yield* Effect.forkChild(
+    sql.withTransaction(
+      Deferred.succeed(holding, undefined).pipe(Effect.andThen(Deferred.await(release))),
+    ),
+  );
+  yield* Deferred.await(holding);
+  const one = yield* Effect.forkChild(Effect.result(first), { startImmediately: true });
+  const two = yield* Effect.forkChild(Effect.result(second), { startImmediately: true });
+  yield* Deferred.succeed(release, undefined);
+  yield* Fiber.join(hold);
+  return [yield* Fiber.join(one), yield* Fiber.join(two)] as const;
+});
+const outcomeOf = (result: Result.Result<unknown, FactoryTaskError>) =>
+  Result.isFailure(result) ? result.failure.reason : "succeeded";
+
+it.effect.each(["Start first", "Update first"] as const)(
+  "a Start and an Update sent at once under one command id: the later one is refused unchanged (%s)",
+  (order) =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, summary } = yield* harness;
+        const started = yield* create("Index the archive", { lane: "ready" });
+        const edited = yield* create("Resample the ticks");
+        const commandId = command("shared");
+        const start = tasks.start(
+          { commandId, ref: started.ref, expectedVersion: started.version, setup: setupOf() },
+          human,
+        );
+        const update = tasks.update(
+          { commandId, ref: edited.ref, expectedVersion: edited.version, title: "Renamed" },
+          human,
+        );
+        const [started_, updated] =
+          order === "Start first"
+            ? yield* sentAtOnce(start, update)
+            : (yield* sentAtOnce(update, start)).toReversed();
+        const winner = order === "Start first" ? "start" : "update";
+        assert.deepEqual(
+          [outcomeOf(started_), outcomeOf(updated)],
+          winner === "start"
+            ? ["succeeded", "command-conflict"]
+            : ["command-conflict", "succeeded"],
+        );
+        assert.deepEqual(
+          yield* sql`SELECT kind FROM factory_task_commands WHERE command_id = ${commandId}`,
+          [{ kind: winner }],
+        );
+        assert.deepEqual(
+          [(yield* summary(started)).run?.state ?? null, (yield* summary(edited)).title],
+          winner === "start" ? ["running", "Resample the ticks"] : [null, "Renamed"],
+        );
+      }),
+    ),
+);
+
+it.effect("a give-up and an Update sent at once under one command id: the Update is refused", () =>
+  scenario(
+    Effect.gen(function* () {
+      const tools = yield* harness;
+      const { sql, tasks, create, summary } = tools;
+      const { task, run } = yield* heldForCapture(tools);
+      const other = yield* create("Index the archive");
+      const commandId = command("shared");
+      const [given, updated] = yield* sentAtOnce(
+        tasks.abandonCapture({ commandId, ref: task.ref, runId: run.runId }, human),
+        tasks.update(
+          { commandId, ref: other.ref, expectedVersion: other.version, title: "Renamed" },
+          human,
+        ),
+      );
+      assert.deepEqual([outcomeOf(given), outcomeOf(updated)], ["succeeded", "command-conflict"]);
+      assert.deepEqual(
+        yield* sql`SELECT kind FROM factory_task_commands WHERE command_id = ${commandId}`,
+        [{ kind: "abandonCapture" }],
+      );
+      assert.equal((yield* summary(other)).title, "Index the archive");
+    }),
+  ),
+);
+
+it.effect(
+  "two executions of one Start: the one that gets the grant registers the run, and the other replays it",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, summary } = yield* harness;
+        const profiles = yield* Profiles.FactoryAgentProfileService;
+        const implementer = (yield* profiles.save(
+          {
+            commandId: command("implementer"),
+            name: "Implementer",
+            setup: setupOf("sol"),
+            handles: [],
+          },
+          human,
+        )).profile!;
+        const task = yield* create("Gate tooling fixes", {
+          lane: "ready",
+          assignment: { mode: "profile", profileId: implementer.id },
+        });
+        const probe = yield* BaseProbe;
+        probe.remote = { remoteName: "origin", branchName: "main" };
+        const reached = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        probe.gate = Deferred.succeed(reached, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+        );
+        const startInput = {
+          commandId: command("start-twice"),
+          ref: task.ref,
+          expectedVersion: task.version,
+          setup: setupOf("sol"),
+        };
+        // The first execution resolved the profile and is fetching the base.
+        const first = yield* Effect.forkChild(tasks.start(startInput, human));
+        yield* Deferred.await(reached);
+        // The profile no longer runs this setup.
+        yield* profiles.save(
+          {
+            commandId: command("implementer-edit"),
+            id: implementer.id,
+            expectedVersion: implementer.version,
+            name: "Implementer",
+            setup: setupOf("luna"),
+            handles: [],
+          },
+          human,
+        );
+        const second = yield* Effect.forkChild(tasks.start(startInput, human), {
+          startImmediately: true,
+        });
+        yield* Deferred.succeed(release, undefined);
+        const answers = [yield* Fiber.join(first), yield* Fiber.join(second)];
+        const threadId = answers[0]!.task.run!.threadId;
+        assert.deepEqual(
+          answers.map((answer) => [answer.replayed, answer.task.run?.threadId]),
+          [
+            [false, threadId],
+            [true, threadId],
+          ],
+        );
+        assert.deepEqual(
+          yield* sql`SELECT profile_id AS profile FROM factory_task_runs WHERE thread_id = ${threadId}`,
+          [{ profile: implementer.id }],
+        );
+        // Only the execution that ran assigned anything: the task still names the profile.
+        assert.deepEqual((yield* summary(task)).assignee.assignment, {
+          mode: "profile",
+          profileId: implementer.id,
+        });
+        assert.equal(probe.fetches, 1);
+      }),
+    ),
+);
+
+it.effect("commands with different ids do not wait for each other, even while one fetches", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { tasks, create } = yield* harness;
+      const held = yield* create("Index the archive", { lane: "ready" });
+      const free = yield* create("Resample the ticks", { lane: "ready" });
+      const probe = yield* BaseProbe;
+      probe.remote = { remoteName: "origin", branchName: "main" };
+      const reached = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      probe.gate = Deferred.succeed(reached, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+      );
+      const start = (task: FactoryTaskSummary) =>
+        tasks.start(
+          {
+            commandId: command(`start:${task.displayId}`),
+            ref: task.ref,
+            expectedVersion: task.version,
+            setup: setupOf(),
+          },
+          human,
+        );
+      const first = yield* Effect.forkChild(start(held));
+      yield* Deferred.await(reached);
+      // Finishes, its own fetch included, while the first is still held in its fetch.
+      assert.equal((yield* start(free)).task.run?.state, "running");
+      assert.equal(probe.fetches, 2);
+      yield* Deferred.succeed(release, undefined);
+      assert.equal((yield* Fiber.join(first)).task.run?.state, "running");
+    }),
+  ),
+);
+
+/** Holds the next Start inside its base fetch, after it pinned its input. */
+const heldInFetch = Effect.fn("test.heldInFetch")(function* (gate?: Effect.Effect<void>) {
+  const probe = yield* BaseProbe;
+  probe.remote = { remoteName: "origin", branchName: "main" };
+  const reached = yield* Deferred.make<void>();
+  const release = yield* Deferred.make<void>();
+  probe.gate = Deferred.succeed(reached, undefined).pipe(
+    Effect.andThen(gate ?? Deferred.await(release)),
+  );
+  return { reached, release };
+});
+
+it.effect(
+  "an approve under a held Start's command id waits outside its transaction, then is refused",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, summary } = yield* harness;
+        const planner = yield* Planning.FactoryTaskPlanningService;
+        const proposals = yield* ProposalStore.FactoryTaskProposalStore;
+        const started = yield* create("Index the archive", { lane: "ready" });
+        const planned = yield* create("Unify the task views");
+        const proposal = {
+          id: "proposal",
+          ref: planned.ref,
+          status: "proposed",
+          proposedBy: { threadId: ThreadId.make("planning-thread"), setup: setupOf() },
+          items: [
+            {
+              key: "list",
+              title: "Move the list API",
+              description: "",
+              assignment: { mode: "auto" },
+              after: [],
+            },
+          ],
+          version: 0,
+          createdAt: at,
+          updatedAt: at,
+        } as const;
+        yield* proposals.saveProposal(proposal);
+        const commandId = command("shared");
+        const fetch = yield* heldInFetch();
+        const start = yield* Effect.forkChild(
+          Effect.result(
+            tasks.start(
+              { commandId, ref: started.ref, expectedVersion: started.version, setup: setupOf() },
+              human,
+            ),
+          ),
+        );
+        yield* Deferred.await(fetch.reached);
+        const arrived = yield* Deferred.make<void>();
+        // Signalled from a forked fiber, so it lands only once the approve has stopped where it
+        // waits: nothing asynchronous lies between its digest and that point.
+        (yield* PlanningDigest).next = Effect.forkDetach(Deferred.succeed(arrived, undefined));
+        const approve = yield* Effect.forkChild(
+          Effect.result(
+            planner.resolveProposal(
+              {
+                commandId,
+                ref: planned.ref,
+                proposalId: proposal.id,
+                expectedVersion: proposal.version,
+                action: "approve",
+              },
+              human,
+            ),
+          ),
+        );
+        yield* Deferred.await(arrived);
+        // A waiting approve holds no transaction, so other writes go on.
+        assert.equal((yield* create("Resample the ticks")).title, "Resample the ticks");
+        yield* Deferred.succeed(fetch.release, undefined);
+        assert.deepEqual(
+          [outcomeOf(yield* Fiber.join(start)), outcomeOf(yield* Fiber.join(approve))],
+          ["succeeded", "command-conflict"],
+        );
+        assert.deepEqual(
+          yield* sql`SELECT kind FROM factory_task_commands WHERE command_id = ${commandId}`,
+          [{ kind: "start" }],
+        );
+        assert.equal((yield* proposals.proposal(planned.ref))?.status, "proposed");
+        assert.deepEqual(
+          [
+            (yield* summary(started)).run?.state,
+            (yield* tasks.read({ task: { ref: planned.ref } })).subtasks,
+          ],
+          ["running", []],
+        );
+      }),
+    ),
+);
+
+it.effect("a profile Save under a held Start's command id waits, then is refused", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { sql, tasks, create, summary } = yield* harness;
+      const profiles = yield* Profiles.FactoryAgentProfileService;
+      const started = yield* create("Index the archive", { lane: "ready" });
+      const commandId = command("shared");
+      const fetch = yield* heldInFetch();
+      const start = yield* Effect.forkChild(
+        Effect.result(
+          tasks.start(
+            { commandId, ref: started.ref, expectedVersion: started.version, setup: setupOf() },
+            human,
+          ),
+        ),
+      );
+      yield* Deferred.await(fetch.reached);
+      const save = yield* Effect.forkChild(
+        Effect.result(
+          profiles.save({ commandId, name: "Implementer", setup: setupOf(), handles: [] }, human),
+        ),
+        { startImmediately: true },
+      );
+      yield* Deferred.succeed(fetch.release, undefined);
+      assert.deepEqual(
+        [outcomeOf(yield* Fiber.join(start)), outcomeOf(yield* Fiber.join(save))],
+        ["succeeded", "command-conflict"],
+      );
+      assert.deepEqual(
+        yield* sql`SELECT kind FROM factory_task_commands WHERE command_id = ${commandId}`,
+        [{ kind: "start" }],
+      );
+      assert.deepEqual((yield* profiles.list()).profiles, []);
+      assert.equal((yield* summary(started)).run?.state, "running");
+    }),
+  ),
+);
+
+it.effect(
+  "a profile Save and a Start sent at once under one command id: the Start is refused",
+  () =>
+    scenario(
+      Effect.gen(function* () {
+        const { sql, tasks, create, summary } = yield* harness;
+        const profiles = yield* Profiles.FactoryAgentProfileService;
+        const started = yield* create("Index the archive", { lane: "ready" });
+        const commandId = command("shared");
+        const [saved, start] = yield* sentAtOnce(
+          profiles.save({ commandId, name: "Implementer", setup: setupOf(), handles: [] }, human),
+          tasks.start(
+            { commandId, ref: started.ref, expectedVersion: started.version, setup: setupOf() },
+            human,
+          ),
+        );
+        assert.deepEqual([outcomeOf(saved), outcomeOf(start)], ["succeeded", "command-conflict"]);
+        assert.deepEqual(
+          yield* sql`SELECT kind FROM factory_task_commands WHERE command_id = ${commandId}`,
+          [{ kind: "profile.save" }],
+        );
+        assert.equal((yield* summary(started)).run, null);
+      }),
+    ),
+);
+
+it.effect("a Start stopped after its pin keeps its command id from a profile Save", () =>
+  scenario(
+    Effect.gen(function* () {
+      const { tasks, create } = yield* harness;
+      const profiles = yield* Profiles.FactoryAgentProfileService;
+      const started = yield* create("Index the archive", { lane: "ready" });
+      const commandId = command("shared");
+      yield* heldInFetch(Effect.interrupt);
+      const stopped = yield* Effect.forkChild(
+        tasks.start(
+          { commandId, ref: started.ref, expectedVersion: started.version, setup: setupOf() },
+          human,
+        ),
+      );
+      assert.isTrue(Exit.hasInterrupts(yield* Fiber.await(stopped)));
+      const saved = yield* profiles
+        .save({ commandId, name: "Implementer", setup: setupOf(), handles: [] }, human)
+        .pipe(Effect.flip);
+      assert.equal(saved.reason, "command-conflict");
+      assert.deepEqual((yield* profiles.list()).profiles, []);
     }),
   ),
 );
@@ -3439,25 +3995,28 @@ it.effect.each([
 
         // A Request changes that lands while an Accept reads the result wins: the run it started
         // is not covered by an acceptance of the result before it.
-        const requested = yield* Deferred.make<FactoryTaskMutationResult, FactoryTaskError>();
-        (yield* OutputGate).next = tasks
-          .requestChanges(
-            {
-              commandId: command("changes"),
-              ref: task.ref,
-              revision: 1,
-              note: "Keep cursor paging",
-            },
-            human,
-          )
-          .pipe(Deferred.into(requested), Effect.asVoid);
-        assert.equal(
-          (yield* tasks
-            .accept({ commandId: command("racing"), ref: task.ref, revision: 1 }, human)
-            .pipe(Effect.flip)).reason,
-          "run-active",
+        const reading = yield* Deferred.make<void>();
+        const read = yield* Deferred.make<void>();
+        (yield* OutputGate).next = Deferred.succeed(reading, undefined).pipe(
+          Effect.andThen(Deferred.await(read)),
         );
-        const changing = (yield* Deferred.await(requested)).task;
+        const accepting = yield* Effect.forkChild(
+          tasks
+            .accept({ commandId: command("racing"), ref: task.ref, revision: 1 }, human)
+            .pipe(Effect.flip),
+        );
+        yield* Deferred.await(reading);
+        const changing = (yield* tasks.requestChanges(
+          {
+            commandId: command("changes"),
+            ref: task.ref,
+            revision: 1,
+            note: "Keep cursor paging",
+          },
+          human,
+        )).task;
+        yield* Deferred.succeed(read, undefined);
+        assert.equal((yield* Fiber.join(accepting)).reason, "run-active");
         const second = changing.run!;
         assert.deepEqual(
           [changing.status, second.ordinal, second.state, changing.assignee.key],
@@ -4329,6 +4888,7 @@ it.effect(
       Effect.gen(function* () {
         const { sql, tasks, create, feed, changesUntil } = yield* harness;
         const plans = yield* Plans.FactoryPlanService;
+        const commands = yield* CommandGuard.FactoryTaskCommandGuard;
         const parent = yield* create("Unified task model");
         const planRef = { environmentId, projectId, rootId: parent.ref.rootId };
         const approve = Effect.gen(function* () {
@@ -4370,6 +4930,9 @@ it.effect(
           );
           return made;
         });
+        // As planning does: the command's id first, then the caller's transaction.
+        const inTransaction = <A, E>(effect: Effect.Effect<A, E>) =>
+          commands.run(command("approve-plan"), sql.withTransaction(effect));
         const survivors = Effect.gen(function* () {
           const counted = yield* sql<{
             tasks: number;
@@ -4388,11 +4951,9 @@ it.effect(
         yield* changesUntil(before.ref.rootId);
 
         assert.equal(
-          yield* sql
-            .withTransaction(
-              approve.pipe(Effect.andThen(Effect.fail("the caller's own step failed" as const))),
-            )
-            .pipe(Effect.flip),
+          yield* inTransaction(
+            approve.pipe(Effect.andThen(Effect.fail("the caller's own step failed" as const))),
+          ).pipe(Effect.flip),
           "the caller's own step failed",
         );
         assert.deepEqual(yield* survivors, {
@@ -4411,7 +4972,7 @@ it.effect(
         );
 
         // The same command commits this time, numbered as if the first try never happened.
-        const made = yield* sql.withTransaction(
+        const made = yield* inTransaction(
           approve.pipe(
             Effect.tap(() =>
               // Still open: nothing about this top-level task has been announced.

@@ -86,6 +86,32 @@ Updates from the previous orchestration system preserve conversation transcripts
 every kind of runtime history forward. Read [Threads from older T3 Code versions](./thread-migration.md)
 before continuing an important older thread.
 
+## Factory database upgrade and restore
+
+The first start of a Factory build with the new migration numbering upgrades an existing
+Factory database and saves a complete backup first. Allow enough free space for another copy
+of the database. If the backup fails, startup stops without converting the database; check
+free space and folder permissions, then retry.
+
+The backup is a single file beside `statev2.sqlite`, in your configured home's `userdata`
+folder. Its name is `statev2.sqlite.before-factory-migration-band-<UTC timestamp>-<unique id>`.
+The startup log gives its full path. Each conversion creates a new backup, including an
+upgrade after restoring an earlier backup. Ordinary restarts do not create another one.
+
+Older builds refuse the upgraded database. To go back, use the backup from immediately
+before the upgrade you want to undo: normally the file with the newest timestamp, confirmed
+by the path in that upgrade's startup log. An earlier backup also discards work done before
+the latest upgrade.
+
+1. Stop every process that uses that home, including desktop apps and background servers.
+2. If later work matters, keep the current `statev2.sqlite`, `statev2.sqlite-wal`, and
+   `statev2.sqlite-shm` somewhere else. Some sidecar files may not exist.
+3. Copy the chosen backup file over `statev2.sqlite` in that home's `userdata` folder.
+4. Delete `statev2.sqlite-wal` and `statev2.sqlite-shm` there if they exist.
+5. Start the older build.
+
+Work done since the backup is lost from the restored database. Keep the backup file.
+
 ## When versions don't match
 
 A client and server must speak the same orchestration protocol. If they do not, the connection is

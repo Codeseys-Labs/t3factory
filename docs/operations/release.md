@@ -77,6 +77,10 @@ candidate that `factory-check.yml` validated. It only uploads run artifacts: no 
 installer, npm, relay, store or release step, and no publishing credential. Publication is separate
 and must consume this artifact, never rebuild it.
 
+Release notes for the Factory migration-band upgrade must link the
+[database upgrade and restore instructions](../user/updating.md#factory-database-upgrade-and-restore)
+and call out the backup location and older-build refusal before users install it.
+
 1. Validate from the trusted branch with every lane requested, including `lane_windows=true`.
    Note the run ID, its current attempt, its head SHA and the digest in
    `factory-check-manifest.json.sha256`. Re-running the validation makes the earlier attempt stale.

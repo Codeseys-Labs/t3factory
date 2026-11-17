@@ -207,6 +207,7 @@ export const comparisonBase = Effect.fn("checkChanged.comparisonBase")(function*
     : yield* Effect.forEach(yield* gitLines(root, ["remote"]), (name) =>
         git(root, ["symbolic-ref", "--quiet", "refs/remotes/" + name + "/HEAD"]).pipe(
           Effect.map((stdout) => stdout.toString().trim()),
+          Effect.tap((rev) => git(root, ["rev-parse", "--verify", "--quiet", rev + "^{commit}"])),
           Effect.orElseSucceed(() => "refs/remotes/" + name + "/main"),
           Effect.map((rev) => ({ ref: rev.slice("refs/remotes/".length), rev })),
         ),

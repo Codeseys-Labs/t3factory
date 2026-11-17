@@ -321,6 +321,29 @@ it.each(["upstream", "team/upstream"])(
   },
 );
 
+it("compares against the remote default branch when main is behind", async () => {
+  using project = fixture({ origin: "A" });
+  const git = (...args: Array<string>) =>
+    NodeChildProcess.execFileSync("git", args, { cwd: project.root, encoding: "utf8", env });
+  git("update-ref", "refs/remotes/origin/feat/t3factory", project.commits.B!);
+  git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/feat/t3factory");
+  const result = await compare(project.root, Option.none());
+  assert.strictEqual(result.base, project.commits.B);
+  assert.strictEqual(result.ref, "origin/feat/t3factory");
+});
+
+it("falls back to remote main when the remote HEAD target is missing", async () => {
+  using project = fixture({ origin: "B" });
+  NodeChildProcess.execFileSync(
+    "git",
+    ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/missing"],
+    { cwd: project.root, encoding: "utf8", env },
+  );
+  const result = await compare(project.root, Option.none());
+  assert.strictEqual(result.base, project.commits.B);
+  assert.strictEqual(result.ref, "origin/main");
+});
+
 it("compares against an explicit ref instead of the closest remote main", async () => {
   using project = fixture({ origin: "A", upstream: "B" });
   const result = await compare(project.root, Option.some("origin/main"));

@@ -11,9 +11,9 @@ import {
   IssueUnavailableError,
   SourceControlProviderKind,
   type IssueCandidates,
+  type IssueComment,
   type IssueCommentInput,
   type IssueCommentsPage,
-  type IssueCommentsPageInput,
   type IssueCreateInput,
   type IssueCreateResult,
   type IssueDetail,
@@ -154,7 +154,7 @@ export class IssueService extends Context.Service<
     readonly templates: (input: IssueScopeRef) => Effect.Effect<IssueTemplateList, IssueError>;
     readonly candidates: (input: IssueScopeRef) => Effect.Effect<IssueCandidates, IssueError>;
     readonly create: (input: IssueCreateInput) => Effect.Effect<IssueCreateResult, IssueError>;
-    readonly comment: (input: IssueCommentInput) => Effect.Effect<void, IssueError>;
+    readonly comment: (input: IssueCommentInput) => Effect.Effect<IssueComment, IssueError>;
     readonly update: (input: IssueUpdateInput) => Effect.Effect<void, IssueError>;
     readonly setState: (input: IssueSetStateInput) => Effect.Effect<void, IssueError>;
     readonly react: (input: IssueReactionInput) => Effect.Effect<void, IssueError>;

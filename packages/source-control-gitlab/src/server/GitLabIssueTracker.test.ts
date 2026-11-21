@@ -427,6 +427,29 @@ describe("GitLabIssueTracker", () => {
     }),
   );
 
+  it.effect("returns the id GitLab assigned a new comment", () =>
+    Effect.gen(function* () {
+      const api = yield* tracker((args) =>
+        args[1] === "projects/acme%2Fweb/issues/42/notes"
+          ? encode({
+              id: 12,
+              body: "Posted",
+              author: { username: "julius" },
+              created_at: "2026-07-04T00:00:00Z",
+            })
+          : "{}",
+      );
+      const comment = yield* api.comment!({
+        cwd: "/w",
+        host: "gitlab.com",
+        scope: "acme/web",
+        key: "42",
+        body: "Posted",
+      });
+      expect(comment.id).toBe("12");
+    }),
+  );
+
   it.effect("moves an issue to a state by its name and refuses any other name", () =>
     Effect.gen(function* () {
       const writes: unknown[] = [];

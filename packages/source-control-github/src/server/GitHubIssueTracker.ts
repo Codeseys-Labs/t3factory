@@ -24,6 +24,7 @@ import { AddReaction, RemoveReaction } from "./pullRequestMutations.graphql.ts";
 import { gitHubReactionContent } from "./gitHubPullRequestJson.ts";
 import {
   ISSUE_STATES,
+  decodeCreatedCommentJson,
   decodeCreatedIssueJson,
   decodeIssueMetadataJson,
   toIssueCandidates,
@@ -31,7 +32,6 @@ import {
   toIssueDetail,
   toIssueSearch,
 } from "./gitHubIssueJson.ts";
-
 const KIND = IssueTrackerKind.make("github");
 
 const CAPABILITIES: IssueCapabilities = {
@@ -400,10 +400,33 @@ export const make = Effect.gen(function* () {
               path: `${path}/comments`,
               body: { body: input.body },
             })
-            .pipe(Effect.asVoid, Effect.mapError(fail("comment"))),
+            .pipe(Effect.mapError(fail("comment"))),
         ),
+        Effect.flatMap((response) => {
+          const decoded = decodeCreatedCommentJson(response.body);
+          if (Result.isSuccess(decoded)) {
+            return decoded.success === null
+              ? Effect.fail(
+                  new IssueTrackerError({
+                    tracker: KIND,
+                    operation: "comment",
+                    reason: "failed",
+                    detail: "GitHub returned an unreadable comment response.",
+                  }),
+                )
+              : Effect.succeed(decoded.success);
+          }
+          return Effect.fail(
+            new IssueTrackerError({
+              tracker: KIND,
+              operation: "comment",
+              reason: "failed",
+              detail: "GitHub returned an unreadable comment response.",
+              cause: decoded.failure,
+            }),
+          );
+        }),
       ),
-
     update: Effect.fn("GitHubIssueTracker.update")(function* (input) {
       const { path } = yield* verifiedIssue(input, "update");
       const response = yield* api

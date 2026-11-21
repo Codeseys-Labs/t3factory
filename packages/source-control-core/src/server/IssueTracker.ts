@@ -152,7 +152,7 @@ export interface IssueTrackerApi {
   /** Only called when `capabilities.comment` is true. */
   readonly comment?: (
     input: IssueTarget & { readonly body: string },
-  ) => Effect.Effect<void, IssueTrackerError>;
+  ) => Effect.Effect<IssueComment, IssueTrackerError>;
 
   /**
    * Rewrites the present fields. Only called with a field the tracker declared it can write

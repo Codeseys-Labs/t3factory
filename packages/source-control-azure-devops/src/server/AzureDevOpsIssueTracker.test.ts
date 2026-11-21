@@ -492,6 +492,29 @@ describe("AzureDevOpsIssueTracker", () => {
     }),
   );
 
+  it.effect("returns the id Azure DevOps assigned a new comment", () =>
+    Effect.gen(function* () {
+      const api = yield* tracker((args) =>
+        args[args.indexOf("--resource") + 1] === "comments"
+          ? encode({
+              id: 9,
+              text: "Posted",
+              createdDate: "2026-07-04T00:00:00Z",
+              createdBy: { uniqueName: "julius@acme.test" },
+            })
+          : answer(args),
+      );
+      const comment = yield* api.comment!({
+        cwd: "/w",
+        host: "dev.azure.com",
+        scope: "acme/Web App",
+        key: "7",
+        body: "Posted",
+      });
+      expect(comment.id).toBe("9");
+    }),
+  );
+
   it.effect("sends text that starts with @ on stdin, where az reads no file for it", () =>
     Effect.gen(function* () {
       const writes: Array<{ args: string[]; stdin: string | undefined }> = [];

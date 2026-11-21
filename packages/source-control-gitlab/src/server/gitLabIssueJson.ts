@@ -132,6 +132,16 @@ function toActor(raw: typeof RawUserSchema.Type | null | undefined): IssueActor 
     : { login, name: trimmed(raw?.name), avatarUrl: trimmed(raw?.avatar_url) };
 }
 
+function toIssueComment(value: typeof RawNoteSchema.Type): IssueComment {
+  return {
+    id: String(value.id),
+    author: toActor(value.author),
+    body: value.body ?? "",
+    createdAt: value.created_at,
+    url: null,
+  };
+}
+
 function toLabels(
   raw: ReadonlyArray<typeof RawLabelRefSchema.Type> | null | undefined,
 ): ReadonlyArray<IssueLabel> {
@@ -279,16 +289,14 @@ export function decodeIssueNotesJson(raw: string): Result.Result<GitLabIssueNote
         });
         continue;
       }
-      comments.push({
-        id: String(value.id),
-        author: toActor(value.author),
-        body,
-        createdAt: value.created_at,
-        url: null,
-      });
+      comments.push(toIssueComment(value));
     }
     return { comments, events, rawCount: rows.length };
   });
+}
+
+export function decodeCreatedCommentJson(raw: string): Result.Result<IssueComment, DecodeFailure> {
+  return Result.map(decodeJsonResult(RawNoteSchema)(raw), toIssueComment);
 }
 
 export function decodeLabelEventsJson(

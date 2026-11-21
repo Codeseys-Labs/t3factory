@@ -137,7 +137,9 @@ export class LinearApi extends Context.Service<
       identifier: string,
       input: IssueUpdateInput,
     ) => Effect.Effect<void, IssueTrackerError>;
-    readonly createComment: (input: CommentCreateInput) => Effect.Effect<void, IssueTrackerError>;
+    readonly createComment: (
+      input: CommentCreateInput,
+    ) => Effect.Effect<LinearComment, IssueTrackerError>;
     readonly createReaction: (input: {
       readonly issueId?: string | undefined;
       readonly commentId?: string | undefined;
@@ -387,7 +389,11 @@ export const make = Effect.gen(function* () {
 
   const createComment: LinearApi["Service"]["createComment"] = (input) =>
     call("createComment", (linear) => linear.T3CommentCreate({ input })).pipe(
-      Effect.flatMap(({ commentCreate }) => applied("createComment", commentCreate)),
+      Effect.flatMap(({ commentCreate }) =>
+        commentCreate.success
+          ? Effect.succeed(commentCreate.comment)
+          : Effect.fail(fail("createComment", "failed", "Linear did not create the comment.")),
+      ),
     );
 
   const createReaction: LinearApi["Service"]["createReaction"] = (input) =>

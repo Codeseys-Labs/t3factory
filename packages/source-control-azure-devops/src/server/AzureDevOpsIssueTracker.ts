@@ -29,6 +29,7 @@ import {
   closedStateNames,
   workItemStates,
   decodeCommentsJson,
+  decodeCreatedCommentJson,
   decodeUpdatesJson,
   decodeWorkItemJson,
   decodeWorkItemsJson,
@@ -828,7 +829,12 @@ export const make: Effect.Effect<
             body: { text: input.body },
           }),
         ),
-        Effect.asVoid,
+        Effect.flatMap((raw) => {
+          const decoded = decodeCreatedCommentJson(raw);
+          return Result.isSuccess(decoded)
+            ? Effect.succeed(decoded.success)
+            : Effect.fail(unreadable("comment", decoded.failure));
+        }),
       ),
 
     update: (input) =>

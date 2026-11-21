@@ -279,6 +279,14 @@ describe("GitHubIssueTracker", () => {
           }
           if (request.url.endsWith("/issues")) {
             response = { number: 42, html_url: "https://github.com/acme/web/issues/42" };
+          } else if (request.url.endsWith("/comments")) {
+            response = {
+              node_id: "IC_42",
+              body: body["body"],
+              created_at: "2026-07-04T00:00:00Z",
+              html_url: "https://github.com/acme/web/issues/42#issuecomment-42",
+              user: { login: "octocat", name: "Octo Cat", avatar_url: null },
+            };
           } else if (request.method === "PATCH" && body["title"] === "Dropped") {
             // What GitHub answers a caller without triage access: success, metadata untouched.
             response = { labels: [{ name: "Bug" }], assignees: [] };
@@ -310,7 +318,7 @@ describe("GitHubIssueTracker", () => {
         displayKey: "#42",
         url: "https://github.com/acme/web/issues/42",
       });
-      yield* api.comment({ ...target, body: "Comment" });
+      expect((yield* api.comment({ ...target, body: "Comment" })).id).toBe("IC_42");
       yield* api.update({ ...target, title: "Updated", body: "Edited", labels: [], assignees: [] });
       expect(
         yield* Effect.flip(api.update({ ...target, title: "Dropped", labels: ["bug", "p1"] })),

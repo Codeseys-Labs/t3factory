@@ -277,6 +277,8 @@ const config: ExpoConfig = {
       },
       NSLocalNetworkUsageDescription:
         "Allow T3 Code Factory to connect to T3 Code Factory servers on your local network or tailnet.",
+      // Built with the iOS 27 SDK, only view controllers can hide or style the status bar.
+      UIViewControllerBasedStatusBarAppearance: true,
       NSPhotoLibraryAddUsageDescription:
         "Allow T3 Code Factory to save images to your photo library.",
       // "Audio, AirPlay, and Picture in Picture": the browser screen's system

@@ -62,6 +62,8 @@ import {
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
@@ -217,6 +219,7 @@ const makeCoordinatorHarness = Effect.fn("TestFactory.makeCoordinatorHarness")(f
       })),
     [WS_METHODS.projectCoordinatorsAssign]: (input: ProjectCoordinatorAssignInput) =>
       Effect.gen(function* () {
+        yield* Effect.yieldNow;
         calls.push(input);
         const revision = bindings.get(bindingKey(id, input.projectId))?.revision ?? 0;
         if (revision !== input.expectedRevision)
@@ -291,15 +294,21 @@ describe("Factory coordinator commands", () => {
             },
           },
         ];
-        const pending = targets.map((value) => h.atoms.coordinatorsEnsure.run(h.registry, value));
+        const pending = yield* Effect.forEach(
+          targets,
+          (value) =>
+            Effect.forkChild(Effect.exit(h.atoms.coordinatorsEnsure.run(h.registry, value)), {
+              startImmediately: true,
+            }).pipe(Effect.tap(() => Effect.yieldNow)),
+        );
         const dispatched = [];
         for (let index = 0; index < 4; index++) dispatched.push(yield* Queue.take(h.entered));
         expect(dispatched.map(({ input }) => input.commandId).sort()).toEqual(
           ["first", "other-environment", "other-project", "replacement"].sort(),
         );
         yield* Deferred.succeed(h.release, undefined);
-        const results = yield* Effect.promise(() => Promise.all(pending));
-        expect(results.every(AsyncResult.isSuccess)).toBe(true);
+        const results = yield* Effect.forEach(pending, Fiber.join, { concurrency: "unbounded" });
+        expect(results.every(Exit.isSuccess)).toBe(true);
         expect(results[1]).toEqual(results[0]);
         expect(h.calls).toHaveLength(4);
         expect(
@@ -317,19 +326,20 @@ describe("Factory coordinator commands", () => {
         const h = yield* makeCoordinatorHarness();
         const run = (input: ProjectCoordinatorAssignInput) =>
           h.atoms.coordinatorsAssign.run(h.registry, { environmentId, input });
-        const results = yield* Effect.promise(() =>
-          Promise.all([
-            run(assignmentInput("first", "a")),
-            run(assignmentInput("duplicate", "a")),
-            run(assignmentInput("competitor", "b")),
-          ]),
+        const results = yield* Effect.all(
+          [
+            Effect.exit(run(assignmentInput("first", "a"))),
+            Effect.exit(run(assignmentInput("duplicate", "a"))),
+            Effect.exit(run(assignmentInput("competitor", "b"))),
+          ],
+          { concurrency: "unbounded" },
         );
         expect(h.calls.map((input) => input.commandId)).toEqual(["first", "competitor"]);
         expect(results[1]).toEqual(results[0]);
-        expect(AsyncResult.isSuccess(results[0]!)).toBe(true);
+        expect(Exit.isSuccess(results[0]!)).toBe(true);
         const competitor = results[2]!;
-        expect(AsyncResult.isFailure(competitor)).toBe(true);
-        if (AsyncResult.isFailure(competitor))
+        expect(Exit.isFailure(competitor)).toBe(true);
+        if (Exit.isFailure(competitor))
           expect(Cause.squash(competitor.cause)).toMatchObject({ reason: "binding-changed" });
       }).pipe(Effect.scoped),
   );
@@ -344,14 +354,14 @@ describe("Factory coordinator commands", () => {
       const command = h.atoms.coordinatorsEnsure;
       expect(h.registry.get(command.permissionAtom(environmentId))).toBe(true);
       expect(h.registry.get(command.permissionAtom(otherEnvironmentId))).toBe(false);
-      const denied = yield* Effect.promise(() =>
+      const denied = yield* Effect.exit(
         command.run(h.registry, {
           environmentId: otherEnvironmentId,
           input: ensureInput("denied"),
         }),
       );
-      expect(AsyncResult.isFailure(denied)).toBe(true);
-      if (AsyncResult.isFailure(denied)) {
+      expect(Exit.isFailure(denied)).toBe(true);
+      if (Exit.isFailure(denied)) {
         expect(Cause.squash(denied.cause)).toMatchObject({
           _tag: "EnvironmentAuthorizationError",
           requiredPermission: AuthOrchestrationOperateScope,
@@ -359,27 +369,32 @@ describe("Factory coordinator commands", () => {
       }
       expect(h.calls).toHaveLength(0);
       yield* Deferred.succeed(h.release, undefined);
-      const accepted = yield* Effect.promise(() =>
-        command.run(h.registry, { environmentId, input: ensureInput("accepted") }),
+      const accepted = yield* Effect.exit(
+        command.run(h.registry, {
+          environmentId,
+          input: ensureInput("accepted"),
+        }),
       );
-      expect(AsyncResult.isSuccess(accepted)).toBe(true);
+      expect(Exit.isSuccess(accepted)).toBe(true);
       h.registry.set(sessions(environmentId), AsyncResult.success(sessionWith([])));
-      const revoked = yield* Effect.promise(() =>
-        command.run(h.registry, { environmentId, input: ensureInput("after-revocation") }),
+      const revoked = yield* Effect.exit(
+        command.run(h.registry, {
+          environmentId,
+          input: ensureInput("after-revocation"),
+        }),
       );
-      expect(AsyncResult.isFailure(revoked)).toBe(true);
       expect(h.calls).toHaveLength(1);
       const assignment = { environmentId, input: assignmentInput("assign") };
       expect(
-        AsyncResult.isFailure(
-          yield* Effect.promise(() => h.atoms.coordinatorsAssign.run(h.registry, assignment)),
+        Exit.isFailure(
+          yield* Effect.exit(h.atoms.coordinatorsAssign.run(h.registry, assignment)),
         ),
       ).toBe(true);
       h.registry.set(sessions(environmentId), AsyncResult.failure(Cause.die("offline")));
       expect(h.registry.get(h.atoms.coordinatorsAssign.permissionAtom(environmentId))).toBe(false);
       expect(
-        AsyncResult.isFailure(
-          yield* Effect.promise(() => h.atoms.coordinatorsAssign.run(h.registry, assignment)),
+        Exit.isFailure(
+          yield* Effect.exit(h.atoms.coordinatorsAssign.run(h.registry, assignment)),
         ),
       ).toBe(true);
       expect(h.calls).toHaveLength(1);
@@ -388,8 +403,8 @@ describe("Factory coordinator commands", () => {
         AsyncResult.success(sessionWith([AuthOrchestrationOperateScope])),
       );
       expect(
-        AsyncResult.isSuccess(
-          yield* Effect.promise(() => h.atoms.coordinatorsAssign.run(h.registry, assignment)),
+        Exit.isSuccess(
+          yield* Effect.exit(h.atoms.coordinatorsAssign.run(h.registry, assignment)),
         ),
       ).toBe(true);
       expect(h.calls).toHaveLength(2);
@@ -413,14 +428,19 @@ describe("Factory coordinator commands", () => {
         });
         expect(beforeGet.coordinator).toBeNull();
         expect(beforeList.coordinators).toEqual([]);
-        const pending = h.atoms.coordinatorsEnsure.run(h.registry, {
-          environmentId,
-          input: ensureInput("refresh"),
-        });
+        const pending = yield* Effect.forkChild(
+          Effect.exit(
+            h.atoms.coordinatorsEnsure.run(h.registry, {
+              environmentId,
+              input: ensureInput("refresh"),
+            }),
+          ),
+          { startImmediately: true },
+        );
         yield* Queue.take(h.entered);
         yield* Deferred.succeed(h.release, undefined);
-        const result = yield* Effect.promise(() => pending);
-        expect(AsyncResult.isFailure(result)).toBe(failAfterBinding);
+        const result = yield* Fiber.join(pending);
+        expect(Exit.isFailure(result)).toBe(failAfterBinding);
         const afterGet = yield* AtomRegistry.getResult(h.registry, get, { suspendOnWaiting: true });
         const afterList = yield* AtomRegistry.getResult(h.registry, list, {
           suspendOnWaiting: true,
@@ -429,13 +449,13 @@ describe("Factory coordinator commands", () => {
         expect(afterList.coordinators.map((coordinator) => coordinator.threadId)).toEqual([
           "thread-refresh",
         ]);
-        const assigned = yield* Effect.promise(() =>
+        const assigned = yield* Effect.exit(
           h.atoms.coordinatorsAssign.run(h.registry, {
             environmentId,
             input: assignmentInput("refresh-assignment"),
           }),
         );
-        expect(AsyncResult.isFailure(assigned)).toBe(failAfterBinding);
+        expect(Exit.isFailure(assigned)).toBe(failAfterBinding);
         const afterAssignment = yield* AtomRegistry.getResult(h.registry, get, {
           suspendOnWaiting: true,
         });
@@ -1025,8 +1045,13 @@ describe("Factory readiness override commands", () => {
           overrideSetTarget("other-issue", { issueNumber: 13 }),
           overrideSetTarget("other-environment", {}, otherEnvironmentId),
         ];
-        const pending = targets.map((value) =>
-          h.atoms.setIssueReadinessOverride.run(h.registry, value),
+        const pending = yield* Effect.forEach(
+          targets,
+          (value) =>
+            Effect.forkChild(
+              Effect.exit(h.atoms.setIssueReadinessOverride.run(h.registry, value)),
+              { startImmediately: true },
+            ).pipe(Effect.tap(() => Effect.yieldNow)),
         );
         const dispatched: FeedCall[] = [];
         for (let index = 0; index < 6; index++) dispatched.push(yield* Queue.take(h.entered));
@@ -1043,8 +1068,8 @@ describe("Factory readiness override commands", () => {
           "other-kind",
         ]);
         yield* Deferred.succeed(h.release, undefined);
-        const results = yield* Effect.promise(() => Promise.all(pending));
-        expect(results.every(AsyncResult.isSuccess)).toBe(true);
+        const results = yield* Effect.forEach(pending, Fiber.join, { concurrency: "unbounded" });
+        expect(results.every(Exit.isSuccess)).toBe(true);
         expect(results[1]).toEqual(results[0]);
         expect(h.calls).toHaveLength(6);
         expect(
@@ -1076,13 +1101,18 @@ describe("Factory readiness override commands", () => {
         overrideRevokeTarget("other-issue", { issueNumber: 13 }),
         overrideRevokeTarget("other-environment", {}, otherEnvironmentId),
       ];
-      const pending = targets.map((value) =>
-        h.atoms.revokeIssueReadinessOverride.run(h.registry, value),
+      const pending = yield* Effect.forEach(
+        targets,
+        (value) =>
+          Effect.forkChild(
+            Effect.exit(h.atoms.revokeIssueReadinessOverride.run(h.registry, value)),
+            { startImmediately: true },
+          ).pipe(Effect.tap(() => Effect.yieldNow)),
       );
       for (let index = 0; index < 4; index++) yield* Queue.take(h.entered);
       yield* Deferred.succeed(h.release, undefined);
-      const results = yield* Effect.promise(() => Promise.all(pending));
-      expect(results.every(AsyncResult.isSuccess)).toBe(true);
+      const results = yield* Effect.forEach(pending, Fiber.join, { concurrency: "unbounded" });
+      expect(results.every(Exit.isSuccess)).toBe(true);
       expect(results[1]).toEqual(results[0]);
       expect(h.calls).toHaveLength(4);
       expect(
@@ -1140,21 +1170,30 @@ describe("Factory readiness override commands", () => {
           readCalls(h.calls, WS_METHODS.factoryReadIssueReadiness, issueNumber).length;
         expect([reads(12), reads(13)]).toEqual([1, 1]);
 
-        const pending = h.atoms.setIssueReadinessOverride.run(h.registry, overrideSetTarget("set"));
+        const pending = yield* Effect.forkChild(
+          Effect.exit(
+            h.atoms.setIssueReadinessOverride.run(h.registry, overrideSetTarget("set")),
+          ),
+          { startImmediately: true },
+        );
         yield* Queue.take(h.entered);
         yield* Deferred.succeed(h.release, undefined);
-        const result = yield* Effect.promise(() => pending);
-        expect(AsyncResult.isFailure(result)).toBe(failCommands);
+        const result = yield* Fiber.join(pending);
+        expect(Exit.isFailure(result)).toBe(failCommands);
         yield* AtomRegistry.getResult(h.registry, changed, { suspendOnWaiting: true });
         expect([reads(12), reads(13)]).toEqual([2, 1]);
 
-        const revoking = h.atoms.revokeIssueReadinessOverride.run(
-          h.registry,
-          overrideRevokeTarget("revoke", { issueNumber: 13 }),
+        const revoking = yield* Effect.forkChild(
+          Effect.exit(
+            h.atoms.revokeIssueReadinessOverride.run(
+              h.registry,
+              overrideRevokeTarget("revoke", { issueNumber: 13 }),
+            ),
+          ),
+          { startImmediately: true },
         );
         yield* Queue.take(h.entered);
-        yield* Effect.promise(() => revoking);
-        yield* AtomRegistry.getResult(h.registry, untouched, { suspendOnWaiting: true });
+        yield* Fiber.join(revoking);
         expect([reads(12), reads(13)]).toEqual([2, 2]);
       }).pipe(Effect.scoped),
   );
@@ -1223,15 +1262,21 @@ describe("Factory feed admission", () => {
           { environmentId, input: admitInput("other-item", { itemKey: "guid:item-2" }) },
           { environmentId: otherEnvironmentId, input: admitInput("other-environment") },
         ];
-        const pending = targets.map((value) => h.atoms.admitFeedCandidate.run(h.registry, value));
+        const pending = yield* Effect.forEach(
+          targets,
+          (value) =>
+            Effect.forkChild(Effect.exit(h.atoms.admitFeedCandidate.run(h.registry, value)), {
+              startImmediately: true,
+            }).pipe(Effect.tap(() => Effect.yieldNow)),
+        );
         const dispatched: FeedCall[] = [];
         for (let index = 0; index < 4; index++) dispatched.push(yield* Queue.take(h.entered));
         expect(
           dispatched.map(({ input }) => (input as FactoryFeedCandidateAdmitInput).commandId).sort(),
         ).toEqual(["edited", "first", "other-environment", "other-item"]);
         yield* Deferred.succeed(h.release, undefined);
-        const results = yield* Effect.promise(() => Promise.all(pending));
-        expect(results.every(AsyncResult.isSuccess)).toBe(true);
+        const results = yield* Effect.forEach(pending, Fiber.join, { concurrency: "unbounded" });
+        expect(results.every(Exit.isSuccess)).toBe(true);
         expect(results[1]).toEqual(results[0]);
         expect(h.calls).toHaveLength(4);
         const first = h.calls.find(
@@ -1261,22 +1306,29 @@ describe("Factory feed admission", () => {
           ...overrides,
         } satisfies FactoryFeedCandidateDismissInput,
       });
-      const pending = [
-        dismissal("dismiss", {}),
-        dismissal("dismiss-again", { note: "same decision" }),
-        dismissal("restore", { dismissed: false }),
-        dismissal("dismiss-edited", { expectedRevision: "revision-2" }),
-      ].map((value) => h.atoms.setFeedCandidateDismissed.run(h.registry, value));
+      const pending = yield* Effect.forEach(
+        [
+          dismissal("dismiss", {}),
+          dismissal("dismiss-again", { note: "same decision" }),
+          dismissal("restore", { dismissed: false }),
+          dismissal("dismiss-edited", { expectedRevision: "revision-2" }),
+        ],
+        (value) =>
+          Effect.forkChild(
+            Effect.exit(h.atoms.setFeedCandidateDismissed.run(h.registry, value)),
+            { startImmediately: true },
+          ).pipe(Effect.tap(() => Effect.yieldNow)),
+      );
       for (let index = 0; index < 3; index++) yield* Queue.take(h.entered);
       yield* Deferred.succeed(h.release, undefined);
-      const results = yield* Effect.promise(() => Promise.all(pending));
-      expect(results.every(AsyncResult.isSuccess)).toBe(true);
+      const results = yield* Effect.forEach(pending, Fiber.join, { concurrency: "unbounded" });
+      expect(results.every(Exit.isSuccess)).toBe(true);
       expect(h.calls).toHaveLength(3);
     }).pipe(Effect.scoped),
   );
 });
 
-const expectGuarded = Effect.fn("TestFactory.expectGuarded")(function* <W>(
+const expectGuarded = Effect.fn("TestFactory.expectGuarded")(function* <W, A, E>(
   h: {
     readonly registry: AtomRegistry.AtomRegistry;
     readonly release: Deferred.Deferred<void>;
@@ -1287,7 +1339,7 @@ const expectGuarded = Effect.fn("TestFactory.expectGuarded")(function* <W>(
     readonly run: (
       registry: AtomRegistry.AtomRegistry,
       input: { readonly environmentId: EnvironmentId; readonly input: W },
-    ) => Promise<AsyncResult.AsyncResult<unknown, unknown>>;
+    ) => Effect.Effect<A, E>;
   },
   input: W,
   required: ReadonlyArray<AuthEnvironmentScope>,
@@ -1297,9 +1349,9 @@ const expectGuarded = Effect.fn("TestFactory.expectGuarded")(function* <W>(
     const granted = required.filter((scope) => scope !== missing);
     h.registry.set(sessions(environmentId), AsyncResult.success(sessionWith(granted)));
     expect(h.registry.get(command.permissionAtom(environmentId))).toBe(false);
-    const denied = yield* Effect.promise(() => command.run(h.registry, { environmentId, input }));
-    expect(AsyncResult.isFailure(denied)).toBe(true);
-    if (AsyncResult.isFailure(denied)) {
+    const denied = yield* Effect.exit(command.run(h.registry, { environmentId, input }));
+    expect(Exit.isFailure(denied)).toBe(true);
+    if (Exit.isFailure(denied)) {
       expect(Cause.squash(denied.cause)).toMatchObject({
         _tag: "EnvironmentAuthorizationError",
         requiredPermission: missing,
@@ -1310,8 +1362,8 @@ const expectGuarded = Effect.fn("TestFactory.expectGuarded")(function* <W>(
   h.registry.set(sessions(environmentId), AsyncResult.success(sessionWith(required)));
   expect(h.registry.get(command.permissionAtom(environmentId))).toBe(true);
   yield* Deferred.succeed(h.release, undefined);
-  const accepted = yield* Effect.promise(() => command.run(h.registry, { environmentId, input }));
-  expect(AsyncResult.isSuccess(accepted)).toBe(true);
+  const accepted = yield* Effect.exit(command.run(h.registry, { environmentId, input }));
+  expect(Exit.isSuccess(accepted)).toBe(true);
   expect(h.calls).toHaveLength(1);
 });
 
@@ -1751,15 +1803,21 @@ describe("Factory research commands", () => {
         },
         { environmentId: otherEnvironmentId, input: sealInput("seal") },
       ];
-      const pending = targets.map((value) => h.atoms.sealResearchProtocol.run(h.registry, value));
+      const pending = yield* Effect.forEach(
+        targets,
+        (value) =>
+          Effect.forkChild(Effect.exit(h.atoms.sealResearchProtocol.run(h.registry, value)), {
+            startImmediately: true,
+          }).pipe(Effect.tap(() => Effect.yieldNow)),
+      );
       const dispatched: FeedCall[] = [];
       for (let index = 0; index < 4; index++) dispatched.push(yield* Queue.take(h.entered));
       expect(dispatched.map(({ environmentId: id }) => id).sort()).toEqual(
         [environmentId, environmentId, environmentId, otherEnvironmentId].sort(),
       );
       yield* Deferred.succeed(h.release, undefined);
-      const results = yield* Effect.promise(() => Promise.all(pending));
-      expect(results.every(AsyncResult.isSuccess)).toBe(true);
+      const results = yield* Effect.forEach(pending, Fiber.join, { concurrency: "unbounded" });
+      expect(results.every(Exit.isSuccess)).toBe(true);
       expect(results[1]).toEqual(results[0]);
       expect(h.calls).toHaveLength(4);
       expect(h.calls.every(({ method }) => method === WS_METHODS.factorySealResearchProtocol)).toBe(
@@ -1789,15 +1847,21 @@ describe("Factory research commands", () => {
           },
           { environmentId: otherEnvironmentId, input: launchInput("other-environment") },
         ];
-        const pending = targets.map((value) => h.atoms.launchResearchRun.run(h.registry, value));
+        const pending = yield* Effect.forEach(
+          targets,
+          (value) =>
+            Effect.forkChild(Effect.exit(h.atoms.launchResearchRun.run(h.registry, value)), {
+              startImmediately: true,
+            }).pipe(Effect.tap(() => Effect.yieldNow)),
+        );
         const dispatched: FeedCall[] = [];
         for (let index = 0; index < 5; index++) dispatched.push(yield* Queue.take(h.entered));
         expect(
           dispatched.map(({ input }) => (input as FactoryResearchRunLaunchInput).commandId).sort(),
         ).toEqual(["first", "other-environment", "other-protocol", "replaced", "verify"]);
         yield* Deferred.succeed(h.release, undefined);
-        const results = yield* Effect.promise(() => Promise.all(pending));
-        expect(results.every(AsyncResult.isSuccess)).toBe(true);
+        const results = yield* Effect.forEach(pending, Fiber.join, { concurrency: "unbounded" });
+        expect(results.every(Exit.isSuccess)).toBe(true);
         expect(results[1]).toEqual(results[0]);
         expect(
           h.calls.filter(({ method }) => method === WS_METHODS.factoryLaunchResearchRun),
@@ -1833,8 +1897,13 @@ describe("Factory research commands", () => {
           },
           { environmentId: otherEnvironmentId, input: researchAdmitInput("other-environment") },
         ];
-        const pending = targets.map((value) =>
-          h.atoms.admitResearchImplementation.run(h.registry, value),
+        const pending = yield* Effect.forEach(
+          targets,
+          (value) =>
+            Effect.forkChild(
+              Effect.exit(h.atoms.admitResearchImplementation.run(h.registry, value)),
+              { startImmediately: true },
+            ).pipe(Effect.tap(() => Effect.yieldNow)),
         );
         const dispatched: FeedCall[] = [];
         for (let index = 0; index < 4; index++) dispatched.push(yield* Queue.take(h.entered));
@@ -1844,8 +1913,8 @@ describe("Factory research commands", () => {
             .sort(),
         ).toEqual(["first", "other-environment", "other-protocol", "re-evidenced"]);
         yield* Deferred.succeed(h.release, undefined);
-        const results = yield* Effect.promise(() => Promise.all(pending));
-        expect(results.every(AsyncResult.isSuccess)).toBe(true);
+        const results = yield* Effect.forEach(pending, Fiber.join, { concurrency: "unbounded" });
+        expect(results.every(Exit.isSuccess)).toBe(true);
         expect(results[1]).toEqual(results[0]);
         expect(h.calls).toHaveLength(4);
       }).pipe(Effect.scoped),
@@ -2014,26 +2083,36 @@ describe("Factory research commands", () => {
           ).length;
         expect([reads("protocol-1"), reads("protocol-2")]).toEqual([1, 1]);
 
-        const launching = h.atoms.launchResearchRun.run(h.registry, {
-          environmentId,
-          input: launchInput("launch"),
-        });
+        const launching = yield* Effect.forkChild(
+          Effect.exit(
+            h.atoms.launchResearchRun.run(h.registry, {
+              environmentId,
+              input: launchInput("launch"),
+            }),
+          ),
+          { startImmediately: true },
+        );
         yield* Queue.take(h.entered);
         yield* Deferred.succeed(h.release, undefined);
-        const launched = yield* Effect.promise(() => launching);
-        expect(AsyncResult.isFailure(launched)).toBe(failCommands);
+        const launched = yield* Fiber.join(launching);
+        expect(Exit.isFailure(launched)).toBe(failCommands);
         yield* AtomRegistry.getResult(h.registry, changed, { suspendOnWaiting: true });
         expect([reads("protocol-1"), reads("protocol-2")]).toEqual([2, 1]);
 
-        const admitting = h.atoms.admitResearchImplementation.run(h.registry, {
-          environmentId,
-          input: researchAdmitInput("admit", {
-            protocolId: FactoryResearchProtocolId.make("protocol-2"),
-          }),
-        });
+        const admitting = yield* Effect.forkChild(
+          Effect.exit(
+            h.atoms.admitResearchImplementation.run(h.registry, {
+              environmentId,
+              input: researchAdmitInput("admit", {
+                protocolId: FactoryResearchProtocolId.make("protocol-2"),
+              }),
+            }),
+          ),
+          { startImmediately: true },
+        );
         yield* Queue.take(h.entered);
-        const admitted = yield* Effect.promise(() => admitting);
-        expect(AsyncResult.isFailure(admitted)).toBe(failCommands);
+        const admitted = yield* Fiber.join(admitting);
+        expect(Exit.isFailure(admitted)).toBe(failCommands);
         yield* AtomRegistry.getResult(h.registry, untouched, { suspendOnWaiting: true });
         expect([reads("protocol-1"), reads("protocol-2")]).toEqual([2, 2]);
       }).pipe(Effect.scoped),
@@ -2049,14 +2128,19 @@ describe("Factory research commands", () => {
         yield* AtomRegistry.getResult(h.registry, list, { suspendOnWaiting: true });
         expect(researchReads(h.calls, WS_METHODS.factoryListResearchProtocols)).toBe(1);
 
-        const sealing = h.atoms.sealResearchProtocol.run(h.registry, {
-          environmentId,
-          input: sealInput("seal"),
-        });
+        const sealing = yield* Effect.forkChild(
+          Effect.exit(
+            h.atoms.sealResearchProtocol.run(h.registry, {
+              environmentId,
+              input: sealInput("seal"),
+            }),
+          ),
+          { startImmediately: true },
+        );
         yield* Queue.take(h.entered);
         yield* Deferred.succeed(h.release, undefined);
-        const sealed = yield* Effect.promise(() => sealing);
-        expect(AsyncResult.isFailure(sealed)).toBe(failCommands);
+        const sealed = yield* Fiber.join(sealing);
+        expect(Exit.isFailure(sealed)).toBe(failCommands);
         yield* AtomRegistry.getResult(h.registry, list, { suspendOnWaiting: true });
         expect(researchReads(h.calls, WS_METHODS.factoryListResearchProtocols)).toBe(2);
       }).pipe(Effect.scoped),
@@ -2083,24 +2167,34 @@ describe("Factory research commands", () => {
         ];
         expect(reads()).toEqual([1, 1]);
 
-        const grantingArtifact = h.atoms.grantDelivery.run(h.registry, {
-          environmentId,
-          input: artifactGrantInput("grant-artifact"),
-        });
+        const grantingArtifact = yield* Effect.forkChild(
+          Effect.exit(
+            h.atoms.grantDelivery.run(h.registry, {
+              environmentId,
+              input: artifactGrantInput("grant-artifact"),
+            }),
+          ),
+          { startImmediately: true },
+        );
         yield* Queue.take(h.entered);
         yield* Deferred.succeed(h.release, undefined);
-        const artifactGranted = yield* Effect.promise(() => grantingArtifact);
-        expect(AsyncResult.isFailure(artifactGranted)).toBe(failCommands);
+        const artifactGranted = yield* Fiber.join(grantingArtifact);
+        expect(Exit.isFailure(artifactGranted)).toBe(failCommands);
         yield* settle();
         expect(reads()).toEqual([2, 1]);
 
-        const grantingCommit = h.atoms.grantDelivery.run(h.registry, {
-          environmentId,
-          input: commitGrantInput("grant-commit"),
-        });
+        const grantingCommit = yield* Effect.forkChild(
+          Effect.exit(
+            h.atoms.grantDelivery.run(h.registry, {
+              environmentId,
+              input: commitGrantInput("grant-commit"),
+            }),
+          ),
+          { startImmediately: true },
+        );
         yield* Queue.take(h.entered);
-        const commitGranted = yield* Effect.promise(() => grantingCommit);
-        expect(AsyncResult.isFailure(commitGranted)).toBe(failCommands);
+        const commitGranted = yield* Fiber.join(grantingCommit);
+        expect(Exit.isFailure(commitGranted)).toBe(failCommands);
         yield* settle();
         expect(reads()).toEqual([3, 2]);
       }).pipe(Effect.scoped),

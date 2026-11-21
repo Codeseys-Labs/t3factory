@@ -124,7 +124,7 @@ export function fakeSourceControlDriverInstance(
   options: FakeSourceControlDriverOptions = {},
 ): SourceControlDriverInstance {
   return {
-    issues: null,
+    factoryIssues: null,
     sourceControl: fakeSourceControlProvider(kind, options.sourceControl),
     discovery: options.discovery ?? fakeDiscovery(kind),
     pullRequests:

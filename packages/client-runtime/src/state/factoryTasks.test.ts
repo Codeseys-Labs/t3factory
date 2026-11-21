@@ -330,10 +330,10 @@ it.effect(
           title: "Task",
         },
       };
-      const result = yield* Effect.promise(() => h.tasks.createTask.run(h.registry, target));
+      const result = yield* Effect.exit(h.tasks.createTask.run(h.registry, target));
       expect(result._tag).toBe("Failure");
       expect(h.registry.get(h.tasks.retryTaskCapture.permissionAtom(environmentId))).toBe(false);
-      const saved = yield* Effect.promise(() =>
+      const saved = yield* Effect.exit(
         h.tasks.retryTaskCapture.run(h.registry, {
           environmentId,
           input: { commandId: CommandId.make("save-again"), ref: fixtures.tasks[0]!.ref },
@@ -341,7 +341,7 @@ it.effect(
       );
       expect(saved._tag).toBe("Failure");
       expect(h.registry.get(h.tasks.abandonTaskCapture.permissionAtom(environmentId))).toBe(false);
-      const givenUp = yield* Effect.promise(() =>
+      const givenUp = yield* Effect.exit(
         h.tasks.abandonTaskCapture.run(h.registry, {
           environmentId,
           input: {

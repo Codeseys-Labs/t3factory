@@ -15,6 +15,7 @@ import type * as Scope from "effect/Scope";
 import type { SourceControlDefinition } from "../shared/definition.ts";
 
 import type { SourceControlProviderDiscoverySpec } from "./discovery.ts";
+import type { IssueTrackerApi } from "./IssueTracker.ts";
 import type { IssueTrackerProviderApi } from "./IssueTrackerProvider.ts";
 import type { PullRequestProviderApi } from "./PullRequestProvider.ts";
 import type * as SourceControlHost from "./SourceControlHost.ts";
@@ -54,6 +55,8 @@ export interface SourceControlDriverInstance {
   readonly discovery: SourceControlProviderDiscoverySpec;
   /** Null for a host whose pull requests this build cannot read. */
   readonly pullRequests: PullRequestProviderApi | null;
+  /** Absent for a host whose issues this build cannot read. */
+  readonly issues?: IssueTrackerApi;
   /**
    * Fetches media the definition's `mediaUrl` claimed, with the credential the host serves it
    * to. Null when the fetch went nowhere a response could come from, such as a redirect loop.
@@ -66,8 +69,8 @@ export interface SourceControlDriverInstance {
     Scope.Scope
   >;
   readonly signIn?: SourceControlSignIn;
-  /** Null for a host whose issues this build cannot read. */
-  readonly issues: IssueTrackerProviderApi | null;
+  /** Null for a host whose Factory issues this build cannot read. */
+  readonly factoryIssues: IssueTrackerProviderApi | null;
   /** Whether the server's account on `host` starred `repository` (`owner/name`). */
   readonly isRepositoryStarred?: (host: string, repository: string) => Effect.Effect<boolean>;
   /** Stars `repository` as the server's account on `host`; false when the forge refused. */

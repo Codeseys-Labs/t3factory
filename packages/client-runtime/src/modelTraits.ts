@@ -12,6 +12,8 @@ import {
   isClaudeUltrathinkPrompt,
 } from "@t3tools/shared/model";
 import { REASONING_EFFORT_OPTION_IDS } from "./state/threadExecution.ts";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 const REASONING_DESCRIPTOR_IDS: ReadonlySet<string> = new Set([
   ...REASONING_EFFORT_OPTION_IDS,
@@ -111,13 +113,16 @@ export function getTraitSelectChange(
   };
 }
 
-export function buildTraitsTriggerDisplay(input: {
-  descriptors: ReadonlyArray<ProviderOptionDescriptor>;
-  primarySelectDescriptorId: string | null;
-  ultrathinkPromptControlled: boolean;
-  modelSelection?: ModelSelection | null | undefined;
-  reportedModelSelection?: ModelSelection | null | undefined;
-}): {
+export function buildTraitsTriggerDisplay(
+  input: {
+    descriptors: ReadonlyArray<ProviderOptionDescriptor>;
+    primarySelectDescriptorId: string | null;
+    ultrathinkPromptControlled: boolean;
+    modelSelection?: ModelSelection | null | undefined;
+    reportedModelSelection?: ModelSelection | null | undefined;
+  },
+  resolve: MFunctionType = mFallback,
+): {
   label: string;
   /** "Fast" or "Ultrafast" when a speed option is on. */
   speedLabel: string | null;
@@ -131,7 +136,8 @@ export function buildTraitsTriggerDisplay(input: {
   for (const descriptor of input.descriptors) {
     if (descriptor.id === "fastMode" && descriptor.type === "boolean") {
       speedLabel = descriptor.currentValue === true ? "Fast" : null;
-      fastModeFallbackLabel = speedLabel ?? "Normal";
+      fastModeFallbackLabel =
+        speedLabel ?? resolve(msg("Normal", { $context: "model speed tier" }));
       continue;
     }
     if (descriptor.id === "ultracode" && descriptor.type === "boolean") {
@@ -157,7 +163,8 @@ export function buildTraitsTriggerDisplay(input: {
               ? "Fast"
               : null;
         fastModeFallbackLabel =
-          descriptor.options.find(({ id }) => id === currentValue)?.label ?? "Normal";
+          descriptor.options.find(({ id }) => id === currentValue)?.label ??
+          resolve(msg("Normal", { $context: "model speed tier" }));
         continue;
       }
     }
@@ -165,7 +172,9 @@ export function buildTraitsTriggerDisplay(input: {
       input.ultrathinkPromptControlled && descriptor.id === input.primarySelectDescriptorId
         ? "Ultrathink"
         : descriptor.type === "boolean"
-          ? `${descriptor.label} ${descriptor.currentValue === true ? "On" : "Off"}`
+          ? descriptor.currentValue === true
+            ? resolve(msg("{label} On", { label: descriptor.label }))
+            : resolve(msg("{label} Off", { label: descriptor.label }))
           : (getProviderOptionCurrentLabel(
               descriptor,
               input.modelSelection,
@@ -237,15 +246,15 @@ export function columnControls(
 }
 
 // Older servers offer Ultracode as a level. It changes the workflow, so it keeps its name.
-// Max is named too, so the full scale stops short of it.
-const NAMED_LEVELS = new Set(["ultracode", "max"]);
+// Max is named too, so the full scale stops short of it. Default leaves the level to the agent.
+const NAMED_LEVELS = new Set(["ultracode", "max", "default"]);
 const OFF_LEVELS = new Set(["off", "none"]);
 // More bars than this no longer fit the glyph's height in whole pixels.
 const MAX_BARS = 7;
 
 /**
  * Maps a reasoning select to bars: one per ordinary level, filled up to the current one, with an
- * off level as none filled. Max, prompt-injected and workflow levels are named instead of drawn.
+ * off level as none filled. Max, Default, prompt-injected and workflow levels are named instead.
  */
 export function resolveEffortGlyph(descriptor: SelectDescriptor, current: string | null) {
   const special = new Set([...(descriptor.promptInjectedValues ?? []), ...NAMED_LEVELS]);
@@ -278,8 +287,9 @@ export function describeTriggerTraits(input: {
   effortDisplay: EffortDisplay;
   modelSelection?: ModelSelection | null | undefined;
   reportedModelSelection?: ModelSelection | null | undefined;
+  resolve?: MFunctionType;
 }) {
-  const { descriptors, modelSelection, reportedModelSelection } = input;
+  const { descriptors, modelSelection, reportedModelSelection, resolve = mFallback } = input;
   const selectDescriptors = descriptors.filter(
     (descriptor): descriptor is SelectDescriptor => descriptor.type === "select",
   );
@@ -287,13 +297,16 @@ export function describeTriggerTraits(input: {
     (descriptor): descriptor is BooleanDescriptor => descriptor.type === "boolean",
   );
   const primary = selectDescriptors[0] ?? null;
-  const display = buildTraitsTriggerDisplay({
-    descriptors,
-    primarySelectDescriptorId: primary?.id ?? null,
-    ultrathinkPromptControlled: input.ultrathinkPromptControlled,
-    modelSelection,
-    reportedModelSelection,
-  });
+  const display = buildTraitsTriggerDisplay(
+    {
+      descriptors,
+      primarySelectDescriptorId: primary?.id ?? null,
+      ultrathinkPromptControlled: input.ultrathinkPromptControlled,
+      modelSelection,
+      reportedModelSelection,
+    },
+    resolve,
+  );
   // The same reasoning control the column lists, wherever the agent put it among its options.
   const reasoning =
     columnControls(selectDescriptors, booleanDescriptors).effort?.descriptor ?? null;
@@ -313,7 +326,9 @@ export function describeTriggerTraits(input: {
     : !reasoning
       ? null
       : reasoning.type === "boolean"
-        ? `${reasoning.label} ${reasoning.currentValue === true ? "On" : "Off"}`
+        ? reasoning.currentValue === true
+          ? resolve(msg("{option} On", { option: reasoning.label }))
+          : resolve(msg("{option} Off", { option: reasoning.label }))
         : ultrathink
           ? "Ultrathink"
           : (getProviderOptionCurrentLabel(reasoning, modelSelection, reportedModelSelection) ??

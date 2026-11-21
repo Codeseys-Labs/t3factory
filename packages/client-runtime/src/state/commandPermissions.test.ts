@@ -35,7 +35,7 @@ import * as Layer from "effect/Layer";
 import { Atom, AtomRegistry, AsyncResult } from "effect/reactivity";
 import { EnvironmentRegistry } from "../connection/registry.ts";
 import { createCommandPermissions } from "./commandPermissions.ts";
-import { createEnvironmentRpcCommand } from "./runtime.ts";
+import { createEnvironmentRpcCommand, runAtomCommand } from "./runtime.ts";
 import { AVAILABLE_CONNECTION_STATE, BearerConnectionTarget } from "../connection/model.ts";
 import { createPeerLinkEnvironmentAtoms } from "./peerLinks.ts";
 
@@ -158,6 +158,8 @@ describe("command permissions", () => {
   it.effect.each([
     { method: WS_METHODS.serverRunStorageCleanup, scope: AuthSettingsWriteScope },
     { method: WS_METHODS.serverReclaimDatabaseSpace, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.providerMcpSignInStart, scope: AuthProvidersManageScope },
+    { method: WS_METHODS.providerMcpSignInComplete, scope: AuthProvidersManageScope },
   ])("requires the destination $scope grant for $method", ({ method, scope }) =>
     Effect.gen(function* () {
       const registry = yield* setup;
@@ -232,6 +234,31 @@ describe("command permissions", () => {
           yield* run.authorize(registry, env);
         }),
       ),
+  );
+
+  it.effect("requires the destination settings grant to connect or bind an issue tracker", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = yield* setup;
+        const connect = createCommandPermissions(runtime, WS_METHODS.issueTrackersConnect);
+        const bind = createCommandPermissions(runtime, WS_METHODS.issueTrackersBindProject);
+        registry.set(sessions(env), AsyncResult.success(grant(true)));
+        expect(registry.get(connect.permissionAtom(env))).toBe(false);
+        expect(registry.get(bind.permissionAtom(env))).toBe(false);
+        registry.set(
+          sessions(env),
+          AsyncResult.success({
+            ...grant(false),
+            scopes: [AuthSettingsWriteScope],
+            permissions: [AuthSettingsWriteScope],
+          }),
+        );
+        expect(registry.get(connect.permissionAtom(env))).toBe(true);
+        expect(registry.get(bind.permissionAtom(env))).toBe(true);
+        yield* connect.authorize(registry, env);
+        yield* bind.authorize(registry, env);
+      }),
+    ),
   );
 
   it.effect.each([
@@ -318,9 +345,10 @@ describe("command permissions", () => {
     });
     const target = { environmentId: env, input: { id: ScheduledTaskId.make("task") } };
     try {
-      const first = command.run(registry, target);
+      const quiet = { reportFailure: false, reportDefect: false };
+      const first = runAtomCommand(registry, command, target, quiet);
       await entered;
-      const second = command.run(registry, target);
+      const second = runAtomCommand(registry, command, target, quiet);
       registry.set(sessions(env), AsyncResult.success(grant(false)));
       release();
       expect((await first)._tag).toBe("Success");
@@ -436,7 +464,7 @@ describe("project coordinator permissions", () => {
               }),
             );
             expect(registry.get(ensure.permissionAtom(env))).toBe(false);
-            const denied = yield* Effect.promise(() => ensure.run(registry, target));
+            const denied = yield* Effect.exit(ensure.run(registry, target));
             expect(denied._tag).toBe("Failure");
             expect(calls).toBe(0);
           }
@@ -444,7 +472,7 @@ describe("project coordinator permissions", () => {
           const operateOnly = AsyncResult.success(grant(true));
           registry.set(sessions(env), operateOnly);
           expect(registry.get(ensure.permissionAtom(env))).toBe(true);
-          const accepted = yield* Effect.promise(() => ensure.run(registry, target));
+          const accepted = yield* Effect.exit(ensure.run(registry, target));
           expect(accepted._tag).toBe("Success");
           if (accepted._tag === "Success") expect(accepted.value).toEqual(result);
           expect(calls).toBe(1);
@@ -457,7 +485,7 @@ describe("project coordinator permissions", () => {
 
           registry.set(sessions(env), AsyncResult.success(grant(false)));
           expect(registry.get(ensure.permissionAtom(env))).toBe(false);
-          const revoked = yield* Effect.promise(() => ensure.run(registry, target));
+          const revoked = yield* Effect.exit(ensure.run(registry, target));
           expect(revoked._tag).toBe("Failure");
           expect(calls).toBe(1);
         }),
@@ -659,10 +687,10 @@ it.effect(
       setAccess(false);
       expect(yield* readLinks).toEqual({ links: [] });
       const linkInput = { url: peer.urls[0]!, pairingCode: "test-code", access: peer.access };
-      const link = Effect.promise(() =>
+      const link = Effect.exit(
         peerLinks.link.run(registry, { environmentId: env, input: linkInput }),
       );
-      const unlink = Effect.promise(() =>
+      const unlink = Effect.exit(
         peerLinks.unlink.run(registry, {
           environmentId: env,
           input: { environmentId: peer.environmentId },

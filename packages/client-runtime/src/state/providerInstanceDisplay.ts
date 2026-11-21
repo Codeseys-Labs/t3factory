@@ -27,15 +27,17 @@ export function resolveProviderInstanceDisplayName(
 }
 
 export function providerInstanceInitials(label: string): string {
-  // Punctuation separates words so "Codex (hub)" reads CH, not C(. An apostrophe
-  // inside a word stays ("Theo's Codex" is TC); a quoting one does not
-  // ("Codex 'hub'" is CH). Explicit ranges, not \p{P}: Hermes left "(" in place, so
-  // the phone read "Replay (dev)" as R(.
-  const words = label
-    .replace(/[!-&(-/:-@[-`{-~\u00a1-\u00bf\u2010-\u2018\u201a-\u205e\u3000-\u303f]+/g, " ")
-    .split(/\s+/u)
-    .map((word) => word.replace(/^['’]+|['’]+$/gu, ""))
-    .filter(Boolean);
+  // Punctuation separates words, except an apostrophe inside a word. Explicit ranges
+  // avoid Hermes leaving "(" in place. Only a single word splits at camel-case humps.
+  const toWords = (text: string) =>
+    text
+      .split(/\s+/u)
+      .map((word) => word.replace(/^['’]+|['’]+$/gu, ""))
+      .filter(Boolean);
+  let words = toWords(
+    label.replace(/[!-&(-/:-@[-`{-~\u00a1-\u00bf\u2010-\u2018\u201a-\u205e\u3000-\u303f]+/g, " "),
+  );
+  if (words.length === 1) words = toWords(words[0]!.replace(/(\p{Ll})(\p{Lu})/gu, "$1 $2"));
   if (words.length === 0) return "";
   if (words.length === 1) return Array.from(words[0]!).slice(0, 2).join("").toUpperCase();
   return words

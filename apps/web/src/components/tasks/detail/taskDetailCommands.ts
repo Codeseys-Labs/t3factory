@@ -7,7 +7,9 @@ import {
   type FactoryTaskSummary,
 } from "@t3tools/contracts";
 import { useContext } from "react";
+import { msg } from "gt-react";
 
+import { m } from "../../../i18n/messages";
 import { newMessageId, randomUUID } from "~/lib/utils";
 import { factoryTasks } from "../../../state/factoryTasks";
 import { threadEnvironment } from "../../../state/threads";
@@ -64,7 +66,7 @@ export function useTaskDetailCommands() {
       },
     });
     if (result._tag === "Success") return true;
-    toastManager.add({ type: "error", title: "Couldn't send the message. Try again." });
+    toastManager.add({ type: "error", title: m(msg("Couldn't send the message. Try again.")) });
     return false;
   };
 

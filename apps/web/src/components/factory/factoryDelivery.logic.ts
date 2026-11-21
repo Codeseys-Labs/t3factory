@@ -10,34 +10,52 @@ import {
   type PullRequestMergeMethod,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg } from "gt-react";
 
+import { m, type MessageResolver } from "../../i18n/messages";
 import { describeFactoryFailure } from "./factoryIssues.logic";
 
 const isFactoryDeliveryError = Schema.is(FactoryDeliveryError);
 
 /** Reasons whose copy differs when the subject is an accepted artifact instead of a commit. */
-function artifactDeliveryFailureMessage(reason: FactoryDeliveryError["reason"]): string | null {
+function artifactDeliveryFailureMessage(
+  reason: FactoryDeliveryError["reason"],
+  resolve: MessageResolver = m,
+): string | null {
   switch (reason) {
     case "head-moved":
     case "acceptance-stale":
     case "artifact-changed":
-      return "The artifact changed since acceptance. Re-accept it, then prepare again.";
+      return resolve(
+        msg("The artifact changed since acceptance. Re-accept it, then prepare again."),
+      );
     case "payload-changed":
-      return "The comment changed since the preview. Prepare again.";
+      return resolve(msg("The comment changed since the preview. Prepare again."));
     case "already-delivering":
-      return "A comment is already posted, or being posted, to this issue.";
+      return resolve(msg("A comment is already posted, or being posted, to this issue."));
     case "not-accepted":
-      return "Accept the artifact, then prepare again.";
+      return resolve(msg("Accept the artifact, then prepare again."));
     case "worktree-unavailable":
-      return "Restore the task folder, then prepare again.";
+      return resolve(msg("Restore the task folder, then prepare again."));
     case "artifact-too-large":
-      return `The deliverable is larger than one comment can hold (${FACTORY_DELIVERY_BODY_MAX_CHARS.toLocaleString("en-US")} characters). It is never truncated or split.`;
+      return resolve(
+        msg(
+          "The deliverable is larger than one comment can hold ({count} characters). It is never truncated or split.",
+          { count: FACTORY_DELIVERY_BODY_MAX_CHARS.toLocaleString("en-US") },
+        ),
+      );
     case "artifact-not-text":
-      return "The deliverable is not UTF-8 text, so it cannot be posted as a comment.";
+      return resolve(
+        msg("The deliverable is not UTF-8 text, so it cannot be posted as a comment."),
+      );
     case "destination-not-found":
-      return "That issue does not exist in this project's repository, or it is a pull request.";
+      return resolve(
+        msg("That issue does not exist in this project's repository, or it is a pull request."),
+      );
     case "capability-unsupported":
-      return "This project's issue tracker cannot receive comments from the Factory yet.";
+      return resolve(
+        msg("This project's issue tracker cannot receive comments from the Factory yet."),
+      );
     default:
       return null;
   }
@@ -48,58 +66,74 @@ export function factoryDeliveryFailureMessage(
   displayName: string,
   fallbackMessage?: string,
   kind: FactoryDeliveryIntent["kind"] = "publish-pr",
+  resolve: MessageResolver = m,
 ): string {
   if (isFactoryDeliveryError(error)) {
     if (kind === "publish-artifact") {
-      const artifactMessage = artifactDeliveryFailureMessage(error.reason);
+      const artifactMessage = artifactDeliveryFailureMessage(error.reason, resolve);
       if (artifactMessage !== null) return artifactMessage;
     }
     // Reasons an artifact delivery has no copy for share the messages below.
     switch (error.reason) {
       case "head-moved":
       case "acceptance-stale":
-        return "The head moved since acceptance. Re-accept, then prepare again.";
+        return resolve(msg("The head moved since acceptance. Re-accept, then prepare again."));
       case "payload-changed":
-        return kind === "merge-pr"
-          ? "The merge details changed since the preview. Prepare again."
-          : "The title or body changed since the preview. Prepare again.";
+        return resolve(
+          kind === "merge-pr"
+            ? msg("The merge details changed since the preview. Prepare again.")
+            : msg("The title or body changed since the preview. Prepare again."),
+        );
       case "already-delivering":
-        return kind === "merge-pr"
-          ? "A merge has already been granted for this task."
-          : "A pull request is already being published for this task.";
+        return resolve(
+          kind === "merge-pr"
+            ? msg("A merge has already been granted for this task.")
+            : msg("A pull request is already being published for this task."),
+        );
       case "not-published":
-        return "Publish the pull request first.";
+        return resolve(msg("Publish the pull request first."));
       case "pull-request-head-moved":
-        return "The pull request head is not the accepted commit. Re-accept and refresh.";
+        return resolve(
+          msg("The pull request head is not the accepted commit. Re-accept and refresh."),
+        );
       case "already-merged":
-        return "This pull request is already merged.";
+        return resolve(msg("This pull request is already merged."));
       case "not-mergeable":
-        return `${displayName} reports the pull request cannot be merged right now.`;
+        return resolve(
+          msg("{displayName} reports the pull request cannot be merged right now.", {
+            displayName,
+          }),
+        );
       case "not-accepted":
-        return "Accept the current commit, then prepare again.";
+        return resolve(msg("Accept the current commit, then prepare again."));
       case "not-reconcilable":
         if (error.replacementDeliveryId !== undefined) return error.message;
-        return "This delivery can no longer be reconciled. Refresh its status.";
+        return resolve(msg("This delivery can no longer be reconciled. Refresh its status."));
       case "intent-not-found":
-        return "This delivery is no longer available. Refresh its status.";
+        return resolve(msg("This delivery is no longer available. Refresh its status."));
       case "unknown-thread":
-        return "This thread is no longer available.";
+        return resolve(msg("This thread is no longer available."));
       case "not-a-factory-task":
-        return "This thread is not a claimed Factory task.";
+        return resolve(msg("This thread is not a claimed Factory task."));
       case "worktree-unavailable":
-        return "Restore the worktree, then prepare again.";
+        return resolve(msg("Restore the worktree, then prepare again."));
       case "capability-unsupported":
-        return kind === "merge-pr"
-          ? `Merging from ${displayName} is not supported yet.`
-          : factoryPublishUnsupportedMessage(displayName);
+        return resolve(
+          kind === "merge-pr"
+            ? msg("Merging from {displayName} is not supported yet.", { displayName })
+            : msg("Publishing from {displayName} is not supported yet.", { displayName }),
+        );
     }
   }
   return describeFactoryFailure(error, fallbackMessage).message;
 }
 
 /** The whole delivery section for a host that cannot publish an exact accepted commit. */
-export function factoryPublishUnsupportedMessage(displayName: string): string {
-  return `Publishing from ${displayName} is not supported yet.`;
+export function factoryPublishUnsupportedMessage(
+  displayName: string,
+  resolve: MessageResolver = m,
+): string {
+  return resolve(msg("Publishing from {displayName} is not supported yet.", { displayName }));
 }
 
 export function isLiveFactoryDelivery(intent: Pick<FactoryDeliveryIntent, "status">): boolean {
@@ -113,17 +147,24 @@ type GrantConditions = {
   readonly hasPermission: boolean;
 };
 
-export function factoryDeliveryGrantDisabledReason(conditions: GrantConditions): string | null {
+export function factoryDeliveryGrantDisabledReason(
+  conditions: GrantConditions,
+  resolve: MessageResolver = m,
+): string | null {
   if (!conditions.acceptanceCurrent) {
-    return "The head moved since acceptance. Re-accept, then prepare again.";
+    return resolve(msg("The head moved since acceptance. Re-accept, then prepare again."));
   }
   if (conditions.existing !== null && isLiveFactoryDelivery(conditions.existing)) {
-    return conditions.existing.status === "confirmed"
-      ? "A pull request has already been published for this task."
-      : "A pull request is already being published for this task.";
+    return resolve(
+      conditions.existing.status === "confirmed"
+        ? msg("A pull request has already been published for this task.")
+        : msg("A pull request is already being published for this task."),
+    );
   }
   if (!conditions.hasPermission) {
-    return "Publishing needs operate and source-control write permissions on this environment.";
+    return resolve(
+      msg("Publishing needs operate and source-control write permissions on this environment."),
+    );
   }
   return null;
 }
@@ -141,51 +182,68 @@ export function mergeGrantDisabledReason(
     > | null;
     readonly mergeMethod?: PullRequestMergeMethod;
   },
+  resolve: MessageResolver = m,
 ): string | null {
   if (!conditions.acceptanceCurrent || conditions.prepared?.current === false) {
-    return "The head moved since acceptance. Re-accept, then prepare again.";
+    return resolve(msg("The head moved since acceptance. Re-accept, then prepare again."));
   }
   if (conditions.existing !== null && isLiveFactoryDelivery(conditions.existing)) {
-    return conditions.existing.status === "confirmed"
-      ? "This pull request is already merged."
-      : "A merge has already been granted for this task.";
+    return resolve(
+      conditions.existing.status === "confirmed"
+        ? msg("This pull request is already merged.")
+        : msg("A merge has already been granted for this task."),
+    );
   }
   if (!conditions.hasPermission) {
-    return "Merging needs operate and source-control write permissions on this environment.";
+    return resolve(
+      msg("Merging needs operate and source-control write permissions on this environment."),
+    );
   }
   const prepared = conditions.prepared;
   const pullRequest = prepared?.pullRequest;
   if (prepared === null || pullRequest == null) {
-    return "Prepare the merge before granting it.";
+    return resolve(msg("Prepare the merge before granting it."));
   }
   if (pullRequest.state === "merged") {
-    return "This pull request is already merged.";
+    return resolve(msg("This pull request is already merged."));
   }
   if (pullRequest.headSha !== prepared.headSha) {
-    return "The pull request head is not the accepted commit. Re-accept and refresh.";
+    return resolve(msg("The pull request head is not the accepted commit. Re-accept and refresh."));
   }
   if (pullRequest.isDraft) {
-    return "Mark the pull request ready for review before merging.";
+    return resolve(msg("Mark the pull request ready for review before merging."));
   }
   if (pullRequest.mergeability === "conflicting" || pullRequest.state === "closed") {
-    return `${conditions.displayName} reports the pull request cannot be merged right now.`;
+    return resolve(
+      msg("{displayName} reports the pull request cannot be merged right now.", {
+        displayName: conditions.displayName,
+      }),
+    );
   }
   if (
     conditions.mergeMethod !== undefined &&
     !pullRequest.mergeMethods.includes(conditions.mergeMethod)
   ) {
-    return `The repository does not allow ${conditions.mergeMethod} merges. Choose another method.`;
+    return resolve(
+      msg("The repository does not allow {method} merges. Choose another method.", {
+        method: conditions.mergeMethod,
+      }),
+    );
   }
   return null;
 }
 
 const DELIVERY_STATUS_LABELS = {
-  "publish-pr": { active: "Publishing…", done: "Published", failed: "Publication failed." },
-  "merge-pr": { active: "Merging…", done: "Merged", failed: "Merge failed." },
+  "publish-pr": {
+    active: msg("Publishing…"),
+    done: msg("Published"),
+    failed: msg("Publication failed."),
+  },
+  "merge-pr": { active: msg("Merging…"), done: msg("Merged"), failed: msg("Merge failed.") },
   "publish-artifact": {
-    active: "Posting comment…",
-    done: "Comment posted",
-    failed: "Posting the comment failed.",
+    active: msg("Posting comment…"),
+    done: msg("Comment posted"),
+    failed: msg("Posting the comment failed."),
   },
 } as const satisfies Record<
   FactoryDeliveryIntent["kind"],
@@ -195,20 +253,30 @@ const DELIVERY_STATUS_LABELS = {
 export function describeDeliveryStatus(
   intent: Pick<FactoryDeliveryIntent, "kind" | "status" | "failure">,
   displayName: string,
+  resolve: MessageResolver = m,
 ): string {
   const labels = DELIVERY_STATUS_LABELS[intent.kind];
   switch (intent.status) {
     case "pending":
     case "sending":
-      return labels.active;
+      return resolve(labels.active);
     case "confirmed":
-      return labels.done;
+      return resolve(labels.done);
     case "unknown":
       if (intent.kind === "publish-artifact" && intent.failure?.trim())
-        return `${intent.failure} Reconcile to check ${displayName}.`;
-      return `The server lost the response. Reconcile to check ${displayName}.`;
+        return resolve(
+          msg("{failure} Reconcile to check {displayName}.", {
+            failure: intent.failure,
+            displayName,
+          }),
+        );
+      return resolve(
+        msg("The server lost the response. Reconcile to check {displayName}.", {
+          displayName,
+        }),
+      );
     case "failed":
-      return intent.failure ?? labels.failed;
+      return intent.failure ?? resolve(labels.failed);
   }
 }
 
@@ -249,19 +317,26 @@ export function artifactGrantDisabledReason(
   conditions: GrantConditions & {
     readonly prepared: Pick<FactoryArtifactDeliveryPrepareResult, "current"> | null;
   },
+  resolve: MessageResolver = m,
 ): string | null {
   if (!conditions.acceptanceCurrent || conditions.prepared?.current === false) {
-    return "The artifact changed since acceptance. Re-accept it, then prepare again.";
+    return resolve(msg("The artifact changed since acceptance. Re-accept it, then prepare again."));
   }
   if (conditions.existing !== null && isLiveFactoryDelivery(conditions.existing)) {
-    return conditions.existing.status === "confirmed"
-      ? "A comment has already been posted to this issue."
-      : "A comment is already being posted to this issue.";
+    return resolve(
+      conditions.existing.status === "confirmed"
+        ? msg("A comment has already been posted to this issue.")
+        : msg("A comment is already being posted to this issue."),
+    );
   }
   if (!conditions.hasPermission) {
-    return "Posting a comment needs operate and source-control write permissions on this environment.";
+    return resolve(
+      msg(
+        "Posting a comment needs operate and source-control write permissions on this environment.",
+      ),
+    );
   }
-  if (conditions.prepared === null) return "Prepare the comment before granting it.";
+  if (conditions.prepared === null) return resolve(msg("Prepare the comment before granting it."));
   return null;
 }
 
@@ -277,6 +352,7 @@ export interface FactoryArtifactDeliveryFailure {
 export function factoryArtifactDeliveryFailure(
   error: unknown,
   fallbackMessage?: string,
+  resolve: MessageResolver = m,
 ): FactoryArtifactDeliveryFailure {
   return {
     message: factoryDeliveryFailureMessage(
@@ -284,6 +360,7 @@ export function factoryArtifactDeliveryFailure(
       "the issue tracker",
       fallbackMessage,
       "publish-artifact",
+      resolve,
     ),
     unsupported: isFactoryDeliveryError(error) && error.reason === "capability-unsupported",
   };

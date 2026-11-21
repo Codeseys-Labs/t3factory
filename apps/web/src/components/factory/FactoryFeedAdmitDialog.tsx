@@ -7,6 +7,7 @@ import {
   type FactoryRepository,
   type ModelSelection,
 } from "@t3tools/contracts";
+import { T, useGT, Var } from "gt-react";
 import { useId, useState } from "react";
 
 import { Button } from "../ui/button";
@@ -61,6 +62,7 @@ export function FactoryFeedAdmitDialog(props: {
   }) => void;
 }) {
   const { candidate, source, restart, pending } = props;
+  const gt = useGT();
   const draft = useFactoryLaunchDraft(props.settings);
   const instructionsId = useId();
   const [instructions, setInstructions] = useState("");
@@ -84,65 +86,79 @@ export function FactoryFeedAdmitDialog(props: {
     >
       <DialogPopup className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>{restart ? "Start a new attempt" : "Admit feed item"}</DialogTitle>
+          <DialogTitle>{restart ? gt("Start a new attempt") : gt("Admit feed item")}</DialogTitle>
           <DialogDescription>
             {restart
-              ? "The previous task's thread was deleted. Confirming creates a new isolated worktree and a new attempt for this item."
-              : "Creates a task in its own isolated git worktree and sends the reviewed feed item to the selected agent."}
+              ? gt(
+                  "The previous task's thread was deleted. Confirming creates a new isolated worktree and a new attempt for this item.",
+                )
+              : gt(
+                  "Creates a task in its own isolated git worktree and sends the reviewed feed item to the selected agent.",
+                )}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
           <fieldset disabled={pending || changed} className="min-w-0 space-y-4">
             <div className="space-y-0.5">
               <p className="text-muted-foreground text-xs">
-                {`${props.repository.host}/${props.repository.repository}`} · task project{" "}
-                {props.projectTitle}
+                <T>
+                  <Var>{`${props.repository.host}/${props.repository.repository}`}</Var> · task
+                  project <Var>{props.projectTitle}</Var>
+                </T>
               </p>
               <p className="text-muted-foreground text-xs [overflow-wrap:anywhere]">
-                Feed {factoryIssueReviewText(source.locator)} · revision {candidate.ordinal}
+                <T>
+                  Feed <Var>{factoryIssueReviewText(source.locator)}</Var> · revision{" "}
+                  <Var>{candidate.ordinal}</Var>
+                </T>
               </p>
             </div>
             <FactoryClaimWarning message={props.claimWarning} />
             <FactoryReviewSnapshot
-              heading="Full item snapshot"
-              intro="Review the full title, content and link before confirming."
+              heading={gt("Full item snapshot")}
+              intro={gt("Review the full title, content and link before confirming.")}
               fields={[
                 {
-                  label: "Title",
+                  label: gt("Title"),
                   text: candidate.title,
-                  emptyNote: "The feed title is an empty string.",
-                  missingNote: "The feed published no title. The source title is null.",
+                  emptyNote: gt("The feed title is an empty string."),
+                  missingNote: gt("The feed published no title. The source title is null."),
                 },
                 {
-                  label: "Content",
+                  label: gt("Content"),
                   text: candidate.content,
-                  emptyNote: "The feed content is an empty string.",
-                  missingNote: "The feed published no content. The source content is null.",
+                  emptyNote: gt("The feed content is an empty string."),
+                  missingNote: gt("The feed published no content. The source content is null."),
                 },
                 {
-                  label: "Link",
+                  label: gt("Link"),
                   text: candidate.link,
-                  emptyNote: "The feed link is an empty string.",
-                  missingNote: "The feed published no link. The source link is null.",
+                  emptyNote: gt("The feed link is an empty string."),
+                  missingNote: gt("The feed published no link. The source link is null."),
                 },
               ]}
             />
             <div className="space-y-1.5">
               <Label htmlFor={instructionsId}>
-                Instructions <span className="font-normal text-muted-foreground">optional</span>
+                <T>Instructions</T>{" "}
+                <span className="font-normal text-muted-foreground">
+                  <T>optional</T>
+                </span>
               </Label>
               <Textarea
                 id={instructionsId}
                 value={instructions}
                 aria-invalid={count.overLimit}
                 aria-describedby={`${instructionsId}-help`}
-                placeholder="Requirements in your own words for this task"
+                placeholder={gt("Requirements in your own words for this task")}
                 onChange={(event) => setInstructions(event.target.value)}
               />
               <div className="flex items-start justify-between gap-3">
                 <p id={`${instructionsId}-help`} className="text-muted-foreground text-xs">
-                  Your own requirements, frozen into the task and sent apart from the feed text,
-                  which stays untrusted.
+                  <T>
+                    Your own requirements, frozen into the task and sent apart from the feed text,
+                    which stays untrusted.
+                  </T>
                 </p>
                 <span
                   className={
@@ -159,7 +175,7 @@ export function FactoryFeedAdmitDialog(props: {
               environmentId={props.environmentId}
               disabled={pending || changed}
               draft={draft}
-              untrustedText="Feed text"
+              untrustedText={gt("Feed text")}
             />
           </fieldset>
         </DialogPanel>
@@ -167,12 +183,14 @@ export function FactoryFeedAdmitDialog(props: {
           <FactoryReviewFailure
             failure={props.failure}
             changed={changed}
-            staleHint="This snapshot is no longer current. Close this dialog and review the item again before admitting new work."
+            staleHint={gt(
+              "This snapshot is no longer current. Close this dialog and review the item again before admitting new work.",
+            )}
           />
         ) : null}
         <DialogFooter>
           <DialogClose render={<Button variant="outline" size="sm" disabled={pending} />}>
-            Cancel
+            <T>Cancel</T>
           </DialogClose>
           <Button
             size="sm"
@@ -189,7 +207,7 @@ export function FactoryFeedAdmitDialog(props: {
               });
             }}
           >
-            {pending ? "Starting…" : restart ? "Start new attempt" : "Admit and start"}
+            {pending ? gt("Starting…") : restart ? gt("Start new attempt") : gt("Admit and start")}
           </Button>
         </DialogFooter>
       </DialogPopup>

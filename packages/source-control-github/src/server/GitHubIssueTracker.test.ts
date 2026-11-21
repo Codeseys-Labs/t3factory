@@ -279,6 +279,14 @@ describe("GitHubIssueTracker", () => {
           }
           if (request.url.endsWith("/issues")) {
             response = { number: 42, html_url: "https://github.com/acme/web/issues/42" };
+          } else if (request.url.endsWith("/comments")) {
+            response = {
+              node_id: "IC_42",
+              body: body["body"],
+              created_at: "2026-07-04T00:00:00Z",
+              html_url: "https://github.com/acme/web/issues/42#issuecomment-42",
+              user: { login: "octocat", name: "Octo Cat", avatar_url: null },
+            };
           } else if (request.method === "PATCH" && body["title"] === "Dropped") {
             // What GitHub answers a caller without triage access: success, metadata untouched.
             response = { labels: [{ name: "Bug" }], assignees: [] };
@@ -310,7 +318,7 @@ describe("GitHubIssueTracker", () => {
         displayKey: "#42",
         url: "https://github.com/acme/web/issues/42",
       });
-      yield* api.comment({ ...target, body: "Comment" });
+      expect((yield* api.comment({ ...target, body: "Comment" })).id).toBe("IC_42");
       yield* api.update({ ...target, title: "Updated", body: "Edited", labels: [], assignees: [] });
       expect(
         yield* Effect.flip(api.update({ ...target, title: "Dropped", labels: ["bug", "p1"] })),
@@ -416,6 +424,94 @@ describe("GitHubIssueTracker", () => {
       expect(seen[0]).toMatchObject({
         q: 'is:issue repo:acme/web is:open label:"needs \\"repro\\"" assignee:"theo" sort:created-desc',
       });
+    }),
+  );
+
+  it.effect("pages an unnarrowed listing through the repository's issues, not search", () =>
+    Effect.gen(function* () {
+      const sent: { readonly operation: string | undefined; readonly variables: unknown }[] = [];
+      const node = {
+        __typename: "Issue",
+        number: 7,
+        title: "Backlog item",
+        url: "https://github.com/acme/web/issues/7",
+        state: "OPEN",
+        stateReason: null,
+        createdAt: "2026-07-01T00:00:00Z",
+        updatedAt: "2026-07-02T00:00:00Z",
+        closedAt: null,
+        author: null,
+        assignees: { nodes: [] },
+        labels: { nodes: [{ name: "bug", color: "ff0000" }] },
+        comments: { totalCount: 2 },
+      };
+      const page = { pageInfo: { hasNextPage: true, endCursor: "Y3Vyc29yOjMw" }, nodes: [node] };
+      const http = HttpClient.make((request) => {
+        if (request.body._tag !== "Uint8Array") return Effect.die("Expected a GraphQL request.");
+        const { query, variables } = decodeVariables(new TextDecoder().decode(request.body.body));
+        const operation = query.match(/query\s+(\w+)/)?.[1];
+        sent.push({ operation, variables });
+        const data =
+          operation === "IssueList" ? { repository: { issues: page } } : { search: page };
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            new Response(JSON.stringify({ data }), {
+              headers: { "content-type": "application/json" },
+            }),
+          ),
+        );
+      });
+      const api = yield* GitHubIssueTracker.make.pipe(Effect.provide(transport(http)));
+      const unnarrowed = {
+        cwd: "/w",
+        host: "github.com",
+        scope: "acme/web",
+        involvement: "all",
+        limit: 30,
+      } as const;
+      const listed = yield* api.listIssues({
+        ...unnarrowed,
+        state: "open",
+        sort: "updated",
+        cursor: "Y3Vyc29yOjA=",
+      });
+      expect(listed).toMatchObject({
+        items: [{ key: "7", displayKey: "#7", commentCount: 2, labels: [{ name: "bug" }] }],
+        nextCursor: "Y3Vyc29yOjMw",
+      });
+      yield* api.listIssues({ ...unnarrowed, state: "all", sort: "created", query: "  " });
+      // Search stays for what only it can narrow by.
+      yield* api.listIssues({ ...unnarrowed, state: "open", sort: "updated", query: "crash" });
+      yield* api.listIssues({ ...unnarrowed, state: "open", sort: "updated", labels: ["bug"] });
+      yield* api.listIssues({ ...unnarrowed, state: "open", sort: "updated", assignee: "theo" });
+      yield* api.listIssues({
+        ...unnarrowed,
+        involvement: "authored",
+        viewer: "theo",
+        state: "open",
+        sort: "updated",
+      });
+      expect(sent.map((request) => request.operation)).toEqual([
+        "IssueList",
+        "IssueList",
+        "IssueSearch",
+        "IssueSearch",
+        "IssueSearch",
+        "IssueSearch",
+      ]);
+      expect(sent[0]?.variables).toEqual({
+        owner: "acme",
+        name: "web",
+        states: ["OPEN"],
+        orderBy: { field: "UPDATED_AT", direction: "DESC" },
+        cursor: "Y3Vyc29yOjA=",
+        rows: 30,
+      });
+      expect(sent[1]?.variables).toMatchObject({
+        orderBy: { field: "CREATED_AT", direction: "DESC" },
+      });
+      expect(sent[1]?.variables).not.toHaveProperty("states");
     }),
   );
 

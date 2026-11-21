@@ -317,7 +317,7 @@ const observed = (edges: readonly FactoryReadinessEdge[]): FactoryIssueReadiness
 const launch = (
   threadId: string,
   canonicalKey: string,
-  issueNumber: number,
+  issueNumber: number | string,
   options: { readonly previous?: string; readonly project?: string; readonly current?: boolean },
 ) =>
   Effect.gen(function* () {
@@ -326,11 +326,55 @@ const launch = (
       projectId: options.project ?? owner,
       createdAt: at,
       previousThreadId: options.previous ?? null,
-      issue: { number: issueNumber, title: threadId, body: "", state: "open", url: "" },
+      issue: {
+        number: typeof issueNumber === "number" ? issueNumber : null,
+        ...(typeof issueNumber === "string" ? { key: issueNumber } : {}),
+        title: threadId,
+        body: "",
+        state: "open",
+        url: "",
+      },
     };
     yield* sql`INSERT INTO factory_issue_launches (thread_id, canonical_key, issue_number, request_command_id, intent_json, origin_key, superseded, accepted)
-      VALUES (${threadId}, ${canonicalKey}, ${issueNumber}, ${threadId}, ${JSON.stringify(intent)}, ${threadId}, ${options.current ? 0 : 1}, 1)`;
+      VALUES (${threadId}, ${canonicalKey}, ${typeof issueNumber === "number" ? sql`CAST(${issueNumber} AS INTEGER)` : issueNumber}, ${threadId}, ${JSON.stringify(intent)}, ${threadId}, ${options.current ? 0 : 1}, 1)`;
   });
+
+it.effect("native Work keys require opt-in without poisoning legacy lists or pagination", () =>
+  Effect.gen(function* () {
+    yield* seed;
+    yield* launch("linear", 'issue:["linear","linear.app","eng"]', "ENG-123", { current: true });
+    const work = yield* Work.FactoryWorkService;
+    const legacy = yield* work.list({ kind: "issue", limit: 1 });
+    assert.deepEqual(
+      legacy.items.map((item) => item.ref.id),
+      ["issue-root"],
+    );
+    assert.isNull(legacy.nextCursor);
+    const native = yield* work.list({ kind: "issue", limit: 1, issueKeys: true });
+    assert.isNotNull(native.nextCursor);
+    const next = yield* work.list({
+      kind: "issue",
+      limit: 1,
+      issueKeys: true,
+      cursor: native.nextCursor!,
+    });
+    assert.deepEqual(
+      next.items.map((item) => item.ref.id),
+      ["linear"],
+    );
+    const target = { ref: ref("issue", "linear") };
+    assert.equal((yield* work.read(target).pipe(Effect.flip)).reason, "missing-work");
+    assert.deepEqual((yield* work.read({ ...target, issueKeys: true })).reviewTarget, {
+      kind: "issue",
+      key: "ENG-123",
+      issueNumber: null,
+    });
+    assert.deepInclude(yield* work.readPrerequisites(target), {
+      status: "owner-unavailable",
+      reason: "unsupported-provider",
+    });
+  }).pipe(Effect.provide(layer)),
+);
 
 it.effect(
   "maps source blockers to stable retained roots across projects without guessing through malformed ancestry",

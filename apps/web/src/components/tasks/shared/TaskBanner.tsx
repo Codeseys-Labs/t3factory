@@ -12,6 +12,7 @@ import type {
 import { useNavigate } from "@tanstack/react-router";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useState } from "react";
+import { msg, T, useGT, useMessages } from "gt-react";
 
 import { useEnvironmentPresentation } from "../../../state/presentation";
 import { factoryTasks } from "../../../state/factoryTasks";
@@ -83,6 +84,7 @@ export function TaskBanner({
   const [busy, setBusy] = useState(false);
   const [requestingChanges, setRequestingChanges] = useState(false);
   const giveUp = useGiveUpResult(task);
+  const messages = useMessages();
   const need = needs[0];
   const wantsPlan = needs.some(
     (entry) => entry.reason === "plan" && entry.ref.taskId === task.ref.taskId,
@@ -95,7 +97,7 @@ export function TaskBanner({
 
   const run = need?.reason === "failed" ? factoryTaskFailedRun(task) : task.run;
   const runLabel = run ? presentTaskSetup(run.setup, catalog).label : null;
-  const askFrom = runLabel ?? assigneeText(chip);
+  const askFrom = runLabel ?? assigneeText(chip, messages);
   if (
     need &&
     need.ref.taskId === task.ref.taskId &&
@@ -106,24 +108,38 @@ export function TaskBanner({
 
   const proposal = plan._tag === "Success" ? plan.value.proposal : null;
   const where = [runLabel, machine].filter(Boolean).join(" · ");
-  const presented = presentFactoryTaskBanner({
-    task,
-    attention: needs,
-    assigneeLabel: assigneeText(chip),
-    liveLabel: pill ? `${pill.label} · ${pill.duration}` : null,
-    ...(proposal ? { planCount: proposal.items.length } : {}),
-    checks,
-    ...(where
-      ? {
-          runDetail: need?.reason === "failed" && run ? `Run ${run.ordinal} · ${where}` : where,
-        }
-      : {}),
-  });
+  const presented = presentFactoryTaskBanner(
+    {
+      task,
+      attention: needs,
+      assigneeLabel: assigneeText(chip, messages),
+      liveLabel: pill ? `${messages(pill.label)} · ${pill.duration}` : null,
+      ...(proposal ? { planCount: proposal.items.length } : {}),
+      checks,
+      ...(where
+        ? {
+            runDetail:
+              need?.reason === "failed" && run
+                ? messages(msg("Run {ordinal} · {where}", { ordinal: String(run.ordinal), where }))
+                : where,
+          }
+        : {}),
+    },
+    messages,
+  );
   let { title, detail: line } = presented;
   if (presented.state === "subtask-attention" && need) {
-    title = `${need.displayId} ${need.reason === "question" ? "is waiting on an answer" : "needs you"}`;
+    title =
+      need.reason === "question"
+        ? messages(msg("{displayId} is waiting on an answer", { displayId: need.displayId }))
+        : messages(msg("{displayId} needs you", { displayId: need.displayId }));
     line = task.progress
-      ? `${task.progress.done} of ${task.progress.total} sub-tasks done`
+      ? messages(
+          msg("{done} of {total} sub-tasks done", {
+            done: String(task.progress.done),
+            total: String(task.progress.total),
+          }),
+        )
       : need.detail;
   }
 
@@ -263,6 +279,7 @@ function RequestChangesDialog({
 }) {
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
+  const gt = useGT();
   const trimmed = note.trim();
   const submit = async () => {
     if (!trimmed || sending) return;
@@ -286,15 +303,19 @@ function RequestChangesDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Request changes</DialogTitle>
+            <DialogTitle>
+              <T>Request changes</T>
+            </DialogTitle>
             <DialogDescription>
-              {agent ?? "The agent"} gets this note and makes a new result.
+              {gt("{agent} gets this note and makes a new result.", {
+                agent: agent ?? gt("The agent"),
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
             <Textarea
-              aria-label="What should change"
-              placeholder="What should change?"
+              aria-label={gt("What should change")}
+              placeholder={gt("What should change?")}
               value={note}
               autoFocus
               onChange={(event) => setNote(event.currentTarget.value)}
@@ -302,10 +323,10 @@ function RequestChangesDialog({
           </DialogPanel>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              <T>Cancel</T>
             </Button>
             <Button type="submit" disabled={!trimmed || sending}>
-              Send
+              <T>Send</T>
             </Button>
           </DialogFooter>
         </form>

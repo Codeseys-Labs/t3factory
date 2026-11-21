@@ -9,6 +9,7 @@ import {
   type PullRequestMergeMethod,
   type ThreadId,
 } from "@t3tools/contracts";
+import { T, useGT, useMessages } from "gt-react-native";
 import { useState } from "react";
 import { Linking, View } from "react-native";
 
@@ -40,7 +41,9 @@ function DeliveryStatusRow(props: {
   readonly canReconcile: boolean;
   readonly onReconcile: (intent: FactoryCommitDeliveryIntent) => void;
 }) {
-  const view = factoryDeliveryStatusView(props.intent, props.displayName);
+  const gt = useGT();
+  const messages = useMessages();
+  const view = factoryDeliveryStatusView(props.intent, props.displayName, messages);
   const link = view.kind === "confirmed" ? view.link : null;
   // Static text while the server publishes or merges: no spinner, so nothing repaints while it
   // waits.
@@ -68,12 +71,12 @@ function DeliveryStatusRow(props: {
         <>
           <Button
             tone="secondary"
-            label="Reconcile"
-            accessibilityLabel={`Reconcile with ${props.displayName}`}
+            label={gt("Reconcile")}
+            accessibilityLabel={gt("Reconcile with {host}", { host: props.displayName })}
             accessibilityHint={
               props.canReconcile
                 ? undefined
-                : "This connection isn't permitted to reconcile in this environment."
+                : gt("This connection isn't permitted to reconcile in this environment.")
             }
             loading={props.busy}
             disabled={props.busy || !props.canReconcile}
@@ -81,7 +84,7 @@ function DeliveryStatusRow(props: {
           />
           {props.canReconcile ? null : (
             <Text className="text-xs text-foreground-muted">
-              This connection isn't permitted to reconcile in this environment.
+              <T>This connection isn't permitted to reconcile in this environment.</T>
             </Text>
           )}
         </>
@@ -118,6 +121,8 @@ function MergeSection(props: {
   readonly acceptanceCurrent: boolean;
 }) {
   const { delivery } = props;
+  const gt = useGT();
+  const messages = useMessages();
   // Allowed methods are only known after a prepare; until then every method is offered and the
   // blocker names a disabled one once the host has answered.
   const [mergeMethod, setMergeMethod] = useState<PullRequestMergeMethod>(
@@ -133,19 +138,22 @@ function MergeSection(props: {
     prepared,
     mergeMethod,
     displayName: props.displayName,
+    resolve: messages,
   });
   const prepareBlocker = props.acceptanceCurrent
     ? null
-    : "Merging needs a current accepted commit.";
+    : gt("Merging needs a current accepted commit.");
   const pullRequest = prepared?.pullRequest ?? null;
   const pullRequestUrl = pullRequest === null ? null : safeFactoryIssueUrl(pullRequest.url);
   const head =
-    pullRequest === null ? null : factoryPullRequestHeadView(pullRequest, props.acceptedHeadSha);
+    pullRequest === null
+      ? null
+      : factoryPullRequestHeadView(pullRequest, props.acceptedHeadSha, messages);
 
   return (
     <View className="gap-2">
       <Text accessibilityRole="header" className="text-sm font-t3-semibold text-foreground">
-        Merge
+        <T>Merge</T>
       </Text>
       {delivery.mergeIntents.map((intent) => (
         <DeliveryStatusRow
@@ -164,15 +172,19 @@ function MergeSection(props: {
               (option) =>
                 prepared?.pullRequest == null ||
                 prepared.pullRequest.mergeMethods.includes(option.value),
-            )}
+            ).map((option) => ({
+              ...option,
+              label: messages(option.label),
+              accessibilityLabel: messages(option.accessibilityLabel),
+            }))}
             selected={mergeMethod}
             onSelect={setMergeMethod}
           />
           <Button
             fullWidth
             tone="secondary"
-            label="Prepare"
-            accessibilityLabel="Prepare merge preview"
+            label={gt("Prepare")}
+            accessibilityLabel={gt("Prepare merge preview")}
             accessibilityHint={prepareBlocker ?? undefined}
             loading={delivery.mergePreparing}
             disabled={busy || prepareBlocker !== null}
@@ -182,13 +194,15 @@ function MergeSection(props: {
             <View className="gap-1">
               {pullRequestUrl === null ? (
                 <Text selectable className="text-sm text-foreground">
-                  Pull request #{pullRequest.number}
+                  {gt("Pull request #{number}", { number: String(pullRequest.number) })}
                 </Text>
               ) : (
                 <Button
                   tone="text"
                   icon="arrow.up.right"
-                  label={`Open pull request #${pullRequest.number}`}
+                  label={gt("Open pull request #{number}", {
+                    number: String(pullRequest.number),
+                  })}
                   onPress={() => void Linking.openURL(pullRequestUrl)}
                 />
               )}
@@ -207,19 +221,21 @@ function MergeSection(props: {
                     : "text-sm text-foreground"
                 }
               >
-                {factoryMergeabilityLabel(pullRequest.mergeability, props.displayName)}
+                {factoryMergeabilityLabel(pullRequest.mergeability, props.displayName, messages)}
               </Text>
               {pullRequest.isDraft ? (
                 <Text className="text-sm text-danger-foreground">
-                  This pull request is a draft.
+                  <T>This pull request is a draft.</T>
                 </Text>
               ) : null}
               <Text selectable className="text-sm text-foreground-muted">
-                Checks: {pullRequest.checksSummary ?? "none reported"}
+                {gt("Checks: {summary}", {
+                  summary: pullRequest.checksSummary ?? gt("none reported"),
+                })}
               </Text>
               {prepared ? (
                 <Text selectable className="text-xs text-foreground-muted">
-                  Preview {prepared.payloadDigest.slice(0, 12)}
+                  {gt("Preview {digest}", { digest: prepared.payloadDigest.slice(0, 12) })}
                 </Text>
               ) : null}
             </View>
@@ -230,9 +246,13 @@ function MergeSection(props: {
           <Button
             fullWidth
             tone="primary"
-            label="Grant merge"
+            label={gt("Grant merge")}
             accessibilityLabel={
-              pullRequest ? `Grant merge of pull request #${pullRequest.number}` : "Grant merge"
+              pullRequest
+                ? gt("Grant merge of pull request #{number}", {
+                    number: String(pullRequest.number),
+                  })
+                : gt("Grant merge")
             }
             accessibilityHint={blocker ?? undefined}
             loading={delivery.pending}
@@ -257,15 +277,16 @@ export function FactoryDeliverySection(props: {
   readonly acceptanceCurrent: boolean;
   readonly capabilities: FactoryIssueCapabilities;
 }) {
+  const messages = useMessages();
   // Decided before the delivery hook runs, so a host that cannot publish never reads deliveries.
   if (!props.capabilities.publish) {
     return (
       <View className="gap-2">
         <Text accessibilityRole="header" className="text-sm font-t3-semibold text-foreground">
-          Pull request
+          <T>Pull request</T>
         </Text>
         <Text className="text-sm text-foreground-muted">
-          {factoryPublishUnsupportedText(props.capabilities.displayName)}
+          {factoryPublishUnsupportedText(props.capabilities.displayName, messages)}
         </Text>
       </View>
     );
@@ -283,6 +304,8 @@ function PublishSection(props: {
   readonly capabilities: FactoryIssueCapabilities;
 }) {
   const { displayName } = props.capabilities;
+  const gt = useGT();
+  const messages = useMessages();
   const delivery = useFactoryDelivery({
     environmentId: props.environmentId,
     projectId: props.projectId,
@@ -303,17 +326,18 @@ function PublishSection(props: {
     liveIntent,
     prepared,
     draft,
+    resolve: messages,
   });
   const prepareBlocker = !props.acceptanceCurrent
-    ? "Publishing needs a current accepted commit."
+    ? gt("Publishing needs a current accepted commit.")
     : draft.title.trim().length === 0
-      ? "Add a title before preparing."
+      ? gt("Add a title before preparing.")
       : null;
 
   return (
     <View className="gap-2">
       <Text accessibilityRole="header" className="text-sm font-t3-semibold text-foreground">
-        Pull request
+        <T>Pull request</T>
       </Text>
       {delivery.deliveriesError ? (
         <Text className="text-sm text-foreground-muted">{delivery.deliveriesError}</Text>
@@ -331,16 +355,16 @@ function PublishSection(props: {
       {liveIntent === null ? (
         <>
           <AppTextInput
-            accessibilityLabel="Pull request title"
-            placeholder="Title"
+            accessibilityLabel={gt("Pull request title")}
+            placeholder={gt("Title")}
             value={draft.title}
             maxLength={FACTORY_DELIVERY_TITLE_MAX_CHARS}
             editable={!delivery.pending}
             onChangeText={(title) => setDraft((current) => ({ ...current, title }))}
           />
           <AppTextInput
-            accessibilityLabel="Pull request body"
-            placeholder="Body"
+            accessibilityLabel={gt("Pull request body")}
+            placeholder={gt("Body")}
             value={draft.body}
             multiline
             maxLength={FACTORY_DELIVERY_BODY_MAX_CHARS}
@@ -350,9 +374,11 @@ function PublishSection(props: {
             onChangeText={(body) => setDraft((current) => ({ ...current, body }))}
           />
           <View className="flex-row items-center gap-3">
-            <Text className="min-w-0 flex-1 text-sm text-foreground">Open as draft</Text>
+            <Text className="min-w-0 flex-1 text-sm text-foreground">
+              <T>Open as draft</T>
+            </Text>
             <ThemedSwitch
-              accessibilityLabel="Open as draft"
+              accessibilityLabel={gt("Open as draft")}
               value={draft.draft}
               disabled={delivery.pending}
               onValueChange={(value) => setDraft((current) => ({ ...current, draft: value }))}
@@ -361,8 +387,8 @@ function PublishSection(props: {
           <Button
             fullWidth
             tone="secondary"
-            label="Prepare"
-            accessibilityLabel="Prepare pull request preview"
+            label={gt("Prepare")}
+            accessibilityLabel={gt("Prepare pull request preview")}
             accessibilityHint={prepareBlocker ?? undefined}
             loading={delivery.preparing}
             disabled={busy || prepareBlocker !== null}
@@ -370,21 +396,27 @@ function PublishSection(props: {
           />
           {prepared ? (
             <Text selectable className="text-xs text-foreground-muted">
-              {factoryRepositoryLabel(prepared.repository)} · head{" "}
-              {shortFactorySha(prepared.headSha)} into{" "}
-              {prepared.baseBranch ?? "no reviewed destination"} · snapshot{" "}
-              {shortFactorySha(prepared.baseRef)} · preview {prepared.payloadDigest.slice(0, 12)}
+              {gt(
+                "{repository} · head {head} into {base} · snapshot {snapshot} · preview {preview}",
+                {
+                  repository: factoryRepositoryLabel(prepared.repository),
+                  head: shortFactorySha(prepared.headSha),
+                  base: prepared.baseBranch ?? gt("no reviewed destination"),
+                  snapshot: shortFactorySha(prepared.baseRef),
+                  preview: prepared.payloadDigest.slice(0, 12),
+                },
+              )}
             </Text>
           ) : null}
           {delivery.previewFailure ? <FailureNotice failure={delivery.previewFailure} /> : null}
           <Button
             fullWidth
             tone="primary"
-            label="Grant publish"
+            label={gt("Grant publish")}
             accessibilityLabel={
               prepared
-                ? `Grant publish of head ${shortFactorySha(prepared.headSha)}`
-                : "Grant publish"
+                ? gt("Grant publish of head {sha}", { sha: shortFactorySha(prepared.headSha) })
+                : gt("Grant publish")
             }
             accessibilityHint={blocker ?? undefined}
             loading={delivery.pending}
@@ -406,8 +438,8 @@ function PublishSection(props: {
       ) : null}
       <Button
         tone="text"
-        label="Refresh"
-        accessibilityLabel="Refresh pull request status"
+        label={gt("Refresh")}
+        accessibilityLabel={gt("Refresh pull request status")}
         disabled={busy || delivery.deliveriesLoading}
         onPress={delivery.refresh}
       />

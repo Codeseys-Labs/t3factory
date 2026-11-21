@@ -8,6 +8,7 @@ import type {
   IssueEventKind,
   IssueLabel,
   IssueLinkedPullRequest,
+  IssueReaction,
   IssueState,
   IssueTemplate,
   IssueViewerPermissions,
@@ -25,7 +26,21 @@ type Actor = {
   readonly name?: string | null;
   readonly avatarUrl: string | null;
 };
-type Label = NonNullable<NonNullable<NonNullable<Issues.NodesIssue["labels"]>["nodes"]>[number]>;
+
+const RestActor = Schema.Struct({
+  login: Schema.String,
+  name: Schema.optional(Schema.NullOr(Schema.String)),
+  avatar_url: Schema.optional(Schema.NullOr(Schema.String)),
+});
+
+const RawCreatedComment = Schema.Struct({
+  node_id: TrimmedNonEmptyString,
+  body: Schema.optional(Schema.NullOr(Schema.String)),
+  created_at: Schema.String,
+  html_url: Schema.optional(Schema.NullOr(Schema.String)),
+  user: Schema.optional(Schema.NullOr(RestActor)),
+});
+type Label = NonNullable<NonNullable<NonNullable<Issues.IssueListItem["labels"]>["nodes"]>[number]>;
 type TimelineItem = NonNullable<NonNullable<DetailIssue["timelineItems"]["nodes"]>[number]>;
 type Comments = Omit<DetailIssue["comments"], "totalCount">;
 type Reference = NonNullable<
@@ -45,6 +60,38 @@ function toActor(raw: Actor | null | undefined): IssueActor | null {
         login,
         name: trimmed(raw != null && "name" in raw ? raw.name : null),
         avatarUrl: trimmed(raw?.avatarUrl),
+      };
+}
+
+function toRestActor(raw: typeof RestActor.Type | null | undefined): IssueActor | null {
+  const login = trimmed(raw?.login);
+  return login === null
+    ? null
+    : {
+        login,
+        name: trimmed(raw?.name),
+        avatarUrl: trimmed(raw?.avatar_url),
+      };
+}
+
+function toIssueComment(
+  id: string | null | undefined,
+  author: IssueActor | null,
+  body: string | null | undefined,
+  createdAt: string,
+  url: string | null | undefined,
+  reactions: ReadonlyArray<IssueReaction>,
+): IssueComment | null {
+  const commentId = trimmed(id);
+  return commentId === null
+    ? null
+    : {
+        id: commentId,
+        author,
+        body: body ?? "",
+        createdAt,
+        url: trimmed(url),
+        reactions,
       };
 }
 
@@ -88,7 +135,7 @@ function toIssueState(
   return reason === "DUPLICATE" ? DUPLICATE : { category: "closed", name: "Closed" };
 }
 
-function toSummary(raw: Omit<Issues.NodesIssue, "__typename">): TrackerIssueSummary {
+function toSummary(raw: Issues.IssueListItem): TrackerIssueSummary {
   return {
     key: String(raw.number),
     displayKey: `#${raw.number}`,
@@ -185,18 +232,16 @@ function toComments(
   viewer: string | null,
 ): ReadonlyArray<IssueComment> {
   return (raw?.nodes ?? []).flatMap((comment) => {
-    const id = trimmed(comment?.id);
-    if (comment == null || id === null) return [];
-    return [
-      {
-        id,
-        author: toActor(comment.author),
-        body: comment.body ?? "",
-        createdAt: comment.createdAt,
-        url: trimmed(comment.url),
-        reactions: toReactions(comment.reactionGroups, viewer),
-      },
-    ];
+    if (comment == null) return [];
+    const decoded = toIssueComment(
+      comment.id,
+      toActor(comment.author),
+      comment.body,
+      comment.createdAt,
+      comment.url,
+      toReactions(comment.reactionGroups, viewer),
+    );
+    return decoded === null ? [] : [decoded];
   });
 }
 
@@ -300,6 +345,13 @@ export function toIssueSearch({ search }: Issues.IssueSearch.Result) {
   };
 }
 
+export function toIssueList(issues: NonNullable<Issues.IssueList.Result["repository"]>["issues"]) {
+  return {
+    items: (issues.nodes ?? []).flatMap((node) => (node === null ? [] : [toSummary(node)])),
+    nextCursor: issues.pageInfo.hasNextPage ? issues.pageInfo.endCursor : null,
+  };
+}
+
 export function toIssueComments({ viewer, repository }: Issues.IssueComments.Result) {
   const comments = repository?.issue?.comments;
   return {
@@ -375,4 +427,18 @@ export function decodeCreatedIssueJson(raw: string) {
     number: issue.number,
     url: issue.html_url,
   }));
+}
+
+/** A newly created REST comment uses its GraphQL node id, so later listings identify it the same way. */
+export function decodeCreatedCommentJson(raw: string) {
+  return Result.map(decodeJsonResult(RawCreatedComment)(raw), (comment) =>
+    toIssueComment(
+      comment.node_id,
+      toRestActor(comment.user),
+      comment.body,
+      comment.created_at,
+      comment.html_url,
+      [],
+    ),
+  );
 }

@@ -274,21 +274,21 @@ host is recognized when `gitlab` or `github` is one of its DNS labels (`gitlab.e
 or the matching CLI (`glab` or `gh`) is signed in to that host. A GitLab origin on a non-default
 port is addressed through the checkout's own `glab` login (checked against a ported `gitlab.com`
 remote; a self-managed port depends on how that host is configured in `glab`). Use **Open**, **Closed**, or **All**, the page controls,
-and **Refresh** to browse issues. Reading the inbox never starts work or changes an issue.
+and **Refresh** to browse the queue. Reading the queue never starts work or changes an issue. Select an issue's title to read it on the Issues page; its **Factory** section there shows the task, claims and sub-issues, and starts the task.
 
 What the rest of the page offers depends on what the host can express. GitLab projects today get
-the inbox and **Start task** only: the Blockers block says the host does not expose blocking
+the queue and **Start task** only: the Blockers block says the host does not expose blocking
 relationships and readiness stays unknown, Sub-issues is absent, and publishing or merging from
 the task is not offered. Nothing is silently assumed; a missing capability is shown, never
 treated as "ready" or "mergeable".
 
-On web and desktop, use **Table** to compare source and task state, or **Board** to group by
-local task state. The view choice stays in the URL. Each view shows only the current filtered
-issue page, not every task in the project; choose **All** to include closed-issue tasks.
-These views do not evaluate prerequisites or verification. The native mobile inbox remains
-a list.
+On web and desktop the queue is a table that compares source and task state; `view=board` in
+the page address groups it by local task state instead. Either view shows only the current
+filtered issue page, not every task in the project; choose **All** to include closed-issue
+tasks. These views do not evaluate prerequisites or verification. The native mobile inbox remains
+a list. Addresses that name an issue with `reviewIssue` open it on the Issues page.
 
-Choose **Start task**, select a model, and optionally enter a local branch, tag, or commit.
+In the issue's **Factory** section on the Issues page (the queue's **Review and start** opens it), choose **Start task**, select a model, and optionally enter a local branch, tag, or commit.
 Leaving the base ref empty uses the project's current local HEAD. The server resolves that
 ref to a fixed commit and starts a separate Git worktree; it does not fetch, rebase, or copy
 uncommitted changes from the project checkout. Commit the source you want workers to receive
@@ -307,7 +307,7 @@ configuration file.
 The confirmation shows the complete issue title and description as text, not rendered Markdown.
 Backslashes and control or formatting characters are shown as escapes; no source text is omitted.
 Row details can be a preview, so review the confirmation before starting. If the title or
-description changed, new work is refused: close the confirmation, refresh the inbox and review
+description changed, new work is refused: close the confirmation, refresh the issue and review
 the issue again. A refresh never silently replaces the snapshot in an open confirmation.
 
 Tasks default to approval-required mode. Project-configured worktree setup scripts still run
@@ -389,8 +389,8 @@ content, not a human approval or permission to execute.
 
 ### See observed blockers on an issue
 
-Choose **Details** on an open issue to see **Blockers**, read from the issue's "blocked by" links
-on GitHub. Factory asks GitHub when you expand Details, not for each row, and **Refresh** in
+Choose **Readiness** on an open issue in the Factory queue to see **Blockers**, read from the issue's "blocked by" links
+on GitHub. Factory asks GitHub when you expand Readiness, not for each row, and **Refresh** in
 that block asks again. The line says what was seen and when, such as "No unresolved blockers
 observed 3m ago · basis: source" or "Blocked: 2 unresolved blockers", and adds "stale" after
 10 minutes. "Readiness unknown" gives the first reason GitHub's answer could not settle it, such

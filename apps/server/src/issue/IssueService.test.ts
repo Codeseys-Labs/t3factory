@@ -145,7 +145,14 @@ function fakeTracker(overrides: Partial<IssueTrackerApi> = {}): IssueTrackerApi 
     listIssues: () => Effect.succeed({ items: [], nextCursor: null }),
     getIssue: (input) => Effect.succeed(issue(input.key)),
     getComments: () => Effect.succeed({ comments: [], nextCursor: null }),
-    comment: () => Effect.void,
+    comment: () =>
+      Effect.succeed({
+        id: "comment-1",
+        author: null,
+        body: "ok",
+        createdAt: "2026-07-04T00:00:00Z",
+        url: null,
+      }),
     update: () => Effect.void,
     setState: () => Effect.void,
     ...overrides,
@@ -230,6 +237,13 @@ describe("IssueService", () => {
             comment: (input) =>
               Effect.sync(() => {
                 writes.push(`${input.scope}#${input.key}`);
+                return {
+                  id: "comment-1",
+                  author: null,
+                  body: input.body,
+                  createdAt: "2026-07-04T00:00:00Z",
+                  url: null,
+                };
               }),
           }),
         ],
@@ -242,7 +256,7 @@ describe("IssueService", () => {
       const detail = yield* service.detail(external);
       expect(detail).toMatchObject({ writable: false, scope: "other/backend", key: "7" });
 
-      yield* service.comment({ ...own, body: "ok" });
+      expect((yield* service.comment({ ...own, body: "ok" })).id).toBe("comment-1");
       const refused = yield* service.comment({ ...external, body: "no" }).pipe(Effect.result);
       expect(refused).toMatchObject({
         _tag: "Failure",
@@ -302,6 +316,13 @@ describe("IssueService", () => {
             comment: (input) =>
               Effect.sync(() => {
                 writes.push(`${input.scope}#${input.key}`);
+                return {
+                  id: "comment-1",
+                  author: null,
+                  body: input.body,
+                  createdAt: "2026-07-04T00:00:00Z",
+                  url: null,
+                };
               }),
           }),
         ],
@@ -372,7 +393,16 @@ describe("IssueService", () => {
           fakeTracker({
             getComments: () =>
               record("comments").pipe(Effect.as({ comments: [], nextCursor: null })),
-            comment: () => record("comment"),
+            comment: () =>
+              record("comment").pipe(
+                Effect.as({
+                  id: "comment-1",
+                  author: null,
+                  body: "ok",
+                  createdAt: "2026-07-04T00:00:00Z",
+                  url: null,
+                }),
+              ),
           }),
         ],
       });

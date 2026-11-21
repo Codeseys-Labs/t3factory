@@ -95,6 +95,7 @@ const oldBuildIds = new Set<number>(oldBuild.migrationManifest.map(([id]) => id)
 const expectedBandHistory = [
   ...oldBuild.migrationManifest.map(([id, name]) => [id >= 193 ? id + 9808 : id, name] as const),
   ...migrationManifest.filter(([id]) => id < 10001 && !oldBuildIds.has(id)),
+  ...migrationManifest.filter(([id]) => id > 10021),
 ].toSorted(([left], [right]) => left - right);
 
 const schema = Effect.gen(function* () {
@@ -446,7 +447,7 @@ describe("Factory migration band", () => {
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* runMigrations();
-      yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (10022, 'FutureFactoryMigration')`;
+      yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (10024, 'FutureFactoryMigration')`;
       const before = yield* history;
       assert.isTrue(Exit.isFailure(yield* Effect.exit(runMigrations())));
       assert.deepStrictEqual(yield* history, before);
@@ -466,7 +467,7 @@ describe("Factory migration band", () => {
         const exit = yield* Effect.exit(oldBuild.runMigrations());
         assert.isTrue(Exit.isFailure(exit));
         assert.include(String(exit), "193_FactoryIssueLaunches (recorded: nothing)");
-        assert.include(String(exit), "highest recorded id (10021)");
+        assert.include(String(exit), "highest recorded id (10023)");
         assert.strictEqual(
           oldBuild.preflightRows(before.map(([id, name]) => ({ id, name }))).status,
           "blocked",
@@ -477,6 +478,58 @@ describe("Factory migration band", () => {
 });
 
 describe("runMigrations", () => {
+  it.effect("widens Factory issue keys without changing retained numeric identities", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 10021 });
+      const snapshot =
+        '{"issue":{"number":12},"repository":{"canonicalKey":"github.com/owner/repo"}}';
+      yield* sql`INSERT INTO factory_issue_launches
+        (thread_id, canonical_key, issue_number, request_command_id, intent_json, origin_key, accepted)
+        VALUES ('thread', 'github.com/owner/repo', 12, 'command', ${snapshot}, 'github:github.com/owner/repo#12', 1)`;
+      yield* sql`INSERT INTO factory_issue_relation_observations
+        VALUES ('github.com/owner/repo', 12, 'observed', 1, 0, 0, NULL, 'observed')`;
+      yield* sql`INSERT INTO factory_issue_relation_edges
+        VALUES ('github.com/owner/repo', 12, 'github.com', 99, 'owner/repo', 13, 'first', 'last', 'present', NULL)`;
+      yield* sql`INSERT INTO factory_issue_readiness_overrides
+        VALUES ('override', 'github.com/owner/repo', 12, 'github.com', 99, 'waive', 'fingerprint', 'reason', 'override-command', 'created', NULL)`;
+      const tables = [
+        "factory_issue_launches",
+        "factory_issue_relation_observations",
+        "factory_issue_relation_edges",
+        "factory_issue_readiness_overrides",
+      ];
+      const indexes = sql`
+        SELECT tbl_name, name FROM sqlite_master
+        WHERE type = 'index' AND ${sql.in("tbl_name", tables)}
+        ORDER BY tbl_name, name`;
+      const indexesBefore = yield* indexes;
+      const before = yield* Effect.forEach(tables, (table) =>
+        sql.unsafe(`SELECT rowid, * FROM ${table}`),
+      );
+      yield* runMigrations();
+      assert.deepStrictEqual(
+        yield* Effect.forEach(tables, (table) => sql.unsafe(`SELECT rowid, * FROM ${table}`)),
+        before,
+      );
+      assert.deepStrictEqual(yield* indexes, indexesBefore);
+      yield* sql`INSERT INTO factory_issue_launches
+        (thread_id, canonical_key, issue_number, request_command_id, intent_json, origin_key)
+        VALUES ('linear', 'issue:linear-scope', 'ENG-123', 'linear-command', '{}', 'linear:scope#ENG-123')`;
+      assert.deepStrictEqual(
+        yield* sql`SELECT issue_number FROM factory_issue_launches WHERE thread_id = 'linear'`,
+        [{ issue_number: "ENG-123" }],
+      );
+      assert.isTrue(
+        Exit.isFailure(
+          yield* Effect.exit(sql`INSERT INTO factory_issue_launches
+        (thread_id, canonical_key, issue_number, request_command_id, intent_json)
+        VALUES ('duplicate', 'github.com/owner/repo', 12, 'duplicate-command', '{}')`),
+        ),
+      );
+      assert.deepStrictEqual(yield* sql`PRAGMA integrity_check`, [{ integrity_check: "ok" }]);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
   it.effect(
     "adds planning tables and unset delivery destinations without rewriting retained work",
     () =>
@@ -539,7 +592,10 @@ describe("runMigrations", () => {
         ];
       });
       const before = yield* held;
-      assert.deepStrictEqual(yield* runMigrations(), [[10021, "FactoryCaptureAbandonments"]]);
+      assert.deepStrictEqual(
+        yield* runMigrations(),
+        migrationManifest.filter(([id]) => id > 10020),
+      );
       assert.deepStrictEqual(yield* held, before);
       yield* sql`INSERT INTO factory_execution_capture_abandonments(attempt_id, capture_key, command_id, session_id, abandoned_at) VALUES ('attempt', 'native-final/1', 'give-up', 'session', 'at')`;
       assert.isTrue(

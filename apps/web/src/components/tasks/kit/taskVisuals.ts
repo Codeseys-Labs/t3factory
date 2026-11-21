@@ -4,6 +4,7 @@ import type {
   FactoryTaskStatus,
   FactoryTaskType,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
 import {
   CalendarClockIcon,
   CircleAlertIcon,
@@ -45,50 +46,87 @@ export const TASK_STATUS_VISUALS: Record<
   { label: string; Icon: LucideIcon; iconClass: string; labelClass: string }
 > = {
   backlog: {
-    label: "Backlog",
+    label: msg("Backlog", { $context: "task status" }),
     Icon: CircleDashedIcon,
     iconClass: HUE.muted,
     labelClass: HUE.muted,
   },
   ready: {
-    label: "Ready",
+    label: msg("Ready", { $context: "task status" }),
     Icon: CircleIcon,
     iconClass: HUE.foreground,
     labelClass: HUE.foreground,
   },
   "in-progress": {
-    label: "In progress",
+    label: msg("In progress", { $context: "task status" }),
     Icon: CirclePlayIcon,
     iconClass: HUE.sky,
     labelClass: HUE.foreground,
   },
   "in-review": {
-    label: "In review",
+    label: msg("In review", { $context: "task status" }),
     Icon: EyeIcon,
     iconClass: HUE.violet,
     labelClass: HUE.foreground,
   },
   done: {
-    label: "Done",
+    label: msg("Done", { $context: "task status" }),
     Icon: CircleCheckIcon,
     iconClass: HUE.emerald,
     labelClass: HUE.foreground,
   },
-  canceled: { label: "Canceled", Icon: CircleXIcon, iconClass: HUE.muted, labelClass: HUE.muted },
+  canceled: {
+    label: msg("Canceled", { $context: "task status" }),
+    Icon: CircleXIcon,
+    iconClass: HUE.muted,
+    labelClass: HUE.muted,
+  },
 };
 
 export const ATTENTION_VISUALS: Record<
   FactoryTaskAttentionReason,
   { label: string; Icon: LucideIcon; variant: "warning" | "error" }
 > = {
-  question: { label: "Question", Icon: CircleHelpIcon, variant: "warning" },
-  approve: { label: "Approve", Icon: ShieldCheckIcon, variant: "warning" },
-  review: { label: "Review", Icon: EyeIcon, variant: "warning" },
-  plan: { label: "Plan", Icon: ListChecksIcon, variant: "warning" },
-  changed: { label: "Changed", Icon: HistoryIcon, variant: "warning" },
-  unconfirmed: { label: "Unconfirmed", Icon: CircleAlertIcon, variant: "warning" },
-  lost: { label: "Lost", Icon: UnplugIcon, variant: "error" },
-  failed: { label: "Failed", Icon: TriangleAlertIcon, variant: "error" },
+  question: {
+    label: msg("Question", { $context: "attention reason" }),
+    Icon: CircleHelpIcon,
+    variant: "warning",
+  },
+  approve: {
+    label: msg("Approve", { $context: "attention reason" }),
+    Icon: ShieldCheckIcon,
+    variant: "warning",
+  },
+  review: {
+    label: msg("Review", { $context: "attention reason" }),
+    Icon: EyeIcon,
+    variant: "warning",
+  },
+  plan: {
+    label: msg("Plan", { $context: "attention reason" }),
+    Icon: ListChecksIcon,
+    variant: "warning",
+  },
+  changed: {
+    label: msg("Changed", { $context: "attention reason" }),
+    Icon: HistoryIcon,
+    variant: "warning",
+  },
+  unconfirmed: {
+    label: msg("Unconfirmed", { $context: "attention reason" }),
+    Icon: CircleAlertIcon,
+    variant: "warning",
+  },
+  lost: {
+    label: msg("Lost", { $context: "attention reason" }),
+    Icon: UnplugIcon,
+    variant: "error",
+  },
+  failed: {
+    label: msg("Failed", { $context: "attention reason" }),
+    Icon: TriangleAlertIcon,
+    variant: "error",
+  },
 };
 
 export const SOURCE_ICONS: Record<FactoryTaskSourceKind, LucideIcon> = {
@@ -99,11 +137,11 @@ export const SOURCE_ICONS: Record<FactoryTaskSourceKind, LucideIcon> = {
 };
 
 export const TASK_TYPE_LABELS: Record<FactoryTaskType, string> = {
-  task: "Task",
-  bug: "Bug",
-  feature: "Feature",
-  docs: "Docs",
-  research: "Research",
+  task: msg("Task", { $context: "task type" }),
+  bug: msg("Bug", { $context: "task type" }),
+  feature: msg("Feature", { $context: "task type" }),
+  docs: msg("Docs", { $context: "task type" }),
+  research: msg("Research", { $context: "task type" }),
 };
 
 /** The thread sidebar's live tones, plus `neutral` for Stopping, Queued and Waiting. */

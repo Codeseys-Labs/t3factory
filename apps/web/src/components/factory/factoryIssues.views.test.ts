@@ -7,7 +7,11 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { groupFactoryIssuesByStage, parseFactoryIssueViewMode } from "./factoryIssues.views";
+import {
+  factoryIssueLayout,
+  groupFactoryIssuesByStage,
+  parseFactoryIssueViewMode,
+} from "./factoryIssues.views";
 
 function issue(
   number: number,
@@ -55,6 +59,14 @@ describe("parseFactoryIssueViewMode", () => {
     [undefined, "kanban", ["table"], { toString: () => "board" }].map((value) => ({ value })),
   )("falls back to List for an unknown or non-string route value: %j", ({ value }) => {
     expect(parseFactoryIssueViewMode(value)).toBe("list");
+  });
+});
+
+describe("factoryIssueLayout", () => {
+  it("keeps the board and lands every other route mode, including the old list, on the table", () => {
+    expect(factoryIssueLayout("board")).toBe("board");
+    expect(factoryIssueLayout("table")).toBe("table");
+    expect(factoryIssueLayout("list")).toBe("table");
   });
 });
 

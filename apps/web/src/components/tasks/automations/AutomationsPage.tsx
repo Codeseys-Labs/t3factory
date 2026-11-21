@@ -12,6 +12,9 @@ import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
 import { ArrowRightIcon, CalendarClockIcon, CircleDotIcon, PlusIcon, RssIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { T, useGT, useMessages, Var } from "gt-react";
+
+import { m } from "../../../i18n/messages";
 
 import { useLocalStorage } from "../../../hooks/useLocalStorage";
 import { useRelativeTimeState } from "../../../hooks/useRelativeTimeState";
@@ -63,6 +66,7 @@ const StoredMachine = Schema.NullOr(EnvironmentId);
 /** E1. Sources, rules and agent profiles of one machine, with their sheets opened from the URL. */
 export function AutomationsPage() {
   const { environments, isReady } = useEnvironments();
+  const gt = useGT();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const readable = useEnvironmentsWithScope(environments, AuthOrchestrationReadScope);
   const [chosen, setChosen] = useLocalStorage(MACHINE_STORAGE_KEY, null, StoredMachine);
@@ -82,7 +86,7 @@ export function AutomationsPage() {
     <TaskPageFrame
       header={
         <PageHeader
-          title="Automations"
+          title={gt("Automations", { $context: "page title" })}
           view={
             environments.length > 1 && environment ? (
               <Select
@@ -91,7 +95,10 @@ export function AutomationsPage() {
                   if (value !== null) setChosen(value);
                 }}
               >
-                <SelectTrigger size="sm" aria-label="Machine">
+                <SelectTrigger
+                  size="sm"
+                  aria-label={gt("Machine", { $context: "the machine picker" })}
+                >
                   <SelectValue>{environment.label}</SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
@@ -114,27 +121,42 @@ export function AutomationsPage() {
               onClick={() => open({ sheet: "rule" })}
             >
               <PlusIcon aria-hidden />
-              New rule
+              <T>New rule</T>
             </Button>
           }
         />
       }
     >
       {!isReady ? (
-        <PageState role="status">Loading machines…</PageState>
+        <PageState role="status">
+          <T>Loading machines…</T>
+        </PageState>
       ) : !environment ? (
-        <PageState>Connect a machine to set up automations.</PageState>
+        <PageState>
+          <T>Connect a machine to set up automations.</T>
+        </PageState>
       ) : environment.connection.phase === "unsupported" ? (
-        <PageState>Update T3 Code on {environment.label} to use Automations.</PageState>
+        <PageState>
+          {gt("Update {product} on {machine} to use Automations.", {
+            product: "T3 Code",
+            machine: environment.label,
+          })}
+        </PageState>
       ) : environment.connection.phase !== "connected" ? (
         <PageState role="status">
-          {environment.label} is offline. Its automations show when it reconnects.
+          {gt("{machine} is offline. Its automations show when it reconnects.", {
+            machine: environment.label,
+          })}
         </PageState>
       ) : !environment.serverConfig ? (
-        <PageState role="status">Loading {environment.label}…</PageState>
+        <PageState role="status">
+          {gt("Loading {machine}…", { machine: environment.label })}
+        </PageState>
       ) : !readable.has(environment.environmentId) ? (
         <PageState role="alert">
-          You don't have access to Automations on {environment.label}.
+          {gt("You don't have access to Automations on {machine}.", {
+            machine: environment.label,
+          })}
         </PageState>
       ) : (
         <AutomationLists
@@ -186,6 +208,8 @@ function AutomationLists({
     (project) => project.environmentId === environmentId && project.isScratch !== true,
   );
   const search = useSearch({ from: "/_chat/automations" });
+  const gt = useGT();
+  const messages = useMessages();
   const navigate = useNavigate();
   const feedsSupported = useFactoryFeedsSupported();
   const researchSupported = useFactoryResearchSupported();
@@ -197,16 +221,21 @@ function AutomationLists({
 
   return (
     <main className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
-      <section aria-label="Sources" className="space-y-2">
+      <section
+        aria-label={gt("Sources", { $context: "the machine's sources" })}
+        className="space-y-2"
+      >
         <SectionHeader
-          title="Sources"
-          {...(sources.kind === "ready" ? { meta: `${sources.value.length} connected` } : {})}
-          action={{ label: "Add source", onClick: () => open({ sheet: "source" }) }}
+          title={gt("Sources", { $context: "the machine's sources" })}
+          {...(sources.kind === "ready"
+            ? { meta: gt("{count} connected", { count: sources.value.length }) }
+            : {})}
+          action={{ label: gt("Add source"), onClick: () => open({ sheet: "source" }) }}
         />
         <ListBody
           state={sources}
           thing="sources"
-          empty="Add a source to bring in issues, feed entries or a task on a schedule."
+          empty={gt("Add a source to bring in issues, feed entries or a task on a schedule.")}
         >
           {(list) =>
             list.map((source) => (
@@ -220,12 +249,12 @@ function AutomationLists({
           }
         </ListBody>
       </section>
-      <section aria-label="Rules" className="space-y-2">
-        <SectionHeader title="Rules" />
+      <section aria-label={gt("Rules", { $context: "the machine's rules" })} className="space-y-2">
+        <SectionHeader title={gt("Rules", { $context: "the machine's rules" })} />
         <ListBody
           state={rules}
           thing="rules"
-          empty="Add a rule to decide which items become tasks and who gets them."
+          empty={gt("Add a rule to decide which items become tasks and who gets them.")}
         >
           {(list) =>
             list.map((rule) => (
@@ -233,22 +262,25 @@ function AutomationLists({
                 key={rule.id}
                 environmentId={environmentId}
                 rule={rule}
-                then={assignmentName(rule.action.assignment, profileList ?? [], catalog)}
+                then={assignmentName(rule.action.assignment, profileList ?? [], catalog, messages)}
                 onOpen={() => open({ sheet: "rule", id: rule.id })}
               />
             ))
           }
         </ListBody>
       </section>
-      <section aria-label="Agent profiles" className="space-y-2">
+      <section
+        aria-label={gt("Agent profiles", { $context: "the machine's agent profiles" })}
+        className="space-y-2"
+      >
         <SectionHeader
-          title="Agent profiles"
-          action={{ label: "New profile", onClick: () => open({ sheet: "profile" }) }}
+          title={gt("Agent profiles", { $context: "the machine's agent profiles" })}
+          action={{ label: gt("New profile"), onClick: () => open({ sheet: "profile" }) }}
         />
         <ListBody
           state={profiles}
           thing="agent profiles"
-          empty="Name a harness and model so tasks and rules can pick them by name."
+          empty={gt("Name a harness and model so tasks and rules can pick them by name.")}
         >
           {(list) => (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -266,32 +298,32 @@ function AutomationLists({
         </ListBody>
       </section>
       <nav
-        aria-label="More automation pages"
+        aria-label={gt("More automation pages")}
         className="flex flex-wrap gap-x-4 gap-y-2 border-t pt-4 text-muted-foreground text-xs"
       >
         <Link to="/factory/issues" search={factorySearch} className="hover:text-foreground">
-          Issues
+          <T>Issues</T>
         </Link>
         {feedsSupported ? (
           <Link to="/factory/sources" search={factorySearch} className="hover:text-foreground">
-            Feed sources
+            <T>Feed sources</T>
           </Link>
         ) : null}
         {knowledgeSupported ? (
           <Link to="/factory/briefs" search={factorySearch} className="hover:text-foreground">
-            Briefs
+            <T>Briefs</T>
           </Link>
         ) : null}
         {researchSupported ? (
           <Link to="/factory/research" search={factorySearch} className="hover:text-foreground">
-            Research
+            <T>Research</T>
           </Link>
         ) : null}
         <Link to="/factory/workflows" search={factorySearch} className="hover:text-foreground">
-          Scheduled workflows
+          <T>Scheduled workflows</T>
         </Link>
         <Link to="/factory/orchestrator" search={factorySearch} className="hover:text-foreground">
-          Orchestrator
+          <T>Orchestrator</T>
         </Link>
       </nav>
       {search.sheet !== undefined &&
@@ -337,10 +369,14 @@ function OpenSheet({
   close: () => void;
 }) {
   const key = search.id ?? "new";
+  const gt = useGT();
   if (search.sheet === "rule") {
     const rule = rules.find((candidate) => candidate.id === search.id);
     return search.id && !rule ? (
-      <MissingSheet title="Rule" onClose={close} />
+      <MissingSheet
+        title={gt("Rule", { $context: "noun, a rule that is missing" })}
+        onClose={close}
+      />
     ) : (
       <RuleEditor
         key={key}
@@ -356,7 +392,10 @@ function OpenSheet({
   if (search.sheet === "source") {
     const source = sources.find((candidate) => candidate.id === search.id);
     return search.id && !source ? (
-      <MissingSheet title="Source" onClose={close} />
+      <MissingSheet
+        title={gt("Source", { $context: "noun, a source that is missing" })}
+        onClose={close}
+      />
     ) : (
       <SourceSheet
         key={key}
@@ -372,7 +411,7 @@ function OpenSheet({
   }
   const entry = profiles.find(({ profile }) => profile.id === search.id);
   return search.id && !entry ? (
-    <MissingSheet title="Agent profile" onClose={close} />
+    <MissingSheet title={gt("Agent profile")} onClose={close} />
   ) : (
     <ProfileSheet
       key={key}
@@ -397,22 +436,23 @@ function ListBody<T extends readonly unknown[]>({
   empty: string;
   children: (list: T) => ReactNode;
 }) {
+  const gt = useGT();
   if (state.kind === "loading")
     return (
       <p role="status" className="text-muted-foreground text-sm">
-        Loading {thing}…
+        {gt("Loading {thing}…", { thing })}
       </p>
     );
   if (state.kind === "forbidden")
     return (
       <p role="alert" className="text-muted-foreground text-sm">
-        You don't have access to {thing} on this machine.
+        {gt("You don't have access to {thing} on this machine.", { thing })}
       </p>
     );
   if (state.kind === "failed")
     return (
       <p role="alert" className="text-destructive-foreground text-sm">
-        Couldn't load {thing}. Check the machine's connection and reload.
+        {gt("Couldn't load {thing}. Check the machine's connection and reload.", { thing })}
       </p>
     );
   if (state.value.length === 0) return <p className="text-muted-foreground text-sm">{empty}</p>;
@@ -436,6 +476,7 @@ function SourceRow({
 }) {
   const [commandId, setCommandId] = useState(() => CommandId.make(randomUUID()));
   const [pending, setPending] = useState(false);
+  const messages = useMessages();
   const toggle = useFactoryTaskCommand(
     factoryIntake.saveIntakeSource,
     {
@@ -452,7 +493,7 @@ function SourceRow({
     { reportFailure: false },
   );
   const Icon = SOURCE_ICONS[source.config.kind];
-  const status = sourceStatusText(source);
+  const status = sourceStatusText(source, messages);
   return (
     <div className="flex h-11.5 items-center gap-3 rounded-lg border bg-card pe-3">
       <button
@@ -466,7 +507,7 @@ function SourceRow({
         <span className="min-w-0">
           <span className="block truncate text-sm">{source.label}</span>
           <span className="block truncate text-muted-foreground text-xs">
-            {sourceDetail(source)}
+            {sourceDetail(source, messages)}
             {status ? <span className="text-warning"> · {status}</span> : null}
           </span>
         </span>
@@ -484,7 +525,7 @@ function SourceRow({
             if (result._tag === "Failure")
               toastManager.add({
                 type: "error",
-                title: refusalText(readRefusal(result).reason, "source"),
+                title: refusalText(readRefusal(result).reason, "source", m),
               });
           });
         }}
@@ -506,6 +547,8 @@ function RuleRow({
 }) {
   const [commandId, setCommandId] = useState(() => CommandId.make(randomUUID()));
   const [pending, setPending] = useState(false);
+  const gt = useGT();
+  const messages = useMessages();
   const autoStart = rule.autonomy === "auto-start";
   const toggle = useFactoryTaskCommand(
     factoryIntake.saveIntakeRule,
@@ -532,20 +575,24 @@ function RuleRow({
         className="grid min-w-0 flex-1 grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_9rem_minmax(0,1.4fr)] items-center gap-4 self-stretch rounded-lg ps-3 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <span className="flex min-w-0 items-center gap-3">
-          <span className="text-muted-foreground text-xs">When</span>
+          <span className="text-muted-foreground text-xs">
+            {gt("When", { $context: "when the rule matches" })}
+          </span>
           <span className="min-w-0 flex-1 truncate">{rule.name}</span>
           <ArrowRightIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
         </span>
         <span className="flex min-w-0 items-center gap-3">
-          <span className="text-muted-foreground text-xs">Then</span>
+          <span className="text-muted-foreground text-xs">
+            {gt("Then", { $context: "what the rule does on a match" })}
+          </span>
           <span className="truncate">{then}</span>
         </span>
-        <span className="text-muted-foreground">{AUTONOMY[rule.autonomy].label}</span>
+        <span className="text-muted-foreground">{messages(AUTONOMY[rule.autonomy].label)}</span>
         <span className="flex min-w-0 items-center gap-3">
           <FiredText rule={rule} />
           {autoStart ? (
             <span className="ms-auto shrink-0 text-muted-foreground text-xs">
-              {EVERY_START_NEEDS_A_PERSON}
+              {messages(EVERY_START_NEEDS_A_PERSON)}
             </span>
           ) : null}
         </span>
@@ -563,7 +610,7 @@ function RuleRow({
             if (result._tag === "Failure")
               toastManager.add({
                 type: "error",
-                title: refusalText(readRefusal(result).reason, "rule"),
+                title: refusalText(readRefusal(result).reason, "rule", m),
               });
           });
         }}
@@ -579,17 +626,24 @@ function FiredText({ rule }: { rule: FactoryIntakeRule }) {
     <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
       {trial ? (
         <Badge variant="muted" size="sm">
-          Try once
+          <T>Try once</T>
         </Badge>
       ) : null}
       {relative.status === "relative" ? (
         <span className="truncate">
-          Fired {relative.suffix ? `${relative.value} ${relative.suffix}` : relative.value}
+          <T>
+            Fired{" "}
+            <Var>{relative.suffix ? `${relative.value} ${relative.suffix}` : relative.value}</Var>
+          </T>
         </span>
       ) : trial ? (
-        <span className="truncate text-warning">Waiting for its first match</span>
+        <span className="truncate text-warning">
+          <T>Waiting for its first match</T>
+        </span>
       ) : (
-        <span className="truncate">Never fired</span>
+        <span className="truncate">
+          <T>Never fired</T>
+        </span>
       )}
     </span>
   );
@@ -606,8 +660,9 @@ function ProfileCard({
   catalog: FactoryTaskCatalog;
   onOpen: () => void;
 }) {
-  const presentation = setupLabel(profile.setup, catalog);
-  const used = handlesText(profile.handles);
+  const messages = useMessages();
+  const presentation = setupLabel(profile.setup, catalog, messages);
+  const used = handlesText(profile.handles, messages);
   return (
     <div className="flex flex-col gap-2.5 rounded-lg border bg-card p-3">
       <button
@@ -625,7 +680,7 @@ function ProfileCard({
           </span>
         </span>
         <span className="text-muted-foreground text-sm">
-          {runtimeModeConfig[profile.setup.runtimeMode].label}
+          {messages(runtimeModeConfig[profile.setup.runtimeMode].label)}
           {used ? ` · ${used}` : ""}
         </span>
       </button>

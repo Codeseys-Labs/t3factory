@@ -1,51 +1,37 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
-import {
   AuthOrchestrationReadScope,
-  CommandId,
   type EnvironmentId,
   type FactoryIssue,
-  type FactoryIssueStartInput,
   type FactoryRepository,
-  type ModelSelection,
   type ProjectId,
 } from "@t3tools/contracts";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { T, useGT, useMessages, Var } from "gt-react";
 import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CircleDotIcon,
   ExternalLinkIcon,
   FactoryIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { factoryEnvironment } from "../../state/factory";
+import {
+  factoryEnvironment,
+  factoryIssueKeysInput,
+  useFactoryIssueKeysSupported,
+} from "../../state/factory";
 import { useEnvironments } from "../../state/environments";
-import { useProjects } from "../../state/entities";
+import { useProjects, useServerConfigs } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { useEnvironmentScope, useEnvironmentsWithScope } from "../../state/session";
-import { useAtomCommand } from "../../state/use-atom-command";
 import { buildThreadRouteParams } from "../../threadRoutes";
-import { randomUUID } from "../../lib/utils";
 import { RelativeTime } from "../RelativeTime";
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogPanel,
-  DialogPopup,
-  DialogTitle,
-} from "../ui/dialog";
 import { RefreshIcon } from "../ui/refresh-icon";
 import { Skeleton } from "../ui/skeleton";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
@@ -54,33 +40,33 @@ import {
   currentFactoryPage,
   describeFactoryFailure,
   factoryScopeKey,
-  normalizeFactoryBaseRef,
   parseFactoryStateFilter,
   popFactoryPage,
   pushFactoryPage,
   safeExternalUrl,
-  type FactoryFailure,
   type FactoryIssueStateFilter,
 } from "./factoryIssues.logic";
 import { FactoryCheckoutChooser } from "./FactoryCheckoutChooser";
-import { FactoryClaimWarning, FactoryClaimsUnavailableNote } from "./FactoryClaimIndicators";
-import { claimsElsewhere, describeClaimsElsewhere, originKeyForIssue } from "./factoryClaims.logic";
+import { FactoryClaimsUnavailableNote } from "./FactoryClaimIndicators";
 import { FactoryEmptyState } from "./FactoryEmptyState";
-import {
-  FactoryLaunchFields,
-  useFactoryLaunchDraft,
-  useFactoryLaunchModelSettings,
-  type FactoryLaunchModelSettings,
-} from "./FactoryLaunchControls";
-import { FactoryReviewFailure, FactoryReviewSnapshot } from "./FactoryReview";
 import { FactoryIssueWorkView } from "./FactoryIssueWorkView";
+import { FactoryIssueSection } from "./FactoryIssueActions";
+import {
+  factoryIssueDisplayKey,
+  factoryIssueKeyOf,
+  factoryIssueTargetOf,
+  resolveFactoryIssueOpenRoute,
+} from "./factoryIssues.logic";
+import { factoryIssueLayout, type FactoryIssueLayout } from "./factoryIssues.views";
 import { useFactoryClaims } from "./useFactoryClaims";
-import { parseFactoryIssueViewMode, type FactoryIssueViewMode } from "./factoryIssues.views";
+import { useOpenFactoryIssue } from "./useOpenFactoryIssue";
 
 import { useSettingsScope } from "../settings/SettingsScopeContext";
 import { singleFactoryMember } from "./factoryScope";
 
 export function FactoryIssuesPage() {
+  const gt = useGT();
+  const messages = useMessages();
   const search = useSearch({ from: "/_chat/factory" });
   const navigate = useNavigate({ from: "/factory/issues" });
   const { scope, groups, selectScope } = useSettingsScope();
@@ -96,7 +82,6 @@ export function FactoryIssuesPage() {
     (candidate) => candidate.environmentId === member?.environmentId && candidate.id === member?.id,
   );
   const state = search.state;
-  const view = parseFactoryIssueViewMode(search.view);
 
   if (scope.kind === "unavailable") return null;
   if (!isReady) {
@@ -112,10 +97,13 @@ export function FactoryIssuesPage() {
     <section className="min-w-0 space-y-5" aria-labelledby="factory-issues-title">
       <div className="space-y-1">
         <h2 id="factory-issues-title" className="font-medium text-lg">
-          Issues
+          <T>Issue queue</T>
         </h2>
         <p className="text-muted-foreground text-sm">
-          Review issues in one checkout before starting isolated, supervised work.
+          <T>
+            Review issues in one checkout before starting isolated, supervised work. Read and
+            discuss an issue on the Issues page.
+          </T>
         </p>
       </div>
       {member === null ? (
@@ -123,57 +111,67 @@ export function FactoryIssuesPage() {
           scope={scope}
           groups={groups}
           environments={environments}
-          intro="Choose a checkout to open its issue inbox. Checkouts of the same repository may share issues; they are not combined into a global queue."
-          emptyDescription="Connect an environment and add a repository checkout to use the issue inbox."
+          intro={gt(
+            "Choose a checkout to open its issue queue. Checkouts of the same repository may share issues; they are not combined into a global queue.",
+          )}
+          emptyDescription={gt(
+            "Connect an environment and add a repository checkout to use the issue queue.",
+          )}
           statusFor={(owner) =>
             !owner
-              ? "Environment unavailable"
+              ? gt("Environment unavailable")
               : owner.connection.phase !== "connected"
-                ? "Offline. Reconnect to read issues"
+                ? gt("Offline. Reconnect to read issues")
                 : owner.serverConfig === null
-                  ? "Server capabilities unknown"
+                  ? gt("Server capabilities unknown")
                   : owner.serverConfig.environment.capabilities.factoryIssues !== true
-                    ? "Issue inbox unsupported. Update this server"
+                    ? gt("Issue queue unsupported. Update this server")
                     : !readableIds.has(owner.environmentId)
-                      ? "Read access unavailable"
-                      : "Connected · issue inbox available"
+                      ? gt("Read access unavailable")
+                      : gt("Connected · issue queue available")
           }
           onChoose={selectScope}
         />
       ) : !environment || !project ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Checkout unavailable"
-          description="This checkout is no longer available. Choose another scope."
+          title={gt("Checkout unavailable")}
+          description={gt("This checkout is no longer available. Choose another scope.")}
         />
       ) : environment.connection.phase !== "connected" ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Environment offline"
-          description={`Reconnect ${environment.label} to read this checkout's issues.`}
+          title={gt("Environment offline")}
+          description={gt("Reconnect {environment} to read this checkout''s issues.", {
+            environment: environment.label,
+          })}
         />
       ) : environment.serverConfig === null ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Server capabilities unknown"
-          description="Wait for this environment to finish connecting before opening its inbox."
+          title={gt("Server capabilities unknown")}
+          description={gt(
+            "Wait for this environment to finish connecting before opening its queue.",
+          )}
         />
       ) : environment.serverConfig.environment.capabilities.factoryIssues !== true ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Issue inbox unsupported"
-          description={`Update the server on ${environment.label} to use the issue inbox.`}
+          title={gt("Issue queue unsupported")}
+          description={gt("Update the server on {environment} to use the issue queue.", {
+            environment: environment.label,
+          })}
         />
       ) : !canRead ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Read access unavailable"
-          description="This connection needs orchestration read access to list issues."
+          title={gt("Read access unavailable")}
+          description={gt("This connection needs orchestration read access to list issues.")}
         />
       ) : (
         <>
           <ToggleGroup
-            aria-label="Issue state"
+            aria-label={gt("Issue state")}
             value={[state]}
             onValueChange={(values) => {
               const next = values[0];
@@ -187,158 +185,223 @@ export function FactoryIssuesPage() {
           >
             {FACTORY_STATE_FILTERS.map((filter) => (
               <Toggle key={filter.value} value={filter.value}>
-                {filter.label}
+                {messages(filter.label)}
               </Toggle>
             ))}
           </ToggleGroup>
-          <FactoryInbox
-            key={factoryScopeKey(environment.environmentId, project.id, state)}
-            environmentId={environment.environmentId}
-            project={project}
-            projectTitleById={
-              new Map(
-                allProjects
-                  .filter((candidate) => candidate.environmentId === environment.environmentId)
-                  .map((candidate) => [candidate.id, candidate.title]),
-              )
-            }
-            state={state}
-            reviewIssue={search.reviewIssue}
-            mode={view}
-            onModeChange={(next) => {
-              void navigate({ search: (previous) => ({ ...previous, view: next }), replace: true });
-            }}
-          />
+          {search.reviewIssue !== undefined ? (
+            <FactoryReviewIssue
+              key={search.reviewIssue}
+              environmentId={environment.environmentId}
+              project={project}
+              issueKey={search.reviewIssue}
+              onDismiss={() => {
+                void navigate({
+                  search: (previous) => ({ ...previous, reviewIssue: undefined }),
+                  replace: true,
+                });
+              }}
+            />
+          ) : (
+            <FactoryIssueQueue
+              key={factoryScopeKey(environment.environmentId, project.id, state)}
+              environmentId={environment.environmentId}
+              project={project}
+              projectTitleById={
+                new Map(
+                  allProjects
+                    .filter((candidate) => candidate.environmentId === environment.environmentId)
+                    .map((candidate) => [candidate.id, candidate.title]),
+                )
+              }
+              state={state}
+              layout={factoryIssueLayout(search.view)}
+            />
+          )}
         </>
       )}
     </section>
   );
 }
 
-type InboxProject = EnvironmentProject;
-
-interface PendingStart {
-  readonly issue: FactoryIssue;
-  readonly restart: boolean;
-  readonly repository: FactoryRepository;
-}
-
-function FactoryInbox(props: {
+/**
+ * A link that names an issue by number, from before the Issues page held the reading and the
+ * start. It reads the issue once to learn where it lives, then hands the reader to its panel.
+ */
+function FactoryReviewIssue(props: {
   readonly environmentId: EnvironmentId;
-  readonly project: InboxProject;
-  readonly projectTitleById: ReadonlyMap<ProjectId, string>;
-  readonly state: FactoryIssueStateFilter;
-  readonly mode: FactoryIssueViewMode;
-  readonly onModeChange: (mode: FactoryIssueViewMode) => void;
-  readonly reviewIssue?: number | undefined;
+  readonly project: EnvironmentProject;
+  readonly issueKey: number | string;
+  readonly onDismiss: () => void;
 }) {
-  const { environmentId, project, state, mode } = props;
-  const navigate = useNavigate();
-  const [pages, setPages] = useState<ReadonlyArray<number>>([1]);
-  const page = currentFactoryPage(pages);
-  const list = useEnvironmentQuery(
-    props.reviewIssue === undefined
-      ? factoryEnvironment.list({ environmentId, input: { projectId: project.id, state, page } })
-      : null,
-  );
-  const single = useEnvironmentQuery(
-    props.reviewIssue === undefined
+  const { environmentId, project, issueKey } = props;
+  const gt = useGT();
+  const messages = useMessages();
+  const keysSupported = useFactoryIssueKeysSupported(environmentId);
+  const target = keysSupported
+    ? { key: String(issueKey) }
+    : typeof issueKey === "number"
+      ? { issueNumber: issueKey }
+      : null;
+  const query = useEnvironmentQuery(
+    target === null
       ? null
       : factoryEnvironment.readIssue({
           environmentId,
-          input: { projectId: project.id, issueNumber: props.reviewIssue },
+          input: { projectId: project.id, ...target },
         }),
   );
-  const query =
-    props.reviewIssue === undefined
-      ? list
-      : {
-          ...single,
-          data:
-            single.data === null
-              ? null
-              : { ...single.data, issues: [single.data.issue], nextPage: null },
-        };
-  const canStart = useAtomValue(factoryEnvironment.start.permissionAtom(environmentId));
-  const runStart = useAtomCommand(factoryEnvironment.start, {
-    label: "factory issue start",
-    reportFailure: false,
-  });
+  const resolveOpener = useOpenFactoryIssue({ environmentId, projectId: project.id });
+  const handled = useRef<string | null>(null);
+  const url = query.data?.issue.url ?? null;
+  const opener = url === null ? null : resolveOpener(url);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Hands the linked issue to the Issues page once its address is read.
+  useEffect(() => {
+    if (url === null || opener === null || handled.current === url) return;
+    handled.current = url;
+    opener({ replace: true });
+  }, [url, opener]);
 
-  const launchSettings = useFactoryLaunchModelSettings(environmentId, project);
+  if (target === null) {
+    return (
+      <FactoryEmptyState
+        icon={<CircleDotIcon />}
+        title={gt("Issue could not be opened")}
+        description={gt(
+          "This server cannot open issue {issueKey} by its tracker key. Update the server to open it.",
+          { issueKey },
+        )}
+        action={
+          <Button size="sm" variant="outline" onClick={props.onDismiss}>
+            <T>Show the issue queue</T>
+          </Button>
+        }
+      />
+    );
+  }
+  if (query.error !== null) {
+    const failure = describeFactoryFailure(
+      query.failure,
+      query.error,
+      query.data?.capabilities.displayName,
+      messages,
+    );
+    return (
+      <FactoryEmptyState
+        icon={<FactoryIcon />}
+        title={failure.title}
+        description={failure.message}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={query.refresh}
+              disabled={query.isPending}
+              aria-busy={query.isPending}
+            >
+              <RefreshIcon size="sm" refreshing={query.isPending} />
+              <T>Retry</T>
+            </Button>
+            <Button size="sm" variant="outline" onClick={props.onDismiss}>
+              <T>Show the issue queue</T>
+            </Button>
+          </div>
+        }
+      />
+    );
+  }
+  if (query.data !== null && opener === null) {
+    const { displayName } = query.data.capabilities;
+    const href = safeExternalUrl(query.data.issue.url);
+    return (
+      <FactoryEmptyState
+        icon={<CircleDotIcon />}
+        title={gt("Issue could not be opened")}
+        description={gt(
+          "The Issues page could not open issue {issueKey}. Open it on {displayName} instead.",
+          { issueKey: factoryIssueDisplayKey(query.data.issue), displayName },
+        )}
+        action={
+          <div className="flex flex-wrap gap-2">
+            {href ? (
+              <Button
+                size="sm"
+                variant="outline"
+                render={<a href={href} target="_blank" rel="noopener noreferrer" />}
+              >
+                <T>
+                  Open on <Var>{displayName}</Var>
+                </T>
+              </Button>
+            ) : null}
+            <Button size="sm" variant="outline" onClick={props.onDismiss}>
+              <T>Show the issue queue</T>
+            </Button>
+          </div>
+        }
+      />
+    );
+  }
+  return (
+    <div className="space-y-3" aria-busy>
+      <Skeleton className="h-20 w-full" />
+    </div>
+  );
+}
+
+function FactoryIssueQueue(props: {
+  readonly environmentId: EnvironmentId;
+  readonly project: EnvironmentProject;
+  readonly projectTitleById: ReadonlyMap<ProjectId, string>;
+  readonly state: FactoryIssueStateFilter;
+  readonly layout: FactoryIssueLayout;
+}) {
+  const { environmentId, project, state, layout } = props;
+  const gt = useGT();
+  const messages = useMessages();
+  const navigate = useNavigate();
+  const [pages, setPages] = useState<ReadonlyArray<number>>([1]);
+  const page = currentFactoryPage(pages);
+  const keysSupported = useFactoryIssueKeysSupported(environmentId);
+  const query = useEnvironmentQuery(
+    factoryEnvironment.list({
+      environmentId,
+      input: { projectId: project.id, state, page, ...factoryIssueKeysInput(keysSupported) },
+    }),
+  );
+  const canStart = useAtomValue(factoryEnvironment.start.permissionAtom(environmentId));
   const claims = useFactoryClaims({ environmentId, project });
-  // Claims have no timer: every explicit refresh and every start observes them again with the list.
+  const resolveOpener = useOpenFactoryIssue({ environmentId, projectId: project.id });
+  const panelAvailable =
+    useServerConfigs().get(environmentId)?.environment.capabilities.issues === true;
+  const [inlineIssue, setInlineIssue] = useState<FactoryIssue | null>(null);
+  // Claims have no timer: every explicit refresh observes them again with the list.
   const refreshAll = () => {
     query.refresh();
     claims?.refresh();
   };
 
-  const [dialog, setDialog] = useState<PendingStart | null>(null);
-  const [startingIssue, setStartingIssue] = useState<number | null>(null);
-  const [startFailure, setStartFailure] = useState<FactoryFailure | null>(null);
-  const startInFlight = useRef(false);
-  const mounted = useRef(true);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Keeps in-flight server commands tied to the mounted view that started them.
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
-  const startIssue = async (
-    issue: FactoryIssue,
-    options: {
-      readonly modelSelection: ModelSelection;
-      readonly expectedRepositoryKey: string;
-      readonly runtimeMode: FactoryIssueStartInput["runtimeMode"];
-      readonly interactionMode: FactoryIssueStartInput["interactionMode"];
-      readonly baseRef?: string;
-      readonly restartDeleted: boolean;
-    },
-  ) => {
-    // The server owns deduplication; this only stops the same client double-submitting.
-    if (startInFlight.current) return;
-    const input: FactoryIssueStartInput = {
-      commandId: CommandId.make(randomUUID()),
-      projectId: project.id,
-      issueNumber: issue.number,
-      expectedRepositoryKey: options.expectedRepositoryKey,
-      expectedIssueRevision: issue.revision,
-      modelSelection: options.modelSelection,
-      runtimeMode: options.runtimeMode,
-      interactionMode: options.interactionMode,
-      ...(options.baseRef !== undefined ? { baseRef: options.baseRef } : {}),
-      ...(options.restartDeleted ? { restartDeleted: true } : {}),
-    };
-    startInFlight.current = true;
-    setStartingIssue(issue.number);
-    setStartFailure(null);
-    const result = await runStart({ environmentId, input }).finally(() => {
-      startInFlight.current = false;
-      if (mounted.current) setStartingIssue(null);
+  const openIssue = (issue: FactoryIssue) => {
+    const open = resolveOpener(issue.url);
+    const route = resolveFactoryIssueOpenRoute({
+      panelAvailable,
+      panelResolves: open !== null,
+      startable: factoryIssueTargetOf(issue, keysSupported) !== null,
     });
-    if (!mounted.current) return;
-    if (result._tag === "Success") {
-      refreshAll();
-      setDialog(null);
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(scopeThreadRef(environmentId, result.value.threadId)),
-      });
+    if (route === "panel") {
+      open?.();
       return;
     }
-    if (isAtomCommandInterrupted(result)) return;
-    setStartFailure(
-      describeFactoryFailure(
-        squashAtomCommandFailure(result),
-        undefined,
-        query.data?.capabilities.displayName,
-      ),
-    );
-    // The failure may mean the row is stale (closed, deleted, already launched elsewhere).
-    refreshAll();
+    if (route === "inline-start") {
+      setInlineIssue(issue);
+      return;
+    }
+    const href = safeExternalUrl(issue.url);
+    if (href !== null) window.open(href, "_blank", "noopener,noreferrer");
   };
+  const inlineTarget =
+    inlineIssue === null ? null : factoryIssueTargetOf(inlineIssue, keysSupported);
 
   const openTask = (task: NonNullable<FactoryIssue["task"]>) => {
     void navigate({
@@ -347,22 +410,15 @@ function FactoryInbox(props: {
     });
   };
 
-  const resume = (issue: FactoryIssue, repository: FactoryRepository) => {
-    const task = issue.task;
-    if (task === null || task.status !== "launching") return;
-    void startIssue(issue, {
-      modelSelection: task.modelSelection,
-      runtimeMode: task.runtimeMode,
-      interactionMode: task.interactionMode,
-      expectedRepositoryKey: repository.canonicalKey,
-      restartDeleted: false,
-    });
-  };
-
   const failure =
     query.error === null
       ? null
-      : describeFactoryFailure(query.failure, query.error, query.data?.capabilities.displayName);
+      : describeFactoryFailure(
+          query.failure,
+          query.error,
+          query.data?.capabilities.displayName,
+          messages,
+        );
   const data = failure === null ? query.data : null;
   const refreshing = query.isPending;
 
@@ -371,23 +427,14 @@ function FactoryInbox(props: {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <RepositoryTarget repository={data?.repository ?? null} projectTitle={project.title} />
         <div className="flex flex-wrap items-center gap-2">
-          <ToggleGroup
-            aria-label="Issue view"
-            value={[mode]}
-            onValueChange={(values) => {
-              const next = values[0];
-              if (next === "list" || next === "table" || next === "board") {
-                props.onModeChange(next);
-              }
-            }}
-          >
-            <Toggle value="list">List</Toggle>
-            <Toggle value="table">Table</Toggle>
-            <Toggle value="board">Board</Toggle>
-          </ToggleGroup>
           {data ? (
             <span className="text-muted-foreground text-xs">
-              Updated <RelativeTime timestamp={data.fetchedAt} />
+              <T>
+                Updated{" "}
+                <Var>
+                  <RelativeTime timestamp={data.fetchedAt} />
+                </Var>
+              </T>
             </span>
           ) : null}
           <Button
@@ -398,7 +445,7 @@ function FactoryInbox(props: {
             aria-busy={refreshing}
           >
             <RefreshIcon size="sm" refreshing={refreshing} />
-            Refresh
+            <T>Refresh</T>
           </Button>
         </div>
       </div>
@@ -406,19 +453,33 @@ function FactoryInbox(props: {
       {!canStart ? (
         <Alert variant="warning">
           <AlertDescription>
-            This connection cannot start tasks. Starting needs orchestration and source control
-            write access; existing tasks can still be opened.
+            <T>
+              This connection cannot start tasks. Starting needs orchestration and source control
+              write access; existing tasks can still be opened.
+            </T>
           </AlertDescription>
         </Alert>
       ) : null}
 
       <FactoryClaimsUnavailableNote note={claims?.unavailableNote ?? null} />
 
-      {startFailure !== null && dialog === null ? (
-        <Alert variant="error">
-          <AlertTitle>{startFailure.title}</AlertTitle>
-          <AlertDescription>{startFailure.message}</AlertDescription>
-        </Alert>
+      {inlineIssue !== null && inlineTarget !== null ? (
+        <div className="space-y-2 rounded-lg border border-border/60 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="min-w-0 font-medium text-sm [overflow-wrap:anywhere]">
+              {inlineIssue.title}
+            </p>
+            <Button size="sm" variant="ghost" onClick={() => setInlineIssue(null)}>
+              <T>Close</T>
+            </Button>
+          </div>
+          <FactoryIssueSection
+            key={factoryIssueKeyOf(inlineIssue) ?? inlineIssue.url}
+            environmentId={environmentId}
+            project={project}
+            target={inlineTarget}
+          />
+        </div>
       ) : null}
 
       {failure !== null ? (
@@ -435,7 +496,7 @@ function FactoryInbox(props: {
               aria-busy={refreshing}
             >
               <RefreshIcon size="sm" refreshing={refreshing} />
-              Retry
+              <T>Retry</T>
             </Button>
           }
         />
@@ -447,50 +508,48 @@ function FactoryInbox(props: {
         </div>
       ) : (
         <>
-          {mode !== "list" ? (
-            <p className="text-muted-foreground text-xs">
-              Source filter: {state === "open" ? "Open" : state === "closed" ? "Closed" : "All"}.
-              Page {page} only, not all project work.
-              {state === "open"
-                ? " Tasks linked to closed issues appear under Closed or All."
-                : null}
-            </p>
-          ) : null}
+          <p className="text-muted-foreground text-xs">
+            {state === "open"
+              ? gt(
+                  "Source filter: Open. Page {page} only, not all project work. Tasks linked to closed issues appear under Closed or All.",
+                  { page },
+                )
+              : state === "closed"
+                ? gt("Source filter: Closed. Page {page} only, not all project work.", { page })
+                : gt("Source filter: All. Page {page} only, not all project work.", { page })}
+          </p>
           {data.issues.length === 0 ? (
             <FactoryEmptyState
               icon={<CircleDotIcon />}
-              title={`No ${state === "all" ? "" : `${state} `}issues on this page`}
+              title={
+                state === "open"
+                  ? gt("No open issues on this page")
+                  : state === "closed"
+                    ? gt("No closed issues on this page")
+                    : gt("No issues on this page")
+              }
               description={
                 data.nextPage === null
-                  ? "Nothing to show for this filter."
-                  : `${data.capabilities.displayName} returned no issues on this page, but more pages exist.`
+                  ? gt("Nothing to show for this filter.")
+                  : gt("{displayName} returned no issues on this page, but more pages exist.", {
+                      displayName: data.capabilities.displayName,
+                    })
               }
             />
           ) : (
             <FactoryIssueWorkView
               key={`${data.repository.canonicalKey}:${page}`}
               environmentId={environmentId}
-              mode={mode}
+              layout={layout}
               issues={data.issues}
-              canStart={canStart}
-              busy={startingIssue !== null}
-              startingIssue={startingIssue}
               selectedProjectId={project.id}
               projectTitleById={props.projectTitleById}
               refreshing={refreshing}
               claims={claims}
               repository={data.repository}
               capabilities={data.capabilities}
-              onStart={(issue) => {
-                setStartFailure(null);
-                setDialog({ issue, repository: data.repository, restart: false });
-              }}
-              onRestart={(issue) => {
-                setStartFailure(null);
-                setDialog({ issue, repository: data.repository, restart: true });
-              }}
-              onResume={(issue) => resume(issue, data.repository)}
-              onOpen={openTask}
+              onOpenIssue={openIssue}
+              onOpenTask={openTask}
             />
           )}
           <div className="flex items-center justify-between gap-3">
@@ -501,9 +560,13 @@ function FactoryInbox(props: {
               onClick={() => setPages(popFactoryPage(pages))}
             >
               <ChevronLeftIcon />
-              Previous
+              <T>Previous</T>
             </Button>
-            <span className="text-muted-foreground text-xs">Page {page}</span>
+            <span className="text-muted-foreground text-xs">
+              <T>
+                Page <Var>{page}</Var>
+              </T>
+            </span>
             <Button
               size="sm"
               variant="outline"
@@ -512,56 +575,12 @@ function FactoryInbox(props: {
                 if (data.nextPage !== null) setPages(pushFactoryPage(pages, data.nextPage));
               }}
             >
-              Next
+              <T>Next</T>
               <ChevronRightIcon />
             </Button>
           </div>
         </>
       )}
-
-      {dialog !== null ? (
-        <FactoryStartDialog
-          key={`${dialog.issue.number}:${dialog.restart}`}
-          environmentId={environmentId}
-          issue={dialog.issue}
-          restart={dialog.restart}
-          projectTitle={project.title}
-          repository={dialog.repository}
-          settings={launchSettings}
-          canStart={canStart}
-          pending={startingIssue === dialog.issue.number}
-          failure={startFailure}
-          claimWarning={
-            claims === null
-              ? null
-              : describeClaimsElsewhere(
-                  claimsElsewhere(
-                    claims.claimsByEnvironment,
-                    originKeyForIssue(
-                      dialog.repository.provider,
-                      dialog.repository.canonicalKey,
-                      dialog.issue.number,
-                    ),
-                    environmentId,
-                  ),
-                  claims.labelOf,
-                )
-          }
-          onClose={() => {
-            setDialog(null);
-            setStartFailure(null);
-          }}
-          onSubmit={(options) => {
-            if (startFailure?.kind === "changed") return;
-            void startIssue(dialog.issue, {
-              ...options,
-              expectedRepositoryKey: dialog.repository.canonicalKey,
-              runtimeMode: "approval-required",
-              interactionMode: "default",
-            });
-          }}
-        />
-      ) : null}
     </div>
   );
 }
@@ -570,10 +589,13 @@ function RepositoryTarget(props: {
   readonly repository: FactoryRepository | null;
   readonly projectTitle: string;
 }) {
+  const gt = useGT();
   const href = props.repository ? safeExternalUrl(props.repository.url) : null;
   return (
     <div className="min-w-0 space-y-0.5">
-      <p className="text-muted-foreground text-xs">Issues from</p>
+      <p className="text-muted-foreground text-xs">
+        <T>Issues from</T>
+      </p>
       {props.repository ? (
         <p className="flex min-w-0 items-center gap-1.5 font-medium text-sm">
           {href ? (
@@ -594,112 +616,9 @@ function RepositoryTarget(props: {
         </p>
       ) : (
         <p className="text-muted-foreground text-sm">
-          Resolving {props.projectTitle}'s repository…
+          {gt("Resolving {projectTitle}''s repository…", { projectTitle: props.projectTitle })}
         </p>
       )}
     </div>
-  );
-}
-
-function FactoryStartDialog(props: {
-  readonly environmentId: EnvironmentId;
-  readonly issue: FactoryIssue;
-  readonly restart: boolean;
-  readonly projectTitle: string;
-  readonly repository: FactoryRepository;
-  readonly settings: FactoryLaunchModelSettings;
-  readonly canStart: boolean;
-  readonly pending: boolean;
-  readonly failure: FactoryFailure | null;
-  readonly claimWarning: string | null;
-  readonly onClose: () => void;
-  readonly onSubmit: (options: {
-    readonly modelSelection: ModelSelection;
-    readonly baseRef?: string;
-    readonly restartDeleted: boolean;
-  }) => void;
-}) {
-  const { issue, restart, pending } = props;
-  // Defaults and model normalization stay pinned while the user reviews this issue.
-  const draft = useFactoryLaunchDraft(props.settings);
-  const { selection } = draft;
-  const changed = props.failure?.kind === "changed";
-
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !pending) props.onClose();
-      }}
-    >
-      <DialogPopup className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle>
-            {restart ? "Start a new attempt" : "Start task"} · #{issue.number}
-          </DialogTitle>
-          <DialogDescription>
-            {restart
-              ? "The previous task's thread was deleted. Confirming creates a new isolated worktree and a new attempt for this issue."
-              : "Creates a task in its own isolated git worktree and sends the issue to the selected agent."}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogPanel>
-          <fieldset disabled={pending || changed} className="min-w-0 space-y-4">
-            <p className="text-muted-foreground text-xs">
-              {`${props.repository.host}/${props.repository.repository}`} · task project{" "}
-              {props.projectTitle}
-            </p>
-            <FactoryClaimWarning message={props.claimWarning} />
-            <FactoryReviewSnapshot
-              heading="Full issue snapshot"
-              intro="Review the full title and description before confirming."
-              fields={[
-                { label: "Title", text: issue.title, emptyNote: "The source title is empty." },
-                {
-                  label: "Description",
-                  text: issue.body,
-                  emptyNote: "The source description is an empty string.",
-                  missingNote: "This issue has no description. The source body is null.",
-                },
-              ]}
-            />
-            <FactoryLaunchFields
-              environmentId={props.environmentId}
-              disabled={pending || changed}
-              draft={draft}
-              untrustedText="Issue text"
-            />
-          </fieldset>
-        </DialogPanel>
-        {props.failure ? (
-          <FactoryReviewFailure
-            failure={props.failure}
-            changed={changed}
-            staleHint="This snapshot is no longer current. Close this dialog and reopen the issue to review the refreshed content before starting new work."
-          />
-        ) : null}
-        <DialogFooter>
-          <DialogClose render={<Button variant="outline" size="sm" disabled={pending} />}>
-            Cancel
-          </DialogClose>
-          <Button
-            size="sm"
-            disabled={!props.canStart || pending || changed || selection === null}
-            aria-busy={pending}
-            onClick={() => {
-              if (!props.canStart || pending || changed || selection === null) return;
-              const normalized = normalizeFactoryBaseRef(draft.baseRef);
-              props.onSubmit({
-                modelSelection: selection,
-                restartDeleted: restart,
-                ...(normalized !== undefined ? { baseRef: normalized } : {}),
-              });
-            }}
-          >
-            {pending ? "Starting…" : restart ? "Start new attempt" : "Start task"}
-          </Button>
-        </DialogFooter>
-      </DialogPopup>
-    </Dialog>
   );
 }

@@ -20,7 +20,6 @@ const makeInstance = Effect.all({
   sourceControl: OriginSourceControlProvider.make,
   discovery: OriginSourceControlProvider.makeDiscovery,
   pullRequests: OriginPullRequestProvider.make,
-  factoryIssues: Effect.succeed(null),
 });
 
 export const driver = defineSourceControlDriver({

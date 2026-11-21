@@ -1,4 +1,5 @@
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { ChevronDownIcon } from "lucide-react";
 import { useId, useState } from "react";
 
@@ -35,6 +36,7 @@ export function FactoryIssueFrontier(props: {
   readonly issueNumber: number;
   readonly displayName: string;
 }) {
+  const gt = useGT();
   const [open, setOpen] = useState(false);
   const panelId = useId();
   return (
@@ -44,11 +46,15 @@ export function FactoryIssueFrontier(props: {
         variant="ghost"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        aria-label={`${open ? "Hide" : "Show"} sub-issues of issue #${props.issueNumber}`}
+        aria-label={
+          open
+            ? gt("Hide sub-issues of issue #{issueNumber}", { issueNumber: props.issueNumber })
+            : gt("Show sub-issues of issue #{issueNumber}", { issueNumber: props.issueNumber })
+        }
         onClick={() => setOpen((current) => !current)}
       >
         <ChevronDownIcon className={open ? "rotate-180" : undefined} />
-        Sub-issues
+        <T>Sub-issues</T>
       </Button>
       {open ? (
         <FactoryIssueFrontierPanel
@@ -71,6 +77,8 @@ function FactoryIssueFrontierPanel(props: {
   readonly issueNumber: number;
   readonly displayName: string;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const nowMs = useNowSecond();
   const query = useEnvironmentQuery(
     factoryEnvironment.readIssueFrontier({
@@ -81,10 +89,10 @@ function FactoryIssueFrontierPanel(props: {
   const failure =
     query.error === null
       ? null
-      : describeFactoryFailure(query.failure, query.error, props.displayName);
+      : describeFactoryFailure(query.failure, query.error, props.displayName, messages);
   const presentation =
     failure === null && query.data !== null
-      ? factoryFrontierPresentation(query.data, nowMs, props.displayName)
+      ? factoryFrontierPresentation(query.data, nowMs, props.displayName, messages)
       : null;
   const refreshing = query.isPending;
 
@@ -93,10 +101,22 @@ function FactoryIssueFrontierPanel(props: {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-muted-foreground text-xs">
           {query.data !== null && failure === null ? (
-            <>
-              Observed <RelativeTime timestamp={query.data.observedAt} />
-              {presentation?.stale ? " · stale" : null}
-            </>
+            presentation?.stale ? (
+              <T>
+                Observed{" "}
+                <Var>
+                  <RelativeTime timestamp={query.data.observedAt} />
+                </Var>{" "}
+                · stale
+              </T>
+            ) : (
+              <T>
+                Observed{" "}
+                <Var>
+                  <RelativeTime timestamp={query.data.observedAt} />
+                </Var>
+              </T>
+            )
           ) : null}
         </p>
         <Button
@@ -104,10 +124,12 @@ function FactoryIssueFrontierPanel(props: {
           variant="outline"
           onClick={query.refresh}
           disabled={refreshing}
-          aria-label={`Refresh sub-issues for issue #${props.issueNumber}`}
+          aria-label={gt("Refresh sub-issues for issue #{issueNumber}", {
+            issueNumber: props.issueNumber,
+          })}
         >
           <RefreshIcon size="sm" refreshing={refreshing} />
-          Refresh
+          <T>Refresh</T>
         </Button>
       </div>
       {failure !== null ? (
@@ -117,7 +139,7 @@ function FactoryIssueFrontierPanel(props: {
         </Alert>
       ) : presentation === null ? (
         <p className="text-muted-foreground text-sm" role="status">
-          Observing sub-issues…
+          <T>Observing sub-issues…</T>
         </p>
       ) : (
         <>
@@ -128,19 +150,32 @@ function FactoryIssueFrontierPanel(props: {
           ) : null}
           {presentation.rows.length === 0 ? (
             presentation.note === null ? (
-              <p className="text-muted-foreground text-sm">This issue has no sub-issues.</p>
+              <p className="text-muted-foreground text-sm">
+                <T>This issue has no sub-issues.</T>
+              </p>
             ) : null
           ) : (
             <Table>
               <caption className="sr-only">
-                Sub-issues of issue #{props.issueNumber}, in {props.displayName}'s order
+                {gt("Sub-issues of issue #{issueNumber}, in {displayName}''s order", {
+                  issueNumber: props.issueNumber,
+                  displayName: props.displayName,
+                })}
               </caption>
               <TableHeader>
                 <TableRow>
-                  <TableHead scope="col">Sub-issue</TableHead>
-                  <TableHead scope="col">Title</TableHead>
-                  <TableHead scope="col">Verdict</TableHead>
-                  <TableHead scope="col">Assignees</TableHead>
+                  <TableHead scope="col">
+                    <T>Sub-issue</T>
+                  </TableHead>
+                  <TableHead scope="col">
+                    <T>Title</T>
+                  </TableHead>
+                  <TableHead scope="col">
+                    <T>Verdict</T>
+                  </TableHead>
+                  <TableHead scope="col">
+                    <T>Assignees</T>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -179,9 +214,10 @@ function FactoryIssueFrontierPanel(props: {
             </Table>
           )}
           <p className="text-muted-foreground text-xs">
-            Read from {props.displayName}'s sub-issue list in its own order. Evidence only: it does
-            not pick, order or start work, and assignees are shown but never counted. Refresh
-            observes again.
+            {gt(
+              "Read from {displayName}''s sub-issue list in its own order. Evidence only: it does not pick, order or start work, and assignees are shown but never counted. Refresh observes again.",
+              { displayName: props.displayName },
+            )}
           </p>
         </>
       )}

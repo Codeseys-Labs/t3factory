@@ -1,4 +1,5 @@
 import { FACTORY_READINESS_OVERRIDE_REASON_MAX_CHARS } from "@t3tools/contracts";
+import { T, useGT, useMessages } from "gt-react";
 import { useId, useState } from "react";
 
 import { Button } from "../ui/button";
@@ -40,6 +41,8 @@ export function FactoryReadinessOverrideDialog(props: {
   readonly onSubmit: (reason: string) => void;
 }) {
   const { row, pending } = props;
+  const gt = useGT();
+  const m = useMessages();
   const copy = FACTORY_OVERRIDE_ACTIONS[props.action];
   const reasonId = useId();
   const [reason, setReason] = useState("");
@@ -61,8 +64,8 @@ export function FactoryReadinessOverrideDialog(props: {
     >
       <DialogPopup className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{copy.title}</DialogTitle>
-          <DialogDescription>{copy.description(props.displayName)}</DialogDescription>
+          <DialogTitle>{m(copy.title)}</DialogTitle>
+          <DialogDescription>{copy.description(props.displayName, m)}</DialogDescription>
         </DialogHeader>
         <DialogPanel>
           <fieldset disabled={pending || changed} className="min-w-0 space-y-4">
@@ -75,18 +78,20 @@ export function FactoryReadinessOverrideDialog(props: {
               </p>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor={reasonId}>Reason</Label>
+              <Label htmlFor={reasonId}>
+                <T>Reason</T>
+              </Label>
               <Textarea
                 id={reasonId}
                 value={reason}
                 aria-invalid={count.overLimit}
                 aria-describedby={`${reasonId}-help`}
-                placeholder="Why this decision is right, in your own words"
+                placeholder={gt("Why this decision is right, in your own words")}
                 onChange={(event) => setReason(event.target.value)}
               />
               <div className="flex items-start justify-between gap-3">
                 <p id={`${reasonId}-help`} className="text-muted-foreground text-xs">
-                  Required. Shown beside the blocker and kept after it is revoked.
+                  <T>Required. Shown beside the blocker and kept after it is revoked.</T>
                 </p>
                 <span
                   className={
@@ -105,12 +110,14 @@ export function FactoryReadinessOverrideDialog(props: {
           <FactoryReviewFailure
             failure={props.failure}
             changed={changed}
-            staleHint="This blocker changed after you reviewed it. Close this dialog, refresh, and review the blocker again before recording a decision."
+            staleHint={gt(
+              "This blocker changed after you reviewed it. Close this dialog, refresh, and review the blocker again before recording a decision.",
+            )}
           />
         ) : null}
         <DialogFooter>
           <DialogClose render={<Button variant="outline" size="sm" disabled={pending} />}>
-            Cancel
+            <T>Cancel</T>
           </DialogClose>
           <Button
             size="sm"
@@ -121,7 +128,7 @@ export function FactoryReadinessOverrideDialog(props: {
               props.onSubmit(reason);
             }}
           >
-            {pending ? copy.pendingLabel : copy.confirmLabel}
+            {pending ? m(copy.pendingLabel) : m(copy.confirmLabel)}
           </Button>
         </DialogFooter>
       </DialogPopup>

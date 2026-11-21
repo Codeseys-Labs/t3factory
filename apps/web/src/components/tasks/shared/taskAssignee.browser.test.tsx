@@ -30,6 +30,7 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
     await import("@t3tools/client-runtime/state/factory-task-fixtures");
   const { FactoryTaskError } = await import("@t3tools/contracts");
   const Cause = await import("effect/Cause");
+  const { commandEffect } = await import("../../../../test/commandEffect");
   // A task server: a save lands on the version it names, else it answers with the current one.
   // The second save to arrive is slow, so it is answered only once the test releases it.
   const answer = (input: { expectedVersion: number; assignment: unknown }) => {
@@ -53,11 +54,13 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
         permissionAtom: () => Atom.make(true),
         run: (_registry: unknown, target: { input: Parameters<typeof answer>[0] }) => {
           const slow = state.server.arrivals++ === 1;
-          return slow
-            ? new Promise((resolve) => {
-                state.server.release = () => resolve(answer(target.input));
-              })
-            : Promise.resolve(answer(target.input));
+          return commandEffect(
+            slow
+              ? new Promise((resolve) => {
+                  state.server.release = () => resolve(answer(target.input));
+                })
+              : Promise.resolve(answer(target.input)),
+          );
         },
       },
       previewTaskAssignee: (target: unknown) => {

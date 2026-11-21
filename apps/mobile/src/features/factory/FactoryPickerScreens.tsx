@@ -1,5 +1,6 @@
 import { useNavigation } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
+import { useGT } from "gt-react-native";
 import { useMemo, useState } from "react";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -13,10 +14,11 @@ import { updateFactoryInboxSelection, useFactoryInboxSelection } from "./factory
 import { useFactoryLaunchModel } from "./useFactoryLaunch";
 
 function MissingInboxSelection() {
+  const gt = useGT();
   return (
-    <SettingsScreen title="Factory">
+    <SettingsScreen title={gt("Factory")}>
       <Text className="p-5 text-base text-foreground-muted">
-        Choose a project in Factory first.
+        {gt("Choose a project in Factory first.")}
       </Text>
     </SettingsScreen>
   );
@@ -64,6 +66,7 @@ export function FactoryModelPickerRouteScreen() {
 }
 
 export function FactoryBranchPickerRouteScreen() {
+  const gt = useGT();
   const navigation = useNavigation();
   const selection = useFactoryInboxSelection();
   const launch = useFactoryLaunchModel(selection);
@@ -86,7 +89,7 @@ export function FactoryBranchPickerRouteScreen() {
 
   return (
     <BranchPickerScreen
-      title="Base branch"
+      title={gt("Base branch")}
       project={launch.project}
       branches={visibleBranches}
       selectedBranchName={selection.baseRef}
@@ -95,7 +98,7 @@ export function FactoryBranchPickerRouteScreen() {
       loading={
         query.trim() !== debouncedQuery.trim() || (branches.isPending && branches.data === null)
       }
-      error={launch.project ? branches.error : "This project is no longer available."}
+      error={launch.project ? branches.error : gt("This project is no longer available.")}
       refreshing={branches.isFetchingNextPage}
       hasMore={branches.data?.nextCursor != null}
       onRefresh={branches.refresh}

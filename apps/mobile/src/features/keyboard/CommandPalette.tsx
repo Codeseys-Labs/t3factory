@@ -359,7 +359,7 @@ export function CommandPalette(props: {
       {
         key: "factory",
         kind: "action",
-        title: "Factory",
+        title: gt("Factory"),
         searchTerms: [
           "overview",
           "github",

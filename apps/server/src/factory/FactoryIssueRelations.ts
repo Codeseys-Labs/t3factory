@@ -1,7 +1,6 @@
-import * as IssueTrackers from "./IssueTrackerProviderRegistry.ts";
 import {
+  type FactoryIssueCapabilities,
   FactoryIssueError,
-  SourceControlProviderKind,
   FactoryReadinessReason,
   FactoryReadinessOverrideId,
   IsoDateTime,
@@ -19,10 +18,7 @@ import {
   type FactoryReadinessOverrideRevokeInput,
   type FactoryRepository,
 } from "@t3tools/contracts";
-import type {
-  IssueTrackerProviderError,
-  IssueTrackerProviderApi,
-} from "@t3tools/source-control-core/server/IssueTrackerProvider";
+import type { IssueTrackerError } from "@t3tools/source-control-core/server/IssueTracker";
 import {
   gitHubApiUrls,
   isRateLimited,
@@ -37,9 +33,12 @@ import * as Hex from "effect/encoding/Hex";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as IssueService from "../issue/IssueService.ts";
 import * as Store from "../persistence/FactoryIssueRelationStore.ts";
-import { issueTrackerFailure } from "./FactoryIssueService.ts";
-import { makeRepositoryResolver } from "./FactoryTaskLaunch.ts";
+import * as FactoryIssueHosts from "./FactoryIssueHosts.ts";
+import { issueFailure } from "./FactoryIssueService.ts";
+import { makeRepositoryResolver, makeIssueRepositoryResolver } from "./FactoryTaskLaunch.ts";
+import { issueKeyOf, issueNumberOf, issueScopeKey } from "./FactoryOriginKey.ts";
 
 const Subject = Schema.Struct({
   id: PositiveInt,
@@ -106,7 +105,7 @@ const statusFailure = (status: number) =>
               : "remote-failure",
   });
 const isGitHubApiResponseError = Schema.is(GitHubApiResponseError);
-function requestFailure(error: IssueTrackerProviderError): ObservationFailure {
+function requestFailure(error: IssueTrackerError): ObservationFailure {
   if (isGitHubApiResponseError(error.cause)) return statusFailure(error.cause.status);
   return error.reason === "not-found"
     ? statusFailure(404)
@@ -128,7 +127,7 @@ type Completeness = Pick<
 };
 type EdgeEvidence = Omit<FactoryReadinessEdge, "fingerprint" | "override">;
 function encodeEdgeResolution(
-  subject: { readonly canonicalKey: string; readonly issueNumber: number },
+  subject: { readonly canonicalKey: string; readonly issueNumber: number | string },
   edge: EdgeEvidence,
 ) {
   // The versioned preimage preserves nulls and excludes observation timestamps so refreshes
@@ -267,11 +266,11 @@ function storedEvidence(edge: Store.StoredEdge): EdgeEvidence {
   };
 }
 function includesSubjectCycle(
-  subject: number,
+  subject: number | string,
   repository: FactoryRepository,
   edges: readonly Store.StoredEdge[],
 ) {
-  const adjacency = new Map<number, number[]>();
+  const adjacency = new Map<number | string, (number | string)[]>();
   for (const edge of edges) {
     if (
       edge.status !== "present" ||
@@ -284,7 +283,7 @@ function includesSubjectCycle(
     adjacency.set(edge.issueNumber, targets);
   }
   const pending = [...(adjacency.get(subject) ?? [])];
-  const visited = new Set<number>();
+  const visited = new Set<number | string>();
   while (pending.length > 0) {
     const target = pending.pop();
     if (target === undefined) break;
@@ -299,8 +298,8 @@ function includesSubjectCycle(
 // Capabilities are a ceiling: a host that cannot list blockers is never asked, and its verdict
 // stays unknown instead of reading as unblocked. The transport is GitHub's REST API, so no other
 // host is observed even if it declares the capability.
-const observesBlockers = (repository: FactoryRepository, tracker: IssueTrackerProviderApi) =>
-  repository.provider === "github" && tracker.capabilities.blockedBy !== "none";
+const observesBlockers = (repository: FactoryRepository, capabilities: FactoryIssueCapabilities) =>
+  repository.provider === "github" && capabilities.blockedBy !== "none";
 
 // A Link may point anywhere. Only follow pages of the same endpoint on this API host.
 function nextPage(link: string | undefined, api: string, endpoint: string): string | null {
@@ -349,15 +348,15 @@ export class FactoryIssueRelations extends Context.Service<
 >()("t3/factory/FactoryIssueRelations") {}
 
 const make = Effect.gen(function* () {
-  const github = (yield* IssueTrackers.IssueTrackerProviderRegistry).get(
-    SourceControlProviderKind.make("github"),
-  );
+  const hosts = yield* FactoryIssueHosts.FactoryIssueHosts;
+  const issueService = yield* IssueService.IssueService;
   const store = yield* Store.FactoryIssueRelationStore;
   const resolve = yield* makeRepositoryResolver;
+  const resolveIssue = yield* makeIssueRepositoryResolver;
   const random = yield* SecureRandom.SecureRandom;
   const digester = yield* Digest.Digest;
   const fingerprintEdge = Effect.fn("FactoryIssueRelations.fingerprintEdge")(function* (
-    subject: { readonly canonicalKey: string; readonly issueNumber: number },
+    subject: { readonly canonicalKey: string; readonly issueNumber: number | string },
     edge: EdgeEvidence,
   ): Effect.fn.Return<FactoryReadinessEdge> {
     const fingerprint = yield* digester
@@ -372,10 +371,8 @@ const make = Effect.gen(function* () {
     host: string,
     path: string,
   ) {
-    if (!github?.readRelationResource)
-      return yield* new ObservationFailure({ reason: "remote-failure" });
-    const response = yield* github
-      .readRelationResource({ host, path })
+    const response = yield* hosts
+      .readRelation({ host, path })
       .pipe(Effect.mapError(requestFailure));
     if (isRateLimited(response)) return yield* new ObservationFailure({ reason: "rate-limited" });
     if (response.status !== 200) return yield* statusFailure(response.status);
@@ -392,19 +389,20 @@ const make = Effect.gen(function* () {
   const invalidResponse = () => new ObservationFailure({ reason: "invalid-response" });
   const readRepositoryIssue = Effect.fn("FactoryIssueRelations.readRepositoryIssue")(function* (
     repository: FactoryRepository,
-    tracker: IssueTrackerProviderApi,
-    input: Pick<FactoryIssueReadinessReadInput, "issueNumber">,
+    capabilities: FactoryIssueCapabilities,
+    input: { readonly issueNumber: number | string },
   ) {
-    const subject = { canonicalKey: repository.canonicalKey, issueNumber: input.issueNumber };
+    const subject = { canonicalKey: issueScopeKey(repository), issueNumber: input.issueNumber };
     const observedAt = DateTime.formatIso(yield* DateTime.now);
     const result = (readiness: FactoryReadiness): FactoryIssueReadinessReadResult => ({
       repository,
-      issueNumber: input.issueNumber,
+      issueNumber: typeof input.issueNumber === "number" ? input.issueNumber : null,
+      ...(typeof input.issueNumber === "string" ? { key: input.issueNumber } : {}),
       readiness,
     });
     let edges: FactoryReadinessEdge[] = [];
     const overrides = yield* store.listOverrides(subject);
-    if (!observesBlockers(repository, tracker))
+    if (!observesBlockers(repository, capabilities))
       return result(
         deriveReadiness(
           "unknown",
@@ -614,23 +612,29 @@ const make = Effect.gen(function* () {
   const read = Effect.fn("FactoryIssueRelations.read")(function* (
     input: FactoryIssueReadinessReadInput,
   ) {
-    const { repository, tracker } = yield* resolve(input.projectId);
-    return yield* readRepositoryIssue(repository, tracker, input);
+    const key = issueKeyOf(input);
+    const { repository, capabilities } = yield* resolveIssue(input.projectId, key);
+    return yield* readRepositoryIssue(repository, capabilities, {
+      issueNumber: issueNumberOf(key) ?? key,
+    });
   });
   const readAdmitted = Effect.fn("FactoryIssueRelations.readAdmitted")(function* (
     input: FactoryIssueReadinessReadInput & { readonly canonicalKey: string },
   ) {
-    const { repository, tracker } = yield* resolve(input.projectId);
-    if (repository.canonicalKey !== input.canonicalKey)
+    const key = issueKeyOf(input);
+    const { repository, capabilities } = yield* resolveIssue(input.projectId, key);
+    if (issueScopeKey(repository) !== input.canonicalKey)
       return yield* new FactoryIssueError({ reason: "repository-changed" });
-    return yield* readRepositoryIssue(repository, tracker, input);
+    return yield* readRepositoryIssue(repository, capabilities, {
+      issueNumber: issueNumberOf(key) ?? key,
+    });
   });
   const setOverride = Effect.fn("FactoryIssueRelations.setOverride")(function* (
     input: FactoryReadinessOverrideSetInput,
   ) {
-    const { repository, tracker } = yield* resolve(input.projectId);
+    const { repository, capabilities } = yield* resolve(input.projectId);
     // Without observed evidence there is no fingerprint an override could be bound to.
-    if (!observesBlockers(repository, tracker))
+    if (!observesBlockers(repository, capabilities))
       return yield* new FactoryIssueError({ reason: "override-not-allowed" });
     const existing = yield* store.findOverrideCommand(input.commandId);
     if (Option.isSome(existing)) {
@@ -639,9 +643,9 @@ const make = Effect.gen(function* () {
         existing.value.issueNumber !== input.issueNumber
       )
         return yield* new FactoryIssueError({ reason: "invalid-response" });
-      return yield* readRepositoryIssue(repository, tracker, input);
+      return yield* readRepositoryIssue(repository, capabilities, input);
     }
-    const observed = yield* readRepositoryIssue(repository, tracker, input);
+    const observed = yield* readRepositoryIssue(repository, capabilities, input);
     const edge = observed.readiness.edges.find(
       (item) => item.targetHost === input.targetHost && item.targetId === input.targetId,
     );
@@ -671,38 +675,33 @@ const make = Effect.gen(function* () {
       createdAt: DateTime.formatIso(yield* DateTime.now),
       revokedAt: null,
     });
-    return yield* readRepositoryIssue(repository, tracker, input);
+    return yield* readRepositoryIssue(repository, capabilities, input);
   });
   const revokeOverride = Effect.fn("FactoryIssueRelations.revokeOverride")(function* (
     input: FactoryReadinessOverrideRevokeInput,
   ) {
-    const { repository, tracker } = yield* resolve(input.projectId);
+    const { repository, capabilities } = yield* resolve(input.projectId);
     yield* store.revokeOverride({
       canonicalKey: repository.canonicalKey,
       issueNumber: input.issueNumber,
       overrideId: input.overrideId,
       revokedAt: DateTime.formatIso(yield* DateTime.now),
     });
-    return yield* readRepositoryIssue(repository, tracker, input);
+    return yield* readRepositoryIssue(repository, capabilities, input);
   });
   const decodeParent = Schema.decodeUnknownEffect(Schema.fromJsonString(Parent));
   const decodeChild = Schema.decodeUnknownOption(Child);
   const readFrontier = Effect.fn("FactoryIssueRelations.readFrontier")(function* (
     input: FactoryIssueFrontierReadInput,
   ): Effect.fn.Return<FactoryIssueFrontierReadResult, FactoryIssueError> {
-    const { project, repository, tracker } = yield* resolve(input.projectId);
+    const { repository, capabilities, issues } = yield* resolve(input.projectId);
     const observedAt = DateTime.formatIso(yield* DateTime.now);
     // The sub-issue transport is GitHub's REST API. Elsewhere the parent is still read through the
-    // host's own tracker, and the enumeration is reported incomplete rather than empty.
-    if (repository.provider !== "github" || !tracker.capabilities.subIssues) {
-      const parent = yield* tracker
-        .getIssue({
-          cwd: project.workspaceRoot,
-          host: repository.host,
-          repository: repository.repository,
-          number: input.parentIssueNumber,
-        })
-        .pipe(Effect.mapError(issueTrackerFailure));
+    // issue layer, and the enumeration is reported incomplete rather than empty.
+    if (repository.provider !== "github" || !capabilities.subIssues) {
+      const parent = yield* issueService
+        .detail({ ...issues, key: String(input.parentIssueNumber) })
+        .pipe(Effect.mapError(issueFailure));
       return {
         repository,
         parentIssueNumber: input.parentIssueNumber,
@@ -792,7 +791,7 @@ const make = Effect.gen(function* () {
               canonicalKey: `${repository.host}/${child.repository.full_name.toLowerCase()}`,
               url: `https://${repository.host}/${child.repository.full_name}`,
             };
-            readiness = yield* readRepositoryIssue(childRepository, tracker, {
+            readiness = yield* readRepositoryIssue(childRepository, capabilities, {
               issueNumber: child.number,
             }).pipe(
               Effect.map((result) => result.readiness),

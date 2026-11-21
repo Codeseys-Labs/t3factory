@@ -2340,9 +2340,6 @@ export const make = Effect.gen(function* () {
                     ...(input.updateMethod === undefined
                       ? {}
                       : { updateMethod: input.updateMethod }),
-                    ...(input.expectedHeadSha === undefined
-                      ? {}
-                      : { expectedHeadSha: input.expectedHeadSha }),
                   })
                   .pipe(
                     Effect.ensuring(

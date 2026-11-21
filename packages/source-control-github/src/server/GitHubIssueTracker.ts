@@ -24,14 +24,15 @@ import { AddReaction, RemoveReaction } from "./pullRequestMutations.graphql.ts";
 import { gitHubReactionContent } from "./gitHubPullRequestJson.ts";
 import {
   ISSUE_STATES,
+  decodeCreatedCommentJson,
   decodeCreatedIssueJson,
   decodeIssueMetadataJson,
   toIssueCandidates,
   toIssueComments,
   toIssueDetail,
+  toIssueList,
   toIssueSearch,
 } from "./gitHubIssueJson.ts";
-
 const KIND = IssueTrackerKind.make("github");
 
 const CAPABILITIES: IssueCapabilities = {
@@ -211,18 +212,38 @@ export const make = Effect.gen(function* () {
         Effect.map(({ viewer }) => viewer.login),
       ),
 
-    listIssues: (input) =>
-      repository(input.scope, "listIssues").pipe(
-        Effect.flatMap(() =>
-          client
-            .IssueSearch({
-              q: searchQuery(input),
-              cursor: input.cursor,
-              rows: Math.min(Math.max(Math.trunc(input.limit), 1), 100),
-            })
-            .pipe(graphql(input.host, "listIssues"), Effect.map(toIssueSearch)),
-        ),
-      ),
+    listIssues: Effect.fn("GitHubIssueTracker.listIssues")(function* (input) {
+      const { owner, name } = yield* repository(input.scope, "listIssues");
+      const rows = Math.min(Math.max(Math.trunc(input.limit), 1), 100);
+      const narrowed =
+        input.involvement !== "all" ||
+        searchTerms(input.query ?? "").length > 0 ||
+        (input.labels?.length ?? 0) > 0 ||
+        input.assignee !== undefined;
+      if (narrowed) {
+        return yield* client
+          .IssueSearch({ q: searchQuery(input), cursor: input.cursor, rows })
+          .pipe(graphql(input.host, "listIssues"), Effect.map(toIssueSearch));
+      }
+      const result = yield* client
+        .IssueList({
+          owner,
+          name,
+          ...(input.state === "all"
+            ? {}
+            : { states: [input.state === "open" ? "OPEN" : "CLOSED"] as const }),
+          orderBy: {
+            field: input.sort === "created" ? "CREATED_AT" : "UPDATED_AT",
+            direction: "DESC",
+          },
+          cursor: input.cursor,
+          rows,
+        })
+        .pipe(graphql(input.host, "listIssues"));
+      if (result.repository === null)
+        return yield* invalid("listIssues", "GitHub could not find the repository.", "not-found");
+      return toIssueList(result.repository.issues);
+    }),
 
     getIssue: Effect.fn("GitHubIssueTracker.getIssue")(function* (input) {
       const { owner, name, number } = yield* issue(input, "getIssue");
@@ -400,10 +421,33 @@ export const make = Effect.gen(function* () {
               path: `${path}/comments`,
               body: { body: input.body },
             })
-            .pipe(Effect.asVoid, Effect.mapError(fail("comment"))),
+            .pipe(Effect.mapError(fail("comment"))),
         ),
+        Effect.flatMap((response) => {
+          const decoded = decodeCreatedCommentJson(response.body);
+          if (Result.isSuccess(decoded)) {
+            return decoded.success === null
+              ? Effect.fail(
+                  new IssueTrackerError({
+                    tracker: KIND,
+                    operation: "comment",
+                    reason: "failed",
+                    detail: "GitHub returned an unreadable comment response.",
+                  }),
+                )
+              : Effect.succeed(decoded.success);
+          }
+          return Effect.fail(
+            new IssueTrackerError({
+              tracker: KIND,
+              operation: "comment",
+              reason: "failed",
+              detail: "GitHub returned an unreadable comment response.",
+              cause: decoded.failure,
+            }),
+          );
+        }),
       ),
-
     update: Effect.fn("GitHubIssueTracker.update")(function* (input) {
       const { path } = yield* verifiedIssue(input, "update");
       const response = yield* api

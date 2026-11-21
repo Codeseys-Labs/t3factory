@@ -10,7 +10,6 @@ import { definition } from "../shared/definition.ts";
 import * as GitLabCli from "./GitLabCli.ts";
 import * as GitLabPullRequestCli from "./GitLabPullRequestCli.ts";
 import * as GitLabIssueTracker from "./GitLabIssueTracker.ts";
-import * as GitLabIssueTrackerProvider from "./GitLabIssueTrackerProvider.ts";
 import * as GitLabPullRequestProvider from "./GitLabPullRequestProvider.ts";
 import * as GitLabSourceControlProvider from "./GitLabSourceControlProvider.ts";
 
@@ -21,7 +20,6 @@ const makeInstance = Effect.all({
   discovery: Effect.succeed(GitLabSourceControlProvider.discovery),
   pullRequests: GitLabPullRequestProvider.make,
   issues: GitLabIssueTracker.make,
-  factoryIssues: GitLabIssueTrackerProvider.make,
 });
 
 export const driver = defineSourceControlDriver({

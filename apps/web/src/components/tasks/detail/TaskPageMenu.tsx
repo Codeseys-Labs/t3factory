@@ -10,6 +10,9 @@ import {
   RotateCcwIcon,
 } from "lucide-react";
 
+import { msg, T, useGT } from "gt-react";
+
+import { m } from "../../../i18n/messages";
 import { writeTextToClipboard } from "../../../hooks/useCopyToClipboard";
 import { Button } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../../ui/menu";
@@ -26,6 +29,7 @@ export function TaskPageMenu({
 }) {
   const permissions = useTaskPermissions(task.ref.environmentId);
   const actions = useTaskActions();
+  const gt = useGT();
   const runLive = task.liveRuns.length > 0;
   const lane = task.status === "done" ? "ready" : "done";
   const manualMove =
@@ -43,14 +47,14 @@ export function TaskPageMenu({
     );
     toastManager.add(
       copied
-        ? { type: "success", title: "Link copied" }
-        : { type: "error", title: "Couldn't copy the link." },
+        ? { type: "success", title: m(msg("Link copied")) }
+        : { type: "error", title: m(msg("Couldn't copy the link.")) },
     );
   };
   return (
     <Menu>
       <MenuTrigger
-        render={<Button variant="ghost-muted" size="icon-xs" aria-label="Task actions" />}
+        render={<Button variant="ghost-muted" size="icon-xs" aria-label={gt("Task actions")} />}
       >
         <EllipsisIcon aria-hidden />
       </MenuTrigger>
@@ -61,7 +65,7 @@ export function TaskPageMenu({
             onClick={() => void actions.setLane(task, lane)}
           >
             {lane === "done" ? <CheckIcon aria-hidden /> : <ArchiveRestoreIcon aria-hidden />}
-            {lane === "done" ? "Mark done" : "Move to Ready"}
+            {lane === "done" ? <T>Mark done</T> : <T>Move to Ready</T>}
           </MenuItem>
         ) : null}
         {task.status === "canceled" ? (
@@ -70,7 +74,7 @@ export function TaskPageMenu({
             onClick={() => void actions.setLane(task, "backlog")}
           >
             <ArchiveRestoreIcon aria-hidden />
-            Restore
+            <T>Restore</T>
           </MenuItem>
         ) : (
           <MenuItem
@@ -79,13 +83,13 @@ export function TaskPageMenu({
             onClick={() => void actions.cancel(task)}
           >
             <CircleXIcon aria-hidden />
-            Cancel task
+            <T>Cancel task</T>
           </MenuItem>
         )}
         {task.result?.state === "accepted" ? (
           <MenuItem disabled={!permissions.reopen} onClick={() => void actions.reopen(task)}>
             <RotateCcwIcon aria-hidden />
-            Reopen
+            <T>Reopen</T>
           </MenuItem>
         ) : null}
         {proposal ? (
@@ -94,13 +98,13 @@ export function TaskPageMenu({
             onClick={() => void actions.resolvePlan(task, proposal, "dismiss")}
           >
             <ListXIcon aria-hidden />
-            Dismiss plan
+            <T>Dismiss plan</T>
           </MenuItem>
         ) : null}
         <MenuSeparator />
         <MenuItem onClick={() => void copyLink()}>
           <LinkIcon aria-hidden />
-          Copy link
+          <T>Copy link</T>
         </MenuItem>
       </MenuPopup>
     </Menu>

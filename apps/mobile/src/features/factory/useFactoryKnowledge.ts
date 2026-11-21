@@ -15,9 +15,11 @@ import {
   type ProjectId,
   type RuntimeMode,
 } from "@t3tools/contracts";
+import { msg } from "gt-react-native";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import * as Dialog from "../../components/ui/Dialog";
+import { m } from "../../i18n/messages";
 import { uuidv4 } from "../../lib/uuid";
 import { factoryEnvironment, factoryKnowledgeSupportedAtom } from "../../state/factory";
 import { useEnvironmentQuery } from "../../state/query";
@@ -76,12 +78,12 @@ export function useFactoryKnowledgeCreate(input: {
     async (draft: FactoryKnowledgeBriefDraft): Promise<boolean> => {
       const current = lifetime.current;
       if (current === null || !current.active || current.pending) return false;
-      const problem = factoryKnowledgeDraftProblem(draft);
+      const problem = factoryKnowledgeDraftProblem(draft, m);
       if (problem !== null) {
         setState({
           key: current.key,
           pending: false,
-          failure: { kind: "error", title: "Check the brief", detail: problem },
+          failure: { kind: "error", title: m(msg("Check the brief")), detail: problem },
         });
         return false;
       }
@@ -286,7 +288,10 @@ export function useFactoryKnowledgeStart(input: {
         return;
       }
       if (settings.modelSelection === null) {
-        Dialog.alert("Choose a model", "Pick a model and provider before starting a task.");
+        Dialog.alert(
+          m(msg("Choose a model")),
+          m(msg("Pick a model and provider before starting a task.")),
+        );
         return;
       }
       if (action.kind === "resume") {

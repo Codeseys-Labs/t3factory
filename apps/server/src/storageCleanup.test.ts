@@ -1347,10 +1347,11 @@ describe("merged task worktree cleanup", () => {
               outcome: "kept",
               reason: "Has uncommitted changes (2 files)",
             });
+          // Not removable, so it skips the full status and names the merge rule instead.
           if (mode === "ordinary thread")
             expect(report.entries[0]).toMatchObject({
               outcome: "kept",
-              reason: "Has uncommitted changes (3 files)",
+              reason: "No remote is configured for merged-worktree cleanup",
             });
         }),
       ),

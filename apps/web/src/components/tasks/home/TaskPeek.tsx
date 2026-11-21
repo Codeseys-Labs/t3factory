@@ -10,6 +10,9 @@ import type {
 import * as Cause from "effect/Cause";
 import { XIcon } from "lucide-react";
 import { useEffect, useEffectEvent } from "react";
+import { T, useGT, useMessages } from "gt-react";
+
+import { m, type MessageResolver } from "../../../i18n/messages";
 
 import { useNowMinute } from "../../../hooks/useNowMinute";
 import { useFactoryTaskActivity, useFactoryTaskDetail } from "../../../state/factoryTasks";
@@ -49,6 +52,8 @@ export function TaskPeek({
   onOpen: (task: FactoryTaskSummary) => void;
 }) {
   const detail = useFactoryTaskDetail(peekRef);
+  const gt = useGT();
+  const messages = useMessages();
   const loaded = detail._tag === "Success" ? detail.value : null;
   const task = loaded?.task ?? summary;
   const close = useEffectEvent(onClose);
@@ -66,7 +71,11 @@ export function TaskPeek({
 
   return (
     <aside
-      aria-label={task ? `${task.displayId} ${task.title}` : "Task"}
+      aria-label={
+        task
+          ? gt("{displayId} {title}", { displayId: task.displayId, title: task.title })
+          : gt("Task")
+      }
       className="absolute inset-y-0 end-0 z-30 flex w-[440px] max-w-full flex-col border-border border-s bg-background shadow-xl"
     >
       <div className="flex min-w-0 items-start gap-2 border-border border-b px-4 pt-4 pb-3">
@@ -87,9 +96,9 @@ export function TaskPeek({
           disabled={task === null}
           onClick={() => (task ? onOpen(task) : undefined)}
         >
-          Open
+          <T>Open</T>
         </Button>
-        <Button variant="ghost-muted" size="icon-xs" aria-label="Close" onClick={onClose}>
+        <Button variant="ghost-muted" size="icon-xs" aria-label={gt("Close")} onClick={onClose}>
           <XIcon aria-hidden />
         </Button>
       </div>
@@ -98,30 +107,35 @@ export function TaskPeek({
           <>
             <TaskBanner task={task} {...(loaded ? { detail: loaded } : {})} />
             <PropertyList>
-              <PropertyRow label="Status">
+              <PropertyRow label={gt("Status")}>
                 <TaskStatusLabel status={task.status} />
               </PropertyRow>
-              <PropertyRow label="Assignee">
+              <PropertyRow label={gt("Assignee")}>
                 <TaskAssigneeChip assignee={task.assignee} environmentId={task.ref.environmentId} />
               </PropertyRow>
-              <PropertyRow label="Project">
+              <PropertyRow label={gt("Project")}>
                 <ProjectChip name={projectName(task)} />
               </PropertyRow>
-              <PropertyRow label="Source">
+              <PropertyRow label={gt("Source")}>
                 <SourceChip kind={task.source.kind} label={task.source.label} />
               </PropertyRow>
             </PropertyList>
-            <section aria-label="Latest" className="flex min-w-0 flex-col gap-1">
-              <SectionHeader title="Latest" />
+            <section
+              aria-label={gt("Latest", { $context: "the latest activity entries" })}
+              className="flex min-w-0 flex-col gap-1"
+            >
+              <SectionHeader title={gt("Latest", { $context: "the latest activity entries" })} />
               <LatestActivity taskRef={task.ref} />
             </section>
           </>
         ) : detail._tag === "Failure" ? (
           <p role="alert" className="text-muted-foreground text-sm">
-            {taskErrorMessage(Cause.squash(detail.cause))}
+            {taskErrorMessage(Cause.squash(detail.cause), {}, messages)}
           </p>
         ) : (
-          <p className="text-muted-foreground text-sm">Loading the task…</p>
+          <p className="text-muted-foreground text-sm">
+            <T>Loading the task…</T>
+          </p>
         )}
       </div>
     </aside>
@@ -129,15 +143,20 @@ export function TaskPeek({
 }
 
 function LatestActivity({ taskRef }: { taskRef: FactoryTaskRef }) {
+  const messages = useMessages();
   const result = useFactoryTaskActivity(taskRef, { order: "newest", limit: LATEST });
   if (result._tag === "Failure")
     return (
       <p role="alert" className="text-muted-foreground text-sm">
-        {taskErrorMessage(Cause.squash(result.cause))}
+        {taskErrorMessage(Cause.squash(result.cause), {}, messages)}
       </p>
     );
   if (result._tag !== "Success")
-    return <p className="text-muted-foreground text-sm">Loading activity…</p>;
+    return (
+      <p className="text-muted-foreground text-sm">
+        <T>Loading activity…</T>
+      </p>
+    );
   return (
     <ActivityEntries
       entries={[...result.value.entries].reverse()}
@@ -154,13 +173,14 @@ function ActivityEntries({
   environmentId: FactoryTaskRef["environmentId"];
 }) {
   const catalog = useTaskCatalog(environmentId);
+  const messages = useMessages();
   const nowMinute = useNowMinute();
   const nowMs = Date.parse(`${nowMinute}:00Z`);
   if (entries.length === 0) return null;
   return (
     <div className="flex min-w-0 flex-col gap-1">
       {entries.map((entry) => (
-        <ActivityItem key={entry.id} {...activityItem(entry, catalog, nowMs)} />
+        <ActivityItem key={entry.id} {...activityItem(entry, catalog, nowMs, messages)} />
       ))}
     </div>
   );
@@ -170,8 +190,9 @@ function activityItem(
   entry: FactoryTaskActivityEntry,
   catalog: ReturnType<typeof useTaskCatalog>,
   nowMs: number,
+  resolve: MessageResolver = m,
 ): ActivityItemProps {
-  const text = presentFactoryTaskActivity(entry, catalog);
+  const text = presentFactoryTaskActivity(entry, catalog, resolve);
   const author = presentFactoryTaskActor(entry.actor, catalog);
   const time = formatRelativeTime(entry.at, nowMs)?.value ?? "";
   if (entry.event.type === "comment")

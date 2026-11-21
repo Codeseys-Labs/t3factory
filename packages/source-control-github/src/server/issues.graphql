@@ -16,6 +16,27 @@ fragment IssueRow on Issue {
   }
 }
 
+fragment IssueListItem on Issue {
+  ...IssueRow
+  assignees(first: 20) {
+    nodes {
+      login
+      name
+      avatarUrl
+    }
+  }
+  labels(first: 20) {
+    nodes {
+      name
+      color
+    }
+  }
+  comments {
+    totalCount
+  }
+}
+
+# Search reaches only the first 1,000 results of a query, so it serves only narrowed listings.
 query IssueSearch($q: String!, $cursor: String, $rows: Int!) {
   search(query: $q, type: ISSUE, first: $rows, after: $cursor) {
     pageInfo {
@@ -23,24 +44,28 @@ query IssueSearch($q: String!, $cursor: String, $rows: Int!) {
       endCursor
     }
     nodes {
-      ... on Issue {
-        ...IssueRow
-        assignees(first: 20) {
-          nodes {
-            login
-            name
-            avatarUrl
-          }
-        }
-        labels(first: 20) {
-          nodes {
-            name
-            color
-          }
-        }
-        comments {
-          totalCount
-        }
+      ...IssueListItem
+    }
+  }
+}
+
+# A repository's issues without search, so an unnarrowed listing pages through all of them.
+query IssueList(
+  $owner: String!
+  $name: String!
+  $states: [IssueState!]
+  $orderBy: IssueOrder!
+  $cursor: String
+  $rows: Int!
+) {
+  repository(owner: $owner, name: $name) {
+    issues(first: $rows, after: $cursor, states: $states, orderBy: $orderBy) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        ...IssueListItem
       }
     }
   }

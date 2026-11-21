@@ -34,6 +34,7 @@ export function resolveServerBackedAppStageLabel(input: {
   readonly primaryServerVersion: string | null | undefined;
   readonly fallbackStageLabel: string;
 }): string {
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- release channel name, part of the product name
   if (input.fallbackStageLabel === "Preview") return "Preview";
   return input.primaryServerVersion &&
     NIGHTLY_SERVER_VERSION_PATTERN.test(input.primaryServerVersion)

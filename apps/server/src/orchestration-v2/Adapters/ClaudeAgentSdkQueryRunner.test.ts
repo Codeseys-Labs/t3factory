@@ -779,6 +779,49 @@ const openFakeCli = (cli: string) =>
     });
   });
 
+// A script CLI runs through node on every host, unlike the sh fakes below.
+function fakeClaudeScriptCli(source: string): string {
+  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-claude-cli-"));
+  const cli = NodePath.join(dir, "claude.mjs");
+  NodeFS.writeFileSync(cli, `${source}\n`);
+  return cli;
+}
+
+const rootRefusal =
+  "--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons";
+
+// An owned CLI's stderr goes through the owner's relay; the curated startup
+// failures still need it, and private text still stays out of them.
+it.live.each([
+  { stderr: rootRefusal, expected: rootRefusal },
+  {
+    stderr: "No conversation found with session ID: sk-private-123",
+    expected: "could not find this conversation",
+  },
+] as const)("classifies an owned CLI's startup stderr: $expected", ({ stderr, expected }) =>
+  Effect.gen(function* () {
+    // Windows pipes write asynchronously; exit only once the text is out.
+    const cli = fakeClaudeScriptCli(
+      `process.stderr.write(${JSON.stringify(`token=sk-private-123\n${stderr}\n`)}, () => process.exit(1));`,
+    );
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => NodeFS.rmSync(NodePath.dirname(cli), { recursive: true, force: true })),
+    );
+    const session = yield* openFakeCli(cli);
+    const exit = yield* Stream.runDrain(session.messages).pipe(Effect.exit);
+    assert.isTrue(Exit.isFailure(exit));
+    const message = Exit.isFailure(exit)
+      ? makeProviderFailure({ cause: exit.cause, class: "transport_error" }).message
+      : "";
+    assert.include(message, expected);
+    assert.notInclude(message, "sk-private-123");
+  }).pipe(
+    Effect.provideService(OwnedProcess, { spawn: (command, native) => native.spawn(command) }),
+    Effect.scoped,
+    Effect.provide(realQueryRunner),
+  ),
+);
+
 describe.skipIf(HostProcess.Platform.defaultValue() === "win32")("Claude CLI process", () => {
   // The leftover child holds a FIFO open; its death produces EOF without polling.
   it.effect("stops what the CLI left running when the session closes", () =>
@@ -1008,9 +1051,6 @@ describe.skipIf(HostProcess.Platform.defaultValue() === "win32")("Claude CLI pro
       });
     },
   );
-
-  const rootRefusal =
-    "--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons";
 
   const startupFailureMessage = (stderr: string) =>
     Effect.gen(function* () {

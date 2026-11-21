@@ -45,6 +45,7 @@ import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 
+import { FactoryIssueActions } from "../factory/FactoryIssueActions";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
@@ -796,6 +797,12 @@ export function IssueDetailPanel({
             </div>
           </PullRequestSection>
         ) : null}
+
+        <FactoryIssueActions
+          key={`factory:${detail.url}`}
+          environmentId={environmentId}
+          reference={reference}
+        />
 
         <PullRequestSection
           key={`activity:${detail.url}`}

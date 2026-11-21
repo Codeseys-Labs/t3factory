@@ -5,6 +5,7 @@ import type {
   FactoryKnowledgeTask,
   ProjectId,
 } from "@t3tools/contracts";
+import { T, useGT, useMessages } from "gt-react-native";
 import { useState, type ReactNode } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
@@ -12,6 +13,7 @@ import { StatusPill, type StatusTone } from "../../components/StatusPill";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
+import { m, type MessageResolver } from "../../i18n/messages";
 import { FactoryArtifactDeliverySection } from "./FactoryArtifactDeliverySection";
 import {
   factoryTaskStatusLabel,
@@ -33,12 +35,20 @@ const TASK_TONES = {
   danger: { pillClassName: "bg-danger", textClassName: "text-danger-foreground" },
 } as const;
 
-function taskTone(status: FactoryKnowledgeTask["status"]): StatusTone {
-  return { label: factoryTaskStatusLabel(status), ...TASK_TONES[factoryTaskStatusTone(status)] };
+function taskTone(
+  status: FactoryKnowledgeTask["status"],
+  resolve: MessageResolver = m,
+): StatusTone {
+  return {
+    label: factoryTaskStatusLabel(status, resolve),
+    ...TASK_TONES[factoryTaskStatusTone(status)],
+  };
 }
 
 function ArtifactDetails(props: { readonly artifact: FactoryKnowledgeArtifact }) {
   const { artifact } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const preview = factoryKnowledgePreview(artifact.preview);
   return (
     <View className="gap-2">
@@ -46,12 +56,15 @@ function ArtifactDetails(props: { readonly artifact: FactoryKnowledgeArtifact })
         {artifact.path}
       </Text>
       <Text selectable className="text-xs text-foreground-muted">
-        sha256 {shortFactoryDigest(artifact.sha256)} · {formatFactoryBytes(artifact.bytes)} · read{" "}
-        {new Date(artifact.observedAt).toLocaleString()}
+        {gt("sha256 {digest} · {bytes} · read {time}", {
+          digest: shortFactoryDigest(artifact.sha256),
+          bytes: formatFactoryBytes(artifact.bytes, messages),
+          time: new Date(artifact.observedAt).toLocaleString(),
+        })}
       </Text>
       {preview === null ? (
         <Text className="text-xs text-foreground-muted">
-          No text preview. The file is not UTF-8 text.
+          <T>No text preview. The file is not UTF-8 text.</T>
         </Text>
       ) : (
         <>
@@ -62,12 +75,12 @@ function ArtifactDetails(props: { readonly artifact: FactoryKnowledgeArtifact })
             contentContainerClassName="p-3"
           >
             <Text selectable className="font-mono text-xs text-foreground">
-              {preview.text.length === 0 ? "The file is empty." : preview.text}
+              {preview.text.length === 0 ? gt("The file is empty.") : preview.text}
             </Text>
           </ScrollView>
           {preview.truncated ? (
             <Text className="text-xs text-foreground-muted">
-              Preview shortened. Open the thread to read the whole file.
+              <T>Preview shortened. Open the thread to read the whole file.</T>
             </Text>
           ) : null}
         </>
@@ -86,18 +99,20 @@ function FactoryKnowledgeTaskSection(props: {
   readonly projectId: ProjectId;
   readonly briefId: string;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const task = useFactoryKnowledgeTask(props);
   if (!task.supported) return null;
   const { view, failure } = task;
   const permissionReason = task.canAccept
     ? null
-    : "This connection isn't permitted to accept artifacts in this environment.";
+    : gt("This connection isn't permitted to accept artifacts in this environment.");
 
   let content: ReactNode;
   if (view === null) {
     content = (
       <Text className="text-sm text-foreground-muted">
-        {task.readError ?? "Reading the artifact…"}
+        {task.readError ?? gt("Reading the artifact…")}
       </Text>
     );
   } else if (view.kind === "none") {
@@ -106,13 +121,17 @@ function FactoryKnowledgeTaskSection(props: {
         <Text className="text-sm text-foreground-muted">{view.unavailable}</Text>
       ) : (
         <>
-          <Text className="text-sm text-foreground">No artifact accepted</Text>
+          <Text className="text-sm text-foreground">
+            <T>No artifact accepted</T>
+          </Text>
           <ArtifactDetails artifact={view.artifact} />
           <Button
             fullWidth
             tone="primary"
-            label="Accept this artifact"
-            accessibilityLabel={`Accept artifact ${shortFactoryDigest(view.artifact.sha256)}`}
+            label={gt("Accept this artifact")}
+            accessibilityLabel={gt("Accept artifact {digest}", {
+              digest: shortFactoryDigest(view.artifact.sha256),
+            })}
             accessibilityHint={permissionReason ?? undefined}
             loading={task.pending}
             disabled={permissionReason !== null}
@@ -129,8 +148,10 @@ function FactoryKnowledgeTaskSection(props: {
       <>
         <View className="gap-1">
           <Text selectable className="text-sm text-foreground">
-            Accepted sha256 {shortFactoryDigest(accepted.sha256)} ·{" "}
-            {formatFactoryBytes(accepted.bytes)}
+            {gt("Accepted sha256 {digest} · {bytes}", {
+              digest: shortFactoryDigest(accepted.sha256),
+              bytes: formatFactoryBytes(accepted.bytes, messages),
+            })}
           </Text>
           <Text className="text-xs text-foreground-muted">
             {new Date(accepted.acceptedAt).toLocaleString()}
@@ -138,7 +159,9 @@ function FactoryKnowledgeTaskSection(props: {
         </View>
         {view.kind === "unverifiable" ? (
           <Text className="text-xs text-foreground-muted">
-            {view.unavailable} Whether it changed since acceptance is unknown.
+            {gt("{reason} Whether it changed since acceptance is unknown.", {
+              reason: view.unavailable,
+            })}
           </Text>
         ) : null}
         {view.kind === "current" ? <ArtifactDetails artifact={view.artifact} /> : null}
@@ -146,15 +169,17 @@ function FactoryKnowledgeTaskSection(props: {
           <>
             <View accessibilityRole="alert" className="gap-1">
               <Text className="text-sm font-t3-semibold text-danger-foreground">
-                Artifact changed since acceptance
+                <T>Artifact changed since acceptance</T>
               </Text>
             </View>
             <ArtifactDetails artifact={view.artifact} />
             <Button
               fullWidth
               tone="primary"
-              label="Re-accept"
-              accessibilityLabel={`Re-accept artifact ${shortFactoryDigest(view.artifact.sha256)}`}
+              label={gt("Re-accept")}
+              accessibilityLabel={gt("Re-accept artifact {digest}", {
+                digest: shortFactoryDigest(view.artifact.sha256),
+              })}
               accessibilityHint={permissionReason ?? undefined}
               loading={task.pending}
               disabled={permissionReason !== null}
@@ -173,7 +198,7 @@ function FactoryKnowledgeTaskSection(props: {
     <>
       <View className="gap-2">
         <Text accessibilityRole="header" className="text-sm font-t3-semibold text-foreground">
-          Artifact
+          <T>Artifact</T>
         </Text>
         {content}
         {failure ? (
@@ -186,8 +211,8 @@ function FactoryKnowledgeTaskSection(props: {
         ) : null}
         <Button
           tone="text"
-          label="Refresh"
-          accessibilityLabel="Refresh artifact"
+          label={gt("Refresh")}
+          accessibilityLabel={gt("Refresh artifact")}
           disabled={task.pending || task.loading}
           onPress={task.refresh}
         />
@@ -218,21 +243,37 @@ export function FactoryBriefRow(props: {
   readonly onPerform: (brief: FactoryKnowledgeBrief, action: FactoryKnowledgeAction) => void;
 }) {
   const { brief, task } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const [expanded, setExpanded] = useState(false);
-  const action = factoryKnowledgeAction(brief, task);
-  const title = safeFactoryIssueText(brief.title, 240) || "Untitled brief";
+  const action = factoryKnowledgeAction(brief, task, messages);
+  const title = safeFactoryIssueText(brief.title, 240) || gt("Untitled brief");
   const needsStart =
     action.kind === "start" || action.kind === "resume" || action.kind === "restart";
   const disabled = props.busy || (needsStart && (!props.canStart || props.locked));
   const superseded = brief.supersededBy !== null;
+  const revision = shortFactoryDigest(brief.revision);
+  const accessibilityLabel = task
+    ? superseded
+      ? gt("Brief {title}, revision {revision}, superseded, {status}", {
+          title,
+          revision,
+          status: factoryTaskStatusLabel(task.status, messages),
+        })
+      : gt("Brief {title}, revision {revision}, {status}", {
+          title,
+          revision,
+          status: factoryTaskStatusLabel(task.status, messages),
+        })
+    : superseded
+      ? gt("Brief {title}, revision {revision}, superseded, not started", { title, revision })
+      : gt("Brief {title}, revision {revision}, not started", { title, revision });
 
   return (
     <View className={props.borderTop ? "border-t border-border-subtle" : undefined}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Brief ${title}, revision ${shortFactoryDigest(brief.revision)}${
-          superseded ? ", superseded" : ""
-        }${task ? `, ${factoryTaskStatusLabel(task.status)}` : ", not started"}`}
+        accessibilityLabel={accessibilityLabel}
         accessibilityState={{ expanded }}
         onPress={() => setExpanded((value) => !value)}
         className="gap-2 px-4 py-3 active:opacity-70"
@@ -253,36 +294,43 @@ export function FactoryBriefRow(props: {
         </View>
         <View className="flex-row flex-wrap items-center gap-2">
           <Text className="text-sm text-foreground-muted">
-            rev {shortFactoryDigest(brief.revision)}
+            {gt("rev {revision}", { revision })}
           </Text>
           {superseded ? (
             <StatusPill
               size="compact"
-              label="Superseded"
+              label={gt("Superseded")}
               pillClassName="bg-subtle"
               textClassName="text-foreground-secondary"
             />
           ) : null}
           {task ? (
-            <StatusPill size="compact" {...taskTone(task.status)} />
+            <StatusPill size="compact" {...taskTone(task.status, messages)} />
           ) : (
-            <Text className="text-sm text-foreground-muted">Not started</Text>
+            <Text className="text-sm text-foreground-muted">
+              <T>Not started</T>
+            </Text>
           )}
         </View>
       </Pressable>
       {expanded ? (
         <View className="gap-3 px-4 pb-4">
           <Text selectable className="text-sm leading-normal text-foreground-secondary">
-            {safeFactoryIssueText(brief.question) || "No question."}
+            {safeFactoryIssueText(brief.question) || gt("No question.")}
           </Text>
           <Text selectable className="text-xs text-foreground-muted">
-            Deliverable {brief.deliverablePath} · {brief.inputs.length}{" "}
-            {brief.inputs.length === 1 ? "input" : "inputs"} · created{" "}
-            {new Date(brief.createdAt).toLocaleString()}
+            {gt(
+              "Deliverable {path} · {count, plural, one {{count} input} other {{count} inputs}} · created {time}",
+              {
+                path: brief.deliverablePath,
+                count: brief.inputs.length,
+                time: new Date(brief.createdAt).toLocaleString(),
+              },
+            )}
           </Text>
           {task ? (
             <Text className="text-xs text-foreground-muted">
-              Task started {new Date(task.createdAt).toLocaleString()}
+              {gt("Task started {time}", { time: new Date(task.createdAt).toLocaleString() })}
             </Text>
           ) : null}
           {action.kind === "unavailable" ? (
@@ -291,7 +339,10 @@ export function FactoryBriefRow(props: {
             <Button
               label={action.label}
               tone={action.kind === "open" ? "secondary" : "primary"}
-              accessibilityLabel={`${action.label} for brief ${title}`}
+              accessibilityLabel={gt("{action} for brief {title}", {
+                action: action.label,
+                title,
+              })}
               loading={props.busy}
               disabled={disabled}
               onPress={() => props.onPerform(brief, action)}

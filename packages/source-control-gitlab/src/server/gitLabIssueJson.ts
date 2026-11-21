@@ -58,6 +58,7 @@ const RawIssueSchema = Schema.Struct({
   assignees: Schema.optional(Schema.NullOr(Schema.Array(RawUserSchema))),
   labels: Schema.optional(Schema.NullOr(Schema.Array(RawLabelRefSchema))),
   user_notes_count: Schema.optional(Schema.NullOr(Schema.Int)),
+  issue_type: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
 const RawNoteSchema = Schema.Struct({
@@ -132,6 +133,16 @@ function toActor(raw: typeof RawUserSchema.Type | null | undefined): IssueActor 
     : { login, name: trimmed(raw?.name), avatarUrl: trimmed(raw?.avatar_url) };
 }
 
+function toIssueComment(value: typeof RawNoteSchema.Type): IssueComment {
+  return {
+    id: String(value.id),
+    author: toActor(value.author),
+    body: value.body ?? "",
+    createdAt: value.created_at,
+    url: null,
+  };
+}
+
 function toLabels(
   raw: ReadonlyArray<typeof RawLabelRefSchema.Type> | null | undefined,
 ): ReadonlyArray<IssueLabel> {
@@ -154,6 +165,7 @@ const CLOSED: IssueState = { category: "closed", name: "Closed" };
 export const ISSUE_STATES: ReadonlyArray<IssueState> = [OPEN, CLOSED];
 
 function toSummary(raw: typeof RawIssueSchema.Type): TrackerIssueSummary {
+  const kind = trimmed(raw.issue_type)?.toLowerCase();
   return {
     key: String(raw.iid),
     displayKey: `#${raw.iid}`,
@@ -168,6 +180,7 @@ function toSummary(raw: typeof RawIssueSchema.Type): TrackerIssueSummary {
     assignees: (raw.assignees ?? []).flatMap((user) => toActor(user) ?? []),
     labels: toLabels(raw.labels),
     commentCount: Math.max(0, raw.user_notes_count ?? 0),
+    ...(kind === undefined ? {} : { kind }),
   };
 }
 
@@ -279,16 +292,14 @@ export function decodeIssueNotesJson(raw: string): Result.Result<GitLabIssueNote
         });
         continue;
       }
-      comments.push({
-        id: String(value.id),
-        author: toActor(value.author),
-        body,
-        createdAt: value.created_at,
-        url: null,
-      });
+      comments.push(toIssueComment(value));
     }
     return { comments, events, rawCount: rows.length };
   });
+}
+
+export function decodeCreatedCommentJson(raw: string): Result.Result<IssueComment, DecodeFailure> {
+  return Result.map(decodeJsonResult(RawNoteSchema)(raw), toIssueComment);
 }
 
 export function decodeLabelEventsJson(

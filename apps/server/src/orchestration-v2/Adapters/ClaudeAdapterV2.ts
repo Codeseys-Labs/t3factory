@@ -1632,7 +1632,12 @@ export const layerQueryRunner: Layer.Layer<
       const spawnProcess =
         (ownedSpawn === undefined
           ? undefined
-          : (spawnOptions: ClaudeSpawnOptions) => ownedSpawn(spawnOptions, options.stderr)) ??
+          : // The owner emits exit only after draining stderr, so stderrClosed stays resolved.
+            (spawnOptions: ClaudeSpawnOptions) =>
+              ownedSpawn(spawnOptions, (chunk: string) => {
+                appendStderr(chunk);
+                options.stderr?.(chunk);
+              })) ??
         options.spawnClaudeCodeProcess ??
         ((spawnOptions: ClaudeSpawnOptions) => {
           if (platform !== "win32") {

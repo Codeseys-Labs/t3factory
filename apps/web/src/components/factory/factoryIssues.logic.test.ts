@@ -22,11 +22,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   FACTORY_OVERRIDE_ACTIONS,
-  boundedIssueBody,
   buildFactoryReadinessOverrideInput,
   currentFactoryPage,
   describeFactoryFailure,
   factoryBlockersUnsupportedMessage,
+  factoryIssueNumberFromKey,
   factoryFrontierPresentation as presentFrontier,
   factoryReadinessPresentation as presentReadiness,
   factoryScopeKey,
@@ -35,8 +35,11 @@ import {
   popFactoryPage,
   pushFactoryPage,
   resolveFactoryIssueAction,
+  factoryIssueDisplayKey,
+  factoryIssueTargetOf,
+  resolveFactoryIssueOpenRoute,
+  resolveFactoryIssueSection,
   safeExternalUrl,
-  FACTORY_ISSUE_BODY_PREVIEW_LIMIT,
 } from "./factoryIssues.logic";
 
 // Fixtures read as GitHub unless a test names another host.
@@ -157,7 +160,7 @@ describe("describeFactoryFailure", () => {
   });
 });
 
-describe("inbox scope helpers", () => {
+describe("queue scope helpers", () => {
   it("returns to the page that led to the current one", () => {
     const second = pushFactoryPage([1], 2);
     const third = pushFactoryPage(second, 5);
@@ -175,6 +178,72 @@ describe("inbox scope helpers", () => {
   });
 });
 
+describe("Factory issue section gating", () => {
+  it("addresses an issue only by a decimal number", () => {
+    expect(factoryIssueNumberFromKey("42")).toBe(42);
+    for (const key of ["", "0", "007", "-3", "1.5", "1e3", " 7", "ENG-12", "9007199254740993"]) {
+      expect(factoryIssueNumberFromKey(key)).toBeNull();
+    }
+  });
+
+  it("addresses a decimal key by number on a server without native keys", () => {
+    const options = { factoryIssues: true, factoryIssueKeys: false };
+    expect(resolveFactoryIssueSection({ ...options, key: "123" })).toEqual({ issueNumber: 123 });
+    expect(resolveFactoryIssueSection({ ...options, key: "ENG-123" })).toBeNull();
+    expect(resolveFactoryIssueSection({ ...options, factoryIssues: false, key: "123" })).toBeNull();
+  });
+
+  it("addresses any key by key on a server that advertises native keys", () => {
+    const options = { factoryIssues: true, factoryIssueKeys: true };
+    expect(resolveFactoryIssueSection({ ...options, key: "ENG-123" })).toEqual({ key: "ENG-123" });
+    expect(resolveFactoryIssueSection({ ...options, key: "123" })).toEqual({ key: "123" });
+    expect(resolveFactoryIssueSection({ ...options, key: "" })).toBeNull();
+    expect(
+      resolveFactoryIssueSection({ ...options, factoryIssues: false, key: "ENG-1" }),
+    ).toBeNull();
+  });
+
+  it("addresses a read issue in the form the server accepts", () => {
+    const linear = { number: null, key: "ENG-9" };
+    const git = { number: 12 };
+    expect(factoryIssueTargetOf(linear, true)).toEqual({ key: "ENG-9" });
+    expect(factoryIssueTargetOf(linear, false)).toBeNull();
+    expect(factoryIssueTargetOf(git, true)).toEqual({ key: "12" });
+    expect(factoryIssueTargetOf(git, false)).toEqual({ issueNumber: 12 });
+  });
+
+  it("labels an issue by its display key, falling back to the number", () => {
+    expect(factoryIssueDisplayKey({ number: null, key: "ENG-9", displayKey: "ENG-9" })).toBe(
+      "ENG-9",
+    );
+    expect(factoryIssueDisplayKey({ number: 12 })).toBe("#12");
+    expect(factoryIssueDisplayKey({ number: null, key: "ENG-9" })).toBe("ENG-9");
+  });
+
+  it("keeps a queue row in the app when the Issues panel does not exist", () => {
+    expect(
+      resolveFactoryIssueOpenRoute({ panelAvailable: true, panelResolves: true, startable: true }),
+    ).toBe("panel");
+    expect(
+      resolveFactoryIssueOpenRoute({
+        panelAvailable: false,
+        panelResolves: false,
+        startable: true,
+      }),
+    ).toBe("inline-start");
+    expect(
+      resolveFactoryIssueOpenRoute({
+        panelAvailable: false,
+        panelResolves: false,
+        startable: false,
+      }),
+    ).toBe("external");
+    expect(
+      resolveFactoryIssueOpenRoute({ panelAvailable: true, panelResolves: false, startable: true }),
+    ).toBe("external");
+  });
+});
+
 describe("untrusted issue content", () => {
   it("links only http(s) urls", () => {
     expect(safeExternalUrl("https://github.com/o/r/issues/1")).toBe(
@@ -182,14 +251,6 @@ describe("untrusted issue content", () => {
     );
     expect(safeExternalUrl("javascript:alert(1)")).toBeNull();
     expect(safeExternalUrl("not a url")).toBeNull();
-  });
-
-  it("bounds the rendered body", () => {
-    const body = "x".repeat(FACTORY_ISSUE_BODY_PREVIEW_LIMIT + 10);
-    const bounded = boundedIssueBody(body);
-    expect(bounded.truncated).toBe(true);
-    expect(bounded.text).toHaveLength(FACTORY_ISSUE_BODY_PREVIEW_LIMIT);
-    expect(boundedIssueBody(null)).toEqual({ text: "", truncated: false });
   });
 
   it("treats a blank base ref as the server's current HEAD", () => {

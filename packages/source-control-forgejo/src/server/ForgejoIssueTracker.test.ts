@@ -235,6 +235,28 @@ describe("ForgejoIssueTracker", () => {
     }),
   );
 
+  it.effect("returns the id Forgejo assigned a new comment", () =>
+    Effect.gen(function* () {
+      const api = yield* tracker(() => ({
+        stdout: encode({
+          id: 12,
+          body: "Posted",
+          user: { login: "julius" },
+          created_at: "2026-07-04T00:00:00Z",
+          html_url: "https://forgejo.test:3000/acme/web/issues/42#issuecomment-12",
+        }),
+      }));
+      const comment = yield* api.comment!({
+        cwd: "/w",
+        host: "forgejo.test:3000",
+        scope: "acme/web",
+        key: "42",
+        body: "Posted",
+      });
+      expect(comment.id).toBe("12");
+    }),
+  );
+
   it.effect("cuts the unpaged comments into pages and resolves labels past the first page", () =>
     Effect.gen(function* () {
       const calls: Array<readonly [string, string, unknown]> = [];

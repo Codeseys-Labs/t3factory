@@ -21,6 +21,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { ArrowLeftIcon, ChevronDownIcon, FactoryIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -68,6 +69,7 @@ import { singleFactoryMember } from "./factoryScope";
 
 export function FactoryResearchPage() {
   const { scope, groups, selectScope } = useSettingsScope();
+  const gt = useGT();
   const search = useSearch({ from: "/_chat/factory" });
   const navigate = useNavigate();
   const { isReady, environments } = useEnvironments();
@@ -95,12 +97,14 @@ export function FactoryResearchPage() {
     <section className="min-w-0 space-y-5" aria-labelledby="factory-research-title">
       <div className="space-y-1">
         <h2 id="factory-research-title" className="font-medium text-lg">
-          Research
+          <T>Research</T>
         </h2>
         <p className="text-muted-foreground text-sm">
-          Seal a protocol, then run explore and verification threads against it. Runs record their
-          own evidence and the server reads what they cite. The finding is derived evidence: nothing
-          becomes implementation work until you admit it.
+          <T>
+            Seal a protocol, then run explore and verification threads against it. Runs record their
+            own evidence and the server reads what they cite. The finding is derived evidence:
+            nothing becomes implementation work until you admit it.
+          </T>
         </p>
       </div>
       {member === null ? (
@@ -108,50 +112,62 @@ export function FactoryResearchPage() {
           scope={scope}
           groups={groups}
           environments={environments}
-          intro="Choose a checkout to manage its research protocols. Protocols belong to one checkout; they are not combined into a global queue."
-          emptyDescription="Connect an environment and add a repository checkout to seal research protocols."
+          intro={gt(
+            "Choose a checkout to manage its research protocols. Protocols belong to one checkout; they are not combined into a global queue.",
+          )}
+          emptyDescription={gt(
+            "Connect an environment and add a repository checkout to seal research protocols.",
+          )}
           statusFor={(owner) =>
             !owner
-              ? "Environment unavailable"
+              ? gt("Environment unavailable")
               : owner.connection.phase !== "connected"
-                ? "Offline. Reconnect to read research protocols"
+                ? gt("Offline. Reconnect to read research protocols")
                 : owner.serverConfig === null
-                  ? "Server capabilities unknown"
+                  ? gt("Server capabilities unknown")
                   : owner.serverConfig.environment.capabilities.factoryResearch !== true
-                    ? "Research runs unsupported. Update this server"
-                    : "Connected · research runs available"
+                    ? gt("Research runs unsupported. Update this server")
+                    : gt("Connected · research runs available")
           }
           onChoose={selectScope}
         />
       ) : !environment || !project ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Checkout unavailable"
-          description="This checkout is no longer available. Choose another scope."
+          title={gt("Checkout unavailable")}
+          description={gt("This checkout is no longer available. Choose another scope.")}
         />
       ) : environment.connection.phase !== "connected" ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Environment offline"
-          description={`Reconnect ${environment.label} to read this checkout's research protocols.`}
+          title={gt("Environment offline")}
+          description={gt("Reconnect {label} to read this checkout's research protocols.", {
+            label: environment.label,
+          })}
         />
       ) : environment.serverConfig === null ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Server capabilities unknown"
-          description="Wait for this environment to finish connecting before opening its research protocols."
+          title={gt("Server capabilities unknown")}
+          description={gt(
+            "Wait for this environment to finish connecting before opening its research protocols.",
+          )}
         />
       ) : environment.serverConfig.environment.capabilities.factoryResearch !== true ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Research runs unsupported"
-          description={`Update the server on ${environment.label} to seal research protocols.`}
+          title={gt("Research runs unsupported")}
+          description={gt("Update the server on {label} to seal research protocols.", {
+            label: environment.label,
+          })}
         />
       ) : !canRead ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Read access unavailable"
-          description="This connection needs orchestration read access to list research protocols."
+          title={gt("Read access unavailable")}
+          description={gt(
+            "This connection needs orchestration read access to list research protocols.",
+          )}
         />
       ) : search.reviewId !== undefined ? (
         <FactoryResearchProtocolDetail
@@ -185,7 +201,7 @@ function RefreshButton(props: { readonly pending: boolean; readonly onRefresh: (
       aria-busy={props.pending}
     >
       <RefreshIcon size="sm" refreshing={props.pending} />
-      Refresh
+      <T>Refresh</T>
     </Button>
   );
 }
@@ -204,6 +220,8 @@ function FactoryResearchWorkspace(props: {
   readonly project: EnvironmentProject;
 }) {
   const { environmentId, project } = props;
+  const gt = useGT();
+  const m = useMessages();
   const list = useEnvironmentQuery(
     factoryEnvironment.listResearchProtocols({ environmentId, input: { projectId: project.id } }),
   );
@@ -211,7 +229,7 @@ function FactoryResearchWorkspace(props: {
     factoryEnvironment.sealResearchProtocol.permissionAtom(environmentId),
   );
   const runSeal = useAtomCommand(factoryEnvironment.sealResearchProtocol, {
-    label: "factory research seal",
+    label: gt("factory research seal"),
     reportFailure: false,
   });
   const now = Date.parse(`${useNowMinute()}Z`);
@@ -294,7 +312,7 @@ function FactoryResearchWorkspace(props: {
         <div className="flex flex-wrap items-center gap-2">
           {data !== null ? (
             <span className="text-muted-foreground text-xs">
-              Updated <RelativeTime timestamp={data.fetchedAt} />
+              <T>Updated</T> <RelativeTime timestamp={data.fetchedAt} />
             </span>
           ) : null}
           <RefreshButton pending={list.isPending} onRefresh={list.refresh} />
@@ -311,15 +329,17 @@ function FactoryResearchWorkspace(props: {
               setSealRepository(data.repository);
             }}
           >
-            Seal protocol
+            <T>Seal protocol</T>
           </Button>
         </div>
       </div>
       {!canSeal ? (
         <Alert variant="warning">
           <AlertDescription>
-            This connection cannot seal protocols. Sealing needs orchestration operate access;
-            existing protocols can still be read.
+            <T>
+              This connection cannot seal protocols. Sealing needs orchestration operate access;
+              existing protocols can still be read.
+            </T>
           </AlertDescription>
         </Alert>
       ) : null}
@@ -337,7 +357,7 @@ function FactoryResearchWorkspace(props: {
               aria-busy={list.isPending}
             >
               <RefreshIcon size="sm" refreshing={list.isPending} />
-              Retry
+              <T>Retry</T>
             </Button>
           }
         />
@@ -348,13 +368,15 @@ function FactoryResearchWorkspace(props: {
         </div>
       ) : protocols.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          No protocols are sealed for this project. Seal one to fix a hypothesis, a metric and a
-          budget before any run starts.
+          <T>
+            No protocols are sealed for this project. Seal one to fix a hypothesis, a metric and a
+            budget before any run starts.
+          </T>
         </p>
       ) : (
-        <ul className="space-y-3" aria-label="Research protocols">
+        <ul className="space-y-3" aria-label={gt("Research protocols")}>
           {protocols.map((protocol) => {
-            const presentation = factoryProtocolPresentation(protocol, now);
+            const presentation = factoryProtocolPresentation(protocol, now, m);
             return (
               <li key={protocol.id} className="min-w-0 space-y-2 rounded-lg border p-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -373,12 +395,12 @@ function FactoryResearchWorkspace(props: {
                         {presentation.budget.runsLabel} · {presentation.budget.runMinutesLabel}
                       </span>
                       <span className="text-muted-foreground text-xs">
-                        sealed <RelativeTime timestamp={protocol.sealedAt} />
+                        <T>sealed</T> <RelativeTime timestamp={protocol.sealedAt} />
                       </span>
                     </div>
                   </div>
                   <Button size="sm" variant="outline" onClick={() => setSelectedId(protocol.id)}>
-                    Open protocol
+                    <T>Open protocol</T>
                   </Button>
                 </div>
               </li>
@@ -412,10 +434,10 @@ function compareSealedNewestFirst(left: FactoryResearchProtocol, right: FactoryR
 
 /** What each admit mode's button says; only `admit` and `restart` open a review dialog. */
 const ADMIT_LABELS: Record<FactoryResearchAdmitMode, string> = {
-  admit: "Admit implementation",
-  resume: "Resume implementation launch",
-  restart: "Start new attempt…",
-  open: "Open implementation thread",
+  admit: msg("Admit implementation"),
+  resume: msg("Resume implementation launch"),
+  restart: msg("Start new attempt…"),
+  open: msg("Open implementation thread"),
 };
 
 /**
@@ -447,6 +469,8 @@ function FactoryResearchProtocolDetail(props: {
   readonly onBack: () => void;
 }) {
   const { environmentId, project, protocolId } = props;
+  const gt = useGT();
+  const m = useMessages();
   const navigate = useNavigate();
   const read = useEnvironmentQuery(
     factoryEnvironment.readResearchProtocol({
@@ -461,11 +485,11 @@ function FactoryResearchProtocolDetail(props: {
     factoryEnvironment.admitResearchImplementation.permissionAtom(environmentId),
   );
   const runLaunch = useAtomCommand(factoryEnvironment.launchResearchRun, {
-    label: "factory research launch",
+    label: gt("factory research launch"),
     reportFailure: false,
   });
   const runAdmit = useAtomCommand(factoryEnvironment.admitResearchImplementation, {
-    label: "factory research admit",
+    label: gt("factory research admit"),
     reportFailure: false,
   });
   const launchSettings = useFactoryLaunchModelSettings(environmentId, project);
@@ -496,13 +520,10 @@ function FactoryResearchProtocolDetail(props: {
     });
   };
 
-  // Both commands read the protocol again when they settle, so a success or failure here never
-  // leaves the page showing the revision it was opened on.
   const launch = async (
     pending: Extract<PendingDialog, { kind: "launch" }>,
     options: { readonly modelSelection: ModelSelection; readonly instructions: string },
   ) => {
-    // The server owns deduplication; this only stops the same client double-submitting.
     if (inFlight.current) return;
     const input = buildFactoryResearchLaunchInput({
       commandId: pending.commandId,
@@ -606,7 +627,7 @@ function FactoryResearchProtocolDetail(props: {
   const actions =
     data === null
       ? null
-      : researchActionsFor(data.protocol, data.finding, data.runs, { canLaunch, canAdmit }, now);
+      : researchActionsFor(data.protocol, data.finding, data.runs, { canLaunch, canAdmit }, now, m);
 
   const closeDialog = () => {
     setDialog(null);
@@ -618,12 +639,12 @@ function FactoryResearchProtocolDetail(props: {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button size="sm" variant="ghost" onClick={props.onBack}>
           <ArrowLeftIcon />
-          All protocols
+          <T>All protocols</T>
         </Button>
         <div className="flex flex-wrap items-center gap-2">
           {data !== null ? (
             <span className="text-muted-foreground text-xs">
-              Updated <RelativeTime timestamp={data.fetchedAt} />
+              <T>Updated</T> <RelativeTime timestamp={data.fetchedAt} />
             </span>
           ) : null}
           <RefreshButton pending={read.isPending} onRefresh={read.refresh} />
@@ -644,7 +665,7 @@ function FactoryResearchProtocolDetail(props: {
               aria-busy={read.isPending}
             >
               <RefreshIcon size="sm" refreshing={read.isPending} />
-              Retry
+              <T>Retry</T>
             </Button>
           }
         />
@@ -658,11 +679,11 @@ function FactoryResearchProtocolDetail(props: {
           <ProtocolSummary protocol={data.protocol} now={now} />
           <section className="space-y-2" aria-labelledby="factory-research-actions-title">
             <h3 id="factory-research-actions-title" className="font-medium text-sm">
-              Runs and promotion
+              <T>Runs and promotion</T>
             </h3>
             <div className="flex flex-wrap items-start gap-4">
               <ActionButton
-                label="Launch explore"
+                label={gt("Launch explore")}
                 variant="default"
                 action={actions.launchExplore}
                 busy={submitting}
@@ -678,14 +699,16 @@ function FactoryResearchProtocolDetail(props: {
                 }
               />
               <ActionButton
-                label="Launch verify"
+                label={gt("Launch verify")}
                 variant="outline"
                 action={actions.launchVerify}
                 busy={submitting}
                 detail={
                   actions.launchVerify.targetCommit === null
                     ? null
-                    : `On commit ${shortFactoryCommit(actions.launchVerify.targetCommit)}`
+                    : gt("On commit {commit}", {
+                        commit: shortFactoryCommit(actions.launchVerify.targetCommit),
+                      })
                 }
                 onClick={() =>
                   setDialog({
@@ -699,7 +722,7 @@ function FactoryResearchProtocolDetail(props: {
                 }
               />
               <ActionButton
-                label={ADMIT_LABELS[actions.admitImplementation.mode]}
+                label={m(ADMIT_LABELS[actions.admitImplementation.mode])}
                 variant="outline"
                 action={actions.admitImplementation}
                 busy={submitting}
@@ -815,7 +838,9 @@ function ProtocolSummary(props: {
   readonly now: number;
 }) {
   const { protocol } = props;
-  const presentation = factoryProtocolPresentation(protocol, props.now);
+  const gt = useGT();
+  const m = useMessages();
+  const presentation = factoryProtocolPresentation(protocol, props.now, m);
   return (
     <section
       className="min-w-0 space-y-3 rounded-lg border p-3"
@@ -823,45 +848,56 @@ function ProtocolSummary(props: {
     >
       <div className="flex flex-wrap items-center gap-2">
         <h3 id="factory-research-protocol-title" className="font-medium text-sm">
-          Sealed protocol
+          <T>Sealed protocol</T>
         </h3>
         <Badge variant={presentation.budget.expired ? "outline" : "info"}>
           {presentation.budget.label}
         </Badge>
         <span className="text-muted-foreground text-xs">
-          sealed <RelativeTime timestamp={protocol.sealedAt} />
+          <T>sealed</T> <RelativeTime timestamp={protocol.sealedAt} />
         </span>
       </div>
       <dl className="grid gap-3 sm:grid-cols-2">
         <div className="min-w-0 space-y-0.5 sm:col-span-2">
-          <dt className="font-medium text-xs">Hypothesis</dt>
+          <dt className="font-medium text-xs">
+            <T>Hypothesis</T>
+          </dt>
           <dd className="whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">
             {factoryIssueReviewText(protocol.hypothesis)}
           </dd>
         </div>
-        <Detail label="Run command" mono>
+        <Detail label={gt("Run command")} mono>
           {factoryIssueReviewText(protocol.runCommand)}
         </Detail>
-        <Detail label="Base commit" mono>
+        <Detail label={gt("Base commit")} mono>
           {protocol.baseCommit}
         </Detail>
-        <Detail label="Metric">{presentation.metricLabel}</Detail>
-        <Detail label="Decision rule">{presentation.ruleLabel}</Detail>
-        <Detail label="Budget">
-          {presentation.budget.runsLabel} · {presentation.budget.runMinutesLabel} · closes{" "}
-          {protocol.budget.expiresAt}
+        <Detail label={gt("Metric")}>{presentation.metricLabel}</Detail>
+        <Detail label={gt("Decision rule")}>{presentation.ruleLabel}</Detail>
+        <Detail label={gt("Budget")}>
+          <T>
+            <Var>{presentation.budget.runsLabel}</Var> ·{" "}
+            <Var>{presentation.budget.runMinutesLabel}</Var> · closes{" "}
+            <Var>{protocol.budget.expiresAt}</Var>
+          </T>
         </Detail>
-        <Detail label="Revision" mono>
+        <Detail label={gt("Revision")} mono>
           {protocol.revision}
         </Detail>
         <div className="min-w-0 space-y-1 sm:col-span-2">
-          <dt className="font-medium text-xs">Evaluators</dt>
+          <dt className="font-medium text-xs">
+            <T>Evaluators</T>
+          </dt>
           <dd>
-            <ul className="space-y-1" aria-label="Sealed evaluators">
+            <ul className="space-y-1" aria-label={gt("Sealed evaluators")}>
               {presentation.evaluators.map((evaluator) => (
                 <li key={evaluator.path} className="font-mono text-xs [overflow-wrap:anywhere]">
                   {factoryIssueReviewText(evaluator.path)}{" "}
-                  <span className="text-muted-foreground">blob {evaluator.blobOid}</span>
+                  <span className="text-muted-foreground">
+                    <T>
+                      blob <Var>{evaluator.blobOid}</Var>
+                    </T>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -877,7 +913,9 @@ function FindingBlock(props: {
   readonly finding: FactoryResearchFinding;
   readonly onOpenThread: (threadId: ThreadId) => void;
 }) {
-  const presentation = factoryFindingPresentation(props.finding, props.protocol.metric);
+  const gt = useGT();
+  const m = useMessages();
+  const presentation = factoryFindingPresentation(props.finding, props.protocol.metric, m);
   return (
     <section
       className="min-w-0 space-y-3 rounded-lg border p-3"
@@ -885,22 +923,24 @@ function FindingBlock(props: {
     >
       <div className="flex flex-wrap items-center gap-2">
         <h3 id="factory-research-finding-title" className="font-medium text-sm">
-          Finding
+          <T>Finding</T>
         </h3>
         <Badge variant={presentation.variant}>{presentation.statusLabel}</Badge>
-        <span className="text-muted-foreground text-xs">derived on every read</span>
+        <span className="text-muted-foreground text-xs">
+          <T>derived on every read</T>
+        </span>
       </div>
       {presentation.reasons.length > 0 ? (
         <ul
           className="list-disc space-y-1 pl-5 text-sm"
-          aria-label="Why the finding is not supported"
+          aria-label={gt("Why the finding is not supported")}
         >
           {presentation.reasons.map(({ reason, text }) => (
             <li key={reason}>{text}</li>
           ))}
         </ul>
       ) : null}
-      <ul className="grid gap-3 sm:grid-cols-3" aria-label="Measured values">
+      <ul className="grid gap-3 sm:grid-cols-3" aria-label={gt("Measured values")}>
         {presentation.values.map((row) => (
           <li key={row.key} className="min-w-0 space-y-0.5 rounded-lg border border-border/60 p-2">
             <p className="font-medium text-xs">{row.label}</p>
@@ -916,20 +956,20 @@ function FindingBlock(props: {
                   if (row.threadId !== null) props.onOpenThread(row.threadId);
                 }}
               >
-                Open thread
+                <T>Open thread</T>
               </Button>
             ) : null}
           </li>
         ))}
       </ul>
       <dl className="grid gap-3 sm:grid-cols-2">
-        <Detail label="Selected commit" mono>
-          {presentation.selectedCommit ?? "None selected"}
+        <Detail label={gt("Selected commit")} mono>
+          {presentation.selectedCommit ?? gt("None selected")}
         </Detail>
-        <Detail label="Minimum effect">
+        <Detail label={gt("Minimum effect")}>
           {presentation.minimumEffect} · {presentation.direction}
         </Detail>
-        <Detail label="Finding revision" mono>
+        <Detail label={gt("Finding revision")} mono>
           {props.finding.revision}
         </Detail>
       </dl>
@@ -943,7 +983,9 @@ function RunsTable(props: {
   readonly data: FactoryResearchProtocolReadResult;
   readonly onOpenThread: (threadId: ThreadId) => void;
 }) {
-  const rows = factoryRunPresentations(props.data.runs, props.protocol);
+  const gt = useGT();
+  const m = useMessages();
+  const rows = factoryRunPresentations(props.data.runs, props.protocol, m);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const toggle = (key: string) =>
     setExpanded((previous) => {
@@ -955,24 +997,38 @@ function RunsTable(props: {
   return (
     <section className="min-w-0 space-y-2" aria-labelledby="factory-research-runs-title">
       <h3 id="factory-research-runs-title" className="font-medium text-sm">
-        Runs
+        <T>Runs</T>
       </h3>
       {rows.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          No runs yet. Launch an explore run to measure the baseline and try a change.
+          <T>No runs yet. Launch an explore run to measure the baseline and try a change.</T>
         </p>
       ) : (
         <div className="rounded-lg border">
-          <Table aria-label="Research runs">
+          <Table aria-label={gt("Research runs")}>
             <TableHeader>
               <TableRow>
-                <TableHead>Role</TableHead>
-                <TableHead>Thread</TableHead>
-                <TableHead>Task</TableHead>
-                <TableHead>Evidence</TableHead>
-                <TableHead>Commit</TableHead>
-                <TableHead>Metric</TableHead>
-                <TableHead>Usage</TableHead>
+                <TableHead>
+                  <T>Role</T>
+                </TableHead>
+                <TableHead>
+                  <T>Thread</T>
+                </TableHead>
+                <TableHead>
+                  <T>Task</T>
+                </TableHead>
+                <TableHead>
+                  <T>Evidence</T>
+                </TableHead>
+                <TableHead>
+                  <T>Commit</T>
+                </TableHead>
+                <TableHead>
+                  <T>Metric</T>
+                </TableHead>
+                <TableHead>
+                  <T>Usage</T>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1000,6 +1056,7 @@ function RunRows(props: {
   readonly onOpenThread: (threadId: ThreadId) => void;
 }) {
   const { row } = props;
+  const gt = useGT();
   const observation = row.observation;
   const detailsId = `factory-research-run-${row.key}`;
   return (
@@ -1008,12 +1065,14 @@ function RunRows(props: {
         <TableCell className="align-top">
           {row.roleLabel}
           {row.staleRevision ? (
-            <span className="block text-muted-foreground text-xs">older protocol revision</span>
+            <span className="block text-muted-foreground text-xs">
+              <T>older protocol revision</T>
+            </span>
           ) : null}
         </TableCell>
         <TableCell className="align-top">
           <Button size="sm" variant="ghost" onClick={() => props.onOpenThread(row.threadId)}>
-            Open thread
+            <T>Open thread</T>
           </Button>
         </TableCell>
         <TableCell className="align-top">
@@ -1022,7 +1081,7 @@ function RunRows(props: {
         <TableCell className="align-top">
           {observation === null ? (
             <span className="text-muted-foreground">
-              {row.recordsEvidence ? "Awaiting evidence" : "Not applicable"}
+              {row.recordsEvidence ? gt("Awaiting evidence") : gt("Not applicable")}
             </span>
           ) : (
             <div className="space-y-1">
@@ -1035,20 +1094,20 @@ function RunRows(props: {
                 onClick={props.onToggle}
               >
                 <ChevronDownIcon className={props.open ? "rotate-180" : undefined} />
-                Details
+                <T>Details</T>
               </Button>
             </div>
           )}
         </TableCell>
         <TableCell className="align-top">
           <span className="font-mono">
-            {row.commit === null ? "Not recorded" : shortFactoryCommit(row.commit)}
+            {row.commit === null ? gt("Not recorded") : shortFactoryCommit(row.commit)}
           </span>
         </TableCell>
         <TableCell className="align-top">
-          <span className="font-mono">{observation?.metric ?? "Not recorded"}</span>
+          <span className="font-mono">{observation?.metric ?? gt("Not recorded")}</span>
         </TableCell>
-        <TableCell className="align-top">{observation?.usage ?? "Not recorded"}</TableCell>
+        <TableCell className="align-top">{observation?.usage ?? gt("Not recorded")}</TableCell>
       </TableRow>
       {props.open && observation !== null ? (
         <TableRow id={detailsId}>
@@ -1072,15 +1131,20 @@ function RunEvidence(props: {
   readonly missing: ReadonlyArray<string>;
   readonly artifacts: ReadonlyArray<FactoryArtifactRow>;
 }) {
+  const gt = useGT();
   return (
     <div className="min-w-0 space-y-3">
       {props.commit !== null ? (
-        <p className="font-mono text-xs [overflow-wrap:anywhere]">Commit {props.commit}</p>
+        <p className="font-mono text-xs [overflow-wrap:anywhere]">
+          <T>
+            Commit <Var>{props.commit}</Var>
+          </T>
+        </p>
       ) : null}
       {props.reasons.length > 0 ? (
         <ul
           className="list-disc space-y-1 pl-5 text-sm"
-          aria-label="Why this evidence was not accepted"
+          aria-label={gt("Why this evidence was not accepted")}
         >
           {props.reasons.map((reason) => (
             <li key={reason}>{reason}</li>
@@ -1089,7 +1153,9 @@ function RunEvidence(props: {
       ) : null}
       {props.missing.length > 0 ? (
         <div className="space-y-1">
-          <h4 className="font-medium text-xs">The run reported these as missing</h4>
+          <h4 className="font-medium text-xs">
+            <T>The run reported these as missing</T>
+          </h4>
           <ul className="list-disc space-y-0.5 pl-5 text-sm">
             {props.missing.map((item) => (
               <li key={item} className="[overflow-wrap:anywhere]">
@@ -1100,9 +1166,11 @@ function RunEvidence(props: {
         </div>
       ) : null}
       {props.artifacts.length === 0 ? (
-        <p className="text-muted-foreground text-xs">The run cited no files.</p>
+        <p className="text-muted-foreground text-xs">
+          <T>The run cited no files.</T>
+        </p>
       ) : (
-        <ul className="space-y-2" aria-label="Cited artifacts">
+        <ul className="space-y-2" aria-label={gt("Cited artifacts")}>
           {props.artifacts.map((artifact) => (
             <li
               key={artifact.key}
@@ -1112,13 +1180,19 @@ function RunEvidence(props: {
                 {factoryIssueReviewText(artifact.path)}:{artifact.line}
               </p>
               <p className="font-mono text-muted-foreground text-xs [overflow-wrap:anywhere]">
-                sha256 {artifact.sha256}
+                <T>
+                  sha256 <Var>{artifact.sha256}</Var>
+                </T>
               </p>
               <p className="text-muted-foreground text-xs">
-                {artifact.bytes} bytes · {artifact.retentionLabel}
+                <T>
+                  <Var>{artifact.bytes}</Var> bytes · <Var>{artifact.retentionLabel}</Var>
+                </T>
               </p>
               {artifact.lineText === null ? (
-                <p className="text-muted-foreground text-xs">The cited line does not exist.</p>
+                <p className="text-muted-foreground text-xs">
+                  <T>The cited line does not exist.</T>
+                </p>
               ) : (
                 <pre className="whitespace-pre-wrap font-mono text-xs [overflow-wrap:anywhere]">
                   {factoryIssueReviewText(artifact.lineText)}

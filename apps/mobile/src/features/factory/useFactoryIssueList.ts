@@ -1,4 +1,4 @@
-import { RegistryContext } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   executeAtomQuery,
   isAtomCommandInterrupted,
@@ -7,7 +7,11 @@ import {
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { use, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { factoryEnvironment } from "../../state/factory";
+import {
+  factoryEnvironment,
+  factoryIssueKeysInput,
+  factoryIssueKeysSupportedAtom,
+} from "../../state/factory";
 import {
   applyFactoryIssuePage,
   EMPTY_FACTORY_ISSUE_PAGES,
@@ -55,10 +59,11 @@ export function useFactoryIssueList(input: {
 }) {
   const registry = use(RegistryContext);
   const { environmentId, projectId, filter } = input;
+  const issueKeys = useAtomValue(factoryIssueKeysSupportedAtom(environmentId));
   const key =
     environmentId === null || projectId === null
       ? null
-      : JSON.stringify([environmentId, projectId, filter]);
+      : JSON.stringify([environmentId, projectId, filter, issueKeys]);
   const [state, setState] = useState<ListState>(IDLE_STATE);
   const activeRequest = useRef<{
     readonly key: string;
@@ -82,7 +87,10 @@ export function useFactoryIssueList(input: {
       activeRequest.current = request;
       const result = await executeAtomQuery(
         registry,
-        factoryEnvironment.list({ environmentId, input: { projectId, state: filter, page } }),
+        factoryEnvironment.list({
+          environmentId,
+          input: { projectId, state: filter, page, ...factoryIssueKeysInput(issueKeys) },
+        }),
         { refresh: true, reportFailure: false, signal: request.controller.signal },
       );
       // A newer request owns the screen now.
@@ -110,7 +118,7 @@ export function useFactoryIssueList(input: {
         loaded: true,
       }));
     },
-    [environmentId, filter, key, projectId, registry],
+    [environmentId, filter, issueKeys, key, projectId, registry],
   );
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Starts and cancels the paged server query owned by this mounted scope.

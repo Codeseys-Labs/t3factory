@@ -206,7 +206,7 @@ export class FactoryWorkProjection extends Context.Service<
 
 export interface IssueKey {
   readonly canonicalKey: string;
-  readonly issueNumber: number;
+  readonly issueNumber: number | string;
 }
 export interface IssueOwner extends IssueKey {
   readonly projectId: ProjectId | null;
@@ -220,7 +220,7 @@ const decodeOwners = Schema.decodeUnknownEffect(
     Schema.Struct({
       projectId: Schema.NullOr(Schema.String),
       canonicalKey: Schema.String,
-      issueNumber: Schema.Number,
+      issueNumber: Schema.Union([Schema.Number, Schema.String]),
     }),
   ),
 );
@@ -230,7 +230,7 @@ const AncestryRow = Schema.Struct({
   previousThreadId: Schema.NullOr(Schema.String),
   projectId: Schema.NullOr(Schema.String),
   canonicalKey: Schema.String,
-  issueNumber: Schema.Number,
+  issueNumber: Schema.Union([Schema.Number, Schema.String]),
   valid: Schema.Number,
   depth: Schema.Number,
 });
@@ -307,7 +307,9 @@ const make = Effect.gen(function* () {
     input: FactoryWorkListInput,
   ) {
     const projects = input.projectIds === undefined ? null : [...new Set(input.projectIds)].sort();
-    const scope = encodeListScope([environmentId, projects, input.kind ?? null]);
+    const scope =
+      encodeListScope([environmentId, projects, input.kind ?? null]) +
+      (input.issueKeys === true ? ":issue-keys" : "");
     const cursor = yield* pageCursor(input.cursor, scope);
     const limit = input.limit ?? 25;
     const pages = keyBranches
@@ -316,6 +318,7 @@ const make = Effect.gen(function* () {
         (branch) =>
           sql`SELECT * FROM (${sql.literal(branch.query)}
         AND ${projects === null ? sql.literal("1") : projects.length === 0 ? sql.literal("0") : sql.in("projectId", projects)}
+        AND ${branch.kind === "issue" && input.issueKeys !== true ? sql.literal("typeof(issue_number) = 'integer'") : sql.literal("1")}
         AND createdAt >= ${cursor?.order ?? ""}
         AND (createdAt > ${cursor?.order ?? ""} OR ${branch.kind + ":"} || id > ${cursor?.id ?? ""})
         ORDER BY createdAt, id LIMIT ${limit + 1})`,
@@ -379,7 +382,17 @@ const make = Effect.gen(function* () {
           : input.ref.kind === "brief"
             ? { kind: "brief", briefId: row.id }
             : { kind: "protocol", protocolId: row.id };
-    const reviewTarget = yield* decodeReviewTarget(nativeTarget);
+    if (
+      nativeTarget?.kind === "issue" &&
+      typeof nativeTarget.issueNumber === "string" &&
+      input.issueKeys !== true
+    )
+      return yield* new FactoryWorkError({ reason: "missing-work" });
+    const reviewTarget = yield* decodeReviewTarget(
+      nativeTarget?.kind === "issue" && typeof nativeTarget.issueNumber === "string"
+        ? { kind: "issue", key: nativeTarget.issueNumber, issueNumber: null }
+        : nativeTarget,
+    );
     return {
       item: summary(row, environmentId),
       snapshot: row.snapshot,

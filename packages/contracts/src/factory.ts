@@ -12,6 +12,25 @@ import { ModelSelection } from "./modelSelection.ts";
 import { OrchestrationV2CreationSource } from "./orchestrationV2.ts";
 import { ProviderInteractionMode, RuntimeMode } from "./providerPolicy.ts";
 import { SourceControlProviderKind } from "./sourceControl.ts";
+import { IssueTrackerKind } from "./issue.ts";
+
+export const FactoryIssueScope = Schema.Struct({
+  tracker: IssueTrackerKind,
+  host: TrimmedNonEmptyString,
+  scope: TrimmedNonEmptyString,
+  /** Standalone identity is `issue:` + JSON([tracker, host, scope]); git issues keep the repository key. */
+  canonicalKey: TrimmedNonEmptyString,
+});
+
+export const FactoryIssueAddress = Schema.Struct({
+  key: Schema.optionalKey(TrimmedNonEmptyString),
+  issueNumber: Schema.optionalKey(PositiveInt),
+});
+const validIssueAddress = Schema.makeFilter((value: typeof FactoryIssueAddress.Type) =>
+  value.key === undefined
+    ? value.issueNumber !== undefined
+    : value.issueNumber === undefined || value.key === String(value.issueNumber),
+);
 
 export const FactoryRepository = Schema.Struct({
   provider: SourceControlProviderKind,
@@ -21,6 +40,8 @@ export const FactoryRepository = Schema.Struct({
   repository: TrimmedNonEmptyString,
   canonicalKey: TrimmedNonEmptyString,
   url: TrimmedNonEmptyString,
+  /** Frozen issue binding; absent on legacy git-host launches. The repository still owns code delivery. */
+  issueScope: Schema.optionalKey(FactoryIssueScope),
 });
 export type FactoryRepository = typeof FactoryRepository.Type;
 
@@ -31,6 +52,7 @@ export type FactoryRepository = typeof FactoryRepository.Type;
  */
 export const FactoryIssueCapabilities = Schema.Struct({
   provider: SourceControlProviderKind,
+  tracker: Schema.optionalKey(IssueTrackerKind),
   displayName: TrimmedNonEmptyString,
   blockedBy: Schema.Literals(["none", "listing", "listing-with-total"]),
   subIssues: Schema.Boolean,
@@ -81,15 +103,21 @@ export const FactoryIssueTask = Schema.Struct({
 export type FactoryIssueTask = typeof FactoryIssueTask.Type;
 
 export const FactoryIssue = Schema.Struct({
-  number: PositiveInt,
+  number: Schema.NullOr(PositiveInt),
+  // Absent only on older servers; use String(number) and `#${number}` for those replies.
+  key: Schema.optionalKey(TrimmedNonEmptyString),
+  displayKey: Schema.optionalKey(TrimmedNonEmptyString),
+  tracker: Schema.optionalKey(IssueTrackerKind),
   title: Schema.String,
+  // Null when the issue has none, and in a keyed (`issueKeys`) listing row, which carries no body.
   body: Schema.NullOr(Schema.String),
   state: Schema.Literals(["open", "closed"]),
   url: Schema.String,
   labels: Schema.Array(Schema.String),
   updatedAt: IsoDateTime,
   // Opaque SHA-256 token over the repository and the exact issue title/body. Compare it; never
-  // parse it. Labels, state, URL and timestamps can change without invalidating a review.
+  // parse it. Labels, state, URL and timestamps can change without invalidating a review. A keyed
+  // listing row's revision covers its missing body, so no start accepts it.
   revision: TrimmedNonEmptyString,
   task: Schema.NullOr(FactoryIssueTask),
 });
@@ -97,6 +125,8 @@ export type FactoryIssue = typeof FactoryIssue.Type;
 
 export const FactoryIssueListInput = Schema.Struct({
   projectId: ProjectId,
+  /** Opt in to native keys and body-less rows; legacy listings serve numeric git-host issues whole. */
+  issueKeys: Schema.optionalKey(Schema.Boolean),
   state: Schema.optional(Schema.Literals(["open", "closed", "all"])),
   page: Schema.optional(PositiveInt),
 });
@@ -111,8 +141,8 @@ export const FactoryIssueListResult = Schema.Struct({
 export type FactoryIssueListResult = typeof FactoryIssueListResult.Type;
 export const FactoryIssueReadInput = Schema.Struct({
   projectId: ProjectId,
-  issueNumber: PositiveInt,
-});
+  ...FactoryIssueAddress.fields,
+}).check(validIssueAddress);
 export type FactoryIssueReadInput = typeof FactoryIssueReadInput.Type;
 export const FactoryIssueReadResult = Schema.Struct({
   repository: FactoryRepository,
@@ -126,9 +156,10 @@ export const FactoryIssueStartInput = Schema.Struct({
   commandId: CommandId,
   projectId: ProjectId,
   expectedRepositoryKey: TrimmedNonEmptyString,
-  issueNumber: PositiveInt,
-  // The full-content revision the caller reviewed. New and restarted tasks require it to match the
-  // live issue; an existing saved task resumes its original snapshot and ignores this value.
+  ...FactoryIssueAddress.fields,
+  // The revision of the content the caller reviewed: a `read`'s, or a legacy listing row's, which
+  // covers its body. New and restarted tasks require it to match the live issue; the task freezes
+  // a fresh read. An existing saved task resumes its original snapshot and ignores it.
   expectedIssueRevision: FactoryIssue.fields.revision,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
@@ -136,11 +167,14 @@ export const FactoryIssueStartInput = Schema.Struct({
   baseRef: Schema.optional(TrimmedNonEmptyString),
   restartDeleted: Schema.optional(Schema.Boolean),
   creationSource: Schema.optional(OrchestrationV2CreationSource),
-});
+}).check(validIssueAddress);
 export type FactoryIssueStartInput = typeof FactoryIssueStartInput.Type;
 export const FactoryIssueStartResult = Schema.Struct({
   repository: FactoryRepository,
-  issueNumber: PositiveInt,
+  issueNumber: Schema.NullOr(PositiveInt),
+  key: Schema.optionalKey(TrimmedNonEmptyString),
+  displayKey: Schema.optionalKey(TrimmedNonEmptyString),
+  tracker: Schema.optionalKey(IssueTrackerKind),
   projectId: ProjectId,
   threadId: ThreadId,
   task: FactoryIssueTask,
@@ -179,7 +213,7 @@ export class FactoryIssueError extends Schema.TaggedError<FactoryIssueError>()(
   override get message(): string {
     switch (this.reason) {
       case "unsupported-provider":
-        return "The project's intake repository is on a host this environment cannot read issues from. Factory issue intake supports GitHub and GitLab.";
+        return "The project's issue tracker is not supported by this environment.";
       case "missing-project":
         return "The selected project no longer exists.";
       case "missing-repository":
@@ -195,7 +229,7 @@ export class FactoryIssueError extends Schema.TaggedError<FactoryIssueError>()(
       case "invalid-response":
         return "The issue host returned an invalid or incomplete issue response.";
       case "not-an-issue":
-        return "This item is a change request, not an issue.";
+        return "This item is a change request or another kind of work item, not an issue.";
       case "closed-issue":
         return "Closed issues cannot start new tasks. An existing task can still be opened.";
       case "deleted-task":

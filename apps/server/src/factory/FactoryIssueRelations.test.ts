@@ -1,4 +1,3 @@
-import { IssueTrackerProviderError } from "@t3tools/source-control-core/server/IssueTrackerProvider";
 import { SourceControlProviderKind } from "@t3tools/contracts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
@@ -10,6 +9,7 @@ import {
   type RepositoryIdentity,
 } from "@t3tools/contracts";
 import * as GitHubRest from "@t3tools/source-control-github/server/GitHubRest";
+import { makeReadApiResource } from "@t3tools/source-control-github/server/driver";
 import {
   GitHubApiAuthenticationError,
   GitHubApiNotFoundError,
@@ -28,7 +28,12 @@ import * as Projects from "../project/ProjectService.ts";
 import * as Identities from "../project/RepositoryIdentityResolver.ts";
 import { repositoryIdentitiesLayer } from "../project/RepositoryIdentityResolver.testkit.ts";
 import * as Git from "../vcs/GitVcsDriver.ts";
-import { fakeIssueTracker, issueTrackersLayer } from "./IssueTrackerProviderRegistry.testkit.ts";
+import {
+  fakeIssueTracker,
+  issueServiceLayer,
+  issueTrackersLayer,
+  trackerIssue,
+} from "./FactoryIssueHosts.testkit.ts";
 
 const projectId = ProjectId.make("relations-project");
 const input = { projectId, issueNumber: 12 };
@@ -94,37 +99,15 @@ function harness(
     Store.layer.pipe(Layer.provideMerge(Sqlite.layerMemory)),
     repositoryIdentitiesLayer(resolve),
     issueTrackersLayer(
-      (options.trackers ?? [fakeIssueTracker("github"), fakeIssueTracker("gitlab")]).map(
-        (tracker) => ({
-          ...tracker,
-          ...(tracker.kind === "github"
-            ? {
-                readRelationResource: (input: { readonly host: string; readonly path: string }) =>
-                  rest({ ...input, operation: "FactoryIssueRelations.read" }).pipe(
-                    Effect.mapError(
-                      (cause) =>
-                        new IssueTrackerProviderError({
-                          provider: tracker.kind,
-                          operation: "relations",
-                          reason:
-                            cause._tag === "GitHubApiRateLimitError" ||
-                            cause._tag === "SourceControlRateLimitPausedError"
-                              ? "rate-limited"
-                              : cause._tag === "GitHubApiNotFoundError"
-                                ? "not-found"
-                                : cause._tag === "GitHubApiRequestError" ||
-                                    cause._tag === "GitHubApiResponseError"
-                                  ? "failed"
-                                  : "unauthenticated",
-                          detail: "fixture",
-                          cause,
-                        }),
-                    ),
-                  ),
-              }
-            : {}),
-        }),
-      ),
+      options.trackers ?? [fakeIssueTracker("github"), fakeIssueTracker("gitlab")],
+      {
+        // The GitHub driver's own REST read, over the fixture's answers.
+        readApiResource: (request) =>
+          makeReadApiResource.pipe(
+            Effect.provide(Layer.mock(GitHubRest.GitHubRest)({ rest })),
+            Effect.flatMap((readApiResource) => readApiResource(request)),
+          ),
+      },
     ),
     Layer.mock(Projects.ProjectService)({
       getById: () =>
@@ -138,6 +121,16 @@ function harness(
           updatedAt: at,
           deletedAt: null,
         }),
+      getShell: () =>
+        Effect.succeedSome({
+          id: projectId,
+          title: "Factory",
+          workspaceRoot: "/repo",
+          defaultModelSelection: null,
+          scripts: [],
+          createdAt: at,
+          updatedAt: at,
+        }),
     }),
     Layer.mock(Git.GitVcsDriver)({
       execute: () =>
@@ -150,7 +143,10 @@ function harness(
         }),
     }),
   );
-  return Relations.layer.pipe(Layer.provideMerge(dependencies));
+  return Relations.layer.pipe(
+    Layer.provideMerge(issueServiceLayer),
+    Layer.provideMerge(dependencies),
+  );
 }
 const read = Effect.gen(function* () {
   return (yield* (yield* Relations.FactoryIssueRelations).read(input)).readiness;
@@ -1048,6 +1044,14 @@ it.effect(
 );
 
 const gitlabOrigin = "https://gitlab.com/group/sub/factory.git";
+// The checkout the issue layer reads a GitLab project's issues through.
+const gitlabIdentity: RepositoryIdentity = {
+  canonicalKey: "gitlab.com/group/sub/factory",
+  displayName: "group/sub/factory",
+  provider: SourceControlProviderKind.make("gitlab"),
+  rootPath: "/repo",
+  locator: { source: "git-remote", remoteName: "origin", remoteUrl: gitlabOrigin },
+};
 // Every GitHub REST call is recorded before it dies, so an assertion on the list proves the host
 // was never asked even if a failure were swallowed on the way.
 const recordingRest =
@@ -1103,7 +1107,9 @@ it.effect(
       );
     }).pipe(
       Effect.provide(
-        harness(recordingRest(requests), () => Effect.succeed(identity), { origin: gitlabOrigin }),
+        harness(recordingRest(requests), () => Effect.succeed(gitlabIdentity), {
+          origin: gitlabOrigin,
+        }),
       ),
     );
   },
@@ -1117,15 +1123,15 @@ it.effect(
       getIssue: (request) =>
         Effect.sync(() => {
           reads.push(request);
-          return {
-            number: request.number,
+          return trackerIssue({
+            number: Number(request.key),
             title: "Factory map",
-            body: null,
-            state: "open" as const,
+            body: "",
+            state: "open",
             url: "https://gitlab.com/group/sub/factory/-/issues/2",
             labels: [],
             updatedAt: at,
-          };
+          });
         }),
     });
     return Effect.gen(function* () {
@@ -1141,12 +1147,12 @@ it.effect(
         children: [],
       });
       assert.deepEqual(reads, [
-        { cwd: "/repo", host: "gitlab.com", repository: "group/sub/factory", number: 2 },
+        { cwd: "/repo", host: "gitlab.com", scope: "group/sub/factory", key: "2" },
       ]);
       assert.deepEqual(requests, []);
     }).pipe(
       Effect.provide(
-        harness(recordingRest(requests), () => Effect.succeed(identity), {
+        harness(recordingRest(requests), () => Effect.succeed(gitlabIdentity), {
           origin: gitlabOrigin,
           trackers: [fakeIssueTracker("github"), gitlab],
         }),

@@ -4,6 +4,8 @@ import {
   FactoryAcceptanceError,
   FactoryDeliveryError,
   FactoryIssueError,
+  FactoryOriginKey,
+  type EnvironmentId,
   type FactoryAcceptance,
   type FactoryAcceptanceReadResult,
   type FactoryArtifactDeliveryIntent,
@@ -16,16 +18,24 @@ import {
   type FactoryDeliveryMergePayload,
   type FactoryDeliveryPrepareResult,
   type FactoryDeliveryPublishPayload,
+  type FactoryClaim,
+  type FactoryClaimListResult,
   type FactoryIssue,
   type FactoryIssueCapabilities,
   type FactoryIssueListResult,
   type FactoryIssueTask,
   type FactoryRepository,
+  type IssueTrackerKind,
+  type ProjectId,
   type PullRequestMergeability,
   type PullRequestMergeMethod,
   type RuntimeMode,
+  type SourceControlProviderKind,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg } from "gt-react-native";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 
 export type FactoryIssueFilter = "open" | "closed" | "all";
 
@@ -33,16 +43,17 @@ export const FACTORY_ISSUE_FILTERS: ReadonlyArray<{
   readonly value: FactoryIssueFilter;
   readonly label: string;
 }> = [
-  { value: "open", label: "Open" },
-  { value: "closed", label: "Closed" },
-  { value: "all", label: "All" },
+  { value: "open", label: msg("Open", { $context: "issue state filter" }) },
+  { value: "closed", label: msg("Closed", { $context: "issue state filter" }) },
+  { value: "all", label: msg("All", { $context: "issue state filter" }) },
 ];
 
 /** Factory tasks begin supervised; the thread's normal controls can change this later. */
 export const FACTORY_DEFAULT_RUNTIME_MODE: RuntimeMode = "approval-required";
 
-export const FACTORY_SUPERVISION_NOTICE =
-  "Tasks run in an isolated worktree using the selected runtime. Starting a task does not authorize publishing, merging, or releasing.";
+export const FACTORY_SUPERVISION_NOTICE = msg(
+  "Tasks run in an isolated worktree using the selected runtime. Starting a task does not authorize publishing, merging, or releasing.",
+);
 
 export interface FactoryIssuePages {
   readonly repository: FactoryRepository | null;
@@ -79,14 +90,16 @@ export function applyFactoryIssuePage(
       fetchedAt: result.fetchedAt,
     };
   }
-  const incoming = new Map(result.issues.map((issue) => [issue.number, issue]));
-  const seen = new Set<number>();
+  const identityOf = (issue: FactoryIssue) =>
+    issue.number === null ? (issue.key ?? issue.url) : String(issue.number);
+  const incoming = new Map(result.issues.map((issue) => [identityOf(issue), issue]));
+  const seen = new Set<string>();
   const merged = current.issues.map((issue) => {
-    seen.add(issue.number);
-    return incoming.get(issue.number) ?? issue;
+    seen.add(identityOf(issue));
+    return incoming.get(identityOf(issue)) ?? issue;
   });
   for (const issue of result.issues) {
-    if (!seen.has(issue.number)) merged.push(issue);
+    if (!seen.has(identityOf(issue))) merged.push(issue);
   }
   return {
     repository: result.repository,
@@ -108,43 +121,60 @@ export type FactoryIssueAction =
  * One primary action per issue. A closed issue never starts new work, but a thread that still
  * exists stays openable. A deleted task needs an explicit new attempt, never an implicit one.
  */
-export function factoryIssueAction(issue: FactoryIssue): FactoryIssueAction {
+export function factoryIssueAction(
+  issue: FactoryIssue,
+  resolve: MessageResolver = m,
+  factoryIssueKeys = false,
+): FactoryIssueAction {
   const task = issue.task;
-  const closedDetail = "Closed issues can't start new tasks.";
+  const closedDetail = resolve(msg("Closed issues can't start new tasks."));
+  // Without native-key support the Factory persists integer numbers, so a key it cannot read as
+  // one cannot start work.
+  const noNumberDetail = resolve(msg("This issue's key is not a number the Factory can record."));
+  const untargeted = factoryIssueTargetOf(issue, factoryIssueKeys) === null;
   if (task === null) {
-    return issue.state === "closed"
-      ? { kind: "unavailable", label: "Closed", detail: closedDetail }
-      : { kind: "start", label: "Start task" };
+    if (issue.state === "closed")
+      return { kind: "unavailable", label: resolve(msg("Closed")), detail: closedDetail };
+    return untargeted
+      ? { kind: "unavailable", label: resolve(msg("Start task")), detail: noNumberDetail }
+      : { kind: "start", label: resolve(msg("Start task")) };
   }
   switch (task.status) {
     case "missing":
-      return issue.state === "closed"
-        ? {
-            kind: "unavailable",
-            label: "Thread deleted",
-            detail: `The linked thread was deleted. ${closedDetail}`,
-          }
-        : { kind: "restart", label: "Start new attempt" };
+      if (issue.state === "closed")
+        return {
+          kind: "unavailable",
+          label: resolve(msg("Thread deleted")),
+          detail: resolve(msg("The linked thread was deleted. {detail}", { detail: closedDetail })),
+        };
+      return untargeted
+        ? { kind: "unavailable", label: resolve(msg("Start new attempt")), detail: noNumberDetail }
+        : { kind: "restart", label: resolve(msg("Start new attempt")) };
     case "launching":
       // The reservation exists but its thread may not; Start replays the same reserved launch.
-      return { kind: "resume", label: "Resume launch" };
+      return untargeted
+        ? { kind: "unavailable", label: resolve(msg("Resume launch")), detail: noNumberDetail }
+        : { kind: "resume", label: resolve(msg("Resume launch")) };
     default:
-      return { kind: "open", label: "Open thread", task };
+      return { kind: "open", label: resolve(msg("Open thread")), task };
   }
 }
 
 const TASK_STATUS_LABELS: Record<FactoryIssueTask["status"], string> = {
-  launching: "Launching",
-  preparing: "Preparing workspace",
-  running: "Running",
-  idle: "Idle",
-  failed: "Failed",
-  archived: "Archived",
-  missing: "Thread deleted",
+  launching: msg("Launching"),
+  preparing: msg("Preparing workspace"),
+  running: msg("Running"),
+  idle: msg("Idle", { $context: "task status, the agent is idle" }),
+  failed: msg("Failed"),
+  archived: msg("Archived"),
+  missing: msg("Thread deleted"),
 };
 
-export function factoryTaskStatusLabel(status: FactoryIssueTask["status"]): string {
-  return TASK_STATUS_LABELS[status];
+export function factoryTaskStatusLabel(
+  status: FactoryIssueTask["status"],
+  resolve: MessageResolver = m,
+): string {
+  return resolve(TASK_STATUS_LABELS[status]);
 }
 
 export function factoryTaskStatusTone(
@@ -181,10 +211,12 @@ export function safeFactoryIssueText(value: string, limit = MAX_BODY_CHARACTERS)
   return cleaned.length > limit ? `${cleaned.slice(0, limit).trimEnd()}…` : cleaned;
 }
 
-export function safeFactoryIssueBody(body: string | null): string | null {
-  if (body === null) return null;
-  const text = safeFactoryIssueText(body);
-  return text.length === 0 ? null : text;
+/** The tracker's own display key, or the numbered fallback a reply without one allows. */
+export function factoryIssueDisplayKey(
+  issue: Pick<FactoryIssue, "number" | "key" | "displayKey">,
+): string {
+  if (issue.displayKey !== undefined) return issue.displayKey;
+  return issue.number === null ? `#${issue.key ?? "?"}` : `#${issue.number}`;
 }
 
 export type FactoryFailureKind =
@@ -215,40 +247,61 @@ export function describeFactoryFailure(
   error: unknown,
   fallbackTitle: string,
   displayName?: string,
+  resolve: MessageResolver = m,
 ): FactoryFailure {
   if (isAuthorizationError(error)) {
     return {
       kind: "auth",
-      title: "Not permitted",
-      detail: "This connection isn't allowed to do that in this environment.",
+      title: resolve(msg("Not permitted")),
+      detail: resolve(msg("This connection isn't allowed to do that in this environment.")),
     };
   }
   if (isFactoryIssueError(error)) {
     switch (error.reason) {
       case "unsupported-provider":
-        return { kind: "unsupported", title: "Repository not supported", detail: error.message };
+        return {
+          kind: "unsupported",
+          title: resolve(msg("Repository not supported")),
+          detail: error.message,
+        };
       case "authentication":
         return {
           kind: "auth",
-          title: displayName ? `${displayName} sign-in required` : "Sign-in required",
+          title: displayName
+            ? resolve(msg("{host} sign-in required", { host: displayName }))
+            : resolve(msg("Sign-in required")),
           detail: error.message,
         };
       case "rate-limited":
         return {
           kind: "retry",
-          title: displayName ? `${displayName} rate limit reached` : "Rate limit reached",
+          title: displayName
+            ? resolve(msg("{host} rate limit reached", { host: displayName }))
+            : resolve(msg("Rate limit reached")),
           detail: error.message,
         };
       case "missing-project":
       case "missing-repository":
       case "repository-changed":
-        return { kind: "repository", title: "Repository unavailable", detail: error.message };
+        return {
+          kind: "repository",
+          title: resolve(msg("Repository unavailable")),
+          detail: error.message,
+        };
       case "issue-changed":
-        return { kind: "changed", title: "Issue changed", detail: error.message };
+        return { kind: "changed", title: resolve(msg("Issue changed")), detail: error.message };
       case "launch-failure":
-        return { kind: "retry", title: "Launch interrupted", detail: error.message };
+        return {
+          kind: "retry",
+          title: resolve(msg("Launch interrupted")),
+          detail: error.message,
+        };
       case "deleted-task":
-        return { kind: "retry", title: "Confirm a new attempt", detail: error.message };
+        return {
+          kind: "retry",
+          title: resolve(msg("Confirm a new attempt")),
+          detail: error.message,
+        };
       default:
         return { kind: "error", title: fallbackTitle, detail: error.message };
     }
@@ -256,7 +309,11 @@ export function describeFactoryFailure(
   if (error instanceof Error && error.message.trim().length > 0) {
     return { kind: "error", title: fallbackTitle, detail: error.message };
   }
-  return { kind: "error", title: fallbackTitle, detail: "The request failed. Try again." };
+  return {
+    kind: "error",
+    title: fallbackTitle,
+    detail: resolve(msg("The request failed. Try again.")),
+  };
 }
 
 export function shortFactorySha(sha: string): string {
@@ -285,29 +342,50 @@ export function factoryAcceptanceView(read: FactoryAcceptanceReadResult): Factor
   return { kind: "moved", acceptance, liveHeadSha };
 }
 
-export function describeFactoryAcceptanceFailure(error: unknown): FactoryFailure {
+export function describeFactoryAcceptanceFailure(
+  error: unknown,
+  resolve: MessageResolver = m,
+): FactoryFailure {
   if (isFactoryAcceptanceError(error)) {
     switch (error.reason) {
       case "head-moved":
         return {
           kind: "changed",
-          title: "Head moved",
-          detail: "The head moved while you were reviewing. Refresh and review again.",
+          title: resolve(msg("Head moved")),
+          detail: resolve(
+            msg("The head moved while you were reviewing. Refresh and review again."),
+          ),
         };
       case "already-accepted":
         return {
           kind: "changed",
-          title: "Already accepted",
-          detail:
-            "A commit is already accepted for this task. Refresh, then use Re-accept at current head to replace it.",
+          title: resolve(msg("Already accepted")),
+          detail: resolve(
+            msg(
+              "A commit is already accepted for this task. Refresh, then use Re-accept at current head to replace it.",
+            ),
+          ),
         };
       case "worktree-unavailable":
-        return { kind: "repository", title: "Worktree unavailable", detail: error.message };
+        return {
+          kind: "repository",
+          title: resolve(msg("Worktree unavailable")),
+          detail: error.message,
+        };
       default:
-        return { kind: "error", title: "Couldn't accept the commit", detail: error.message };
+        return {
+          kind: "error",
+          title: resolve(msg("Couldn't accept the commit")),
+          detail: error.message,
+        };
     }
   }
-  return describeFactoryFailure(error, "Couldn't accept the commit");
+  return describeFactoryFailure(
+    error,
+    resolve(msg("Couldn't accept the commit")),
+    undefined,
+    resolve,
+  );
 }
 
 export function factoryRepositoryLabel(repository: FactoryRepository): string {
@@ -320,7 +398,7 @@ export function factoryIssueStartKey(input: {
   readonly environmentId: string;
   readonly projectId: string;
   readonly expectedRepositoryKey: string;
-  readonly issueNumber: number;
+  readonly issueKey: string;
   readonly expectedIssueRevision: string;
   readonly restartDeleted: boolean;
   readonly previousThreadId: string | null;
@@ -329,7 +407,7 @@ export function factoryIssueStartKey(input: {
     input.environmentId,
     input.projectId,
     input.expectedRepositoryKey,
-    input.issueNumber,
+    input.issueKey,
     input.expectedIssueRevision,
     input.restartDeleted,
     input.previousThreadId,
@@ -347,12 +425,15 @@ export function safeFactoryIssueUrl(url: string): string | null {
 
 const FACTORY_DELIVERY_TITLE_LIMIT = FACTORY_DELIVERY_TITLE_MAX_CHARS;
 
-export const FACTORY_DELIVERY_HEAD_MOVED =
-  "The head moved since acceptance. Re-accept, then prepare again.";
-export const FACTORY_DELIVERY_PAYLOAD_CHANGED =
-  "The title or body changed since the preview. Prepare again.";
-export const FACTORY_DELIVERY_ALREADY_DELIVERING =
-  "A pull request is already being published for this task.";
+export const FACTORY_DELIVERY_HEAD_MOVED = msg(
+  "The head moved since acceptance. Re-accept, then prepare again.",
+);
+export const FACTORY_DELIVERY_PAYLOAD_CHANGED = msg(
+  "The title or body changed since the preview. Prepare again.",
+);
+export const FACTORY_DELIVERY_ALREADY_DELIVERING = msg(
+  "A pull request is already being published for this task.",
+);
 
 /** The editable starting point: nothing is published until a human grants this exact preview. */
 export function factoryDeliveryDefaultPayload(issue: {
@@ -422,29 +503,33 @@ export function factoryDeliveryGrantBlocker(input: {
   readonly liveIntent: FactoryCommitDeliveryIntent | null;
   readonly prepared: FactoryCommitDeliveryPrepareResult | null;
   readonly draft: FactoryDeliveryPublishPayload;
+  readonly resolve?: MessageResolver;
 }): string | null {
+  const resolve = input.resolve ?? m;
   if (!input.permitted) {
-    return "This connection isn't permitted to publish pull requests in this environment.";
+    return resolve(
+      msg("This connection isn't permitted to publish pull requests in this environment."),
+    );
   }
   if (input.liveIntent !== null) {
     return input.liveIntent.status === "confirmed"
-      ? "A pull request was already published for this task."
-      : FACTORY_DELIVERY_ALREADY_DELIVERING;
+      ? resolve(msg("A pull request was already published for this task."))
+      : resolve(FACTORY_DELIVERY_ALREADY_DELIVERING);
   }
-  if (!input.acceptanceCurrent) return "Publishing needs a current accepted commit.";
+  if (!input.acceptanceCurrent) return resolve(msg("Publishing needs a current accepted commit."));
   const { prepared } = input;
-  if (prepared === null) return "Prepare a preview before granting.";
+  if (prepared === null) return resolve(msg("Prepare a preview before granting."));
   if (!prepared.current || prepared.headSha !== input.acceptedHeadSha) {
-    return FACTORY_DELIVERY_HEAD_MOVED;
+    return resolve(FACTORY_DELIVERY_HEAD_MOVED);
   }
   if (prepared.existing !== null && isLiveFactoryDelivery(prepared.existing)) {
-    return FACTORY_DELIVERY_ALREADY_DELIVERING;
+    return resolve(FACTORY_DELIVERY_ALREADY_DELIVERING);
   }
   if (
     isFactoryMergePayload(prepared.payload) ||
     !sameFactoryDeliveryPayload(prepared.payload, input.draft)
   ) {
-    return FACTORY_DELIVERY_PAYLOAD_CHANGED;
+    return resolve(FACTORY_DELIVERY_PAYLOAD_CHANGED);
   }
   return null;
 }
@@ -454,38 +539,59 @@ export const FACTORY_MERGE_METHODS: ReadonlyArray<{
   readonly label: string;
   readonly accessibilityLabel: string;
 }> = [
-  { value: "merge", label: "Merge", accessibilityLabel: "Create a merge commit" },
-  { value: "squash", label: "Squash", accessibilityLabel: "Squash and merge" },
-  { value: "rebase", label: "Rebase", accessibilityLabel: "Rebase and merge" },
+  {
+    value: "merge",
+    label: msg("Merge", { $context: "verb, merge a pull request with a merge commit" }),
+    accessibilityLabel: msg("Create a merge commit"),
+  },
+  {
+    value: "squash",
+    label: msg("Squash", { $context: "verb, squash and merge a pull request" }),
+    accessibilityLabel: msg("Squash and merge"),
+  },
+  {
+    value: "rebase",
+    label: msg("Rebase", { $context: "verb, rebase and merge a pull request" }),
+    accessibilityLabel: msg("Rebase and merge"),
+  },
 ];
 
 export const FACTORY_DEFAULT_MERGE_METHOD: PullRequestMergeMethod = "squash";
 
-export const FACTORY_MERGE_NOT_PUBLISHED = "Publish the pull request first.";
-export const FACTORY_MERGE_PR_HEAD_MOVED =
-  "The pull request head is not the accepted commit. Re-accept and refresh.";
-export const FACTORY_MERGE_ALREADY_MERGED = "This pull request is already merged.";
-export const factoryMergeNotMergeable = (displayName: string) =>
-  `${displayName} reports the pull request cannot be merged right now.`;
-export const FACTORY_MERGE_ALREADY_MERGING = "A merge is already in progress for this task.";
-export const FACTORY_MERGE_METHOD_CHANGED =
-  "The merge method changed since the preview. Prepare again.";
-export const factoryMergeDraft = (displayName: string) =>
-  `The pull request is a draft. Mark it ready for review on ${displayName}, then prepare again.`;
+export const FACTORY_MERGE_NOT_PUBLISHED = msg("Publish the pull request first.");
+export const FACTORY_MERGE_PR_HEAD_MOVED = msg(
+  "The pull request head is not the accepted commit. Re-accept and refresh.",
+);
+export const FACTORY_MERGE_ALREADY_MERGED = msg("This pull request is already merged.");
+export const factoryMergeNotMergeable = (displayName: string, resolve: MessageResolver = m) =>
+  resolve(
+    msg("{host} reports the pull request cannot be merged right now.", { host: displayName }),
+  );
+export const FACTORY_MERGE_ALREADY_MERGING = msg("A merge is already in progress for this task.");
+export const FACTORY_MERGE_METHOD_CHANGED = msg(
+  "The merge method changed since the preview. Prepare again.",
+);
+export const factoryMergeDraft = (displayName: string, resolve: MessageResolver = m) =>
+  resolve(
+    msg("The pull request is a draft. Mark it ready for review on {host}, then prepare again.", {
+      host: displayName,
+    }),
+  );
 
 type FactoryMergePullRequest = NonNullable<FactoryCommitDeliveryPrepareResult["pullRequest"]>;
 
 export function factoryMergeabilityLabel(
   mergeability: PullRequestMergeability,
   displayName: string,
+  resolve: MessageResolver = m,
 ): string {
   switch (mergeability) {
     case "mergeable":
-      return "No merge conflicts";
+      return resolve(msg("No merge conflicts"));
     case "conflicting":
-      return "Has merge conflicts";
+      return resolve(msg("Has merge conflicts"));
     case "unknown":
-      return `${displayName} has not decided mergeability yet`;
+      return resolve(msg("{host} has not decided mergeability yet", { host: displayName }));
   }
 }
 
@@ -496,19 +602,28 @@ export function factoryMergeabilityLabel(
 export function factoryPullRequestHeadView(
   pullRequest: FactoryMergePullRequest,
   acceptedHeadSha: string | null,
+  resolve: MessageResolver = m,
 ): { readonly matches: boolean; readonly text: string } {
   if (pullRequest.headSha === null) {
-    return { matches: false, text: "The pull request head could not be read." };
+    return { matches: false, text: resolve(msg("The pull request head could not be read.")) };
   }
   const head = shortFactorySha(pullRequest.headSha);
   if (acceptedHeadSha === null) {
-    return { matches: false, text: `Head ${head}. No accepted commit to compare.` };
+    return {
+      matches: false,
+      text: resolve(msg("Head {head}. No accepted commit to compare.", { head })),
+    };
   }
   return pullRequest.headSha === acceptedHeadSha
-    ? { matches: true, text: `Head ${head} matches the accepted commit.` }
+    ? { matches: true, text: resolve(msg("Head {head} matches the accepted commit.", { head })) }
     : {
         matches: false,
-        text: `Head ${head} is not the accepted commit ${shortFactorySha(acceptedHeadSha)}.`,
+        text: resolve(
+          msg("Head {head} is not the accepted commit {accepted}.", {
+            head,
+            accepted: shortFactorySha(acceptedHeadSha),
+          }),
+        ),
       };
 }
 
@@ -525,45 +640,53 @@ export function factoryMergeGrantBlocker(input: {
   readonly prepared: FactoryCommitDeliveryPrepareResult | null;
   readonly mergeMethod: PullRequestMergeMethod;
   readonly displayName: string;
+  readonly resolve?: MessageResolver;
 }): string | null {
+  const resolve = input.resolve ?? m;
   if (!input.permitted) {
-    return "This connection isn't permitted to merge pull requests in this environment.";
+    return resolve(
+      msg("This connection isn't permitted to merge pull requests in this environment."),
+    );
   }
   if (input.liveIntent !== null) {
     return input.liveIntent.status === "confirmed"
-      ? FACTORY_MERGE_ALREADY_MERGED
-      : FACTORY_MERGE_ALREADY_MERGING;
+      ? resolve(FACTORY_MERGE_ALREADY_MERGED)
+      : resolve(FACTORY_MERGE_ALREADY_MERGING);
   }
-  if (!input.acceptanceCurrent) return "Merging needs a current accepted commit.";
+  if (!input.acceptanceCurrent) return resolve(msg("Merging needs a current accepted commit."));
   const { prepared } = input;
-  if (prepared === null) return "Prepare a merge preview before granting.";
+  if (prepared === null) return resolve(msg("Prepare a merge preview before granting."));
   if (!prepared.current || prepared.headSha !== input.acceptedHeadSha) {
-    return FACTORY_DELIVERY_HEAD_MOVED;
+    return resolve(FACTORY_DELIVERY_HEAD_MOVED);
   }
   const pullRequest = prepared.pullRequest ?? null;
-  if (pullRequest === null) return FACTORY_MERGE_NOT_PUBLISHED;
-  if (pullRequest.state === "merged") return FACTORY_MERGE_ALREADY_MERGED;
-  if (pullRequest.state === "closed") return "This pull request is closed.";
+  if (pullRequest === null) return resolve(FACTORY_MERGE_NOT_PUBLISHED);
+  if (pullRequest.state === "merged") return resolve(FACTORY_MERGE_ALREADY_MERGED);
+  if (pullRequest.state === "closed") return resolve(msg("This pull request is closed."));
   if (!factoryPullRequestHeadView(pullRequest, input.acceptedHeadSha).matches) {
-    return FACTORY_MERGE_PR_HEAD_MOVED;
+    return resolve(FACTORY_MERGE_PR_HEAD_MOVED);
   }
-  if (pullRequest.isDraft) return factoryMergeDraft(input.displayName);
+  if (pullRequest.isDraft) return factoryMergeDraft(input.displayName, resolve);
   if (pullRequest.mergeability === "conflicting") {
-    return factoryMergeNotMergeable(input.displayName);
+    return factoryMergeNotMergeable(input.displayName, resolve);
   }
   if (prepared.existing !== null && isLiveFactoryDelivery(prepared.existing)) {
     return prepared.existing.status === "confirmed"
-      ? FACTORY_MERGE_ALREADY_MERGED
-      : FACTORY_MERGE_ALREADY_MERGING;
+      ? resolve(FACTORY_MERGE_ALREADY_MERGED)
+      : resolve(FACTORY_MERGE_ALREADY_MERGING);
   }
   if (
     !isFactoryMergePayload(prepared.payload) ||
     prepared.payload.mergeMethod !== input.mergeMethod
   ) {
-    return FACTORY_MERGE_METHOD_CHANGED;
+    return resolve(FACTORY_MERGE_METHOD_CHANGED);
   }
   if (!pullRequest.mergeMethods.includes(input.mergeMethod)) {
-    return `The repository does not allow ${input.mergeMethod} merges. Choose another method.`;
+    return resolve(
+      msg("The repository does not allow {method} merges. Choose another method.", {
+        method: input.mergeMethod,
+      }),
+    );
   }
   return null;
 }
@@ -585,18 +708,22 @@ export type FactoryDeliveryStatusView =
 export function factoryDeliveryStatusView(
   intent: FactoryDeliveryIntent,
   displayName: string,
+  resolve: MessageResolver = m,
 ): FactoryDeliveryStatusView {
-  if (isFactoryArtifactIntent(intent)) return factoryArtifactDeliveryStatusView(intent);
+  if (isFactoryArtifactIntent(intent)) return factoryArtifactDeliveryStatusView(intent, resolve);
   const merge = intent.kind === "merge-pr";
   switch (intent.status) {
     case "pending":
     case "sending":
-      return { kind: "in-progress", text: merge ? "Merging…" : "Publishing…" };
+      return {
+        kind: "in-progress",
+        text: merge ? resolve(msg("Merging…")) : resolve(msg("Publishing…")),
+      };
     case "confirmed": {
       if (intent.remote === null) {
         return {
           kind: "confirmed",
-          text: merge ? "Merged" : "Pull request published",
+          text: merge ? resolve(msg("Merged")) : resolve(msg("Pull request published")),
           link: null,
         };
       }
@@ -604,138 +731,240 @@ export function factoryDeliveryStatusView(
       const url = safeFactoryIssueUrl(intent.remote.url);
       return {
         kind: "confirmed",
-        text: merge ? `Merged pull request #${number}` : `Published pull request #${number}`,
-        link: url === null ? null : { label: `Open pull request #${number}`, url },
+        text: merge
+          ? resolve(msg("Merged pull request #{number}", { number: String(number) }))
+          : resolve(msg("Published pull request #{number}", { number: String(number) })),
+        link:
+          url === null
+            ? null
+            : {
+                label: resolve(msg("Open pull request #{number}", { number: String(number) })),
+                url,
+              },
       };
     }
     case "failed":
       return {
         kind: "failed",
-        text: intent.failure ?? (merge ? "Merging failed." : "Publishing failed."),
+        text:
+          intent.failure ??
+          (merge ? resolve(msg("Merging failed.")) : resolve(msg("Publishing failed."))),
       };
     case "unknown":
       return {
         kind: "unknown",
         text: merge
-          ? `The server lost the merge response. Reconcile to check ${displayName}.`
-          : `The server lost the response. Reconcile to check ${displayName}.`,
+          ? resolve(
+              msg("The server lost the merge response. Reconcile to check {host}.", {
+                host: displayName,
+              }),
+            )
+          : resolve(
+              msg("The server lost the response. Reconcile to check {host}.", {
+                host: displayName,
+              }),
+            ),
       };
   }
 }
 
 /** What a host that cannot publish says instead of offering the pull request controls. */
-export const factoryPublishUnsupportedText = (displayName: string) =>
-  `Publishing from ${displayName} is not supported yet.`;
+export const factoryPublishUnsupportedText = (displayName: string, resolve: MessageResolver = m) =>
+  resolve(msg("Publishing from {host} is not supported yet.", { host: displayName }));
 
 export function describeFactoryDeliveryFailure(
   error: unknown,
   displayName: string,
+  resolve: MessageResolver = m,
 ): FactoryFailure {
   if (isFactoryDeliveryError(error)) {
     switch (error.reason) {
       case "head-moved":
       case "acceptance-stale":
-        return { kind: "changed", title: "Head moved", detail: FACTORY_DELIVERY_HEAD_MOVED };
+        return {
+          kind: "changed",
+          title: resolve(msg("Head moved")),
+          detail: resolve(FACTORY_DELIVERY_HEAD_MOVED),
+        };
       case "payload-changed":
         return {
           kind: "changed",
-          title: "Preview changed",
-          detail: FACTORY_DELIVERY_PAYLOAD_CHANGED,
+          title: resolve(msg("Preview changed")),
+          detail: resolve(FACTORY_DELIVERY_PAYLOAD_CHANGED),
         };
       case "already-delivering":
         return {
           kind: "changed",
-          title: "Already publishing",
-          detail: FACTORY_DELIVERY_ALREADY_DELIVERING,
+          title: resolve(msg("Already publishing")),
+          detail: resolve(FACTORY_DELIVERY_ALREADY_DELIVERING),
         };
       case "not-accepted":
         return {
           kind: "changed",
-          title: "No accepted commit",
-          detail: "Accept a commit before publishing a pull request.",
+          title: resolve(msg("No accepted commit")),
+          detail: resolve(msg("Accept a commit before publishing a pull request.")),
         };
       case "worktree-unavailable":
-        return { kind: "repository", title: "Worktree unavailable", detail: error.message };
+        return {
+          kind: "repository",
+          title: resolve(msg("Worktree unavailable")),
+          detail: error.message,
+        };
       case "capability-unsupported":
         return {
           kind: "unsupported",
-          title: "Not supported",
-          detail: factoryPublishUnsupportedText(displayName),
+          title: resolve(msg("Not supported")),
+          detail: factoryPublishUnsupportedText(displayName, resolve),
         };
       default:
-        return { kind: "error", title: "Couldn't publish", detail: error.message };
+        return { kind: "error", title: resolve(msg("Couldn't publish")), detail: error.message };
     }
   }
-  return describeFactoryFailure(error, "Couldn't publish", displayName);
+  return describeFactoryFailure(error, resolve(msg("Couldn't publish")), displayName, resolve);
 }
 
-export function describeFactoryMergeFailure(error: unknown, displayName: string): FactoryFailure {
+export function describeFactoryMergeFailure(
+  error: unknown,
+  displayName: string,
+  resolve: MessageResolver = m,
+): FactoryFailure {
   if (isFactoryDeliveryError(error)) {
     switch (error.reason) {
       case "not-published":
-        return { kind: "changed", title: "Not published", detail: FACTORY_MERGE_NOT_PUBLISHED };
+        return {
+          kind: "changed",
+          title: resolve(msg("Not published")),
+          detail: resolve(FACTORY_MERGE_NOT_PUBLISHED),
+        };
       case "pull-request-head-moved":
         return {
           kind: "changed",
-          title: "Pull request head moved",
-          detail: FACTORY_MERGE_PR_HEAD_MOVED,
+          title: resolve(msg("Pull request head moved")),
+          detail: resolve(FACTORY_MERGE_PR_HEAD_MOVED),
         };
       case "already-merged":
-        return { kind: "changed", title: "Already merged", detail: FACTORY_MERGE_ALREADY_MERGED };
+        return {
+          kind: "changed",
+          title: resolve(msg("Already merged")),
+          detail: resolve(FACTORY_MERGE_ALREADY_MERGED),
+        };
       case "not-mergeable":
         return {
           kind: "retry",
-          title: "Not mergeable",
-          detail: factoryMergeNotMergeable(displayName),
+          title: resolve(msg("Not mergeable")),
+          detail: factoryMergeNotMergeable(displayName, resolve),
         };
       case "head-moved":
       case "acceptance-stale":
-        return { kind: "changed", title: "Head moved", detail: FACTORY_DELIVERY_HEAD_MOVED };
+        return {
+          kind: "changed",
+          title: resolve(msg("Head moved")),
+          detail: resolve(FACTORY_DELIVERY_HEAD_MOVED),
+        };
       case "payload-changed":
-        return { kind: "changed", title: "Preview changed", detail: FACTORY_MERGE_METHOD_CHANGED };
+        return {
+          kind: "changed",
+          title: resolve(msg("Preview changed")),
+          detail: resolve(FACTORY_MERGE_METHOD_CHANGED),
+        };
       case "already-delivering":
         return {
           kind: "changed",
-          title: "Already merging",
-          detail: FACTORY_MERGE_ALREADY_MERGING,
+          title: resolve(msg("Already merging")),
+          detail: resolve(FACTORY_MERGE_ALREADY_MERGING),
         };
       case "not-accepted":
         return {
           kind: "changed",
-          title: "No accepted commit",
-          detail: "Accept a commit before merging a pull request.",
+          title: resolve(msg("No accepted commit")),
+          detail: resolve(msg("Accept a commit before merging a pull request.")),
         };
       case "capability-unsupported":
         return {
           kind: "unsupported",
-          title: "Not supported",
-          detail: factoryPublishUnsupportedText(displayName),
+          title: resolve(msg("Not supported")),
+          detail: factoryPublishUnsupportedText(displayName, resolve),
         };
       default:
-        return { kind: "error", title: "Couldn't merge", detail: error.message };
+        return { kind: "error", title: resolve(msg("Couldn't merge")), detail: error.message };
     }
   }
-  return describeFactoryFailure(error, "Couldn't merge", displayName);
+  return describeFactoryFailure(error, resolve(msg("Couldn't merge")), displayName, resolve);
 }
 
-export const FACTORY_ARTIFACT_ALREADY_DELIVERING =
-  "A comment with this deliverable is already being posted, or was posted, on that issue.";
-export const FACTORY_ARTIFACT_CHANGED =
-  "The deliverable changed since it was accepted. Re-accept it, then prepare again.";
-export const FACTORY_ARTIFACT_PAYLOAD_CHANGED =
-  "The issue number changed since the preview. Prepare again.";
-export const FACTORY_ARTIFACT_NOT_ACCEPTED =
-  "Accept the current artifact before posting it as an issue comment.";
+export const FACTORY_ARTIFACT_ALREADY_DELIVERING = msg(
+  "A comment with this deliverable is already being posted, or was posted, on that issue.",
+);
+export const FACTORY_ARTIFACT_CHANGED = msg(
+  "The deliverable changed since it was accepted. Re-accept it, then prepare again.",
+);
+export const FACTORY_ARTIFACT_PAYLOAD_CHANGED = msg(
+  "The issue number changed since the preview. Prepare again.",
+);
+export const FACTORY_ARTIFACT_NOT_ACCEPTED = msg(
+  "Accept the current artifact before posting it as an issue comment.",
+);
 
 /** A host that cannot comment on issues gets this one line instead of a preview. */
-export const factoryIssueCommentUnsupportedText = (displayName: string | null) =>
-  `${displayName ?? "This repository's host"} does not support issue comments yet.`;
+export const factoryIssueCommentUnsupportedText = (
+  displayName: string | null,
+  resolve: MessageResolver = m,
+) =>
+  displayName === null
+    ? resolve(msg("This repository's host does not support issue comments yet."))
+    : resolve(msg("{host} does not support issue comments yet.", { host: displayName }));
 
 /** The issue number a person typed, or null while it is not a positive whole number. */
 export function parseFactoryIssueNumber(text: string): number | null {
   const trimmed = text.trim();
   if (!/^[1-9][0-9]{0,8}$/.test(trimmed)) return null;
   return Number(trimmed);
+}
+
+/**
+ * A git host keys its issues by a decimal number. A server without `factoryIssueKeys` can address
+ * nothing else, so any other key is a tracker it cannot reach. Mirrors the web's
+ * `factoryIssueNumberFromKey`.
+ */
+export function factoryIssueNumberFromKey(key: string): number | null {
+  if (!/^[1-9]\d*$/u.test(key)) return null;
+  const value = Number(key);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+/** How a Factory request names one issue: its native key, or the legacy number older servers read. */
+export type FactoryIssueTarget = { readonly key: string } | { readonly issueNumber: number };
+
+/**
+ * The address a Factory section may act on, or null when the server or the issue cannot take part.
+ * A server that advertises `factoryIssueKeys` takes any key; one that does not takes decimal
+ * numbers only. Mirrors the web's `resolveFactoryIssueSection`.
+ */
+export function resolveFactoryIssueSection(options: {
+  readonly factoryIssues: boolean;
+  readonly factoryIssueKeys: boolean;
+  readonly key: string;
+}): FactoryIssueTarget | null {
+  if (!options.factoryIssues) return null;
+  if (options.factoryIssueKeys) return options.key.length > 0 ? { key: options.key } : null;
+  const issueNumber = factoryIssueNumberFromKey(options.key);
+  return issueNumber === null ? null : { issueNumber };
+}
+
+export function factoryIssueKeyOf(issue: Pick<FactoryIssue, "number" | "key">): string | null {
+  return issue.key ?? (issue.number === null ? null : String(issue.number));
+}
+
+/** The address of an issue already read, in the form the server in use accepts. */
+export function factoryIssueTargetOf(
+  issue: Pick<FactoryIssue, "number" | "key">,
+  factoryIssueKeys: boolean,
+): FactoryIssueTarget | null {
+  if (factoryIssueKeys) {
+    const key = factoryIssueKeyOf(issue);
+    return key === null ? null : { key };
+  }
+  return issue.number === null ? null : { issueNumber: issue.number };
 }
 
 /** Reconcile reads the host for an `unknown` or `failed` comment; it never posts again. */
@@ -758,34 +987,55 @@ export function liveFactoryArtifactIntent(
 
 export function factoryArtifactDeliveryStatusView(
   intent: FactoryArtifactDeliveryIntent,
+  resolve: MessageResolver = m,
 ): FactoryDeliveryStatusView {
-  const issue = intent.payload.issueNumber;
+  const issue = String(intent.payload.issueNumber);
   switch (intent.status) {
     case "pending":
     case "sending":
-      return { kind: "in-progress", text: `Posting comment on issue #${issue}…` };
+      return {
+        kind: "in-progress",
+        text: resolve(msg("Posting comment on issue #{issue}…", { issue })),
+      };
     case "confirmed": {
       const url = intent.remote === null ? null : safeFactoryIssueUrl(intent.remote.url);
       return {
         kind: "confirmed",
-        text: `Posted comment on issue #${issue}`,
-        link: url === null ? null : { label: "Open comment", url },
+        text: resolve(msg("Posted comment on issue #{issue}", { issue })),
+        link: url === null ? null : { label: resolve(msg("Open comment")), url },
       };
     }
     case "failed":
-      return { kind: "failed", text: intent.failure ?? "Posting the comment failed." };
+      return {
+        kind: "failed",
+        text: intent.failure ?? resolve(msg("Posting the comment failed.")),
+      };
     case "unknown":
       return {
         kind: "unknown",
-        text: `${intent.failure?.trim() || "The server lost the response."} Reconcile to check ${intent.repository.host}.`,
+        text: resolve(
+          msg("{failure} Reconcile to check {host}.", {
+            failure: intent.failure?.trim() || resolve(msg("The server lost the response.")),
+            host: intent.repository.host,
+          }),
+        ),
       };
   }
 }
 
 /** The destination as the host reports it now, so a person sees where the comment lands. */
-export function factoryArtifactDestinationText(destination: FactoryDeliveryDestinationIssue) {
-  const title = safeFactoryIssueText(destination.title, 240) || "Untitled issue";
-  return `#${destination.number} ${title} (${destination.state})`;
+export function factoryArtifactDestinationText(
+  destination: FactoryDeliveryDestinationIssue,
+  resolve: MessageResolver = m,
+) {
+  const title = safeFactoryIssueText(destination.title, 240) || resolve(msg("Untitled issue"));
+  return resolve(
+    msg("#{number} {title} ({state})", {
+      number: String(destination.number),
+      title,
+      state: destination.state,
+    }),
+  );
 }
 
 /**
@@ -800,25 +1050,29 @@ export function factoryArtifactGrantBlocker(input: {
   readonly issueNumber: number | null;
   readonly liveIntent: FactoryArtifactDeliveryIntent | null;
   readonly prepared: FactoryArtifactDeliveryPrepareResult | null;
+  readonly resolve?: MessageResolver;
 }): string | null {
+  const resolve = input.resolve ?? m;
   if (!input.permitted) {
-    return "This connection isn't permitted to publish issue comments in this environment.";
+    return resolve(
+      msg("This connection isn't permitted to publish issue comments in this environment."),
+    );
   }
   if (input.liveIntent !== null) {
     return input.liveIntent.status === "confirmed"
-      ? "This deliverable was already posted on that issue."
-      : FACTORY_ARTIFACT_ALREADY_DELIVERING;
+      ? resolve(msg("This deliverable was already posted on that issue."))
+      : resolve(FACTORY_ARTIFACT_ALREADY_DELIVERING);
   }
   const { prepared } = input;
-  if (prepared === null) return "Prepare a preview before granting.";
+  if (prepared === null) return resolve(msg("Prepare a preview before granting."));
   if (!prepared.current || prepared.artifactSha256 !== input.acceptedSha256) {
-    return FACTORY_ARTIFACT_CHANGED;
+    return resolve(FACTORY_ARTIFACT_CHANGED);
   }
   if (prepared.existing !== null && isLiveFactoryDelivery(prepared.existing)) {
-    return FACTORY_ARTIFACT_ALREADY_DELIVERING;
+    return resolve(FACTORY_ARTIFACT_ALREADY_DELIVERING);
   }
   if (input.issueNumber === null || prepared.payload.issueNumber !== input.issueNumber) {
-    return FACTORY_ARTIFACT_PAYLOAD_CHANGED;
+    return resolve(FACTORY_ARTIFACT_PAYLOAD_CHANGED);
   }
   return null;
 }
@@ -830,49 +1084,245 @@ export function factoryArtifactGrantBlocker(input: {
 export function describeFactoryArtifactDeliveryFailure(
   error: unknown,
   displayName: string | null,
+  resolve: MessageResolver = m,
 ): FactoryFailure {
   if (isFactoryDeliveryError(error)) {
     switch (error.reason) {
       case "artifact-changed":
       case "acceptance-stale":
-        return { kind: "changed", title: "Deliverable changed", detail: FACTORY_ARTIFACT_CHANGED };
+        return {
+          kind: "changed",
+          title: resolve(msg("Deliverable changed")),
+          detail: resolve(FACTORY_ARTIFACT_CHANGED),
+        };
       case "payload-changed":
         return {
           kind: "changed",
-          title: "Preview changed",
-          detail: FACTORY_ARTIFACT_PAYLOAD_CHANGED,
+          title: resolve(msg("Preview changed")),
+          detail: resolve(FACTORY_ARTIFACT_PAYLOAD_CHANGED),
         };
       case "already-delivering":
         return {
           kind: "changed",
-          title: "Already posting",
-          detail: FACTORY_ARTIFACT_ALREADY_DELIVERING,
+          title: resolve(msg("Already posting")),
+          detail: resolve(FACTORY_ARTIFACT_ALREADY_DELIVERING),
         };
       case "not-accepted":
         return {
           kind: "changed",
-          title: "No accepted artifact",
-          detail: FACTORY_ARTIFACT_NOT_ACCEPTED,
+          title: resolve(msg("No accepted artifact")),
+          detail: resolve(FACTORY_ARTIFACT_NOT_ACCEPTED),
         };
       case "artifact-too-large":
       case "artifact-not-text":
-        return { kind: "error", title: "Can't post this deliverable", detail: error.message };
+        return {
+          kind: "error",
+          title: resolve(msg("Can't post this deliverable")),
+          detail: error.message,
+        };
       case "destination-not-found":
         return {
           kind: "repository",
-          title: "Issue not found",
-          detail:
-            "That number is not an issue in this project's repository. Check the number, then prepare again.",
+          title: resolve(msg("Issue not found")),
+          detail: resolve(
+            msg(
+              "That number is not an issue in this project's repository. Check the number, then prepare again.",
+            ),
+          ),
         };
       case "capability-unsupported":
         return {
           kind: "unsupported",
-          title: "Not supported",
-          detail: factoryIssueCommentUnsupportedText(displayName),
+          title: resolve(msg("Not supported")),
+          detail: factoryIssueCommentUnsupportedText(displayName, resolve),
         };
       default:
-        return { kind: "error", title: "Couldn't post the comment", detail: error.message };
+        return {
+          kind: "error",
+          title: resolve(msg("Couldn't post the comment")),
+          detail: error.message,
+        };
     }
   }
-  return describeFactoryFailure(error, "Couldn't post the comment", displayName ?? undefined);
+  return describeFactoryFailure(
+    error,
+    resolve(msg("Couldn't post the comment")),
+    displayName ?? undefined,
+    resolve,
+  );
+}
+
+/**
+ * Origin keys are compared across environments, so this is the server's encoding byte for byte
+ * (`apps/server/src/factory/FactoryOriginKey.ts` owns the definition). Each component escapes
+ * `%`, `|`, `#` and `:` so a locator or item key can never forge a neighbouring field; slashes and
+ * every other character pass through untouched. Mirrors the web's claims logic.
+ */
+function escapeOriginComponent(value: string): string {
+  return value.replace(
+    /[%|#:]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`,
+  );
+}
+
+/** The tracker kind is the namespace, so `github:` keys match rows written before other forges. */
+export function originKeyForIssue(
+  tracker: SourceControlProviderKind | IssueTrackerKind,
+  scopeKey: string,
+  key: string | number,
+): FactoryOriginKey {
+  return FactoryOriginKey.make(
+    `${tracker}:${escapeOriginComponent(scopeKey)}#${escapeOriginComponent(String(key))}`,
+  );
+}
+
+/** The origin key of one issue, through its tracker's own scope when the launch recorded one. */
+export function originKeyForFactoryIssue(
+  repository: Pick<FactoryRepository, "provider" | "canonicalKey" | "issueScope">,
+  issue: Pick<FactoryIssue, "number" | "key">,
+): FactoryOriginKey {
+  return originKeyForIssue(
+    repository.issueScope?.tracker ?? repository.provider,
+    repository.issueScope?.canonicalKey ?? repository.canonicalKey,
+    issue.key ?? String(issue.number),
+  );
+}
+
+export interface FactoryClaimElsewhere {
+  readonly environmentId: EnvironmentId;
+  readonly claim: FactoryClaim;
+}
+
+/** Claims for the origin held by any environment other than the one that would start the work. */
+export function claimsElsewhere(
+  claimsByEnvironment: ReadonlyMap<EnvironmentId, FactoryClaimListResult>,
+  originKey: FactoryOriginKey,
+  environmentId: EnvironmentId,
+): ReadonlyArray<FactoryClaimElsewhere> {
+  const elsewhere: FactoryClaimElsewhere[] = [];
+  for (const [holder, result] of claimsByEnvironment) {
+    if (holder === environmentId) continue;
+    for (const claim of result.claims) {
+      if (claim.originKey === originKey) elsewhere.push({ environmentId: holder, claim });
+    }
+  }
+  return elsewhere;
+}
+
+type EnvironmentLabel = (environmentId: EnvironmentId) => string;
+
+/**
+ * The Start review warns but never blocks: a claim elsewhere may be a stale copy, and the server
+ * still guards this environment's own claim.
+ */
+export function describeClaimsElsewhere(
+  elsewhere: ReadonlyArray<FactoryClaimElsewhere>,
+  labelOf: EnvironmentLabel,
+  resolve: MessageResolver = m,
+): string | null {
+  if (elsewhere.length === 0) return null;
+  const holders = elsewhere.map(
+    ({ environmentId, claim }) => `${labelOf(environmentId)} (${claim.status})`,
+  );
+  return resolve(
+    msg(
+      "Already claimed in {holders}. Starting here begins a separate attempt in this environment; nothing merges.",
+      { holders: holders.join(", ") },
+    ),
+  );
+}
+
+export interface FactoryClaimEnvironmentFacts {
+  readonly environmentId: EnvironmentId;
+  readonly label: string;
+  readonly connected: boolean;
+  readonly claimsSupported: boolean;
+  readonly canRead: boolean;
+}
+
+export interface FactoryClaimProjectFacts {
+  readonly environmentId: EnvironmentId;
+  readonly id: ProjectId;
+  readonly repositoryKey: string | null;
+}
+
+export interface FactoryClaimTarget {
+  readonly environmentId: EnvironmentId;
+  readonly projectId: ProjectId;
+}
+
+export type FactoryClaimsUnavailableReason = "offline" | "unsupported" | "no-access" | "failed";
+
+export interface FactoryClaimsUnavailable {
+  readonly environmentId: EnvironmentId;
+  readonly reason: FactoryClaimsUnavailableReason;
+}
+
+/**
+ * One request per environment that holds a checkout of the same repository. The claim list is
+ * repository-wide inside an environment, so a second checkout there adds nothing. The selected
+ * environment is always asked first; every other environment that has a matching checkout but
+ * cannot answer is reported as unreadable instead of being treated as having no claims.
+ */
+export function planClaimTargets(input: {
+  readonly current: FactoryClaimTarget & { readonly repositoryKey: string | null };
+  readonly environments: ReadonlyArray<FactoryClaimEnvironmentFacts>;
+  readonly projects: ReadonlyArray<FactoryClaimProjectFacts>;
+}): {
+  readonly targets: ReadonlyArray<FactoryClaimTarget>;
+  readonly unavailable: ReadonlyArray<FactoryClaimsUnavailable>;
+} {
+  const targets: FactoryClaimTarget[] = [
+    { environmentId: input.current.environmentId, projectId: input.current.projectId },
+  ];
+  const unavailable: FactoryClaimsUnavailable[] = [];
+  const repositoryKey = input.current.repositoryKey?.toLowerCase() ?? null;
+  if (repositoryKey === null) return { targets, unavailable };
+  for (const environment of input.environments) {
+    if (environment.environmentId === input.current.environmentId) continue;
+    const project = input.projects.find(
+      (candidate) =>
+        candidate.environmentId === environment.environmentId &&
+        candidate.repositoryKey?.toLowerCase() === repositoryKey,
+    );
+    if (project === undefined) continue;
+    if (!environment.connected) {
+      unavailable.push({ environmentId: environment.environmentId, reason: "offline" });
+    } else if (!environment.claimsSupported) {
+      unavailable.push({ environmentId: environment.environmentId, reason: "unsupported" });
+    } else if (!environment.canRead) {
+      unavailable.push({ environmentId: environment.environmentId, reason: "no-access" });
+    } else {
+      targets.push({ environmentId: environment.environmentId, projectId: project.id });
+    }
+  }
+  return { targets, unavailable };
+}
+
+const CLAIMS_UNAVAILABLE_LABELS: Record<FactoryClaimsUnavailableReason, string> = {
+  offline: msg("offline"),
+  unsupported: msg("server needs an update"),
+  "no-access": msg("no read access"),
+  failed: msg("request failed"),
+};
+
+/**
+ * Environments that may hold claims but did not answer. This is never worded as "no claims": an
+ * origin can be claimed in an environment this client could not read.
+ */
+export function describeUnavailableClaims(
+  unavailable: ReadonlyArray<FactoryClaimsUnavailable>,
+  labelOf: EnvironmentLabel,
+  resolve: MessageResolver = m,
+): string | null {
+  if (unavailable.length === 0) return null;
+  const list = unavailable
+    .map(
+      ({ environmentId, reason }) =>
+        `${labelOf(environmentId)} (${resolve(CLAIMS_UNAVAILABLE_LABELS[reason])})`,
+    )
+    .join(", ");
+  return resolve(
+    msg("Claims could not be read from {list}. An origin may be claimed there too.", { list }),
+  );
 }

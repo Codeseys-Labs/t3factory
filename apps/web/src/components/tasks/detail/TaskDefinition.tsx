@@ -1,5 +1,6 @@
 import type { FactoryTaskSummary } from "@t3tools/contracts";
 import { type KeyboardEvent, type MouseEvent, useState } from "react";
+import { T, useGT } from "gt-react";
 
 import { cn } from "~/lib/utils";
 import ChatMarkdown from "../../ChatMarkdown";
@@ -15,6 +16,7 @@ const EDITABLE_TEXT =
 export function TaskTitle({ task }: { task: FactoryTaskSummary }) {
   const { update: canUpdate } = useTaskPermissions(task.ref.environmentId);
   const actions = useTaskActions();
+  const gt = useGT();
   const [draft, setDraft] = useState<string | null>(null);
   const save = () => {
     if (draft === null) return;
@@ -34,7 +36,7 @@ export function TaskTitle({ task }: { task: FactoryTaskSummary }) {
   if (draft !== null)
     return (
       <Input
-        aria-label="Title"
+        aria-label={gt("Title", { $context: "noun, the task title" })}
         size="lg"
         value={draft}
         maxLength={512}
@@ -67,6 +69,7 @@ export function TaskDescription({
 }) {
   const { update: canUpdate } = useTaskPermissions(task.ref.environmentId);
   const actions = useTaskActions();
+  const gt = useGT();
   const [draft, setDraft] = useState<string | null>(null);
   const save = () => {
     if (draft === null) return;
@@ -85,7 +88,7 @@ export function TaskDescription({
   if (draft !== null)
     return (
       <Textarea
-        aria-label="Description"
+        aria-label={gt("Description", { $context: "noun, the task description" })}
         value={draft}
         maxLength={8000}
         autoFocus
@@ -111,7 +114,7 @@ export function TaskDescription({
         className={cn(EDITABLE_TEXT, "py-0.5 text-muted-foreground text-sm")}
         onClick={() => setDraft(description)}
       >
-        Add a description…
+        <T>Add a description…</T>
       </button>
     );
   // Controls, media and selections inside the description keep working; any other click edits.
@@ -125,8 +128,8 @@ export function TaskDescription({
   return (
     <div
       role="group"
-      aria-label="Description"
-      aria-description="Press Enter to edit"
+      aria-label={gt("Description", { $context: "noun, the task description" })}
+      aria-description={gt("Press Enter to edit")}
       tabIndex={0}
       className={cn(EDITABLE_TEXT, "py-0.5")}
       onClick={editOnClick}

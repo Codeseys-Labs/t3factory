@@ -15,6 +15,7 @@ import * as Schema from "effect/Schema";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
+import { request, requestGuarded } from "../rpc/client.ts";
 import type { EnvironmentThreadShell } from "./models.ts";
 import { createEnvironmentRpcCommand, createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
 import { createEnvironmentSessionAtoms } from "./session.ts";
@@ -137,16 +138,19 @@ export function createFactoryEnvironmentAtoms<R, E>(
     staleTimeMs: 0,
   });
   // Deliveries are read from the server each time: a status moves on the worker's clock, and
-  // `current` for the prepared payload depends on the live head.
+  // `current` for the prepared payload depends on the live head. Every delivery request asks for
+  // the tracker's own comment ids; an older server ignores the flag and sends integer ids.
   const prepareDelivery = createEnvironmentRpcQueryAtomFamily(runtime, {
     label: "environment-data:factory:prepare-delivery",
     tag: WS_METHODS.factoryPrepareDelivery,
     staleTimeMs: 0,
+    execute: (input) => request(WS_METHODS.factoryPrepareDelivery, { ...input, commentKeys: true }),
   });
   const readDeliveries = createEnvironmentRpcQueryAtomFamily(runtime, {
     label: "environment-data:factory:deliveries",
     tag: WS_METHODS.factoryReadDeliveries,
     staleTimeMs: 0,
+    execute: (input) => request(WS_METHODS.factoryReadDeliveries, { ...input, commentKeys: true }),
   });
   // The artifact digest, `current` and the task's folder are derived from the file on every read,
   // so a rewritten deliverable must show as changed on mount and refresh, never from a cache.
@@ -462,6 +466,8 @@ export function createFactoryEnvironmentAtoms<R, E>(
             input.expectedPayloadDigest,
           ]),
       },
+      execute: (input) =>
+        requestGuarded(WS_METHODS.factoryGrantDelivery, { ...input, commentKeys: true }),
       onSettled: ({ environmentId, input }, registry) =>
         Effect.sync(() => {
           registry.refresh(
@@ -492,6 +498,8 @@ export function createFactoryEnvironmentAtoms<R, E>(
         key: ({ environmentId, input }) =>
           JSON.stringify([environmentId, input.projectId, input.intentId]),
       },
+      execute: (input) =>
+        requestGuarded(WS_METHODS.factoryReconcileDelivery, { ...input, commentKeys: true }),
       onSuccess: ({ environmentId }, registry, intent) =>
         Effect.sync(() => {
           registry.refresh(
@@ -549,7 +557,7 @@ export function createFactoryEnvironmentAtoms<R, E>(
             environmentId,
             input.projectId,
             input.expectedRepositoryKey,
-            input.issueNumber,
+            input.key ?? input.issueNumber,
             input.expectedIssueRevision,
           ]),
       },

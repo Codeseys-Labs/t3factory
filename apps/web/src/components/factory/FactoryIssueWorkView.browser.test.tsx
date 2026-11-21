@@ -175,7 +175,7 @@ function issue(number: number, issueState: FactoryIssue["state"]): FactoryIssue 
   return {
     number,
     title: `Issue ${number}`,
-    body: `Body of issue ${number}`,
+    body: null,
     revision: "a".repeat(64),
     state: issueState,
     url: `https://github.com/owner/repo/issues/${number}`,
@@ -285,6 +285,9 @@ const waiver: FactoryReadinessOverride = {
   status: "active",
 };
 
+const onOpenIssue = vi.fn();
+const onOpenTask = vi.fn();
+
 function setup(supported = true) {
   state.supported = supported;
   state.acceptanceSupported = false;
@@ -302,26 +305,23 @@ function setup(supported = true) {
   state.refresh.mockClear();
   state.set.mockReset();
   state.revoke.mockReset();
+  onOpenIssue.mockReset();
+  onOpenTask.mockReset();
 }
 
 const workView = (
   <FactoryIssueWorkView
     environmentId={environmentId}
-    mode="list"
+    layout="table"
     issues={[issue(7, "open"), issue(8, "closed")]}
-    canStart
-    busy={false}
-    startingIssue={null}
     selectedProjectId={projectId}
     projectTitleById={new Map()}
     refreshing={false}
     claims={null}
     repository={repository}
     capabilities={capabilities}
-    onStart={vi.fn()}
-    onRestart={vi.fn()}
-    onResume={vi.fn()}
-    onOpen={vi.fn()}
+    onOpenIssue={onOpenIssue}
+    onOpenTask={onOpenTask}
   />
 );
 
@@ -331,8 +331,7 @@ it("observes blockers once per expand, only for an open issue", async () => {
   // Listing rows read nothing.
   expect(state.events).toEqual([]);
 
-  await screen.getByRole("button", { name: "Show issue #7 body" }).click();
-  await expect.element(screen.getByText("Body of issue 7")).toBeVisible();
+  await screen.getByRole("button", { name: "Show readiness of issue #7" }).click();
   await expect.element(screen.getByText(/^Blocked: 1 unresolved blocker/)).toBeVisible();
   await expect
     .element(screen.getByRole("link", { name: "owner/repo#9" }))
@@ -343,20 +342,32 @@ it("observes blockers once per expand, only for an open issue", async () => {
   await screen.rerender(workView);
   expect(state.events).toEqual(["observe 7"]);
 
-  await screen.getByRole("button", { name: "Hide issue #7 body" }).click();
-  await screen.getByRole("button", { name: "Show issue #7 body" }).click();
+  await screen.getByRole("button", { name: "Hide readiness of issue #7" }).click();
+  await screen.getByRole("button", { name: "Show readiness of issue #7" }).click();
   expect(state.events).toEqual(["observe 7", "release 7", "observe 7"]);
 
-  // A closed issue has nothing to wait on.
-  await screen.getByRole("button", { name: "Show issue #8 body" }).click();
-  await expect.element(screen.getByText("Body of issue 8")).toBeVisible();
+  // A closed issue has nothing to wait on, so it offers nothing to expand.
+  await expect
+    .element(screen.getByRole("button", { name: "Show readiness of issue #8" }))
+    .not.toBeInTheDocument();
   expect(state.events).toEqual(["observe 7", "release 7", "observe 7"]);
+});
+
+it("opens the issue panel from the title and the review action, and starts nothing itself", async () => {
+  setup();
+  await using screen = await render(workView);
+  await screen.getByRole("button", { name: "Issue 7", exact: true }).click();
+  expect(onOpenIssue).toHaveBeenCalledTimes(1);
+  expect(onOpenIssue).toHaveBeenLastCalledWith(expect.objectContaining({ number: 7 }));
+  await screen.getByRole("button", { name: "Review and start" }).click();
+  expect(onOpenIssue).toHaveBeenCalledTimes(2);
+  expect(onOpenTask).not.toHaveBeenCalled();
 });
 
 it("asks again only when Refresh is pressed", async () => {
   setup();
   await using screen = await render(workView);
-  await screen.getByRole("button", { name: "Show issue #7 body" }).click();
+  await screen.getByRole("button", { name: "Show readiness of issue #7" }).click();
   await screen.getByRole("button", { name: "Refresh blockers for issue #7" }).click();
   expect(state.refresh).toHaveBeenCalledTimes(1);
   expect(state.events).toEqual(["observe 7"]);
@@ -365,8 +376,9 @@ it("asks again only when Refresh is pressed", async () => {
 it("reads nothing from a server that does not advertise readiness", async () => {
   setup(false);
   await using screen = await render(workView);
-  await screen.getByRole("button", { name: "Show issue #7 body" }).click();
-  await expect.element(screen.getByText("Body of issue 7")).toBeVisible();
+  await expect
+    .element(screen.getByRole("button", { name: /^(Show|Hide) readiness of issue/ }))
+    .not.toBeInTheDocument();
   await expect.element(screen.getByText("Blockers", { exact: true })).not.toBeInTheDocument();
   await expect
     .element(screen.getByRole("button", { name: /^(Show|Hide) sub-issues/ }))
@@ -390,7 +402,7 @@ it("records a dispute on an accepted blocker, bound to the fingerprint that was 
   state.result = resultOf({ status: "ready", reasons: [], basis: "source", edges: [acceptedEdge] });
   state.set.mockResolvedValue(AsyncResult.success(state.result));
   await using screen = await render(workView);
-  await screen.getByRole("button", { name: "Show issue #7 body" }).click();
+  await screen.getByRole("button", { name: "Show readiness of issue #7" }).click();
   // Only an accepted blocker can be disputed, and an open one offers nothing.
   await expect
     .element(screen.getByRole("button", { name: /^Waive blocker/ }))
@@ -431,7 +443,7 @@ it("records a waiver on a deleted blocker", async () => {
   });
   state.set.mockResolvedValue(AsyncResult.success(state.result));
   await using screen = await render(workView);
-  await screen.getByRole("button", { name: "Show issue #7 body" }).click();
+  await screen.getByRole("button", { name: "Show readiness of issue #7" }).click();
   await screen.getByRole("button", { name: "Waive blocker owner/repo#5" }).click();
   await userEvent.fill(reasonBox(), "Deleted upstream.");
   await press("Record waiver");
@@ -453,7 +465,7 @@ it("keeps the dialog open with the error and refuses resubmission once the block
     AsyncResult.fail(new FactoryIssueError({ reason: "readiness-changed" })),
   );
   await using screen = await render(workView);
-  await screen.getByRole("button", { name: "Show issue #7 body" }).click();
+  await screen.getByRole("button", { name: "Show readiness of issue #7" }).click();
   await screen.getByRole("button", { name: "Dispute blocker owner/repo#4" }).click();
   await userEvent.fill(reasonBox(), "Closed by a bot, not finished.");
   const confirm = page.getByRole("button", { name: "Record dispute" });
@@ -495,7 +507,7 @@ it("shows an override in effect and revokes it by id", async () => {
   });
   state.revoke.mockResolvedValue(AsyncResult.success(state.result));
   await using screen = await render(workView);
-  await screen.getByRole("button", { name: "Show issue #7 body" }).click();
+  await screen.getByRole("button", { name: "Show readiness of issue #7" }).click();
   await expect.element(screen.getByText(/basis: override \(1 waived\)/)).toBeVisible();
   await expect
     .element(screen.getByText("Waived: Deleted upstream and retired by hand."))
@@ -520,7 +532,7 @@ it("cannot record a decision without operate permission", async () => {
   state.result = resultOf({ status: "ready", reasons: [], basis: "source", edges: [acceptedEdge] });
   state.canOperate = false;
   await using screen = await render(workView);
-  await screen.getByRole("button", { name: "Show issue #7 body" }).click();
+  await screen.getByRole("button", { name: "Show readiness of issue #7" }).click();
   await expect
     .element(screen.getByRole("button", { name: "Dispute blocker owner/repo#4" }))
     .toBeDisabled();
@@ -539,7 +551,7 @@ it("cannot record a decision from a stale observation", async () => {
     observedAt: "2026-10-24T00:00:00.000Z",
   });
   await using screen = await render(workView);
-  await screen.getByRole("button", { name: "Show issue #7 body" }).click();
+  await screen.getByRole("button", { name: "Show readiness of issue #7" }).click();
   await expect
     .element(screen.getByRole("button", { name: "Dispute blocker owner/repo#4" }))
     .toBeDisabled();
@@ -579,8 +591,8 @@ it("reads sub-issues only once opened, lists them in source order, and refreshes
   setup();
   state.frontier = frontierOf({});
   await using screen = await render(workView);
-  await screen.getByRole("button", { name: "Show issue #7 body" }).click();
-  // Collapsed by default: opening Details reads blockers but not the frontier.
+  await screen.getByRole("button", { name: "Show readiness of issue #7" }).click();
+  // Collapsed by default: opening Readiness reads blockers but not the frontier.
   expect(state.events).toEqual(["observe 7"]);
   await expect
     .element(screen.getByRole("button", { name: "Show sub-issues of issue #7" }))
@@ -616,7 +628,7 @@ it("says so when the sub-issue list is incomplete", async () => {
   setup();
   state.frontier = frontierOf({ complete: false, summaryTotal: 17 });
   await using screen = await render(workView);
-  await screen.getByRole("button", { name: "Show issue #7 body" }).click();
+  await screen.getByRole("button", { name: "Show readiness of issue #7" }).click();
   await screen.getByRole("button", { name: "Show sub-issues of issue #7" }).click();
   await expect
     .element(
@@ -631,7 +643,7 @@ it("says an issue without sub-issues has none", async () => {
   setup();
   state.frontier = frontierOf({ children: [], summaryTotal: 0 });
   await using screen = await render(workView);
-  await screen.getByRole("button", { name: "Show issue #7 body" }).click();
+  await screen.getByRole("button", { name: "Show readiness of issue #7" }).click();
   await screen.getByRole("button", { name: "Show sub-issues of issue #7" }).click();
   await expect.element(screen.getByText("This issue has no sub-issues.")).toBeVisible();
 });
@@ -697,21 +709,16 @@ const taskOf = (threadId: string): NonNullable<FactoryIssue["task"]> => ({
 const claimedView = (claims: FactoryClaimsView | null) => (
   <FactoryIssueWorkView
     environmentId={environmentId}
-    mode="list"
+    layout="table"
     issues={[{ ...issue(7, "open"), task: taskOf("thread:one") }]}
-    canStart
-    busy={false}
-    startingIssue={null}
     selectedProjectId={projectId}
     projectTitleById={new Map()}
     refreshing={false}
     claims={claims}
     repository={repository}
     capabilities={capabilities}
-    onStart={vi.fn()}
-    onRestart={vi.fn()}
-    onResume={vi.fn()}
-    onOpen={vi.fn()}
+    onOpenIssue={onOpenIssue}
+    onOpenTask={onOpenTask}
   />
 );
 

@@ -5,6 +5,7 @@ import type {
   ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
+import { T, useGT } from "gt-react-native";
 import type { ReactNode } from "react";
 import { View } from "react-native";
 
@@ -16,15 +17,18 @@ import { useFactoryAcceptCommit } from "./useFactoryIssueActions";
 
 function AcceptedDetails(props: { readonly acceptance: FactoryAcceptance }) {
   const { acceptance } = props;
+  const gt = useGT();
   const evidence = acceptance.evidenceRefs.length;
   return (
     <View className="gap-1">
       <Text selectable className="text-sm text-foreground">
-        Accepted {shortFactorySha(acceptance.headSha)}
+        {gt("Accepted {sha}", { sha: shortFactorySha(acceptance.headSha) })}
       </Text>
       <Text className="text-xs text-foreground-muted">
-        {new Date(acceptance.acceptedAt).toLocaleString()} · {evidence}{" "}
-        {evidence === 1 ? "evidence ref" : "evidence refs"}
+        {gt("{time} · {count, plural, one {{count} evidence ref} other {{count} evidence refs}}", {
+          time: new Date(acceptance.acceptedAt).toLocaleString(),
+          count: evidence,
+        })}
       </Text>
     </View>
   );
@@ -41,40 +45,43 @@ export function FactoryAcceptedCommitSection(props: {
   readonly issue: { readonly number: number; readonly title: string; readonly url: string };
   readonly capabilities: FactoryIssueCapabilities;
 }) {
+  const gt = useGT();
   const acceptance = useFactoryAcceptCommit(props);
   if (!acceptance.supported) return null;
   const { view, failure } = acceptance;
   const permissionReason = acceptance.canAccept
     ? null
-    : "This connection isn't permitted to accept commits in this environment.";
+    : gt("This connection isn't permitted to accept commits in this environment.");
 
   let content: ReactNode;
   if (view === null) {
     content = (
       <Text className="text-sm text-foreground-muted">
-        {acceptance.readError ?? "Reading the worktree head…"}
+        {acceptance.readError ?? gt("Reading the worktree head…")}
       </Text>
     );
   } else if (view.kind === "none") {
     const unavailable =
       view.liveHeadSha === null
-        ? "The task's worktree can't be read, so there is no commit to accept."
+        ? gt("The task's worktree can't be read, so there is no commit to accept.")
         : null;
     content = (
       <>
         <Text selectable className="text-sm text-foreground">
           {view.liveHeadSha === null
-            ? "No commit accepted"
-            : `No commit accepted · head ${shortFactorySha(view.liveHeadSha)}`}
+            ? gt("No commit accepted")
+            : gt("No commit accepted · head {sha}", {
+                sha: shortFactorySha(view.liveHeadSha),
+              })}
         </Text>
         <Button
           fullWidth
           tone="primary"
-          label="Accept this commit"
+          label={gt("Accept this commit")}
           accessibilityLabel={
             view.liveHeadSha === null
-              ? "Accept this commit"
-              : `Accept commit ${shortFactorySha(view.liveHeadSha)}`
+              ? gt("Accept this commit")
+              : gt("Accept commit {sha}", { sha: shortFactorySha(view.liveHeadSha) })
           }
           accessibilityHint={unavailable ?? permissionReason ?? undefined}
           loading={acceptance.pending}
@@ -92,24 +99,26 @@ export function FactoryAcceptedCommitSection(props: {
         <AcceptedDetails acceptance={view.acceptance} />
         {view.kind === "unverifiable" ? (
           <Text className="text-xs text-foreground-muted">
-            The worktree can't be read, so whether the head moved is unknown.
+            <T>The worktree can't be read, so whether the head moved is unknown.</T>
           </Text>
         ) : null}
         {view.kind === "moved" ? (
           <>
             <View accessibilityRole="alert" className="gap-1">
               <Text className="text-sm font-t3-semibold text-danger-foreground">
-                Head moved since acceptance
+                <T>Head moved since acceptance</T>
               </Text>
               <Text selectable className="text-xs text-foreground-muted">
-                Current head {shortFactorySha(view.liveHeadSha)}
+                {gt("Current head {sha}", { sha: shortFactorySha(view.liveHeadSha) })}
               </Text>
             </View>
             <Button
               fullWidth
               tone="primary"
-              label="Re-accept at current head"
-              accessibilityLabel={`Re-accept at current head ${shortFactorySha(view.liveHeadSha)}`}
+              label={gt("Re-accept at current head")}
+              accessibilityLabel={gt("Re-accept at current head {sha}", {
+                sha: shortFactorySha(view.liveHeadSha),
+              })}
               accessibilityHint={permissionReason ?? undefined}
               loading={acceptance.pending}
               disabled={permissionReason !== null}
@@ -127,7 +136,7 @@ export function FactoryAcceptedCommitSection(props: {
   return (
     <View className="gap-2">
       <Text accessibilityRole="header" className="text-sm font-t3-semibold text-foreground">
-        Accepted commit
+        <T>Accepted commit</T>
       </Text>
       {content}
       {failure ? (
@@ -140,8 +149,8 @@ export function FactoryAcceptedCommitSection(props: {
       ) : null}
       <Button
         tone="text"
-        label="Refresh"
-        accessibilityLabel="Refresh accepted commit"
+        label={gt("Refresh")}
+        accessibilityLabel={gt("Refresh accepted commit")}
         disabled={acceptance.pending || acceptance.loading}
         onPress={acceptance.refresh}
       />

@@ -48,6 +48,8 @@ vi.mock(import("../../state/factory"), async () => {
       startKnowledgeTask: { permissionAtom },
       launchResearchRun: { permissionAtom },
     },
+    factoryIssueKeysInput: () => ({}),
+    useFactoryIssueKeysSupported: () => false,
     useFactoryWorkLists: (targets: unknown) => {
       state.targets.push(JSON.stringify(targets));
       useSyncExternalStore(subscribe, () => state.version);

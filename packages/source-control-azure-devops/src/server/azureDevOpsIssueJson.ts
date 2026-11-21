@@ -296,6 +296,17 @@ const CommentsPage = Schema.Struct({
 });
 
 const decodeCommentsPage = decodeJsonResult(CommentsPage);
+
+function toComment(value: typeof Comment.Type): IssueComment {
+  return {
+    id: String(value.id),
+    author: toActor(value.createdBy),
+    body: value.text ?? "",
+    createdAt: value.createdDate,
+    url: null,
+    reactions: toReactions(value.reactions),
+  };
+}
 const decodeCommentEntry = Schema.decodeUnknownExit(Comment);
 
 function toReactions(raw: (typeof Comment.Type)["reactions"]): ReadonlyArray<IssueReaction> {
@@ -324,20 +335,16 @@ export function decodeCommentsJson(
   return Result.map(decodeCommentsPage(raw), (page) => ({
     comments: (page.comments ?? []).flatMap((entry) => {
       const comment = decodeCommentEntry(entry);
-      if (Exit.isFailure(comment) || comment.value.isDeleted === true) return [];
-      return [
-        {
-          id: String(comment.value.id),
-          author: toActor(comment.value.createdBy),
-          body: comment.value.text ?? "",
-          createdAt: comment.value.createdDate,
-          url: null,
-          reactions: toReactions(comment.value.reactions),
-        },
-      ];
+      return Exit.isFailure(comment) || comment.value.isDeleted === true
+        ? []
+        : [toComment(comment.value)];
     }),
     nextCursor: trimmed(page.continuationToken),
   }));
+}
+
+export function decodeCreatedCommentJson(raw: string): Result.Result<IssueComment, DecodeFailure> {
+  return Result.map(decodeJsonResult(Comment)(raw), toComment);
 }
 
 const FieldChange = Schema.Struct({

@@ -648,7 +648,9 @@ export declare namespace T3IssueUpdate {
 /** The result of a comment mutation. */
 export const CommentPayload = Schema.Struct({
   /** Whether the operation was successful. */
-  success: Schema.Boolean
+  success: Schema.Boolean,
+  /** The comment that was created or updated. */
+  comment: LinearComment
 })
 export interface CommentPayload extends Schema.Struct.Type<typeof CommentPayload.fields> {}
 
@@ -659,9 +661,14 @@ export const T3CommentCreate = GraphQL.mutation("T3CommentCreate", {
       { name: "input", body: "CommentCreateInput!" }
     ],
     selections: [
-      { name: "commentCreate", body: ["(input:$", "input", "){success}"] }
+      { name: "commentCreate", body: ["(input:$", "input", "){success comment{...LinearComment}}"] }
     ],
-    fragments: []
+    fragments: [
+      { name: "LinearComment", body: ["on Comment{id body createdAt url user{...LinearUser}botActor{...LinearBot}reactions{...LinearReaction}}"] },
+      { name: "LinearUser", body: ["on User{id name displayName email avatarUrl}"] },
+      { name: "LinearBot", body: ["on ActorBot{name userDisplayName avatarUrl}"] },
+      { name: "LinearReaction", body: ["on Reaction{id emoji user{...LinearUser}}"] }
+    ]
   },
   variables: {
     input: Shared.CommentCreateInput

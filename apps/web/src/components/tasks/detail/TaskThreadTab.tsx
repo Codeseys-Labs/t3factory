@@ -13,6 +13,7 @@ import type { LegendListRef } from "@legendapp/list/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowUpRightIcon } from "lucide-react";
 import { useRef } from "react";
+import { T, useGT, useMessages } from "gt-react";
 
 import { useEnvironmentSettings } from "../../../hooks/useSettings";
 import { useTheme } from "../../../hooks/useTheme";
@@ -53,15 +54,25 @@ export function TaskThreadTab({ task }: { task: FactoryTaskSummary }) {
   const run = task.run;
   const catalog = useTaskCatalog(task.ref.environmentId);
   const live = useFactoryTaskLiveState(task);
-  if (run === null) return <p className="py-2 text-muted-foreground text-sm">No runs yet.</p>;
+  const gt = useGT();
+  const messages = useMessages();
+  if (run === null)
+    return (
+      <p className="py-2 text-muted-foreground text-sm">
+        <T>No runs yet.</T>
+      </p>
+    );
   const pill = live.liveRuns.find((entry) => entry.threadId === run.threadId)?.pill ?? null;
-  const state = runStateWord(run, pill?.label ?? null);
+  const state = runStateWord(run, pill?.label ?? null, messages);
   const ownLive = isRunLive(run) && task.liveRuns.some((entry) => entry.threadId === run.threadId);
   return (
     <div className="flex flex-col gap-3">
       <div className="flex min-w-0 items-center gap-2 text-sm">
         <span className="min-w-0 truncate">
-          Run {run.ordinal} · {presentTaskSetup(run.setup, catalog).label}
+          {gt("Run {ordinal} · {label}", {
+            ordinal: String(run.ordinal),
+            label: presentTaskSetup(run.setup, catalog).label,
+          })}
         </span>
         <span className="shrink-0 text-muted-foreground text-xs">{state.label}</span>
         <span className="flex-1" />
@@ -74,7 +85,7 @@ export function TaskThreadTab({ task }: { task: FactoryTaskSummary }) {
             />
           }
         >
-          Open full size
+          <T>Open full size</T>
           <ArrowUpRightIcon aria-hidden className="size-3.5" />
         </InlineButton>
       </div>
@@ -88,8 +99,8 @@ export function TaskThreadTab({ task }: { task: FactoryTaskSummary }) {
       ) : (
         <p className="text-muted-foreground text-xs">
           {run.purpose === "work" && ownLive
-            ? "Replies to this run go through its questions and Request changes."
-            : "This run has ended. Comments for people go in Activity."}
+            ? gt("Replies to this run go through its questions and Request changes.")
+            : gt("This run has ended. Comments for people go in Activity.")}
         </p>
       )}
     </div>

@@ -106,13 +106,41 @@ export function useFactoryClaimsSupported(environmentId: EnvironmentId): boolean
   return useAtomValue(factoryClaimsSupportedAtom(environmentId));
 }
 
+/**
+ * Native issue keys (Linear and other standalone trackers) are opt-in per request: a server that
+ * omits `factoryIssueKeys` keeps serving only numeric git-host issues and would not know the flag.
+ */
+const factoryIssueKeysSupportedAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make(
+    (get) =>
+      get(environmentPresentations.presentationAtom(environmentId))?.serverConfig?.environment
+        .capabilities.factoryIssueKeys === true,
+  ).pipe(Atom.withLabel(`web-factory-issue-keys-supported:${environmentId}`)),
+);
+
+export function useFactoryIssueKeysSupported(environmentId: EnvironmentId): boolean {
+  return useAtomValue(factoryIssueKeysSupportedAtom(environmentId));
+}
+
+const factoryIssueKeyEnvironmentIdsAtom = Atom.make((get) => {
+  const next = get(environmentSummaries.environmentIdsAtom).filter((environmentId) =>
+    get(factoryIssueKeysSupportedAtom(environmentId)),
+  );
+  const previous = Option.getOrNull(get.self<ReadonlyArray<EnvironmentId>>());
+  return previous !== null && arrayElementsEqual(previous, next) ? previous : next;
+}).pipe(Atom.withLabel("web-factory-issue-key-environment-ids"));
+
+export function factoryIssueKeysInput(supported: boolean): { readonly issueKeys?: true } {
+  return supported ? { issueKeys: true } : {};
+}
+
 export interface FactoryClaimListTarget {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
 }
 
 const FactoryClaimTargetsKey = Schema.fromJsonString(
-  Schema.Array(Schema.Tuple([EnvironmentId, ProjectId])),
+  Schema.Array(Schema.Tuple([EnvironmentId, ProjectId, Schema.Boolean])),
 );
 const decodeFactoryClaimTargetsKey = Schema.decodeUnknownOption(FactoryClaimTargetsKey);
 
@@ -123,9 +151,14 @@ const decodeFactoryClaimTargetsKey = Schema.decodeUnknownOption(FactoryClaimTarg
 const factoryClaimListsAtom = Atom.family((key: string) =>
   Atom.make((get) =>
     Option.getOrElse(decodeFactoryClaimTargetsKey(key), () => []).map(
-      ([environmentId, projectId]) => ({
+      ([environmentId, projectId, issueKeys]) => ({
         environmentId,
-        result: get(factoryEnvironment.listClaims({ environmentId, input: { projectId } })),
+        result: get(
+          factoryEnvironment.listClaims({
+            environmentId,
+            input: { projectId, ...factoryIssueKeysInput(issueKeys) },
+          }),
+        ),
       }),
     ),
   ).pipe(Atom.withLabel(`web-factory-claim-lists:${key}`)),
@@ -137,14 +170,29 @@ const factoryClaimListsAtom = Atom.family((key: string) =>
  */
 export function useFactoryClaimLists(targets: ReadonlyArray<FactoryClaimListTarget>) {
   const registry = useContext(RegistryContext);
+  const keyEnvironments = useAtomValue(factoryIssueKeyEnvironmentIdsAtom);
   const lists = useAtomValue(
     factoryClaimListsAtom(
-      JSON.stringify(targets.map(({ environmentId, projectId }) => [environmentId, projectId])),
+      JSON.stringify(
+        targets.map(({ environmentId, projectId }) => [
+          environmentId,
+          projectId,
+          keyEnvironments.includes(environmentId),
+        ]),
+      ),
     ),
   );
   const refresh = () => {
     for (const { environmentId, projectId } of targets) {
-      registry.refresh(factoryEnvironment.listClaims({ environmentId, input: { projectId } }));
+      registry.refresh(
+        factoryEnvironment.listClaims({
+          environmentId,
+          input: {
+            projectId,
+            ...factoryIssueKeysInput(keyEnvironments.includes(environmentId)),
+          },
+        }),
+      );
     }
   };
   return { lists, refresh };
@@ -173,11 +221,19 @@ export function useFactoryWorkLists(
   }[],
 ) {
   const registry = useContext(RegistryContext);
-  const lists = useAtomValue(workLists(JSON.stringify(targets)));
+  const keyEnvironments = useAtomValue(factoryIssueKeyEnvironmentIdsAtom);
+  const requested = targets.map((target) => ({
+    environmentId: target.environmentId,
+    input: {
+      ...target.input,
+      ...factoryIssueKeysInput(keyEnvironments.includes(target.environmentId)),
+    },
+  }));
+  const lists = useAtomValue(workLists(JSON.stringify(requested)));
   return {
     lists,
     refresh: () => {
-      for (const target of targets) registry.refresh(factoryEnvironment.listWork(target));
+      for (const target of requested) registry.refresh(factoryEnvironment.listWork(target));
     },
   };
 }

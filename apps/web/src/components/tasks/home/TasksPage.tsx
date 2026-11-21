@@ -11,6 +11,7 @@ import {
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { CommandIcon, PlusIcon, ZapIcon } from "lucide-react";
 import { useState } from "react";
+import { T, useGT } from "gt-react";
 
 import { shortcutLabelForCommand } from "../../../keybindings";
 import { useFactoryTaskAssignees, useFactoryTasks } from "../../../state/factoryTasks";
@@ -69,6 +70,7 @@ export function TasksPage() {
   const view = tasksViewState(search);
   const scope = useTaskScope();
   const actions = useTaskActions();
+  const gt = useGT();
   const filters = serverFilters(view.filters);
   const statuses = boardStatuses(filters);
   const roots = useFactoryTasks(withFilters(scope.targets, filters, "roots"));
@@ -113,10 +115,12 @@ export function TasksPage() {
 
   if (empty || waiting)
     return (
-      <TaskPageFrame header={<PageHeader title="Tasks" />}>
+      <TaskPageFrame
+        header={<PageHeader title={gt("Tasks", { $context: "the Tasks page title" })} />}
+      >
         {waiting ? (
           <p role="status" className="px-6 py-4 text-muted-foreground text-sm">
-            Loading tasks…
+            <T>Loading tasks…</T>
           </p>
         ) : (
           <EmptyTasks
@@ -141,24 +145,28 @@ export function TasksPage() {
     <TaskPageFrame
       header={
         <PageHeader
-          title="Tasks"
+          title={gt("Tasks", { $context: "the Tasks page title" })}
           view={
             <ToggleGroup
-              aria-label="Layout"
+              aria-label={gt("Layout")}
               value={[layout]}
               onValueChange={(next) => {
                 const value = next[0];
                 if (value === "board" || value === "list") setView({ layout: value });
               }}
             >
-              <Toggle value="board">Board</Toggle>
-              <Toggle value="list">List</Toggle>
+              <Toggle value="board">
+                <T>Board</T>
+              </Toggle>
+              <Toggle value="list">
+                <T>List</T>
+              </Toggle>
             </ToggleGroup>
           }
           actions={
             <Button size="sm" onClick={() => newTask()}>
               <PlusIcon aria-hidden />
-              New task
+              <T>New task</T>
             </Button>
           }
         />
@@ -266,7 +274,7 @@ function ListView({
 function NoMatches() {
   return (
     <p role="status" className="shrink-0 px-6 pb-3 text-muted-foreground text-sm">
-      No tasks match these filters.
+      <T>No tasks match these filters.</T>
     </p>
   );
 }
@@ -294,27 +302,30 @@ function EmptyTasks({
   onConnectSource: () => void;
 }) {
   const shortcut = shortcutLabelForCommand(useAtomValue(primaryServerKeybindingsAtom), "tasks.new");
+  const gt = useGT();
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center p-6">
       <div className="flex flex-col items-center gap-10">
         <TaskEmptyState
           icon="tasks"
-          title="No tasks yet"
-          body="A task is a piece of work you can hand to an agent, follow on the board and review when it is done."
-          primary={{ label: "New task", onClick: onNewTask }}
+          title={gt("No tasks yet")}
+          body={gt(
+            "A task is a piece of work you can hand to an agent, follow on the board and review when it is done.",
+          )}
+          primary={{ label: gt("New task"), onClick: onNewTask }}
           {...(shortcut ? { shortcut } : {})}
-          secondary={{ label: "Connect a source", onClick: onConnectSource }}
+          secondary={{ label: gt("Connect a source"), onClick: onConnectSource }}
         />
         <ul className="flex flex-col items-center gap-3 text-muted-foreground text-sm">
           {shortcut ? (
             <li className="flex items-center gap-2">
               <CommandIcon aria-hidden className="size-3.5" />
-              {`Press ${shortcut} anywhere to add a task`}
+              {gt("Press {shortcut} anywhere to add a task", { shortcut })}
             </li>
           ) : null}
           <li className="flex items-center gap-2">
             <ZapIcon aria-hidden className="size-3.5" />
-            Rules can add tasks from GitHub issues and feeds
+            <T>Rules can add tasks from GitHub issues and feeds</T>
           </li>
         </ul>
       </div>

@@ -12,6 +12,9 @@ import {
 } from "@t3tools/client-runtime/state/factory-task-view";
 import type { FactoryTaskOwnerStatus } from "@t3tools/client-runtime/state/factory-task-list";
 
+import { msg } from "gt-react-native";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 import type { ThreadListV2Status } from "../threads/threadListV2";
 
 export type TaskTone = "danger" | "attention" | "input" | "working" | "neutral";
@@ -36,13 +39,13 @@ export function taskLivePill(label: string, tone: TaskTone): FactoryTaskLivePill
 }
 
 const THREAD_PILLS: Partial<Record<ThreadListV2Status, { label: string; tone: TaskTone }>> = {
-  approval: { label: "Pending Approval", tone: "attention" },
-  input: { label: "Awaiting Input", tone: "input" },
-  request: { label: "Request", tone: "attention" },
-  working: { label: "Working", tone: "working" },
-  waiting: { label: "Waiting", tone: "neutral" },
-  failed: { label: "Failed", tone: "danger" },
-  limited: { label: "Limited", tone: "attention" },
+  approval: { label: msg("Pending Approval"), tone: "attention" },
+  input: { label: msg("Awaiting Input"), tone: "input" },
+  request: { label: msg("Request"), tone: "attention" },
+  working: { label: msg("Working"), tone: "working" },
+  waiting: { label: msg("Waiting"), tone: "neutral" },
+  failed: { label: msg("Failed"), tone: "danger" },
+  limited: { label: msg("Limited"), tone: "attention" },
 };
 
 /** The words the thread list uses for a run's thread, so a task row and its thread agree. */
@@ -56,25 +59,37 @@ function toneOf(pill: FactoryTaskLivePill): TaskTone {
 }
 
 /** Minutes, hours or days since `startedAt`, as the thread rows write them. */
-export function elapsedSince(startedAt: string, now: number): string {
+export function elapsedSince(startedAt: string, now: number, resolve: MessageResolver = m): string {
   const started = Date.parse(startedAt);
-  if (Number.isNaN(started)) return "<1m";
+  if (Number.isNaN(started))
+    return resolve(msg("<1m", { $context: "compact elapsed time, under one minute" }));
   const minutes = Math.floor(Math.max(0, now - started) / 60_000);
-  if (minutes < 1) return "<1m";
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1)
+    return resolve(msg("<1m", { $context: "compact elapsed time, under one minute" }));
+  if (minutes < 60)
+    return resolve(
+      msg("{count}m", { count: String(minutes), $context: "compact elapsed minutes" }),
+    );
   const hours = Math.floor(minutes / 60);
-  return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+  return hours < 24
+    ? resolve(msg("{count}h", { count: String(hours), $context: "compact elapsed hours" }))
+    : resolve(
+        msg("{count}d", {
+          count: String(Math.floor(hours / 24)),
+          $context: "compact elapsed days",
+        }),
+      );
 }
 
 const NEED_PILLS: Record<FactoryTaskAttentionReason, Omit<TaskPill, "elapsed">> = {
-  failed: { label: "Failed", tone: "danger", icon: "alert" },
-  lost: { label: "Lost", tone: "danger", icon: "alert" },
-  approve: { label: "Pending Approval", tone: "attention", icon: "dot" },
-  question: { label: "Awaiting Input", tone: "input", icon: "dot" },
-  unconfirmed: { label: "Unconfirmed", tone: "attention", icon: "dot" },
-  changed: { label: "Changed", tone: "attention", icon: "eye" },
-  plan: { label: "Plan ready", tone: "attention", icon: "eye" },
-  review: { label: "Review", tone: "attention", icon: "eye" },
+  failed: { label: msg("Failed"), tone: "danger", icon: "alert" },
+  lost: { label: msg("Lost"), tone: "danger", icon: "alert" },
+  approve: { label: msg("Pending Approval"), tone: "attention", icon: "dot" },
+  question: { label: msg("Awaiting Input"), tone: "input", icon: "dot" },
+  unconfirmed: { label: msg("Unconfirmed"), tone: "attention", icon: "dot" },
+  changed: { label: msg("Changed"), tone: "attention", icon: "eye" },
+  plan: { label: msg("Plan ready"), tone: "attention", icon: "eye" },
+  review: { label: msg("Review"), tone: "attention", icon: "eye" },
 };
 
 export function taskNeedPill(reason: FactoryTaskAttentionReason): TaskPill {
@@ -87,7 +102,7 @@ export function taskStatePill(entry: TaskEntry, now: number): TaskPill {
   const run = live.liveRuns[0];
   if (run) {
     const pill = run.pill;
-    const label = pill?.label ?? "Working";
+    const label = pill?.label ?? msg("Working");
     const tone = pill ? toneOf(pill) : "working";
     return {
       label,
@@ -99,10 +114,10 @@ export function taskStatePill(entry: TaskEntry, now: number): TaskPill {
   if (task.status === "in-review") return { ...NEED_PILLS.review, elapsed: null };
   const label =
     task.run?.state === "stopping"
-      ? "Stopping…"
+      ? msg("Stopping…")
       : task.run?.state === "stopped"
-        ? "Stopped"
-        : "In progress";
+        ? msg("Stopped")
+        : msg("In progress");
   return { label, tone: "neutral", icon: "dot", elapsed: null };
 }
 
@@ -231,28 +246,31 @@ export const TASKS_LIST_COPY: Record<
   Exclude<TasksListKind, "loading" | "ready">,
   { readonly title: string; readonly detail: string }
 > = {
-  none: { title: "No environments", detail: "Connect an environment to see its tasks." },
-  offline: { title: "Offline", detail: "Reconnect to see tasks." },
+  none: {
+    title: msg("No environments"),
+    detail: msg("Connect an environment to see its tasks."),
+  },
+  offline: { title: msg("Offline"), detail: msg("Reconnect to see tasks.") },
   forbidden: {
-    title: "No access",
-    detail: "This connection can't read tasks. Ask the owner for read access.",
+    title: msg("No access"),
+    detail: msg("This connection can't read tasks. Ask the owner for read access."),
   },
   unsupported: {
-    title: "Update the server",
-    detail: "This server is too old to list tasks.",
+    title: msg("Update the server"),
+    detail: msg("This server is too old to list tasks."),
   },
   failed: {
-    title: "Couldn't load tasks",
-    detail: "Pull down to try again.",
+    title: msg("Couldn't load tasks"),
+    detail: msg("Pull down to try again."),
   },
-  "caught-up": { title: "All caught up", detail: "Nothing needs you right now." },
+  "caught-up": { title: msg("All caught up"), detail: msg("Nothing needs you right now.") },
 };
 
-export const TASKS_OWNER_NOTICE: Record<TasksListState["notices"][number]["status"], string> = {
-  offline: "is offline",
-  forbidden: "can't be read with this connection",
-  unsupported: "is too old to list tasks",
-  failed: "couldn't be read",
+const TASKS_OWNER_NOTICE: Record<TasksListState["notices"][number]["status"], string> = {
+  offline: msg("{environment} is offline"),
+  forbidden: msg("{environment} can't be read with this connection"),
+  unsupported: msg("{environment} is too old to list tasks"),
+  failed: msg("{environment} couldn't be read"),
 };
 
 export const TONE_CLASSES: Record<
@@ -291,16 +309,19 @@ export type TasksListItem =
   | { readonly type: "need"; readonly key: string; readonly row: TaskNeedRow }
   | { readonly type: "task"; readonly key: string; readonly row: TaskGroupRow };
 
-const GROUP_TITLES = { "in-progress": "In progress", "in-review": "In review" } as const;
+const GROUP_TITLES = { "in-progress": msg("In progress"), "in-review": msg("In review") } as const;
 
 /** One line for each environment that could not be read while others were. */
 export function tasksListNotices(
   state: TasksListState,
   labelOf: (environmentId: EnvironmentId) => string,
+  resolve: MessageResolver = m,
 ): readonly { readonly key: EnvironmentId; readonly text: string }[] {
   return state.notices.map((notice) => ({
     key: notice.environmentId,
-    text: `${labelOf(notice.environmentId)} ${TASKS_OWNER_NOTICE[notice.status]}`,
+    text: resolve(TASKS_OWNER_NOTICE[notice.status], {
+      environment: labelOf(notice.environmentId),
+    }),
   }));
 }
 
@@ -308,6 +329,7 @@ export function tasksListNotices(
 export function buildTasksListItems(
   sections: TasksSections,
   needsIncomplete = false,
+  resolve: MessageResolver = m,
 ): TasksListItem[] {
   return [
     ...(sections.needs.length > 0
@@ -315,29 +337,34 @@ export function buildTasksListItems(
           {
             type: "header" as const,
             key: "needs",
-            title: `Needs you · ${sections.count}${needsIncomplete ? "+" : ""}`,
+            title: needsIncomplete
+              ? resolve(msg("Needs you · {count}+", { count: String(sections.count) }))
+              : resolve(msg("Needs you · {count}", { count: String(sections.count) })),
           },
           ...sections.needs.map((row) => ({ type: "need" as const, key: row.key, row })),
         ]
       : []),
     ...sections.groups.flatMap((group) => [
-      { type: "header" as const, key: group.status, title: GROUP_TITLES[group.status] },
+      { type: "header" as const, key: group.status, title: resolve(GROUP_TITLES[group.status]) },
       ...group.rows.map((row) => ({ type: "task" as const, key: row.key, row })),
     ]),
   ];
 }
 
 /** Inbox: only the asks, in the two groups the desktop uses. */
-export function buildInboxListItems(sections: TasksSections): TasksListItem[] {
+export function buildInboxListItems(
+  sections: TasksSections,
+  resolve: MessageResolver = m,
+): TasksListItem[] {
   const group = (key: string, title: string, rows: readonly TaskNeedRow[]): TasksListItem[] =>
     rows.length === 0
       ? []
       : [
-          { type: "header", key, title },
+          { type: "header", key, title: resolve(title) },
           ...rows.map((row) => ({ type: "need" as const, key: row.key, row })),
         ];
   return [
-    ...group("blocking", "Blocking a run", sections.blocking),
-    ...group("review", "Ready to review", sections.review),
+    ...group("blocking", msg("Blocking a run"), sections.blocking),
+    ...group("review", msg("Ready to review"), sections.review),
   ];
 }

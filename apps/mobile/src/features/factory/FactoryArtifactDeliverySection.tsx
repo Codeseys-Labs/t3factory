@@ -4,6 +4,7 @@ import type {
   FactoryKnowledgeAcceptance,
   ProjectId,
 } from "@t3tools/contracts";
+import { T, useGT, useMessages } from "gt-react-native";
 import { useState } from "react";
 import { Linking, ScrollView, View } from "react-native";
 
@@ -29,9 +30,11 @@ function ArtifactDeliveryRow(props: {
   readonly canReconcile: boolean;
   readonly onReconcile: (intent: FactoryArtifactDeliveryIntent) => void;
 }) {
-  const view = factoryArtifactDeliveryStatusView(props.intent);
+  const gt = useGT();
+  const messages = useMessages();
+  const view = factoryArtifactDeliveryStatusView(props.intent, messages);
   const commentUrl = props.intent.remote ? safeFactoryIssueUrl(props.intent.remote.url) : null;
-  const link = commentUrl === null ? null : { label: "Open comment", url: commentUrl };
+  const link = commentUrl === null ? null : { label: gt("Open comment"), url: commentUrl };
   const host = props.intent.repository.host;
   // Static text while the server posts: no spinner, so nothing repaints while it waits.
   return (
@@ -58,12 +61,12 @@ function ArtifactDeliveryRow(props: {
         <>
           <Button
             tone="secondary"
-            label="Reconcile"
-            accessibilityLabel={`Reconcile with ${host}`}
+            label={gt("Reconcile")}
+            accessibilityLabel={gt("Reconcile with {host}", { host })}
             accessibilityHint={
               props.canReconcile
                 ? undefined
-                : "This connection isn't permitted to reconcile in this environment."
+                : gt("This connection isn't permitted to reconcile in this environment.")
             }
             loading={props.busy}
             disabled={props.busy || !props.canReconcile}
@@ -71,7 +74,7 @@ function ArtifactDeliveryRow(props: {
           />
           {props.canReconcile ? null : (
             <Text className="text-xs text-foreground-muted">
-              This connection isn't permitted to reconcile in this environment.
+              <T>This connection isn't permitted to reconcile in this environment.</T>
             </Text>
           )}
         </>
@@ -92,6 +95,8 @@ export function FactoryArtifactDeliverySection(props: {
   readonly acceptance: FactoryKnowledgeAcceptance;
 }) {
   const { acceptance } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const delivery = useFactoryArtifactDelivery({
     environmentId: props.environmentId,
     projectId: props.projectId,
@@ -110,13 +115,15 @@ export function FactoryArtifactDeliverySection(props: {
     issueNumber,
     liveIntent,
     prepared,
+    resolve: messages,
   });
-  const prepareBlocker = issueNumber === null ? "Enter the issue number before preparing." : null;
+  const prepareBlocker =
+    issueNumber === null ? gt("Enter the issue number before preparing.") : null;
 
   return (
     <View className="gap-2">
       <Text accessibilityRole="header" className="text-sm font-t3-semibold text-foreground">
-        Publish as issue comment
+        <T>Publish as issue comment</T>
       </Text>
       {delivery.deliveriesError ? (
         <Text className="text-sm text-foreground-muted">{delivery.deliveriesError}</Text>
@@ -131,8 +138,8 @@ export function FactoryArtifactDeliverySection(props: {
         />
       ))}
       <AppTextInput
-        accessibilityLabel="Issue number"
-        placeholder="Issue number"
+        accessibilityLabel={gt("Issue number")}
+        placeholder={gt("Issue number")}
         value={issueText}
         keyboardType="number-pad"
         maxLength={9}
@@ -142,8 +149,8 @@ export function FactoryArtifactDeliverySection(props: {
       <Button
         fullWidth
         tone="secondary"
-        label="Prepare"
-        accessibilityLabel="Prepare issue comment preview"
+        label={gt("Prepare")}
+        accessibilityLabel={gt("Prepare issue comment preview")}
         accessibilityHint={prepareBlocker ?? undefined}
         loading={delivery.preparing}
         disabled={busy || prepareBlocker !== null}
@@ -154,19 +161,23 @@ export function FactoryArtifactDeliverySection(props: {
       {prepared ? (
         <View className="gap-2">
           <Text selectable className="text-sm text-foreground">
-            Comment on {factoryRepositoryLabel(prepared.repository)}{" "}
-            {factoryArtifactDestinationText(prepared.destination)}
+            {gt("Comment on {repository} {destination}", {
+              repository: factoryRepositoryLabel(prepared.repository),
+              destination: factoryArtifactDestinationText(prepared.destination, messages),
+            })}
           </Text>
           <Text selectable className="text-xs text-foreground-muted">
-            sha256 {shortFactoryDigest(prepared.artifactSha256)} ·{" "}
-            {formatFactoryBytes(prepared.artifactBytes)} · preview{" "}
-            {prepared.payloadDigest.slice(0, 12)}
+            {gt("sha256 {digest} · {bytes} · preview {preview}", {
+              digest: shortFactoryDigest(prepared.artifactSha256),
+              bytes: formatFactoryBytes(prepared.artifactBytes, messages),
+              preview: prepared.payloadDigest.slice(0, 12),
+            })}
           </Text>
           {/* The body is shown as plain text: it is exactly what the server will post. */}
           <ScrollView
             nestedScrollEnabled
             style={{ maxHeight: 280 }}
-            accessibilityLabel="Exact comment text"
+            accessibilityLabel={gt("Exact comment text")}
             className="rounded-xl border border-border-subtle bg-subtle"
             contentContainerClassName="p-3"
           >
@@ -185,11 +196,13 @@ export function FactoryArtifactDeliverySection(props: {
       <Button
         fullWidth
         tone="primary"
-        label="Grant publish"
+        label={gt("Grant publish")}
         accessibilityLabel={
           prepared
-            ? `Grant publish of comment on issue ${prepared.destination.number}`
-            : "Grant publish"
+            ? gt("Grant publish of comment on issue {number}", {
+                number: String(prepared.destination.number),
+              })
+            : gt("Grant publish")
         }
         accessibilityHint={blocker ?? undefined}
         loading={delivery.pending}
@@ -200,8 +213,8 @@ export function FactoryArtifactDeliverySection(props: {
       {delivery.failure ? <FailureNotice failure={delivery.failure} live /> : null}
       <Button
         tone="text"
-        label="Refresh"
-        accessibilityLabel="Refresh comment status"
+        label={gt("Refresh")}
+        accessibilityLabel={gt("Refresh comment status")}
         disabled={busy || delivery.deliveriesLoading}
         onPress={delivery.refresh}
       />

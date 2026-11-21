@@ -7,12 +7,21 @@ import type {
   FactoryAgentSetup,
   FactoryTaskAssignment,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../../../i18n/messages";
 
 /** `Codex · Sol`, the way cards and pickers name a setup. */
-export function setupLabel(setup: FactoryAgentSetup, catalog: FactoryTaskCatalog) {
+export function setupLabel(
+  setup: FactoryAgentSetup,
+  catalog: FactoryTaskCatalog,
+  resolve: MessageResolver = m,
+) {
   return presentFactoryTaskAssignee(
     { assignment: { mode: "pinned", setup }, key: "", resolved: null },
     catalog,
+    undefined,
+    resolve,
   );
 }
 
@@ -26,18 +35,22 @@ export function assignmentName(
   assignment: FactoryTaskAssignment,
   profiles: readonly FactoryAgentProfile[],
   catalog: FactoryTaskCatalog,
+  resolve: MessageResolver = m,
 ): string {
   switch (assignment.mode) {
     case "auto":
-      return "Auto";
+      return resolve(msg("Auto", { $context: "task assignee" }));
     case "person":
-      return "You";
+      return resolve(msg("You"));
     case "pinned":
-      return setupLabel(assignment.setup, catalog).label;
+      return setupLabel(assignment.setup, catalog, resolve).label;
     case "profile":
-      return profiles.find((profile) => profile.id === assignment.profileId)?.name ?? "Unassigned";
+      return (
+        profiles.find((profile) => profile.id === assignment.profileId)?.name ??
+        resolve(msg("Unassigned", { $context: "task assignee" }))
+      );
     case "unassigned":
-      return "Unassigned";
+      return resolve(msg("Unassigned", { $context: "task assignee" }));
   }
 }
 
@@ -50,17 +63,22 @@ export function assigneeSelect(
   current: FactoryTaskAssignment,
   profiles: readonly FactoryAgentProfile[],
   catalog: FactoryTaskCatalog,
+  resolve: MessageResolver = m,
 ) {
   const items = [
-    { value: "auto", label: "Auto", assignment: { mode: "auto" } as FactoryTaskAssignment },
+    {
+      value: "auto",
+      label: resolve(msg("Auto", { $context: "task assignee" })),
+      assignment: { mode: "auto" } as FactoryTaskAssignment,
+    },
     ...profiles.map((profile) => ({
       value: `profile:${profile.id}`,
-      label: `${profile.name} · ${setupLabel(profile.setup, catalog).label}`,
+      label: `${profile.name} · ${setupLabel(profile.setup, catalog, resolve).label}`,
       assignment: { mode: "profile", profileId: profile.id } as FactoryTaskAssignment,
     })),
     {
       value: "unassigned",
-      label: "Unassigned",
+      label: resolve(msg("Unassigned", { $context: "task assignee" })),
       assignment: { mode: "unassigned" } as FactoryTaskAssignment,
     },
   ];
@@ -69,7 +87,9 @@ export function assigneeSelect(
     items.push({
       value,
       label:
-        current.mode === "profile" ? "Deleted profile" : assignmentName(current, profiles, catalog),
+        current.mode === "profile"
+          ? resolve(msg("Deleted profile"))
+          : assignmentName(current, profiles, catalog, resolve),
       assignment: current,
     });
   }

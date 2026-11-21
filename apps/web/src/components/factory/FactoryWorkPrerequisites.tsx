@@ -5,10 +5,15 @@ import {
   type FactoryWorkPrerequisiteTone,
 } from "@t3tools/client-runtime/state/factory-work";
 import type { FactoryWorkRef, ProjectId } from "@t3tools/contracts";
+import { T, useGT, Var } from "gt-react";
 import { useState } from "react";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { useEnvironments } from "../../state/environments";
-import { factoryEnvironment } from "../../state/factory";
+import {
+  factoryEnvironment,
+  factoryIssueKeysInput,
+  useFactoryIssueKeysSupported,
+} from "../../state/factory";
 import { useEnvironmentQuery } from "../../state/query";
 import { Button } from "../ui/button";
 import { safeExternalUrl } from "./factoryIssues.logic";
@@ -34,6 +39,7 @@ function FactoryWorkPrerequisiteDiagram(props: {
   readonly nodes: readonly FactoryWorkPrerequisiteNode[];
   readonly omitted: number;
 }) {
+  const gt = useGT();
   const columns = Math.max(1, Math.min(COLUMNS, props.nodes.length));
   const rows = Math.max(1, Math.ceil(props.nodes.length / columns));
   const gridWidth = columns * NODE_WIDTH + (columns - 1) * GAP_X;
@@ -41,14 +47,20 @@ function FactoryWorkPrerequisiteDiagram(props: {
   const subjectY = rows * (NODE_HEIGHT + GAP_Y) + 24;
   const height = subjectY + NODE_HEIGHT + 4;
   const subjectX = width / 2 - NODE_WIDTH / 2;
-  const description = `Diagram of ${props.nodes.length} direct prerequisites${
-    props.omitted > 0 ? `; ${props.omitted} more appear only in the list` : ""
-  }. The list below is equivalent.`;
+  const description =
+    props.omitted > 0
+      ? gt(
+          "Diagram of {count} direct prerequisites; {omitted} more appear only in the list. The list below is equivalent.",
+          { count: props.nodes.length, omitted: props.omitted },
+        )
+      : gt("Diagram of {count} direct prerequisites. The list below is equivalent.", {
+          count: props.nodes.length,
+        });
   return (
     <div
       className="max-w-full overflow-x-auto"
       role="region"
-      aria-label="Prerequisite diagram"
+      aria-label={gt("Prerequisite diagram")}
       tabIndex={0}
     >
       <svg
@@ -87,7 +99,7 @@ function FactoryWorkPrerequisiteDiagram(props: {
               </text>
               <text x={x + 6} y={y + 28} className="fill-muted-foreground">
                 {node.tone}
-                {node.link.kind === "retained" ? " · retained" : ""}
+                {node.link.kind === "retained" ? ` · ${gt("retained")}` : ""}
               </text>
             </g>
           );
@@ -101,11 +113,13 @@ function FactoryWorkPrerequisiteDiagram(props: {
           className="fill-muted stroke-foreground"
         />
         <text x={subjectX + 6} y={subjectY + 22} className="fill-foreground">
-          Selected item
+          <T>Selected item</T>
         </text>
         {props.omitted > 0 ? (
           <text x={subjectX + NODE_WIDTH + 8} y={subjectY + 22} className="fill-muted-foreground">
-            +{props.omitted} more in the list
+            <T>
+              +<Var>{props.omitted}</Var> more in the list
+            </T>
           </text>
         ) : null}
       </svg>
@@ -125,12 +139,13 @@ interface PrerequisitesProps {
 
 /** Direct source blockers only. Nothing is read until a person expands the disclosure. */
 export function FactoryWorkPrerequisites(props: PrerequisitesProps) {
+  const gt = useGT();
   const [expanded, setExpanded] = useState(false);
   return (
     <section className="space-y-3" aria-labelledby="factory-work-prerequisites-title">
       <div className="flex flex-wrap items-center gap-2">
         <h4 id="factory-work-prerequisites-title" className="font-medium">
-          Prerequisites · direct source blockers
+          <T>Prerequisites · direct source blockers</T>
         </h4>
         <Button
           size="sm"
@@ -139,7 +154,7 @@ export function FactoryWorkPrerequisites(props: PrerequisitesProps) {
           aria-controls="factory-work-prerequisites"
           onClick={() => setExpanded((previous) => !previous)}
         >
-          {expanded ? "Hide prerequisites" : "Show prerequisites"}
+          {expanded ? gt("Hide prerequisites") : gt("Show prerequisites")}
         </Button>
       </div>
       {expanded ? <FactoryWorkPrerequisitesBody {...props} /> : null}
@@ -148,6 +163,7 @@ export function FactoryWorkPrerequisites(props: PrerequisitesProps) {
 }
 
 function FactoryWorkPrerequisitesBody(props: PrerequisitesProps) {
+  const gt = useGT();
   const [page, setPage] = useState(0);
   // The minute tick is a UTC ISO prefix; staleness is a ten-minute threshold.
   const nowMs = Date.parse(`${useNowMinute()}:00.000Z`);
@@ -155,11 +171,12 @@ function FactoryWorkPrerequisitesBody(props: PrerequisitesProps) {
   const supported =
     environments.find((candidate) => candidate.environmentId === props.reference.environmentId)
       ?.serverConfig?.environment.capabilities.factoryWorkPrerequisites === true;
+  const issueKeysSupported = useFactoryIssueKeysSupported(props.reference.environmentId);
   const query = useEnvironmentQuery(
     supported && props.status === "current"
       ? factoryEnvironment.readWorkPrerequisites({
           environmentId: props.reference.environmentId,
-          input: { ref: props.reference },
+          input: { ref: props.reference, ...factoryIssueKeysInput(issueKeysSupported) },
         })
       : null,
   );
@@ -189,17 +206,19 @@ function FactoryWorkPrerequisitesBody(props: PrerequisitesProps) {
                 omitted={view.graph.omitted}
               />
               <p role="status" className="text-xs text-muted-foreground">
-                Listing {view.list.first}–{view.list.last} of {view.list.total} direct
-                prerequisites.
+                <T>
+                  Listing <Var>{view.list.first}</Var>–<Var>{view.list.last}</Var> of{" "}
+                  <Var>{view.list.total}</Var> direct prerequisites.
+                </T>
               </p>
-              <ol className="space-y-2" aria-label="Direct prerequisites">
+              <ol className="space-y-2" aria-label={gt("Direct prerequisites")}>
                 {view.list.entries.map((node) => {
                   const sourceUrl = safeExternalUrl(node.sourceUrl ?? "");
                   const link = node.link;
                   return (
                     <li key={node.key} className="space-y-1 rounded border p-3 text-sm">
                       <p className="break-all">
-                        {node.locator} · {node.title ?? "Title unavailable"}
+                        {node.locator} · {node.title ?? gt("Title unavailable")}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {node.tone} · {node.sourceLabel}
@@ -222,7 +241,7 @@ function FactoryWorkPrerequisitesBody(props: PrerequisitesProps) {
                             variant="ghost"
                             render={<a href={sourceUrl} target="_blank" rel="noreferrer" />}
                           >
-                            Open source
+                            <T>Open source</T>
                           </Button>
                         ) : null}
                       </div>
@@ -238,7 +257,7 @@ function FactoryWorkPrerequisitesBody(props: PrerequisitesProps) {
                     disabled={view.list.page === 0}
                     onClick={() => setPage(view.list.page - 1)}
                   >
-                    Previous prerequisites
+                    <T>Previous prerequisites</T>
                   </Button>
                   <Button
                     size="sm"
@@ -246,7 +265,7 @@ function FactoryWorkPrerequisitesBody(props: PrerequisitesProps) {
                     disabled={view.list.page + 1 >= view.list.pageCount}
                     onClick={() => setPage(view.list.page + 1)}
                   >
-                    Next prerequisites
+                    <T>Next prerequisites</T>
                   </Button>
                 </div>
               ) : null}
@@ -260,7 +279,9 @@ function FactoryWorkPrerequisitesBody(props: PrerequisitesProps) {
         </>
       )}
       <p className="text-xs text-muted-foreground">
-        Sub-issues and Factory execution lineage are separate relations and are not shown here.
+        <T>
+          Sub-issues and Factory execution lineage are separate relations and are not shown here.
+        </T>
       </p>
     </div>
   );

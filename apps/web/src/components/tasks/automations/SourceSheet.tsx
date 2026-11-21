@@ -13,6 +13,9 @@ import {
   type ProjectId,
 } from "@t3tools/contracts";
 import { useState } from "react";
+import { msg, T, useGT, useMessages } from "gt-react";
+
+import { m } from "../../../i18n/messages";
 
 import { randomUUID } from "../../../lib/utils";
 import { factoryIntake, useFactoryTaskCommand } from "../../../state/factoryTasks";
@@ -34,11 +37,17 @@ import {
 import { useVersionedDraft } from "./useVersionedDraft";
 
 const KINDS: Record<FactoryIntakeSourceKind, { label: string; hint: string }> = {
-  issues: { label: "Issues", hint: "Brings in the project's GitHub issues." },
-  feed: { label: "Feed", hint: "Brings in each new entry of an RSS or Atom feed." },
+  issues: {
+    label: msg("Issues", { $context: "source kind" }),
+    hint: msg("Brings in the project's GitHub issues."),
+  },
+  feed: {
+    label: msg("Feed", { $context: "source kind" }),
+    hint: msg("Brings in each new entry of an RSS or Atom feed."),
+  },
   schedule: {
-    label: "Schedule",
-    hint: "Makes the task below at the set times. It goes straight to the board.",
+    label: msg("Schedule", { $context: "source kind" }),
+    hint: msg("Makes the task below at the set times. It goes straight to the board."),
   },
 };
 
@@ -104,6 +113,8 @@ export function SourceSheet({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [commandId, setCommandId] = useState(() => CommandId.make(randomUUID()));
+  const gt = useGT();
+  const messages = useMessages();
   const config: FactoryIntakeSourceConfig =
     values.kind === "issues"
       ? { kind: "issues" }
@@ -153,7 +164,7 @@ export function SourceSheet({
       (values.kind === "schedule" &&
         TIME_OF_DAY.test(values.timeOfDay) &&
         values.title.trim().length > 0));
-  const assignee = assigneeSelect(values.assignment, profiles, catalog);
+  const assignee = assigneeSelect(values.assignment, profiles, catalog, messages);
   const readers = draft.item
     ? rules.filter((rule) => rule.match.sourceId === draft.item?.id).map((rule) => rule.name)
     : [];
@@ -170,31 +181,38 @@ export function SourceSheet({
     }
     const refusal = readRefusal(result);
     if (refusal.reason === "version-conflict") draft.conflict(refusal.currentVersion);
-    else setError(refusalText(refusal.reason, "source"));
+    else setError(refusalText(refusal.reason, "source", m));
   }
 
   return (
     <AutomationSheet
-      title={draft.item ? draft.item.label : "Add source"}
-      description="Source"
+      title={draft.item ? draft.item.label : msg("Add source")}
+      description={msg("Source")}
       onClose={close}
       footer={
         <>
           {draft.item ? (
             <DeleteAction
-              label="Delete source"
-              title={`Delete ${draft.item.label}?`}
+              label={msg("Delete source")}
+              title={msg("Delete {label}?", { label: draft.item.label })}
               consequence={
                 readers.length === 0
-                  ? "Tasks and Inbox items it already brought in stay."
-                  : `Tasks and Inbox items it already brought in stay. ${readers.length === 1 ? "This rule will" : "These rules will"} also be deleted: ${readers.join(", ")}.`
+                  ? msg("Tasks and Inbox items it already brought in stay.")
+                  : msg(
+                      "Tasks and Inbox items it already brought in stay. {rules} also be deleted: {readers}.",
+                      {
+                        rules:
+                          readers.length === 1 ? msg("This rule will") : msg("These rules will"),
+                        readers: readers.join(", "),
+                      },
+                    )
               }
               disabled={!remove.permission || pending}
               onConfirm={() => void run(remove)}
             />
           ) : null}
           <SheetActions
-            saveLabel={draft.item ? "Save" : "Add source"}
+            saveLabel={draft.item ? msg("Save") : msg("Add source")}
             canSave={save.permission && !pending && !draft.reloading && complete}
             onCancel={close}
             onSave={() => void run(save)}
@@ -203,7 +221,7 @@ export function SourceSheet({
       }
     >
       <SelectField
-        label="Kind"
+        label={msg("Kind")}
         value={values.kind}
         disabled={draft.item !== undefined}
         items={(Object.keys(KINDS) as FactoryIntakeSourceKind[]).map((kind) => ({
@@ -214,14 +232,14 @@ export function SourceSheet({
         onChange={(value) => draft.set("kind", value)}
       />
       <SelectField
-        label="Project"
+        label={msg("Project")}
         value={values.projectId}
         disabled={draft.item !== undefined}
         items={projects.map((project) => ({ value: project.id, label: project.title }))}
         onChange={(value) => draft.set("projectId", value)}
       />
       {values.kind === "feed" ? (
-        <Field label="Feed URL" htmlFor="source-url">
+        <Field label={msg("Feed URL")} htmlFor="source-url">
           <Input
             id="source-url"
             type="url"
@@ -233,8 +251,12 @@ export function SourceSheet({
       ) : null}
       {values.kind === "schedule" ? (
         <>
-          <SheetSection title="When">
-            <Field label="Time" htmlFor="source-time" hint="This machine's local time.">
+          <SheetSection title={msg("When", { $context: "when the task is made" })}>
+            <Field
+              label={msg("Time")}
+              htmlFor="source-time"
+              hint={msg("This machine's local time.")}
+            >
               <Input
                 id="source-time"
                 type="time"
@@ -242,23 +264,23 @@ export function SourceSheet({
                 onChange={(event) => draft.set("timeOfDay", event.target.value)}
               />
             </Field>
-            <Field label="Days" hint="None selected runs it every day.">
+            <Field label={msg("Days")} hint={msg("None selected runs it every day.")}>
               <ToggleGroup
                 multiple
-                aria-label="Days"
+                aria-label={gt("Days")}
                 value={values.weekdays.map(String)}
                 onValueChange={(days) => draft.set("weekdays", days.map(Number))}
               >
                 {WEEKDAYS.map(({ day, short, plural }) => (
-                  <Toggle key={day} value={String(day)} aria-label={plural}>
-                    {short}
+                  <Toggle key={day} value={String(day)} aria-label={messages(plural)}>
+                    {messages(short)}
                   </Toggle>
                 ))}
               </ToggleGroup>
             </Field>
           </SheetSection>
-          <SheetSection title="Task it makes">
-            <Field label="Title" htmlFor="source-task-title">
+          <SheetSection title={msg("Task it makes")}>
+            <Field label={msg("Title")} htmlFor="source-task-title">
               <Input
                 id="source-task-title"
                 value={values.title}
@@ -266,7 +288,7 @@ export function SourceSheet({
                 onChange={(event) => draft.set("title", event.target.value)}
               />
             </Field>
-            <Field label="Description" htmlFor="source-task-description">
+            <Field label={msg("Description")} htmlFor="source-task-description">
               <Textarea
                 id="source-task-description"
                 value={values.description}
@@ -275,23 +297,23 @@ export function SourceSheet({
               />
             </Field>
             <SelectField
-              label="Type"
+              label={msg("Type", { $context: "noun, the task type it makes" })}
               value={values.type}
               items={TASK_TYPES.map((type) => ({ value: type, label: TASK_TYPE_LABELS[type] }))}
               onChange={(value) => draft.set("type", value)}
             />
             <SelectField
-              label="Assignee"
+              label={msg("Assignee")}
               value={assignee.value}
               items={assignee.items}
               onChange={(value) => draft.set("assignment", assignee.pick(value))}
             />
             <SelectField
-              label="Status"
+              label={msg("Status", { $context: "noun, the made task's lane" })}
               value={values.lane}
               items={[
-                { value: "backlog", label: "Backlog" },
-                { value: "ready", label: "Ready" },
+                { value: "backlog", label: msg("Backlog", { $context: "task status" }) },
+                { value: "ready", label: msg("Ready", { $context: "task status" }) },
               ]}
               onChange={(value) => draft.set("lane", value)}
             />
@@ -300,16 +322,18 @@ export function SourceSheet({
       ) : null}
       {save.permission ? null : (
         <p className="text-muted-foreground text-xs">
-          Changing sources needs permission to change this machine's settings.
+          <T>Changing sources needs permission to change this machine's settings.</T>
         </p>
       )}
       <SheetNotice
         error={error}
         changed={
           draft.reloading
-            ? "This source changed on another device. Loading the latest version…"
+            ? msg("This source changed on another device. Loading the latest version…")
             : draft.reloaded
-              ? "This source changed on another device. It now shows that version, with your edits kept where you changed a different field."
+              ? msg(
+                  "This source changed on another device. It now shows that version, with your edits kept where you changed a different field.",
+                )
               : null
         }
       />

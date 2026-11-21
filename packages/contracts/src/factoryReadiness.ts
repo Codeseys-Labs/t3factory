@@ -7,7 +7,7 @@ import {
   ProjectId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
-import { FactoryRepository } from "./factory.ts";
+import { FactoryIssueReadInput, FactoryRepository } from "./factory.ts";
 
 export const FactoryReadinessOverrideId = Schema.String.pipe(
   Schema.brand("FactoryReadinessOverrideId"),
@@ -131,14 +131,12 @@ export const FactoryReadiness = Schema.Struct({
 });
 export type FactoryReadiness = typeof FactoryReadiness.Type;
 
-export const FactoryIssueReadinessReadInput = Schema.Struct({
-  projectId: ProjectId,
-  issueNumber: PositiveInt,
-});
+export const FactoryIssueReadinessReadInput = FactoryIssueReadInput;
 export type FactoryIssueReadinessReadInput = typeof FactoryIssueReadinessReadInput.Type;
 export const FactoryIssueReadinessReadResult = Schema.Struct({
   repository: FactoryRepository,
-  issueNumber: PositiveInt,
+  issueNumber: Schema.NullOr(PositiveInt),
+  key: Schema.optionalKey(TrimmedNonEmptyString),
   readiness: FactoryReadiness,
 });
 export type FactoryIssueReadinessReadResult = typeof FactoryIssueReadinessReadResult.Type;

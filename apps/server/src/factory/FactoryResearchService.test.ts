@@ -62,7 +62,7 @@ import * as Replay from "../orchestration-v2/testkit/ProviderReplayHarness.ts";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import { researchRunOriginKey } from "./FactoryOriginKey.ts";
-import { issueTrackersLayer } from "./IssueTrackerProviderRegistry.testkit.ts";
+import { issueTrackersLayer } from "./FactoryIssueHosts.testkit.ts";
 
 const environmentId = EnvironmentId.make("research-environment");
 

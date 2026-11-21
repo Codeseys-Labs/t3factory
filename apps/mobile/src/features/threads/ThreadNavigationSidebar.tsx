@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { useGT, useMessages } from "gt-react-native";
+import { T, useGT, useMessages } from "gt-react-native";
 import { useActiveNewTask } from "../../state/active-new-task";
 import { ThreadUndoNotice } from "../home/ThreadUndoNotice";
 import { useAndroidControlSizing } from "../../components/ui/useAndroidControlSizing";
@@ -620,8 +620,8 @@ function ThreadNavigationSidebarPane(props: SidebarNavigationProps) {
   const factoryNavigation = (
     <View className="mb-2 gap-2">
       <NavigationRow
-        title="Factory"
-        subtitle="Overview, issues, workflows & orchestrator"
+        title={gt("Factory")}
+        subtitle={gt("Overview, issues, workflows & orchestrator")}
         onPress={props.onOpenFactory}
         leading={
           <SymbolView name="list.number" size={20} tintColorClassName="accent-drawer-foreground" />
@@ -631,7 +631,7 @@ function ThreadNavigationSidebarPane(props: SidebarNavigationProps) {
         accessibilityRole="header"
         className="px-4 text-sm font-semibold text-drawer-foreground-muted"
       >
-        Sessions
+        <T>Sessions</T>
       </Text>
     </View>
   );

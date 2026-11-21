@@ -5,6 +5,7 @@ import {
 import type { FactoryTaskSummary } from "@t3tools/contracts";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { T, useGT } from "gt-react";
 
 import { useRelativeTimeState } from "../../../hooks/useRelativeTimeState";
 import { Button } from "../../ui/button";
@@ -22,6 +23,7 @@ export const needKey = (need: FactoryTaskNeed) =>
 
 export function InboxPage() {
   const [snoozed, setSnoozed] = useState(false);
+  const gt = useGT();
   const data = useInboxData(snoozed);
   const search = validateInboxSearch(useSearch({ strict: false }));
   const navigate = useNavigate();
@@ -92,15 +94,18 @@ export function InboxPage() {
   const need = triage ? null : data.needs.rows.find((entry) => needKey(entry) === selected);
   const on = data.rules.filter((rule) => rule.state === "on").length;
   const trial = data.rules.filter((rule) => rule.state === "trial").length;
-  const ruleLine = `${on === 1 ? "One rule is" : `${on} rules are`} on and ${trial === 1 ? "one is" : `${trial} are`} on trial.`;
+  const ruleLine = gt(
+    "{on, plural, one {One rule is} other {{on} rules are}} on and {trial, plural, one {one is} other {{trial} are}} on trial.",
+    { on, trial },
+  );
   return (
     <TaskPageFrame
       header={
         <PageHeader
-          title="Inbox"
+          title={gt("Inbox", { $context: "the Inbox page title" })}
           view={
             <ToggleGroup
-              aria-label="Inbox view"
+              aria-label={gt("Inbox view")}
               value={[triage ? "triage" : "needs"]}
               onValueChange={(value) => {
                 const tab = value[0];
@@ -108,10 +113,14 @@ export function InboxPage() {
               }}
             >
               <Toggle value="needs">
-                Needs you <CountBadge count={data.needs.count} tone="attention" />
+                <T>
+                  Needs you <CountBadge count={data.needs.count} tone="attention" />
+                </T>
               </Toggle>
               <Toggle value="triage">
-                Triage <CountBadge count={data.waiting} />
+                <T>
+                  Triage <CountBadge count={data.waiting} />
+                </T>
               </Toggle>
             </ToggleGroup>
           }
@@ -122,7 +131,7 @@ export function InboxPage() {
         {triage ? (
           <div className="border-b px-6 py-2">
             <ToggleGroup
-              aria-label="Triage arrivals"
+              aria-label={gt("Triage arrivals")}
               value={[snoozed ? "snoozed" : "new"]}
               onValueChange={(value) => {
                 if (value[0]) {
@@ -131,8 +140,12 @@ export function InboxPage() {
                 }
               }}
             >
-              <Toggle value="new">New arrivals</Toggle>
-              <Toggle value="snoozed">Snoozed</Toggle>
+              <Toggle value="new">
+                <T>New arrivals</T>
+              </Toggle>
+              <Toggle value="snoozed">
+                <T>Snoozed</T>
+              </Toggle>
             </ToggleGroup>
           </div>
         ) : null}
@@ -147,17 +160,17 @@ export function InboxPage() {
               <p>
                 {machine.label}:{" "}
                 {machine.state === "loading"
-                  ? "Loading Inbox…"
+                  ? gt("Loading Inbox…")
                   : machine.state === "offline"
-                    ? "This machine is offline."
+                    ? gt("This machine is offline.")
                     : machine.state === "forbidden"
-                      ? "Ask the owner of this environment for access."
+                      ? gt("Ask the owner of this environment for access.")
                       : machine.state === "unsupported"
-                        ? "Update this environment's server to use Inbox."
-                        : (machine.message ?? "Couldn't load Inbox. Try again.")}
+                        ? gt("Update this environment's server to use Inbox.")
+                        : (machine.message ?? gt("Couldn't load Inbox. Try again."))}
               </p>
               <Button size="xs" variant="outline" onClick={data.reload}>
-                Reload
+                <T>Reload</T>
               </Button>
             </div>
           ))}
@@ -166,15 +179,17 @@ export function InboxPage() {
             role="status"
             className="flex items-center gap-3 border-b px-6 py-2 text-muted-foreground text-sm"
           >
-            <p>More may be waiting on you.</p>
+            <p>
+              <T>More may be waiting on you.</T>
+            </p>
             <Button size="xs" variant="outline" onClick={data.reloadAsks}>
-              Reload
+              <T>Reload</T>
             </Button>
           </div>
         ) : null}
         {created ? (
           <p className="px-6 py-2 text-muted-foreground text-xs">
-            Created{" "}
+            <T>Created</T>{" "}
             <Link
               to="/tasks/$environmentId/$displayId"
               params={{ environmentId: created.ref.environmentId, displayId: created.displayId }}
@@ -190,29 +205,38 @@ export function InboxPage() {
           <TaskEmptyState
             icon="inbox"
             title={
-              triage ? (snoozed ? "No snoozed arrivals" : "No new arrivals") : "Nothing needs you"
+              triage
+                ? snoozed
+                  ? gt("No snoozed arrivals")
+                  : gt("No new arrivals")
+                : gt("Nothing needs you")
             }
             body={
               triage
                 ? snoozed
-                  ? "Snooze an arrival to set it aside until later."
-                  : `Sources and rules add items here. ${ruleLine}`
-                : `${running} ${running === 1 ? "task is" : "tasks are"} running. You will see them here when they have a question or a result.`
+                  ? gt("Snooze an arrival to set it aside until later.")
+                  : gt("Sources and rules add items here. {ruleLine}", { ruleLine })
+                : gt(
+                    "{running, plural, one {{running} task is running. You will see them here when they have a question or a result.} other {{running} tasks are running. You will see them here when they have a question or a result.}}",
+                    { running },
+                  )
             }
             primary={
               triage
                 ? {
-                    label: "Open Automations",
+                    label: gt("Open Automations"),
                     onClick: () => void navigate({ to: "/automations" }),
                   }
-                : { label: "Go to Tasks", onClick: () => void navigate({ to: "/tasks" }) }
+                : { label: gt("Go to Tasks"), onClick: () => void navigate({ to: "/tasks" }) }
             }
           />
         </div>
       ) : (
         <main className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(280px,520px)_minmax(0,1fr)]">
           <nav
-            aria-label={triage ? "Arrivals" : "Needs you"}
+            aria-label={
+              triage ? gt("Arrivals") : gt("Needs you", { $context: "noun, asks that need you" })
+            }
             onKeyDown={onKeyDown}
             className="min-h-0 overflow-y-auto border-e px-3 py-4"
           >
@@ -234,7 +258,7 @@ export function InboxPage() {
                       variant="outline"
                       onClick={() => data.loadMore(owner.environmentId)}
                     >
-                      Load more arrivals
+                      <T>Load more arrivals</T>
                     </Button>
                   </div>
                 ))}
@@ -242,14 +266,14 @@ export function InboxPage() {
             ) : (
               <>
                 <NeedsGroup
-                  title="Blocking a run"
+                  title={gt("Blocking a run")}
                   needs={data.needs.blocking}
                   tasks={data.tasks}
                   selected={selected}
                   select={select}
                 />
                 <NeedsGroup
-                  title="Ready to review"
+                  title={gt("Ready to review")}
                   needs={data.needs.review}
                   tasks={data.tasks}
                   selected={selected}
@@ -258,7 +282,7 @@ export function InboxPage() {
               </>
             )}
           </nav>
-          <section aria-label="Inbox detail" className="min-h-0 min-w-0 overflow-y-auto p-6">
+          <section aria-label={gt("Inbox detail")} className="min-h-0 min-w-0 overflow-y-auto p-6">
             {arrival ? (
               <ArrivalDetail
                 key={arrivalKey(arrival)}

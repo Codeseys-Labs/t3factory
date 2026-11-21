@@ -13,6 +13,7 @@ import {
   type PullRequestMergeMethod,
   type ThreadId,
 } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { CircleDotIcon } from "lucide-react";
 import { useContext, useEffect, useId, useRef, useState } from "react";
 
@@ -43,9 +44,9 @@ const MERGE_METHOD_OPTIONS: ReadonlyArray<{
   readonly value: PullRequestMergeMethod;
   readonly label: string;
 }> = [
-  { value: "squash", label: "Squash" },
-  { value: "merge", label: "Merge commit" },
-  { value: "rebase", label: "Rebase" },
+  { value: "squash", label: msg("Squash", { $context: "merge method" }) },
+  { value: "merge", label: msg("Merge commit") },
+  { value: "rebase", label: msg("Rebase") },
 ];
 
 export function FactoryDeliveryPanel(props: {
@@ -60,6 +61,8 @@ export function FactoryDeliveryPanel(props: {
   readonly onGranted: () => void;
 }) {
   const { environmentId, projectId, threadId } = props;
+  const gt = useGT();
+  const m = useMessages();
   const { displayName, headPinnedMerge } = props.capabilities;
   const registry = useContext(RegistryContext);
   const headingId = useId();
@@ -72,7 +75,7 @@ export function FactoryDeliveryPanel(props: {
   const mergeMethodId = useId();
   const mergeDisabledReasonId = useId();
   const [title, setTitle] = useState(props.issueTitle);
-  const [body, setBody] = useState(`Issue: ${props.issueUrl}`);
+  const [body, setBody] = useState(() => gt("Issue: {url}", { url: props.issueUrl }));
   const [draft, setDraft] = useState(true);
   const [prepareInput, setPrepareInput] = useState<FactoryDeliveryPrepareInput | null>(null);
   const [mergeMethod, setMergeMethod] = useState<PullRequestMergeMethod>("squash");
@@ -112,11 +115,11 @@ export function FactoryDeliveryPanel(props: {
     factoryEnvironment.reconcileDelivery.permissionAtom(environmentId),
   );
   const runGrant = useAtomCommand(factoryEnvironment.grantDelivery, {
-    label: "factory grant delivery",
+    label: gt("factory grant delivery"),
     reportFailure: false,
   });
   const runReconcile = useAtomCommand(factoryEnvironment.reconcileDelivery, {
-    label: "factory reconcile delivery",
+    label: gt("factory reconcile delivery"),
     reportFailure: false,
   });
 
@@ -137,20 +140,23 @@ export function FactoryDeliveryPanel(props: {
     mergePrepared?.existing ??
     null;
   const mergeDisabledReason =
-    mergeGrantDisabledReason({
-      displayName,
-      acceptanceCurrent: props.acceptanceCurrent,
-      existing: mergeExisting,
-      hasPermission: hasGrantPermission,
-      prepared: mergePrepared,
-      mergeMethod,
-    }) ??
+    mergeGrantDisabledReason(
+      {
+        displayName,
+        acceptanceCurrent: props.acceptanceCurrent,
+        existing: mergeExisting,
+        hasPermission: hasGrantPermission,
+        prepared: mergePrepared,
+        mergeMethod,
+      },
+      m,
+    ) ??
     (mergePreview.isPending
-      ? "Preparing the merge…"
+      ? gt("Preparing the merge…")
       : mergePreview.error !== null || mergeFailure !== null
-        ? "Prepare again before granting the merge."
+        ? gt("Prepare again before granting the merge.")
         : deliveries.error !== null || deliveries.data === null || deliveries.isPending
-          ? "Refresh delivery status before granting the merge."
+          ? gt("Refresh delivery status before granting the merge.")
           : null);
   const pullRequest = mergePrepared?.pullRequest ?? null;
   const pullRequestHref = pullRequest === null ? null : safeExternalUrl(pullRequest.url);
@@ -160,15 +166,15 @@ export function FactoryDeliveryPanel(props: {
     hasPermission: hasGrantPermission,
   };
   const disabledReason =
-    factoryDeliveryGrantDisabledReason(conditions) ??
+    factoryDeliveryGrantDisabledReason(conditions, m) ??
     (prepared === null
-      ? "Prepare the pull request before granting publication."
+      ? gt("Prepare the pull request before granting publication.")
       : preview.isPending
-        ? "Preparing the pull request…"
+        ? gt("Preparing the pull request…")
         : preview.error !== null || failure !== null
-          ? "Prepare again before granting publication."
+          ? gt("Prepare again before granting publication.")
           : deliveries.error !== null || deliveries.data === null || deliveries.isPending
-            ? "Refresh delivery status before granting publication."
+            ? gt("Refresh delivery status before granting publication.")
             : null);
 
   const invalidatePreview = () => {
@@ -300,11 +306,17 @@ export function FactoryDeliveryPanel(props: {
   const readFailure =
     deliveries.error === null
       ? null
-      : factoryDeliveryFailureMessage(deliveries.failure, displayName, deliveries.error);
+      : factoryDeliveryFailureMessage(
+          deliveries.failure,
+          displayName,
+          deliveries.error,
+          "publish-pr",
+          m,
+        );
   const prepareFailure =
     preview.error === null
       ? null
-      : factoryDeliveryFailureMessage(preview.failure, displayName, preview.error);
+      : factoryDeliveryFailureMessage(preview.failure, displayName, preview.error, "publish-pr", m);
   const visibleFailure = failure ?? prepareFailure ?? readFailure;
   const mergePrepareFailure =
     mergePreview.error === null
@@ -314,6 +326,7 @@ export function FactoryDeliveryPanel(props: {
           displayName,
           mergePreview.error,
           "merge-pr",
+          m,
         );
   const visibleMergeFailure = mergeFailure ?? mergePrepareFailure;
 
@@ -321,16 +334,16 @@ export function FactoryDeliveryPanel(props: {
     <section aria-labelledby={headingId} aria-busy={busy} className="mt-3 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 id={headingId} className="font-medium text-sm">
-          Publish pull request
+          <T>Publish pull request</T>
         </h4>
         <Button
           size="xs"
           variant="outline"
           disabled={busy || deliveries.isPending}
           onClick={() => deliveries.refresh()}
-          aria-label="Refresh delivery status"
+          aria-label={gt("Refresh delivery status")}
         >
-          Refresh
+          <T>Refresh</T>
         </Button>
       </div>
       <form
@@ -342,7 +355,7 @@ export function FactoryDeliveryPanel(props: {
       >
         <div className="space-y-1">
           <label htmlFor={titleId} className="text-xs">
-            Pull request title
+            <T>Pull request title</T>
           </label>
           <Input
             id={titleId}
@@ -358,7 +371,7 @@ export function FactoryDeliveryPanel(props: {
         </div>
         <div className="space-y-1">
           <label htmlFor={bodyId} className="text-xs">
-            Pull request body
+            <T>Pull request body</T>
           </label>
           <Textarea
             id={bodyId}
@@ -382,7 +395,7 @@ export function FactoryDeliveryPanel(props: {
             }}
           />
           <label htmlFor={draftId} className="text-xs">
-            Draft pull request
+            <T>Draft pull request</T>
           </label>
         </div>
         <Button
@@ -393,31 +406,41 @@ export function FactoryDeliveryPanel(props: {
             busy || preview.isPending || !props.acceptanceCurrent || title.trim().length === 0
           }
         >
-          {preview.isPending ? "Preparing…" : "Prepare"}
+          {preview.isPending ? gt("Preparing…") : gt("Prepare")}
         </Button>
       </form>
       {prepared !== null && !preview.isPending && prepareFailure === null ? (
         <dl className="space-y-1 text-xs [overflow-wrap:anywhere]">
           <div>
-            <dt>Repository</dt>
+            <dt>
+              <T>Repository</T>
+            </dt>
             <dd>{prepared.repository.canonicalKey}</dd>
           </div>
           <div>
-            <dt>Accepted head</dt>
+            <dt>
+              <T>Accepted head</T>
+            </dt>
             <dd>
               <code>{prepared.headSha.slice(0, 7)}</code>
             </dd>
           </div>
           <div>
-            <dt>Host base branch</dt>
-            <dd>{prepared.baseBranch ?? "No reviewed destination"}</dd>
+            <dt>
+              <T>Host base branch</T>
+            </dt>
+            <dd>{prepared.baseBranch ?? gt("No reviewed destination")}</dd>
           </div>
           <div>
-            <dt>Launch snapshot</dt>
+            <dt>
+              <T>Launch snapshot</T>
+            </dt>
             <dd>{prepared.baseRef}</dd>
           </div>
           <div>
-            <dt>Payload digest</dt>
+            <dt>
+              <T>Payload digest</T>
+            </dt>
             <dd>
               <code>{prepared.payloadDigest.slice(0, 7)}</code>
             </dd>
@@ -436,7 +459,7 @@ export function FactoryDeliveryPanel(props: {
           aria-describedby={disabledReason === null ? undefined : disabledReasonId}
           onClick={() => void grant()}
         >
-          Grant publish
+          <T>Grant publish</T>
         </Button>
         {disabledReason !== null ? (
           <p id={disabledReasonId} className="text-muted-foreground text-xs">
@@ -447,11 +470,11 @@ export function FactoryDeliveryPanel(props: {
       {published && headPinnedMerge ? (
         <section aria-labelledby={mergeHeadingId} className="space-y-2">
           <h4 id={mergeHeadingId} className="font-medium text-sm">
-            Merge
+            <T>Merge</T>
           </h4>
           <div className="space-y-1">
             <label htmlFor={mergeMethodId} className="text-xs">
-              Merge method
+              <T>Merge method</T>
             </label>
             <Select
               value={mergeMethod}
@@ -473,7 +496,7 @@ export function FactoryDeliveryPanel(props: {
                     pullRequest === null || pullRequest.mergeMethods.includes(option.value),
                 ).map((option) => (
                   <SelectItem key={option.value} value={option.value}>
-                    {option.label}
+                    {m(option.label)}
                   </SelectItem>
                 ))}
               </SelectPopup>
@@ -485,7 +508,7 @@ export function FactoryDeliveryPanel(props: {
             disabled={busy || mergePreview.isPending || !props.acceptanceCurrent}
             onClick={prepareMerge}
           >
-            {mergePreview.isPending ? "Preparing merge…" : "Prepare merge"}
+            {mergePreview.isPending ? gt("Preparing merge…") : gt("Prepare merge")}
           </Button>
           {mergePrepared !== null &&
           pullRequest !== null &&
@@ -494,7 +517,9 @@ export function FactoryDeliveryPanel(props: {
             <>
               <dl className="space-y-1 text-xs [overflow-wrap:anywhere]">
                 <div>
-                  <dt>Pull request</dt>
+                  <dt>
+                    <T>Pull request</T>
+                  </dt>
                   <dd>
                     {pullRequestHref === null ? (
                       `#${pullRequest.number}`
@@ -511,39 +536,47 @@ export function FactoryDeliveryPanel(props: {
                   </dd>
                 </div>
                 <div>
-                  <dt>Accepted head</dt>
+                  <dt>
+                    <T>Accepted head</T>
+                  </dt>
                   <dd>
                     <code>{mergePrepared.headSha.slice(0, 7)}</code>
                   </dd>
                 </div>
                 <div>
-                  <dt>Pull request head</dt>
+                  <dt>
+                    <T>Pull request head</T>
+                  </dt>
                   <dd>
                     {pullRequest.headSha === null ? (
-                      "Unavailable"
+                      gt("Unavailable")
                     ) : (
                       <code>{pullRequest.headSha.slice(0, 7)}</code>
                     )}
                   </dd>
                   <dd>
                     {pullRequest.headSha === mergePrepared.headSha
-                      ? "Matches the accepted commit."
-                      : "Does not match the accepted commit."}
+                      ? gt("Matches the accepted commit.")
+                      : gt("Does not match the accepted commit.")}
                   </dd>
                 </div>
                 <div>
-                  <dt>Mergeability</dt>
+                  <dt>
+                    <T>Mergeability</T>
+                  </dt>
                   <dd>{pullRequest.mergeability}</dd>
                 </div>
                 <div>
-                  <dt>Checks</dt>
-                  <dd>{pullRequest.checksSummary ?? "Check status unavailable."}</dd>
+                  <dt>
+                    <T>Checks</T>
+                  </dt>
+                  <dd>{pullRequest.checksSummary ?? gt("Check status unavailable.")}</dd>
                 </div>
               </dl>
               {pullRequest.isDraft ? (
                 <Alert variant="warning">
                   <AlertDescription>
-                    This pull request is a draft. Mark it ready for review before merging.
+                    <T>This pull request is a draft. Mark it ready for review before merging.</T>
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -561,7 +594,7 @@ export function FactoryDeliveryPanel(props: {
               aria-describedby={mergeDisabledReason === null ? undefined : mergeDisabledReasonId}
               onClick={() => void grantMerge()}
             >
-              Grant merge
+              <T>Grant merge</T>
             </Button>
             {mergeDisabledReason !== null ? (
               <p id={mergeDisabledReasonId} className="text-muted-foreground text-xs">
@@ -573,25 +606,27 @@ export function FactoryDeliveryPanel(props: {
       ) : null}
       {deliveries.data === null && readFailure === null ? (
         <p role="status" className="text-muted-foreground text-xs">
-          Reading deliveries…
+          <T>Reading deliveries…</T>
         </p>
       ) : null}
-      <ul aria-label="Pull request deliveries" className="space-y-2 text-xs">
+      <ul aria-label={gt("Pull request deliveries")} className="space-y-2 text-xs">
         {intents.map((intent) => {
           const href = intent.remote === null ? null : safeExternalUrl(intent.remote.url);
           return (
             <li key={intent.id} className="space-y-1">
               <p className="[overflow-wrap:anywhere]">
-                {"title" in intent.payload ? intent.payload.title : "Merge pull request"}
+                {"title" in intent.payload ? intent.payload.title : gt("Merge pull request")}
               </p>
               {intent.status === "pending" || intent.status === "sending" ? (
                 <Badge variant="outline">
                   <CircleDotIcon />
-                  {describeDeliveryStatus(intent, displayName)}
+                  {describeDeliveryStatus(intent, displayName, m)}
                 </Badge>
               ) : intent.status === "confirmed" ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary">{describeDeliveryStatus(intent, displayName)}</Badge>
+                  <Badge variant="secondary">
+                    {describeDeliveryStatus(intent, displayName, m)}
+                  </Badge>
                   {href !== null && intent.remote !== null ? (
                     <a
                       href={href}
@@ -605,7 +640,7 @@ export function FactoryDeliveryPanel(props: {
                 </div>
               ) : (
                 <p className="[overflow-wrap:anywhere]">
-                  {describeDeliveryStatus(intent, displayName)}
+                  {describeDeliveryStatus(intent, displayName, m)}
                 </p>
               )}
               {intent.status === "unknown" || intent.status === "failed" ? (
@@ -616,7 +651,7 @@ export function FactoryDeliveryPanel(props: {
                   aria-describedby={hasReconcilePermission ? undefined : reconcileReasonId}
                   onClick={() => void reconcile(intent.id)}
                 >
-                  Reconcile
+                  <T>Reconcile</T>
                 </Button>
               ) : null}
             </li>
@@ -626,7 +661,7 @@ export function FactoryDeliveryPanel(props: {
       {!hasReconcilePermission &&
       intents.some((intent) => intent.status === "unknown" || intent.status === "failed") ? (
         <p id={reconcileReasonId} className="text-muted-foreground text-xs">
-          Reconciling needs operate and source-control write permissions on this environment.
+          <T>Reconciling needs operate and source-control write permissions on this environment.</T>
         </p>
       ) : null}
     </section>

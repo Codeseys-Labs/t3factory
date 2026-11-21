@@ -11,6 +11,7 @@ import {
 } from "@t3tools/client-runtime/state/factory-task-view";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
+import { useGT, useMessages } from "gt-react-native";
 import { useMemo } from "react";
 import { View } from "react-native";
 
@@ -61,6 +62,8 @@ const BANNER_CARD_TONES: Record<"neutral" | "attention" | "danger" | "working" |
 
 /** G2 and G3: a task, and the question or approval that waits on you. */
 export function TaskRouteScreen({ route }: StaticScreenProps<TaskRouteParams>) {
+  const gt = useGT();
+  const m = useMessages();
   const navigation = useNavigation();
   const environmentId = EnvironmentId.make(route.params.environmentId);
   const displayId: FactoryTaskDisplayId = route.params.displayId;
@@ -73,18 +76,23 @@ export function TaskRouteScreen({ route }: StaticScreenProps<TaskRouteParams>) {
       <AppBar title={displayId} onBack={() => navigation.goBack()} />
       {status === "loading" || status === "current" ? (
         <View className="items-center py-10">
-          <AppActivityIndicator colorClassName="accent-icon" accessibilityLabel="Loading task" />
+          <AppActivityIndicator
+            colorClassName="accent-icon"
+            accessibilityLabel={gt("Loading task")}
+          />
         </View>
       ) : (
         <EmptyState
           variant="plain"
-          title={status === "failed" ? "Couldn't load this task" : TASKS_LIST_COPY[status].title}
+          title={
+            status === "failed" ? gt("Couldn't load this task") : m(TASKS_LIST_COPY[status].title)
+          }
           detail={
             status === "failed"
-              ? "Check your connection and try again."
-              : TASKS_LIST_COPY[status].detail
+              ? gt("Check your connection and try again.")
+              : m(TASKS_LIST_COPY[status].detail)
           }
-          actionLabel={status === "failed" ? "Try again" : undefined}
+          actionLabel={status === "failed" ? gt("Try again") : undefined}
           onAction={status === "failed" ? refresh : undefined}
         />
       )}
@@ -94,6 +102,8 @@ export function TaskRouteScreen({ route }: StaticScreenProps<TaskRouteParams>) {
 
 function TaskLoaded(props: { readonly task: FactoryTaskSummary }) {
   const { task } = props;
+  const gt = useGT();
+  const m = useMessages();
   const navigation = useNavigation();
   const now = useNowMinuteMs();
   const tasks = useMemo(() => [task], [task]);
@@ -109,8 +119,8 @@ function TaskLoaded(props: { readonly task: FactoryTaskSummary }) {
   const assignee = presentFactoryTaskAssignee(task.assignee, catalog);
   const agentLabel = assignee.label.replace(/^Auto → /u, "");
   const lines = [
-    ...activityLines(activity?.entries ?? [], catalog, now),
-    ...(ask ? askLines(ask, agentLabel, now).map((text) => ({ key: text, text })) : []),
+    ...activityLines(activity?.entries ?? [], catalog, now, m),
+    ...(ask ? askLines(ask, agentLabel, now, m).map((text) => ({ key: text, text })) : []),
   ];
   const frame = {
     displayId: task.displayId,
@@ -145,11 +155,13 @@ function TaskLoaded(props: { readonly task: FactoryTaskSummary }) {
       />
     );
 
+  // The run's pill label is an unresolved `msg()` descriptor; the banner shows it verbatim.
+  const livePill = live.liveRuns[0]?.pill ?? null;
   const banner = presentFactoryTaskBanner({
     task,
     attention: live.attention,
     assigneeLabel: assignee.label,
-    liveLabel: live.liveRuns[0]?.pill?.label ?? null,
+    liveLabel: livePill === null ? null : m(livePill.label),
   });
   const target =
     banner.primary?.kind === "open-task"
@@ -160,7 +172,7 @@ function TaskLoaded(props: { readonly task: FactoryTaskSummary }) {
   // A working run's Stop is optional; a lost run waits on it.
   const hint =
     banner.primary && (DESKTOP_ACTIONS.includes(banner.primary.kind) || banner.state === "lost")
-      ? "Continue this on the desktop."
+      ? gt("Continue this on the desktop.")
       : null;
   return (
     <TaskFrame

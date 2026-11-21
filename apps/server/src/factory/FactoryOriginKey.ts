@@ -1,4 +1,26 @@
-import { FactoryOriginKey, type SourceControlProviderKind } from "@t3tools/contracts";
+import {
+  FactoryOriginKey,
+  type FactoryRepository,
+  type IssueTrackerKind,
+  type SourceControlProviderKind,
+} from "@t3tools/contracts";
+
+export const issueNumberOf = (key: string): number | null => {
+  const number = Number(key);
+  return /^[1-9]\d*$/.test(key) && Number.isSafeInteger(number) ? number : null;
+};
+
+export const issueKeyOf = (issue: {
+  readonly key?: string;
+  readonly number?: number | null;
+  readonly issueNumber?: number | string;
+}): string => issue.key ?? String(issue.number ?? issue.issueNumber);
+
+export const issueScopeKey = (repository: FactoryRepository): string =>
+  repository.issueScope?.canonicalKey ?? repository.canonicalKey;
+
+export const issueTrackerOf = (repository: FactoryRepository) =>
+  repository.issueScope?.tracker ?? repository.provider;
 
 // Escape the escape marker too, so literal percent sequences cannot impersonate delimiters.
 const component = (value: string) =>
@@ -8,22 +30,29 @@ const component = (value: string) =>
 // before other forges existed. The canonical key already carries the host, so two forges never
 // produce the same key for different issues.
 export const issueOriginKey = (
-  provider: SourceControlProviderKind,
+  provider: SourceControlProviderKind | IssueTrackerKind,
   canonicalKey: string,
-  number: number,
-): FactoryOriginKey => FactoryOriginKey.make(`${provider}:${component(canonicalKey)}#${number}`);
+  key: string | number,
+): FactoryOriginKey =>
+  FactoryOriginKey.make(`${provider}:${component(canonicalKey)}#${component(String(key))}`);
 
 /** The issue an `issueOriginKey` names, or null for any other key. */
 export const parseIssueOriginKey = (
   key: string,
-): { readonly provider: string; readonly canonicalKey: string; readonly number: number } | null => {
-  const match = /^([a-z][a-z0-9-]*):([^|#]+)#(\d+)$/.exec(key);
+): {
+  readonly provider: string;
+  readonly canonicalKey: string;
+  readonly key: string;
+  readonly number: number | null;
+} | null => {
+  const match = /^([a-z][a-z0-9-]*):([^|#]+)#([^|#]+)$/.exec(key);
   if (match === null) return null;
   try {
     return {
       provider: match[1]!,
       canonicalKey: decodeURIComponent(match[2]!),
-      number: Number(match[3]),
+      key: decodeURIComponent(match[3]!),
+      number: issueNumberOf(decodeURIComponent(match[3]!)),
     };
   } catch {
     // Keys copied from retained Work are not all ours; a malformed escape names no issue.

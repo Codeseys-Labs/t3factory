@@ -10,6 +10,7 @@ import {
   type ThreadUserInputQuestion,
 } from "@t3tools/client-runtime/state/thread-requests";
 import type { RuntimeRequestId } from "@t3tools/contracts";
+import { msg, useGT, useMessages } from "gt-react-native";
 import { useRef, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
@@ -107,7 +108,7 @@ export function TaskCard(props: {
 }
 
 const QUESTION_TAG: TaskPill = {
-  label: "Question",
+  label: msg("Question"),
   tone: "attention",
   icon: "question",
   elapsed: null,
@@ -122,6 +123,7 @@ function QuestionField(props: {
   readonly onType: (value: string) => void;
 }) {
   const { question } = props;
+  const gt = useGT();
   return (
     <View className="gap-3">
       {props.showHeader && question.header ? (
@@ -152,10 +154,10 @@ function QuestionField(props: {
       })}
       {question.allowCustomAnswer !== false ? (
         <TextInput
-          accessibilityLabel="Write an answer"
+          accessibilityLabel={gt("Write an answer")}
           multiline
           editable={!props.disabled}
-          placeholder="Write an answer…"
+          placeholder={gt("Write an answer…")}
           value={props.draft?.customAnswer ?? ""}
           onChangeText={props.onType}
           className="max-h-36 min-h-12"
@@ -175,6 +177,7 @@ export function TaskQuestionPanel(
   },
 ) {
   const { questions, requestId, responseCapability } = props.ask.input;
+  const gt = useGT();
   const [drafts, setDrafts] = useState<Record<string, PendingUserInputDraftAnswer>>({});
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -202,8 +205,8 @@ export function TaskQuestionPanel(
     else
       setNote(
         result === undefined
-          ? "This question can't be answered from here."
-          : "Your answer wasn't sent. Try again.",
+          ? gt("This question can't be answered from here.")
+          : gt("Your answer wasn't sent. Try again."),
       );
   };
   return (
@@ -213,7 +216,7 @@ export function TaskQuestionPanel(
         <TaskCard
           tone="attention"
           tag={QUESTION_TAG}
-          heading={`${props.agentLabel} asked a question`}
+          heading={gt("{agent} asked a question", { agent: props.agentLabel })}
         >
           {questions.map((question) => (
             <QuestionField
@@ -243,7 +246,7 @@ export function TaskQuestionPanel(
         <Button
           tone="primary"
           fullWidth
-          label="Send answer"
+          label={gt("Send answer")}
           disabled={answers === null || !answerable}
           loading={busy}
           onPress={() => void send()}
@@ -254,7 +257,7 @@ export function TaskQuestionPanel(
 }
 
 const APPROVAL_TAG: TaskPill = {
-  label: "Pending Approval",
+  label: msg("Pending Approval"),
   tone: "attention",
   icon: "dot",
   elapsed: null,
@@ -269,6 +272,8 @@ export function TaskApprovalPanel(
   },
 ) {
   const { approval } = props.ask;
+  const gt = useGT();
+  const m = useMessages();
   const copy = approvalCopy(approval.requestKind);
   const available = approvalAvailability(approval);
   const [busy, setBusy] = useState(false);
@@ -287,19 +292,19 @@ export function TaskApprovalPanel(
     else
       setNote(
         result === undefined
-          ? "This request can't be answered from here."
-          : "Your response wasn't sent. Try again.",
+          ? gt("This request can't be answered from here.")
+          : gt("Your response wasn't sent. Try again."),
       );
   };
   return (
     <TaskFrame
       {...props}
       card={
-        <TaskCard tone="attention" tag={APPROVAL_TAG} heading={copy.wants}>
+        <TaskCard tone="attention" tag={APPROVAL_TAG} heading={m(copy.wants)}>
           {approval.detail ? (
             <View className="gap-1 rounded-lg bg-subtle px-3 py-2.5">
               <Text textRole="caption" className="text-foreground-muted">
-                {copy.detailLabel}
+                {m(copy.detailLabel)}
               </Text>
               <Text selectable className="font-mono text-sm">
                 {approval.detail}
@@ -314,7 +319,7 @@ export function TaskApprovalPanel(
           {available.alwaysAllow ? (
             <Button
               fullWidth
-              label="Always allow for this task"
+              label={gt("Always allow for this task")}
               disabled={busy || !allowed}
               onPress={() => void respond(props.requests.alwaysAllow)}
             />
@@ -331,14 +336,14 @@ export function TaskApprovalPanel(
           <Button
             tone="primary"
             fullWidth
-            label="Approve once"
+            label={gt("Approve once")}
             disabled={busy || !allowed || !available.approve}
             onPress={() => void respond(props.requests.approveOnce)}
           />
           <Button
             tone="danger"
             fullWidth
-            label="Deny"
+            label={gt("Deny", { $context: "verb, refuse an agent's request" })}
             disabled={busy || !allowed || !available.deny}
             onPress={() => void respond(props.requests.deny)}
           />

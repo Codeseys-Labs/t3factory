@@ -8,6 +8,7 @@ import {
   FactoryDeliveryError,
   GitCommandError,
   MessageId,
+  IssueTrackerKind,
   ProjectId,
   ProviderInstanceId,
   PullRequestOperationError,
@@ -19,12 +20,15 @@ import {
   type PullRequestActionInput,
   type PullRequestDetail,
   type ChangeRequest,
+  type IssueComment,
+  type IssueCommentsPage,
 } from "@t3tools/contracts";
 import * as SourceControlProvider from "@t3tools/source-control-core/server/SourceControlProvider";
 import {
-  IssueTrackerProviderError,
-  type TrackerIssueComment,
-} from "@t3tools/source-control-core/server/IssueTrackerProvider";
+  IssueTrackerError,
+  type IssueTrackerApi,
+} from "@t3tools/source-control-core/server/IssueTracker";
+import { fakePullRequestProvider } from "@t3tools/source-control-testing/fakeSourceControlDriver";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
@@ -65,7 +69,14 @@ import {
   knowledgeBriefOriginKey,
   taskResultOriginKey,
 } from "./FactoryOriginKey.ts";
-import { fakeIssueTracker, issueTrackersLayer } from "./IssueTrackerProviderRegistry.testkit.ts";
+import {
+  fakeIssueTracker,
+  issueServiceLayer,
+  issueTrackersLayer,
+  trackerIssue,
+  type FakeIssueHostOptions,
+  type FakeTrackerIssue,
+} from "./FactoryIssueHosts.testkit.ts";
 
 const at = "2026-10-27T00:00:00.000Z";
 const environmentId = EnvironmentId.make("claim-holder");
@@ -140,6 +151,7 @@ const harness = (
   options: {
     readonly seedSending?: boolean;
     readonly trackers?: Parameters<typeof issueTrackersLayer>[0];
+    readonly issueHosts?: FakeIssueHostOptions;
     readonly artifactFolder?: string;
     readonly seedArtifactSending?: boolean;
   } = {},
@@ -362,7 +374,7 @@ const harness = (
     NodePlatformCrypto.layer,
     NodeServices.layer,
     Layer.succeed(ServerEnvironmentIdentity, { getEnvironmentId: Effect.succeed(environmentId) }),
-    issueTrackersLayer(options.trackers),
+    issueTrackersLayer(options.trackers, options.issueHosts),
     ServerConfig.layerTest("/repo", { prefix: "t3-factory-delivery-test-" }).pipe(
       Layer.provide(NodeServices.layer),
     ),
@@ -389,11 +401,26 @@ const harness = (
               })
             : Option.none(),
         ),
+      getShell: (id) =>
+        Effect.succeed(
+          id === projectId
+            ? Option.some({
+                id,
+                title: "Project",
+                workspaceRoot: "/repo",
+                defaultModelSelection: null,
+                scripts: [],
+                createdAt: at,
+                updatedAt: at,
+              })
+            : Option.none(),
+        ),
     }),
     Layer.mock(Identities.RepositoryIdentityResolver)({
       resolve: () =>
         Effect.succeed({
           canonicalKey: "github.com/owner/repo",
+          displayName: "owner/repo",
           provider: SourceControlProviderKind.make("github"),
           locator: { source: "git-remote", remoteName: "origin", remoteUrl: state.origin },
         }),
@@ -443,7 +470,7 @@ const harness = (
     KnowledgeStore.layer,
     Knowledge.layer.pipe(Layer.provide(KnowledgeStore.layer)),
     Acceptance.layer.pipe(Layer.provide(AcceptanceStore.layer)),
-  ).pipe(Layer.provideMerge(dependencies));
+  ).pipe(Layer.provideMerge(issueServiceLayer), Layer.provideMerge(dependencies));
   // Seeded after the stores exist and before the service is built, the order startup recovery
   // relies on.
   const seed = Layer.effectDiscard(
@@ -1911,9 +1938,17 @@ it.effect(
 it.effect(
   "a host that publishes without a head-pinned merge is refused only the merge, before the pull request is read",
   () => {
-    const github = fakeIssueTracker("github");
     const { state, layer } = harness({
-      trackers: [{ ...github, capabilities: { ...github.capabilities, headPinnedMerge: false } }],
+      issueHosts: {
+        pullRequests: {
+          github: {
+            capabilities: {
+              ...fakePullRequestProvider("github").capabilities,
+              actions: ["ready", "close"],
+            },
+          },
+        },
+      },
     });
     return Effect.gen(function* () {
       yield* published;
@@ -1944,6 +1979,14 @@ const artifactText = "## Findings\n\nThe accepted **markdown**.\n";
 const hash = (bytes: string | Uint8Array) =>
   NodeCrypto.createHash("sha256").update(bytes).digest("hex");
 
+const issueComment = (id: number, body: string, url: string): IssueComment => ({
+  id: String(id),
+  author: null,
+  body,
+  createdAt: at,
+  url,
+});
+
 const artifactHarness = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -1953,66 +1996,85 @@ const artifactHarness = Effect.gen(function* () {
   const file = path.join(folder, "DELIVERABLE.md");
   const host = {
     reads: [] as number[],
-    posts: [] as { cwd: string; host: string; repository: string; number: number; body: string }[],
+    posts: [] as Parameters<NonNullable<IssueTrackerApi["comment"]>>[0][],
+    // The conversation's pages as reconciliation read them: page 1 rides on the issue read.
     pages: [] as number[],
-    issue: "ok" as "ok" | "not-found" | "not-an-issue",
+    issue: "ok" as "ok" | "not-found",
     send: "ok" as "ok" | "definite" | "ambiguous",
-    listingFailure: null as IssueTrackerProviderError["reason"] | null,
+    listingFailure: null as IssueTrackerError["reason"] | null,
     failPage: 1,
     failRead: null as number | null,
-    listings: [] as { comments: readonly TrackerIssueComment[]; nextPage: number | null }[],
-    listingResponses: [] as { comments: readonly TrackerIssueComment[]; nextPage: number | null }[],
+    listings: [] as { comments: readonly IssueComment[]; nextPage: number | null }[],
+    listingResponses: [] as { comments: readonly IssueComment[]; nextPage: number | null }[],
   };
-  const failure = (
-    operation: string,
-    reason: IssueTrackerProviderError["reason"],
-    cause?: unknown,
-  ) =>
-    new IssueTrackerProviderError({
-      provider: SourceControlProviderKind.make("github"),
+  const failure = (operation: string, reason: IssueTrackerError["reason"], cause?: unknown) =>
+    new IssueTrackerError({
+      tracker: IssueTrackerKind.make("github"),
       operation,
       reason,
       detail: "fixture response",
       ...(cause === undefined ? {} : { cause }),
     });
+  const listing = (page: number): Effect.Effect<IssueCommentsPage, IssueTrackerError> => {
+    host.pages.push(page);
+    if (
+      host.listingFailure !== null &&
+      (host.failRead === null ? page === host.failPage : host.pages.length === host.failRead)
+    )
+      return Effect.fail(failure(page === 1 ? "getIssue" : "getComments", host.listingFailure));
+    const listed = host.listingResponses.shift() ??
+      host.listings[page - 1] ?? { comments: [], nextPage: null };
+    return Effect.succeed({
+      comments: listed.comments,
+      nextCursor: listed.nextPage === null ? null : String(listed.nextPage),
+    });
+  };
+  const destination = (number: number): FakeTrackerIssue => ({
+    number,
+    title: intent.issue.title,
+    body: "",
+    state: "open",
+    url: `https://github.com/owner/repo/issues/${number}`,
+    labels: [],
+    updatedAt: at,
+  });
   const fake = fakeIssueTracker("github", {
     getIssue: (input) => {
-      host.reads.push(input.number);
-      return host.issue === "ok"
-        ? Effect.succeed({
-            ...intent.issue,
-            number: input.number,
-            url: `https://github.com/owner/repo/issues/${input.number}`,
-          })
-        : Effect.fail(failure("getIssue", host.issue));
+      host.reads.push(Number(input.key));
+      if (host.issue !== "ok") return Effect.fail(failure("getIssue", host.issue));
+      // Until something is posted the issue is only a destination; after, a read of it is
+      // reconciliation listing the conversation.
+      if (host.posts.length === 0)
+        return Effect.succeed(trackerIssue(destination(Number(input.key))));
+      return listing(1).pipe(
+        Effect.map((page) =>
+          trackerIssue(destination(Number(input.key)), {
+            comments: page.comments,
+            commentsCursor: page.nextCursor,
+          }),
+        ),
+      );
     },
-    commentOnIssue: (input) => {
+    getComments: ({ cursor }) => listing(Number(cursor)),
+    comment: (input) => {
       host.posts.push(input);
       if (host.send !== "ok")
         return Effect.fail(
           failure(
-            "commentOnIssue",
+            "comment",
             "failed",
             host.send === "definite"
               ? { _tag: "GitHubApiResponseError", status: 422 }
               : { _tag: "GitHubApiRequestError" },
           ),
         );
-      return Effect.succeed({
-        id: 91,
-        body: input.body,
-        url: `https://github.com/owner/repo/issues/${input.number}#issuecomment-91`,
-      });
-    },
-    listIssueComments: ({ page }) => {
-      host.pages.push(page);
-      return host.listingFailure !== null &&
-        (host.failRead === null ? page === host.failPage : host.pages.length === host.failRead)
-        ? Effect.fail(failure("listIssueComments", host.listingFailure))
-        : Effect.succeed(
-            host.listingResponses.shift() ??
-              host.listings[page - 1] ?? { comments: [], nextPage: null },
-          );
+      return Effect.succeed(
+        issueComment(
+          91,
+          input.body,
+          `https://github.com/owner/repo/issues/${input.key}#issuecomment-91`,
+        ),
+      );
     },
   });
   const tracker = { ...fake, capabilities: { ...fake.capabilities } };
@@ -2171,7 +2233,7 @@ it.effect(
     withArtifact((h) =>
       Effect.gen(function* () {
         yield* acceptArtifact(h);
-        h.tracker.capabilities.issueComment = false;
+        h.tracker.capabilities.comment = false;
         assert.equal((yield* prepareArtifact().pipe(Effect.flip)).reason, "capability-unsupported");
         const refused = yield* (yield* Delivery.FactoryDeliveryService)
           .grant({
@@ -2193,7 +2255,7 @@ it.effect(
     ),
 );
 
-it.effect.each(["not-found", "not-an-issue"] as const)(
+it.effect.each(["not-found"] as const)(
   "artifact prepare maps a $0 destination to destination-not-found",
   (reason) =>
     withArtifact((h) =>
@@ -2324,8 +2386,8 @@ it.effect(
           {
             cwd: "/repo",
             host: "github.com",
-            repository: "owner/repo",
-            number: 7,
+            scope: "owner/repo",
+            key: "7",
             body: granted.body,
           },
         ]);
@@ -2333,7 +2395,7 @@ it.effect(
         const settled = Option.getOrThrow(yield* store.get(granted.id));
         assert.equal(settled.status, "confirmed");
         assert.deepEqual(settled.remote, {
-          commentId: 91,
+          commentId: "91",
           url: "https://github.com/owner/repo/issues/7#issuecomment-91",
         });
         assert.equal(settled.failure, null);
@@ -2346,6 +2408,71 @@ it.effect(
           yield* (yield* EffectOutbox.EffectOutboxV2).get(`${granted.id}:execute`),
         );
         assert.equal(queued.status, "succeeded");
+      }),
+    ),
+);
+
+it.effect.each([
+  { name: "a decimal id", found: { id: "91", url: null }, legacy: 91 },
+  {
+    name: "a node id and a GitHub comment URL",
+    found: { id: "IC_kwDOabc", url: "https://github.com/owner/repo/issues/7#issuecomment-92" },
+    legacy: 92,
+  },
+  {
+    name: "a key and a GitLab note URL",
+    found: { id: "note-key", url: "https://gitlab.com/owner/repo/-/issues/7#note_93" },
+    legacy: 93,
+  },
+  {
+    name: "no integer id",
+    found: { id: "IC_kwDOabc", url: "https://github.com/owner/repo/issues/7" },
+    legacy: null,
+  },
+] as const)(
+  "a reply without commentKeys names a comment with $name by its integer id or leaves it out",
+  ({ found, legacy }) =>
+    withArtifact((h) =>
+      Effect.gen(function* () {
+        yield* acceptArtifact(h);
+        h.host.send = "ambiguous";
+        const prepared = yield* prepareArtifact();
+        const input: FactoryArtifactDeliveryGrantInput = {
+          projectId,
+          threadId: artifactThread,
+          kind: "publish-artifact",
+          commandId: "artifact-grant",
+          expectedArtifactSha256: prepared.artifactSha256,
+          expectedPayloadDigest: prepared.payloadDigest,
+          attempt: prepared.attempt,
+          payload: prepared.payload,
+        };
+        const service = yield* Delivery.FactoryDeliveryService;
+        const granted = yield* service.grant(input);
+        if (granted.kind !== "publish-artifact") return yield* Effect.die("expected artifact");
+        yield* drain;
+        h.host.listings = [
+          {
+            comments: [{ ...found, author: null, body: granted.body, createdAt: at }],
+            nextPage: null,
+          },
+        ];
+        const reconciled = yield* service.reconcile({ projectId, intentId: granted.id });
+        const thread = { projectId, threadId: artifactThread };
+        const [keyed] = (yield* service.read({ ...thread, commentKeys: true })).intents;
+        if (keyed?.kind !== "publish-artifact" || keyed.remote === null)
+          return yield* Effect.die("expected a confirmed artifact delivery");
+        assert.deepEqual(keyed.remote, {
+          commentId: found.id,
+          url: found.url ?? "https://github.com/owner/repo/issues/7",
+        });
+        const named =
+          legacy === null ? null : { ...keyed, remote: { ...keyed.remote, commentId: legacy } };
+        assert.deepEqual(reconciled, named ?? { ...keyed, remote: null });
+        assert.deepEqual((yield* service.read(thread)).intents, named === null ? [] : [named]);
+        assert.deepEqual((yield* prepareArtifact()).existing, named);
+        assert.deepEqual(yield* service.grant(input), named ?? { ...keyed, remote: null });
+        assert.deepEqual(yield* service.grant({ ...input, commentKeys: true }), keyed);
       }),
     ),
 );
@@ -2397,27 +2524,27 @@ it.effect(
         yield* drain;
         yield* h.fs.remove(h.folder, { recursive: true });
         const service = yield* Delivery.FactoryDeliveryService;
-        const request = { projectId, intentId: granted.id };
+        const request = { projectId, intentId: granted.id, commentKeys: true };
         const unknown = Option.getOrThrow(
           yield* (yield* DeliveryStore.FactoryDeliveryStore).get(granted.id),
         );
         h.host.listings = [
           {
-            comments: [{ id: 1, body: "unrelated", url: "https://github.com/comment/1" }],
+            comments: [issueComment(1, "unrelated", "https://github.com/comment/1")],
             nextPage: 2,
           },
         ];
         h.host.failPage = 2;
-        h.host.listingFailure = "truncated-response";
+        h.host.listingFailure = "rate-limited";
         const truncated = yield* service.reconcile(request);
         assert.equal(truncated.status, unknown.status);
-        assert.equal(truncated.failure, "github failed in listIssueComments: fixture response");
+        assert.equal(truncated.failure, "Issue operation comments failed: fixture response");
         assert.deepEqual(h.host.pages, [1, 2]);
         h.host.pages.length = 0;
         h.host.listingFailure = "failed";
         const unread = yield* service.reconcile(request);
         assert.equal(unread.status, unknown.status);
-        assert.equal(unread.failure, "github failed in listIssueComments: fixture response");
+        assert.equal(unread.failure, "Issue operation comments failed: fixture response");
         h.host.listingFailure = null;
         h.host.listings = [];
         h.host.pages.length = 0;
@@ -2428,16 +2555,16 @@ it.effect(
         // The host stores the comment with CRLF line endings and trailing whitespace.
         h.host.listings = [
           {
-            comments: [{ id: 3, body: "unrelated", url: "https://github.com/comment/3" }],
+            comments: [issueComment(3, "unrelated", "https://github.com/comment/3")],
             nextPage: 2,
           },
           {
             comments: [
-              {
-                id: 92,
-                body: `${granted.body.replaceAll("\n", "  \r\n")}\r\n\r\n`,
-                url: "https://github.com/owner/repo/issues/7#issuecomment-92",
-              },
+              issueComment(
+                92,
+                `${granted.body.replaceAll("\n", "  \r\n")}\r\n\r\n`,
+                "https://github.com/owner/repo/issues/7#issuecomment-92",
+              ),
             ],
             nextPage: null,
           },
@@ -2445,7 +2572,7 @@ it.effect(
         const confirmed = yield* service.reconcile(request);
         assert.equal(confirmed.status, "confirmed");
         assert.deepEqual(confirmed.remote, {
-          commentId: 92,
+          commentId: "92",
           url: "https://github.com/owner/repo/issues/7#issuecomment-92",
         });
         assert.deepEqual(h.host.pages, [1, 2]);
@@ -2472,11 +2599,9 @@ it.effect.each([
         if (granted.kind !== "publish-artifact")
           return yield* Effect.die("expected artifact intent");
         yield* drain;
-        const comment = (id: number, body = "unrelated"): TrackerIssueComment => ({
-          id,
-          body,
-          url: `https://github.com/owner/repo/issues/7#issuecomment-${id}`,
-        });
+        const commentUrl = (id: number) =>
+          `https://github.com/owner/repo/issues/7#issuecomment-${id}`;
+        const comment = (id: number, body = "unrelated") => issueComment(id, body, commentUrl(id));
         const page1 = { comments: [comment(1), comment(2)], nextPage: 2 };
         const page2 = { comments: [comment(4), comment(5), comment(7)], nextPage: 3 };
         // Deleting comment 1 shifts comment 3 left, out of page 2 before it is read.
@@ -2502,6 +2627,7 @@ it.effect.each([
         const reconciled = yield* (yield* Delivery.FactoryDeliveryService).reconcile({
           projectId,
           intentId: granted.id,
+          commentKeys: true,
         });
         assert.equal(
           reconciled.status,
@@ -2522,9 +2648,9 @@ it.effect.each([
         assert.deepEqual(
           reconciled.remote,
           scenario === "shifted-marker"
-            ? { commentId: 3, url: comment(3).url }
+            ? { commentId: "3", url: commentUrl(3) }
             : scenario === "later-marker"
-              ? { commentId: 5, url: comment(5).url }
+              ? { commentId: "5", url: commentUrl(5) }
               : null,
         );
         assert.deepEqual(
@@ -2550,12 +2676,12 @@ it.effect.each([1, 2])(
           return yield* Effect.die("expected artifact intent");
         yield* drain;
         const remote = {
-          commentId: 92,
+          commentId: "92",
           url: "https://github.com/owner/repo/issues/7#issuecomment-92",
         };
         h.host.listings = [
           {
-            comments: [{ id: remote.commentId, url: remote.url, body: granted.body }],
+            comments: [issueComment(92, granted.body, remote.url)],
             nextPage,
           },
         ];
@@ -2564,6 +2690,7 @@ it.effect.each([1, 2])(
         const reconciled = yield* (yield* Delivery.FactoryDeliveryService).reconcile({
           projectId,
           intentId: granted.id,
+          commentKeys: true,
         });
         assert.equal(reconciled.status, "confirmed");
         assert.deepEqual(reconciled.remote, remote);
@@ -2572,10 +2699,49 @@ it.effect.each([1, 2])(
     ),
 );
 
+it.effect.each(["posted-after-system-notes", "nothing-posted"] as const)(
+  "artifact reconciliation follows a cursor past a page left empty of comments: %s",
+  (scenario) =>
+    withArtifact((h) =>
+      Effect.gen(function* () {
+        yield* acceptArtifact(h);
+        h.host.send = "ambiguous";
+        const granted = yield* grantArtifact();
+        if (granted.kind !== "publish-artifact")
+          return yield* Effect.die("expected artifact intent");
+        yield* drain;
+        const url = "https://gitlab.com/owner/repo/-/issues/7#note_101";
+        // A first page of a hundred GitLab system notes, which the tracker drops as comments.
+        h.host.listings = [
+          { comments: [], nextPage: 2 },
+          {
+            comments:
+              scenario === "posted-after-system-notes"
+                ? [issueComment(101, granted.body, url)]
+                : [],
+            nextPage: null,
+          },
+        ];
+        const reconciled = yield* (yield* Delivery.FactoryDeliveryService).reconcile({
+          projectId,
+          intentId: granted.id,
+          commentKeys: true,
+        });
+        if (scenario === "posted-after-system-notes") {
+          assert.equal(reconciled.status, "confirmed");
+          assert.deepEqual(reconciled.remote, { commentId: "101", url });
+          assert.deepEqual(h.host.pages, [1, 2]);
+        } else {
+          assert.equal(reconciled.status, "failed");
+          assert.equal(reconciled.failure, "no matching artifact comment found");
+          assert.deepEqual(h.host.pages, [1, 2, 1]);
+        }
+      }),
+    ),
+);
+
 it.effect.each([
-  "empty-page",
   "backward-page",
-  "skipped-page",
   "reversed-ids",
   "duplicate-ids",
   "overlapping-ids",
@@ -2594,20 +2760,17 @@ it.effect.each([
             : scenario === "duplicate-ids"
               ? [1, 1]
               : [1]
-          ).map((id) => ({ id, body: "unrelated", url: `https://github.com/comment/${id}` })),
-          nextPage: scenario === "skipped-page" ? 3 : 2,
+          ).map((id) => issueComment(id, "unrelated", `https://github.com/comment/${id}`)),
+          nextPage: 2,
         },
         {
-          comments:
-            scenario === "empty-page"
-              ? []
-              : [
-                  {
-                    id: scenario === "overlapping-ids" ? 1 : 2,
-                    body: "unrelated",
-                    url: "https://github.com/comment/2",
-                  },
-                ],
+          comments: [
+            issueComment(
+              scenario === "overlapping-ids" ? 1 : 2,
+              "unrelated",
+              "https://github.com/comment/2",
+            ),
+          ],
           nextPage: scenario === "backward-page" ? 1 : null,
         },
       ];
@@ -2622,7 +2785,7 @@ it.effect.each([
       assert.equal(reconciled.status, "unknown");
       assert.isNull(reconciled.remote);
       if (scenario === "verification-error") {
-        assert.equal(reconciled.failure, "github failed in listIssueComments: fixture response");
+        assert.equal(reconciled.failure, "Issue operation detail failed: fixture response");
         assert.deepEqual(h.host.pages, [1, 2, 1]);
       } else {
         assert.equal(
@@ -2656,16 +2819,20 @@ it.effect.each(["pending", "confirmed"] as const)(
         const before = Option.getOrThrow(yield* store.get(replacement.id));
         assert.equal(before.status, status);
         const remote = {
-          commentId: 92,
+          commentId: "92",
           url: "https://github.com/owner/repo/issues/7#issuecomment-92",
         };
         h.host.listings = [
           {
-            comments: [{ id: remote.commentId, url: remote.url, body: first.body }],
+            comments: [issueComment(92, first.body, remote.url)],
             nextPage: null,
           },
         ];
-        const reconciled = yield* service.reconcile({ projectId, intentId: first.id });
+        const reconciled = yield* service.reconcile({
+          projectId,
+          intentId: first.id,
+          commentKeys: true,
+        });
         assert.equal(reconciled.status, "failed");
         assert.deepEqual(reconciled.remote, remote);
         assert.equal(
@@ -2696,11 +2863,11 @@ it.effect(
         const service = yield* Delivery.FactoryDeliveryService;
         const marker = artifactDeliveryMarker(granted.body.match(/attempt=(\S+) -->/)![1]!);
         assert.include(granted.body, marker);
-        const quoted = {
-          id: 5,
-          body: `> quoting someone: ${marker}`,
-          url: "https://github.com/owner/repo/issues/7#issuecomment-5",
-        };
+        const quoted = issueComment(
+          5,
+          `> quoting someone: ${marker}`,
+          "https://github.com/owner/repo/issues/7#issuecomment-5",
+        );
         h.host.listings = [{ comments: [quoted], nextPage: null }];
         const unmatched = yield* service.reconcile({ projectId, intentId: granted.id });
         assert.equal(unmatched.status, "failed");
@@ -2710,19 +2877,23 @@ it.effect(
           {
             comments: [
               quoted,
-              {
-                id: 6,
-                body: `${granted.body}\n\nEdited by a maintainer.`,
-                url: "https://github.com/owner/repo/issues/7#issuecomment-6",
-              },
+              issueComment(
+                6,
+                `${granted.body}\n\nEdited by a maintainer.`,
+                "https://github.com/owner/repo/issues/7#issuecomment-6",
+              ),
             ],
             nextPage: null,
           },
         ];
-        const adopted = yield* service.reconcile({ projectId, intentId: granted.id });
+        const adopted = yield* service.reconcile({
+          projectId,
+          intentId: granted.id,
+          commentKeys: true,
+        });
         assert.equal(adopted.status, "confirmed");
         assert.deepEqual(adopted.remote, {
-          commentId: 6,
+          commentId: "6",
           url: "https://github.com/owner/repo/issues/7#issuecomment-6",
         });
         assert.lengthOf(h.host.posts, 1);
@@ -2740,11 +2911,11 @@ it.effect("artifact reconciliation ignores public markers quoted by the accepted
       if (granted.kind !== "publish-artifact") return yield* Effect.die("expected artifact intent");
       yield* drain;
       const service = yield* Delivery.FactoryDeliveryService;
-      const oldComment = {
-        id: 5,
-        body: copiedMarker,
-        url: "https://github.com/owner/repo/issues/7#issuecomment-5",
-      };
+      const oldComment = issueComment(
+        5,
+        copiedMarker,
+        "https://github.com/owner/repo/issues/7#issuecomment-5",
+      );
       h.host.listings = [{ comments: [oldComment], nextPage: null }];
       const absent = yield* service.reconcile({ projectId, intentId: granted.id });
       assert.equal(absent.status, "failed");
@@ -2753,19 +2924,19 @@ it.effect("artifact reconciliation ignores public markers quoted by the accepted
         {
           comments: [
             oldComment,
-            {
-              id: 6,
-              body: granted.body,
-              url: "https://github.com/owner/repo/issues/7#issuecomment-6",
-            },
+            issueComment(6, granted.body, "https://github.com/owner/repo/issues/7#issuecomment-6"),
           ],
           nextPage: null,
         },
       ];
-      const present = yield* service.reconcile({ projectId, intentId: granted.id });
+      const present = yield* service.reconcile({
+        projectId,
+        intentId: granted.id,
+        commentKeys: true,
+      });
       assert.equal(present.status, "confirmed");
       assert.deepEqual(present.remote, {
-        commentId: 6,
+        commentId: "6",
         url: "https://github.com/owner/repo/issues/7#issuecomment-6",
       });
       assert.lengthOf(h.host.posts, 1);
@@ -2836,11 +3007,11 @@ it.effect(
         h.host.listings = [
           {
             comments: [
-              {
-                id: 91,
-                body: h.host.posts[1]!.body,
-                url: "https://github.com/owner/repo/issues/7#issuecomment-91",
-              },
+              issueComment(
+                91,
+                h.host.posts[1]!.body,
+                "https://github.com/owner/repo/issues/7#issuecomment-91",
+              ),
             ],
             nextPage: null,
           },

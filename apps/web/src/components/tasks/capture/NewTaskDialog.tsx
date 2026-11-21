@@ -10,6 +10,7 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { FolderIcon } from "lucide-react";
 import { type KeyboardEvent, useId, useState } from "react";
+import { T, useGT, useMessages, Var } from "gt-react";
 
 import { isMacPlatform } from "~/lib/utils";
 import { factoryTasks, useFactoryTaskDetail } from "../../../state/factoryTasks";
@@ -70,6 +71,7 @@ function SubTaskGate({
   parentRef: FactoryTaskRef;
 }) {
   const detail = useFactoryTaskDetail(parentRef);
+  const gt = useGT();
   if (detail._tag === "Success")
     return (
       <NewTaskGate
@@ -83,9 +85,11 @@ function SubTaskGate({
     );
   return (
     <MessageDialog
-      title="New sub-task"
+      title={gt("New sub-task")}
       message={
-        detail._tag === "Failure" ? "The task could not be loaded. Try again." : "Loading the task…"
+        detail._tag === "Failure"
+          ? gt("The task could not be loaded. Try again.")
+          : gt("Loading the task…")
       }
     />
   );
@@ -99,6 +103,7 @@ function NewTaskGate({
   parent: ParentTask | null;
 }) {
   const projects = useCaptureProjects();
+  const gt = useGT();
   const fallback: CaptureProject | undefined = parent
     ? (projects.find(
         (candidate) =>
@@ -115,8 +120,8 @@ function NewTaskGate({
   if (fallback === undefined)
     return (
       <MessageDialog
-        title="New task"
-        message="Add a project to the sidebar to create tasks in it."
+        title={gt("New task")}
+        message={gt("Add a project to the sidebar to create tasks in it.")}
       />
     );
   return (
@@ -148,7 +153,7 @@ function MessageDialog({ title, message }: { title: string; message: string }) {
           <p className="text-muted-foreground text-sm">{message}</p>
           <div className="flex justify-end">
             <Button variant="outline" onClick={close}>
-              Close
+              <T>Close</T>
             </Button>
           </div>
         </div>
@@ -168,6 +173,8 @@ function NewTaskForm({
   projects: readonly CaptureProject[];
   fallback: CaptureProject;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const close = useTaskDialogStore((state) => state.close);
   const scope = useTaskScope();
   const commands = useCaptureCommands();
@@ -221,7 +228,7 @@ function NewTaskForm({
   const startable =
     assignmentRunsAgent(assignment) && setupState.setup !== null && canStart === true;
   const lane = defaults.lane ?? "backlog";
-  const backlogLabel = lane === "ready" ? "Add to Ready" : "Add to backlog";
+  const backlogLabel = lane === "ready" ? gt("Add to Ready") : gt("Add to backlog");
   const mac = isMacPlatform(navigator.platform);
 
   const requestClose = () => {
@@ -233,13 +240,16 @@ function NewTaskForm({
   const announce = (task: FactoryTaskSummary, refusal: string | null) => {
     if (refusal === null && onTasksPage) return;
     toastManager.add({
-      title: `Added ${task.displayId} to ${lane === "ready" ? "Ready" : "the backlog"}`,
+      title: gt("Added {displayId} to {where}", {
+        displayId: task.displayId,
+        where: lane === "ready" ? gt("Ready", { $context: "the Ready column" }) : gt("the backlog"),
+      }),
       ...(refusal ? { description: refusal, type: "error" } : {}),
       ...(onTasksPage
         ? {}
         : {
             actionProps: {
-              children: `Open ${task.displayId}`,
+              children: gt("Open {displayId}", { displayId: task.displayId }),
               onClick: () =>
                 void navigate({
                   to: "/tasks/$environmentId/$displayId",
@@ -317,26 +327,28 @@ function NewTaskForm({
       >
         <CommandDialogPopup
           className="max-w-3xl"
-          {...(parent ? { "aria-labelledby": headingId } : { "aria-label": "New task" })}
+          {...(parent ? { "aria-labelledby": headingId } : { "aria-label": gt("New task") })}
         >
           <div className="flex flex-col" onKeyDown={onKeyDown}>
             {parent ? (
               <p id={headingId} className="px-3 pt-3 font-medium text-sm">
-                New sub-task of {parent.displayId}
+                <T>
+                  New sub-task of <Var>{parent.displayId}</Var>
+                </T>
               </p>
             ) : null}
             <Textarea
               unstyled
               autoFocus
               className="min-h-32 [&_textarea]:resize-none"
-              aria-label="What needs doing?"
-              placeholder="What needs doing?"
+              aria-label={gt("What needs doing?")}
+              placeholder={gt("What needs doing?")}
               value={text}
               onChange={(event) => setText(event.currentTarget.value)}
             />
             {error || tooLong ? (
               <p role="alert" className="px-4 pb-2 text-destructive-foreground text-xs">
-                {error ?? "The description is over 8,000 characters."}
+                {error ?? gt("The description is over 8,000 characters.")}
               </p>
             ) : null}
             <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
@@ -348,10 +360,14 @@ function NewTaskForm({
                     value={project?.key ?? null}
                     onValueChange={(key) => key !== null && pickProject(key)}
                   >
-                    <SelectTrigger size="xs" variant="ghost" aria-label="Project">
+                    <SelectTrigger
+                      size="xs"
+                      variant="ghost"
+                      aria-label={gt("Project", { $context: "noun, the project picker" })}
+                    >
                       <FolderIcon aria-hidden className="size-3 shrink-0" />
                       <SelectValue>
-                        {project ? captureProjectLabel(project, projects) : "Choose a project"}
+                        {project ? captureProjectLabel(project, projects) : gt("Choose a project")}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectPopup>
@@ -386,13 +402,17 @@ function NewTaskForm({
                   assigneeTrigger
                 )}
                 <Select value={type} onValueChange={(value) => value !== null && setType(value)}>
-                  <SelectTrigger size="xs" variant="ghost" aria-label="Type">
-                    <SelectValue>{TASK_TYPE_LABELS[type]}</SelectValue>
+                  <SelectTrigger
+                    size="xs"
+                    variant="ghost"
+                    aria-label={gt("Type", { $context: "noun, the task type picker" })}
+                  >
+                    <SelectValue>{messages(TASK_TYPE_LABELS[type])}</SelectValue>
                   </SelectTrigger>
                   <SelectPopup>
                     {TASK_TYPES.map((value) => (
                       <SelectItem key={value} value={value}>
-                        {TASK_TYPE_LABELS[value]}
+                        {messages(TASK_TYPE_LABELS[value])}
                       </SelectItem>
                     ))}
                   </SelectPopup>
@@ -411,7 +431,7 @@ function NewTaskForm({
                 disabled={!ready || !startable}
                 onClick={() => void submit("start")}
               >
-                Start now
+                <T>Start now</T>
                 {startable ? <ShortcutHint label={shortcut} /> : null}
               </Button>
             </div>
@@ -421,11 +441,17 @@ function NewTaskForm({
       <AlertDialog open={confirmingDiscard} onOpenChange={setConfirmingDiscard}>
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>Discard this task?</AlertDialogTitle>
-            <AlertDialogDescription>What you wrote is not saved yet.</AlertDialogDescription>
+            <AlertDialogTitle>
+              <T>Discard this task?</T>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <T>What you wrote is not saved yet.</T>
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Keep editing</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="outline" />}>
+              <T>Keep editing</T>
+            </AlertDialogClose>
             <Button
               variant="destructive"
               onClick={() => {
@@ -433,7 +459,7 @@ function NewTaskForm({
                 close();
               }}
             >
-              Discard
+              <T>Discard</T>
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>

@@ -5,6 +5,7 @@ import {
   FactoryDeliveryError,
   FactoryIssueError,
   FactoryOriginKey,
+  IssueTrackerKind,
   ProjectId,
   ProviderInstanceId,
   SourceControlProviderKind,
@@ -12,6 +13,8 @@ import {
   type FactoryAcceptance,
   type FactoryArtifactDeliveryIntent,
   type FactoryArtifactDeliveryPrepareResult,
+  type FactoryClaim,
+  type FactoryClaimListResult,
   type FactoryCommitDeliveryIntent,
   type FactoryCommitDeliveryPrepareResult,
   type FactoryDeliveryPullRequest,
@@ -66,9 +69,17 @@ import {
   factoryIssueAction,
   factoryIssueStartKey,
   factoryRepositoryLabel,
-  safeFactoryIssueBody,
   safeFactoryIssueText,
   safeFactoryIssueUrl,
+  claimsElsewhere,
+  describeClaimsElsewhere,
+  describeUnavailableClaims,
+  factoryIssueNumberFromKey,
+  factoryIssueTargetOf,
+  originKeyForFactoryIssue,
+  originKeyForIssue,
+  planClaimTargets,
+  resolveFactoryIssueSection,
 } from "./factoryIssues";
 
 const repository: FactoryRepository = {
@@ -248,7 +259,7 @@ describe("factoryIssueStartKey", () => {
       environmentId: "environment-1",
       projectId: "project-1",
       expectedRepositoryKey: repository.canonicalKey,
-      issueNumber: 1,
+      issueKey: "1",
       expectedIssueRevision: "a".repeat(64),
       restartDeleted: false,
       previousThreadId: null,
@@ -265,7 +276,7 @@ describe("factoryIssueStartKey", () => {
       environmentId: "environment-1",
       projectId: "project-1",
       expectedRepositoryKey: repository.canonicalKey,
-      issueNumber: 1,
+      issueKey: "1",
       expectedIssueRevision: "a".repeat(64),
       restartDeleted: true,
       previousThreadId: "deleted-thread-1",
@@ -285,11 +296,245 @@ describe("safeFactoryIssueText", () => {
     expect(safeFactoryIssueText("a\n\n\n\n\nb")).toBe("a\n\nb");
     expect(safeFactoryIssueText("x".repeat(50), 10)).toBe(`${"x".repeat(10)}…`);
   });
+});
 
-  it("treats a blank body as no body", () => {
-    expect(safeFactoryIssueBody(null)).toBeNull();
-    expect(safeFactoryIssueBody("  \n\u202E ")).toBeNull();
-    expect(safeFactoryIssueBody("hello")).toBe("hello");
+describe("resolveFactoryIssueSection", () => {
+  const resolve = (factoryIssues: boolean, factoryIssueKeys: boolean, key: string) =>
+    resolveFactoryIssueSection({ factoryIssues, factoryIssueKeys, key });
+
+  it("takes any key when the server advertises native keys", () => {
+    expect(resolve(true, true, "123")).toEqual({ key: "123" });
+    expect(resolve(true, true, "ENG-123")).toEqual({ key: "ENG-123" });
+    expect(resolve(true, true, "")).toBeNull();
+    expect(resolve(false, true, "123")).toBeNull();
+  });
+
+  it("takes only decimal keys on a server without native keys", () => {
+    expect(factoryIssueNumberFromKey("123")).toBe(123);
+    expect(resolve(true, false, "123")).toEqual({ issueNumber: 123 });
+    expect(resolve(false, false, "123")).toBeNull();
+    expect(resolve(true, false, "ENG-123")).toBeNull();
+    expect(resolve(true, false, "0")).toBeNull();
+    expect(resolve(true, false, "0123")).toBeNull();
+    expect(resolve(true, false, "12a")).toBeNull();
+    expect(resolve(true, false, "9007199254740993")).toBeNull();
+  });
+});
+
+describe("factoryIssueTargetOf", () => {
+  it("prefers the native key when the server reads keys", () => {
+    expect(factoryIssueTargetOf({ number: 7, key: "ENG-7" }, true)).toEqual({ key: "ENG-7" });
+    expect(factoryIssueTargetOf({ number: 7 }, true)).toEqual({ key: "7" });
+    expect(factoryIssueTargetOf({ number: null }, true)).toBeNull();
+  });
+
+  it("falls back to the legacy number for older servers", () => {
+    expect(factoryIssueTargetOf({ number: 7, key: "7" }, false)).toEqual({ issueNumber: 7 });
+    expect(factoryIssueTargetOf({ number: null, key: "ENG-7" }, false)).toBeNull();
+  });
+});
+
+describe("factoryIssueAction with native keys", () => {
+  it("starts a number-less issue when the server reads keys", () => {
+    expect(factoryIssueAction(issue({ number: null, key: "ENG-7" }), undefined, true).kind).toBe(
+      "start",
+    );
+    expect(factoryIssueAction(issue({ number: null, key: "ENG-7" })).kind).toBe("unavailable");
+  });
+});
+
+describe("factory issue claims", () => {
+  const originKey = originKeyForIssue(
+    SourceControlProviderKind.make("github"),
+    repository.canonicalKey,
+    7,
+  );
+  const claim = (threadId: string, key = originKey): FactoryClaim => ({
+    originKey: key,
+    origin: "github-issue",
+    projectId: ProjectId.make("project-1"),
+    workspaceRoot: "/repo",
+    threadId: ThreadId.make(threadId),
+    status: "running",
+    baseRef: "main",
+    createdAt: "2026-11-20T00:00:00.000Z",
+    creationSource: "web",
+    admittedBy: null,
+    originConflict: false,
+    acceptance: null,
+    artifactAcceptance: null,
+  });
+  const claimList = (
+    environmentId: string,
+    claims: ReadonlyArray<FactoryClaim>,
+  ): FactoryClaimListResult => ({
+    environmentId: EnvironmentId.make(environmentId),
+    repository,
+    claims,
+    fetchedAt: "2026-11-20T00:00:00.000Z",
+  });
+  const labelOf = (environmentId: EnvironmentId) => `env-${environmentId}`;
+
+  it("escapes the components that could forge a neighbouring field", () => {
+    expect(originKey).toBe("github:github.com/owner/name#7");
+    expect(originKeyForIssue(SourceControlProviderKind.make("gitlab"), "host/a%b|c#d:e", 3)).toBe(
+      "gitlab:host/a%25b%7Cc%23d%3Ae#3",
+    );
+    expect(originKeyForIssue(IssueTrackerKind.make("linear"), "team", "ENG#7")).toBe(
+      "linear:team#ENG%237",
+    );
+  });
+
+  it("keys a factory issue through its tracker's own scope when the launch recorded one", () => {
+    expect(
+      originKeyForFactoryIssue(
+        {
+          provider: repository.provider,
+          canonicalKey: repository.canonicalKey,
+          issueScope: {
+            tracker: IssueTrackerKind.make("linear"),
+            host: "linear.app",
+            scope: "TEAM",
+            canonicalKey: 'issue:["linear","linear.app","TEAM"]',
+          },
+        },
+        { number: null, key: "ENG-7" },
+      ),
+    ).toBe('linear:issue%3A["linear","linear.app","TEAM"]#ENG-7');
+    expect(originKeyForFactoryIssue(repository, { number: 7 })).toBe(
+      "github:github.com/owner/name#7",
+    );
+  });
+
+  it("reports only other environments' claims for the origin", () => {
+    const elsewhere = claimsElsewhere(
+      new Map([
+        [EnvironmentId.make("a"), claimList("a", [claim("thread-a")])],
+        [
+          EnvironmentId.make("b"),
+          claimList("b", [
+            claim("thread-b"),
+            claim(
+              "thread-other",
+              originKeyForIssue(repository.provider, repository.canonicalKey, 9),
+            ),
+          ]),
+        ],
+      ]),
+      originKey,
+      EnvironmentId.make("a"),
+    );
+    expect(elsewhere.map(({ claim: entry }) => entry.threadId)).toEqual([
+      ThreadId.make("thread-b"),
+    ]);
+    expect(describeClaimsElsewhere(elsewhere, labelOf)).toBe(
+      "Already claimed in env-b (running). Starting here begins a separate attempt in this environment; nothing merges.",
+    );
+    expect(describeClaimsElsewhere([], labelOf)).toBeNull();
+  });
+
+  it("asks every environment with a matching checkout and reports the rest as unreadable", () => {
+    const plan = planClaimTargets({
+      current: {
+        environmentId: EnvironmentId.make("a"),
+        projectId: ProjectId.make("project-1"),
+        repositoryKey: repository.canonicalKey,
+      },
+      environments: [
+        {
+          environmentId: EnvironmentId.make("a"),
+          label: "A",
+          connected: true,
+          claimsSupported: true,
+          canRead: true,
+        },
+        {
+          environmentId: EnvironmentId.make("b"),
+          label: "B",
+          connected: true,
+          claimsSupported: true,
+          canRead: true,
+        },
+        {
+          environmentId: EnvironmentId.make("c"),
+          label: "C",
+          connected: false,
+          claimsSupported: true,
+          canRead: true,
+        },
+        {
+          environmentId: EnvironmentId.make("d"),
+          label: "D",
+          connected: true,
+          claimsSupported: false,
+          canRead: true,
+        },
+        {
+          environmentId: EnvironmentId.make("e"),
+          label: "E",
+          connected: true,
+          claimsSupported: true,
+          canRead: false,
+        },
+        {
+          environmentId: EnvironmentId.make("f"),
+          label: "F",
+          connected: true,
+          claimsSupported: true,
+          canRead: true,
+        },
+      ],
+      projects: [
+        {
+          environmentId: EnvironmentId.make("a"),
+          id: ProjectId.make("project-1"),
+          repositoryKey: repository.canonicalKey,
+        },
+        {
+          environmentId: EnvironmentId.make("b"),
+          id: ProjectId.make("project-b"),
+          repositoryKey: "GitHub.com/Owner/Name",
+        },
+        {
+          environmentId: EnvironmentId.make("b"),
+          id: ProjectId.make("project-b2"),
+          repositoryKey: repository.canonicalKey,
+        },
+        {
+          environmentId: EnvironmentId.make("c"),
+          id: ProjectId.make("project-c"),
+          repositoryKey: repository.canonicalKey,
+        },
+        {
+          environmentId: EnvironmentId.make("d"),
+          id: ProjectId.make("project-d"),
+          repositoryKey: repository.canonicalKey,
+        },
+        {
+          environmentId: EnvironmentId.make("e"),
+          id: ProjectId.make("project-e"),
+          repositoryKey: repository.canonicalKey,
+        },
+        {
+          environmentId: EnvironmentId.make("f"),
+          id: ProjectId.make("project-f"),
+          repositoryKey: "github.com/other/repository",
+        },
+      ],
+    });
+    expect(plan.targets).toEqual([
+      { environmentId: EnvironmentId.make("a"), projectId: ProjectId.make("project-1") },
+      { environmentId: EnvironmentId.make("b"), projectId: ProjectId.make("project-b") },
+    ]);
+    expect(plan.unavailable).toEqual([
+      { environmentId: EnvironmentId.make("c"), reason: "offline" },
+      { environmentId: EnvironmentId.make("d"), reason: "unsupported" },
+      { environmentId: EnvironmentId.make("e"), reason: "no-access" },
+    ]);
+    expect(describeUnavailableClaims(plan.unavailable, labelOf)).toBe(
+      "Claims could not be read from env-c (offline), env-d (server needs an update), env-e (no read access). An origin may be claimed there too.",
+    );
+    expect(describeUnavailableClaims([], labelOf)).toBeNull();
   });
 });
 

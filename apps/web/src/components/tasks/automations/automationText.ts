@@ -5,68 +5,99 @@ import type {
   FactoryIntakeSource,
   FactoryTaskType,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
 
+import { m, type MessageResolver } from "../../../i18n/messages";
 import { TASK_TYPE_LABELS } from "../kit";
 
 export const TASK_TYPES = Object.keys(TASK_TYPE_LABELS) as FactoryTaskType[];
 
 export const AUTONOMY: Record<FactoryIntakeAutonomy, { label: string; description: string }> = {
-  manual: { label: "Manual", description: "New items wait in the Inbox." },
-  suggest: { label: "Suggest", description: "Fills in type and assignee; you accept." },
+  manual: {
+    label: msg("Manual", { $context: "intake autonomy level" }),
+    description: msg("New items wait in the Inbox."),
+  },
+  suggest: {
+    label: msg("Suggest", { $context: "intake autonomy level" }),
+    description: msg("Fills in type and assignee; you accept."),
+  },
   "auto-start": {
-    label: "Auto-start",
-    description: "Creates the task and starts it. The agent runs in its profile's mode.",
+    label: msg("Auto-start", { $context: "intake autonomy level" }),
+    description: msg("Creates the task and starts it. The agent runs in its profile's mode."),
   },
 };
 
-export const EVERY_START_NEEDS_A_PERSON = "Every start needs a person.";
+export const EVERY_START_NEEDS_A_PERSON = msg("Every start needs a person.");
 
 /** Monday first, as people read a week; the values are the contract's 0 = Sunday. */
 export const WEEKDAYS = [
-  { day: 1, short: "Mon", plural: "Mondays" },
-  { day: 2, short: "Tue", plural: "Tuesdays" },
-  { day: 3, short: "Wed", plural: "Wednesdays" },
-  { day: 4, short: "Thu", plural: "Thursdays" },
-  { day: 5, short: "Fri", plural: "Fridays" },
-  { day: 6, short: "Sat", plural: "Saturdays" },
-  { day: 0, short: "Sun", plural: "Sundays" },
+  { day: 1, short: msg("Mon"), plural: msg("Mondays") },
+  { day: 2, short: msg("Tue"), plural: msg("Tuesdays") },
+  { day: 3, short: msg("Wed"), plural: msg("Wednesdays") },
+  { day: 4, short: msg("Thu"), plural: msg("Thursdays") },
+  { day: 5, short: msg("Fri"), plural: msg("Fridays") },
+  { day: 6, short: msg("Sat"), plural: msg("Saturdays") },
+  { day: 0, short: msg("Sun"), plural: msg("Sundays") },
 ] as const;
 
-function scheduleText({ timeOfDay, weekdays }: FactoryIntakeSchedule): string {
+function scheduleText(
+  { timeOfDay, weekdays }: FactoryIntakeSchedule,
+  resolve: MessageResolver = m,
+): string {
   const days = new Set(weekdays);
-  if (days.size === 0 || days.size === 7) return `Every day ${timeOfDay}`;
+  if (days.size === 0 || days.size === 7)
+    return resolve(msg("Every day {time}", { time: timeOfDay }));
   if (days.size === 5 && [1, 2, 3, 4, 5].every((day) => days.has(day)))
-    return `Weekdays ${timeOfDay}`;
-  const names = WEEKDAYS.filter(({ day }) => days.has(day)).map(({ plural }) => plural);
-  return `${names.join(", ")} ${timeOfDay}`;
+    return resolve(msg("Weekdays {time}", { time: timeOfDay }));
+  const names = WEEKDAYS.filter(({ day }) => days.has(day)).map(({ plural }) => resolve(plural));
+  return resolve(msg("{names} {time}", { names: names.join(", "), time: timeOfDay }));
 }
 
-export function sourceDetail(source: FactoryIntakeSource): string {
-  return source.config.kind === "schedule" ? scheduleText(source.config.schedule) : source.detail;
+export function sourceDetail(source: FactoryIntakeSource, resolve: MessageResolver = m): string {
+  return source.config.kind === "schedule"
+    ? scheduleText(source.config.schedule, resolve)
+    : source.detail;
 }
 
-export function sourceStatusText(source: FactoryIntakeSource): string | null {
-  if (source.status === "unavailable") return "This server can't read this project's issues";
-  if (source.status === "failed") return "The last check failed";
+export function sourceStatusText(
+  source: FactoryIntakeSource,
+  resolve: MessageResolver = m,
+): string | null {
+  if (source.status === "unavailable")
+    return resolve(msg("This server can't read this project's issues"));
+  if (source.status === "failed") return resolve(msg("The last check failed"));
   return null;
 }
 
-function typePlural(type: FactoryTaskType): string {
-  const word = TASK_TYPE_LABELS[type].toLowerCase();
+function typePlural(type: FactoryTaskType, resolve: MessageResolver = m): string {
+  const word = resolve(TASK_TYPE_LABELS[type]).toLowerCase();
   return word.endsWith("s") || type === "research" ? word : `${word}s`;
 }
 
 /** `used for bugs and features`, from the task types Auto hands to a profile. */
-export function handlesText(handles: readonly FactoryTaskType[]): string | null {
-  const words = TASK_TYPES.filter((type) => handles.includes(type)).map(typePlural);
+export function handlesText(
+  handles: readonly FactoryTaskType[],
+  resolve: MessageResolver = m,
+): string | null {
+  const words = TASK_TYPES.filter((type) => handles.includes(type)).map((type) =>
+    typePlural(type, resolve),
+  );
   if (words.length === 0) return null;
   const list =
     words.length === 1 ? words[0] : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
-  return `used for ${list}`;
+  return resolve(msg("used for {list}", { list }));
 }
 
-export function plural(count: number, one: string, many = `${one}s`): string {
-  return `${count} ${count === 1 ? one : many}`;
+export function plural(
+  count: number,
+  unit: "issue" | "item",
+  resolve: MessageResolver = m,
+): string {
+  return resolve(
+    unit === "issue"
+      ? msg("{count, plural, one {{count} issue} other {{count} issues}}", { count })
+      : msg("{count, plural, one {{count} item} other {{count} items}}", { count }),
+  );
 }
 
 /** The reason and current version a refused command carries, when it is a task or intake error. */
@@ -84,26 +115,34 @@ export function readRefusal(result: Parameters<typeof squashAtomCommandFailure>[
 }
 
 /** A refusal in plain words. `thing` names what was being saved, such as `rule`. */
-export function refusalText(reason: string | null, thing: string): string {
+export function refusalText(
+  reason: string | null,
+  thing: string,
+  resolve: MessageResolver = m,
+): string {
   switch (reason) {
     case "autonomy-not-allowed":
-      return EVERY_START_NEEDS_A_PERSON;
+      return resolve(EVERY_START_NEEDS_A_PERSON);
     case "name-taken":
-      return `Another ${thing} already has this name.`;
+      return resolve(msg("Another {thing} already has this name.", { thing }));
     case "forbidden":
-      return `You don't have permission to change this ${thing} on this machine.`;
+      return resolve(
+        msg("You don't have permission to change this {thing} on this machine.", {
+          thing,
+        }),
+      );
     case "missing-project":
-      return "That project is no longer on this machine.";
+      return resolve(msg("That project is no longer on this machine."));
     case "missing-source":
-      return "That source was deleted.";
+      return resolve(msg("That source was deleted."));
     case "missing-rule":
     case "missing-profile":
-      return `This ${thing} was deleted.`;
+      return resolve(msg("This {thing} was deleted.", { thing }));
     case "source-unavailable":
-      return "This server can't read that project's issues.";
+      return resolve(msg("This server can't read that project's issues."));
     case "invalid-input":
-      return `Check the ${thing}'s fields and try again.`;
+      return resolve(msg("Check the {thing}'s fields and try again.", { thing }));
     default:
-      return `Couldn't save the ${thing}. Try again.`;
+      return resolve(msg("Couldn't save the {thing}. Try again.", { thing }));
   }
 }

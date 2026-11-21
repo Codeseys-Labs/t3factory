@@ -12,8 +12,10 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { AsyncResult, Atom } from "effect/reactivity";
+import { msg, useGT } from "gt-react";
 import { useState } from "react";
 
+import { m } from "../../../i18n/messages";
 import { factoryTasks, useFactoryTaskRequests } from "../../../state/factoryTasks";
 import { toastManager } from "../../ui/toast";
 import { openTaskSetup } from "../taskDialogs";
@@ -69,6 +71,7 @@ function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
   const permissions = useTaskPermissions(need.ref.environmentId);
   const [busy, setBusy] = useState(false);
   const giveUpResult = useGiveUpResult(task);
+  const gt = useGT();
   const act = (operation: (task: FactoryTaskSummary) => Promise<unknown>) => () => {
     if (task === null) return;
     setBusy(true);
@@ -82,34 +85,37 @@ function NeedsRow({ need, task, layout, selected, onOpen }: RowProps) {
     failedRun?.purpose === "planning" &&
     failedRun.state === "failed"
       ? {
-          label: "Break down",
+          label: gt("Break down"),
           disabled: !permissions.breakDown,
           onClick: () => openTaskSetup(task.ref, "break-down"),
         }
       : need.reason === "failed" && recovery === "save-again"
         ? {
-            label: "Save again",
+            label: gt("Save again"),
             disabled: task === null || !permissions.saveAgain || busy,
             onClick: act(actions.saveAgain),
           }
         : need.reason === "failed" && recovery === "retry"
           ? {
-              label: "Retry",
+              label: gt("Retry"),
               disabled: task === null || !permissions.retry || busy,
               onClick: act(actions.retry),
             }
           : need.reason === "lost"
             ? {
-                label: "Stop",
+                label: gt("Stop"),
                 tone: "danger",
                 disabled: task === null || !permissions.stop || busy,
                 onClick: act(actions.stop),
               }
-            : { label: need.reason === "question" ? "Answer" : "Review", onClick: onOpen };
+            : {
+                label: need.reason === "question" ? gt("Answer") : gt("Review"),
+                onClick: onOpen,
+              };
   const giveUp: KitAction | undefined =
     need.reason === "failed" && recovery === "save-again"
       ? {
-          label: "Give up result",
+          label: gt("Give up result"),
           disabled: failedRun === null || !permissions.giveUp || busy,
           onClick: () => failedRun && giveUpResult.open(failedRun),
         }
@@ -141,11 +147,12 @@ function ApproveRow({
 }: RowProps & { threadId: ThreadId; requestId: RuntimeRequestId }) {
   const requests = useFactoryTaskRequests(need.ref.environmentId, threadId);
   const [sending, setSending] = useState(false);
+  const gt = useGT();
   const live = requests.approvals.some(
     (approval) => approval.requestId === requestId && approval.responseCapability === "live",
   );
   const action: KitAction = {
-    label: "Approve once",
+    label: gt("Approve once"),
     tone: "primary",
     disabled: !requests.canRespond || !live || sending,
     onClick: () => {
@@ -153,7 +160,7 @@ function ApproveRow({
       void requests.approveOnce(requestId).then((result) => {
         setSending(false);
         if (result?._tag !== "Success")
-          toastManager.add({ type: "error", title: "Try approving again." });
+          toastManager.add({ type: "error", title: m(msg("Try approving again.")) });
       });
     },
   };

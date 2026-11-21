@@ -1,3 +1,4 @@
+import { T, useGT } from "gt-react";
 import { FactoryIcon } from "lucide-react";
 
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
@@ -20,6 +21,7 @@ export function FactoryCheckoutChooser(props: {
   readonly onChoose: (search: SettingsScopeSearch) => void;
 }) {
   const { scope, environments } = props;
+  const gt = useGT();
   const visibleGroups = props.groups.flatMap((group) => {
     const members = group.memberProjects.filter((candidate) =>
       scope.kind === "project" || scope.kind === "checkout"
@@ -37,7 +39,7 @@ export function FactoryCheckoutChooser(props: {
       {visibleGroups.length === 0 ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="No checkouts in this scope"
+          title={gt("No checkouts in this scope")}
           description={props.emptyDescription}
         />
       ) : (
@@ -68,7 +70,7 @@ export function FactoryCheckoutChooser(props: {
                       variant="outline"
                       onClick={() => props.onChoose(factoryScopeSearchForMember(candidate, group))}
                     >
-                      Choose checkout
+                      <T>Choose checkout</T>
                     </Button>
                   </li>
                 );

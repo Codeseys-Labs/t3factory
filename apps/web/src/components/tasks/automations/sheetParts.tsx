@@ -1,3 +1,4 @@
+import { T, useMessages } from "gt-react";
 import { useState, type ReactNode } from "react";
 
 import {
@@ -28,6 +29,7 @@ export function AutomationSheet({
   footer?: ReactNode;
   children: ReactNode;
 }) {
+  const messages = useMessages();
   return (
     <Sheet
       open
@@ -38,8 +40,8 @@ export function AutomationSheet({
       <SheetPopup className="sm:max-w-130">
         <div className="border-b">
           <SheetHeader>
-            <SheetTitle>{title}</SheetTitle>
-            {description ? <SheetDescription>{description}</SheetDescription> : null}
+            <SheetTitle>{messages(title)}</SheetTitle>
+            {description ? <SheetDescription>{messages(description)}</SheetDescription> : null}
           </SheetHeader>
         </div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4 text-sm">{children}</div>
@@ -61,13 +63,14 @@ export function SheetActions({
   onCancel: () => void;
   onSave: () => void;
 }) {
+  const messages = useMessages();
   return (
     <div className="ms-auto flex gap-2">
       <Button variant="outline" onClick={onCancel}>
-        Cancel
+        <T>Cancel</T>
       </Button>
       <Button disabled={!canSave} onClick={onSave}>
-        {saveLabel}
+        {messages(saveLabel)}
       </Button>
     </div>
   );
@@ -84,11 +87,16 @@ export function Field({
   hint?: ReactNode;
   children: ReactNode;
 }) {
+  const messages = useMessages();
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={htmlFor}>{label}</Label>
+      <Label htmlFor={htmlFor}>{messages(label)}</Label>
       {children}
-      {hint ? <p className="text-muted-foreground text-xs">{hint}</p> : null}
+      {hint ? (
+        <p className="text-muted-foreground text-xs">
+          {typeof hint === "string" ? messages(hint) : hint}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -108,6 +116,7 @@ export function SelectField<V extends string>({
   hint?: ReactNode;
   disabled?: boolean;
 }) {
+  const messages = useMessages();
   return (
     <Field label={label} hint={hint}>
       <Select
@@ -117,13 +126,15 @@ export function SelectField<V extends string>({
           if (next !== null) onChange(next);
         }}
       >
-        <SelectTrigger aria-label={label}>
-          <SelectValue>{items.find((item) => item.value === value)?.label}</SelectValue>
+        <SelectTrigger aria-label={messages(label)}>
+          <SelectValue>
+            {messages(items.find((item) => item.value === value)?.label ?? "")}
+          </SelectValue>
         </SelectTrigger>
         <SelectPopup>
           {items.map((item) => (
             <SelectItem key={item.value} value={item.value}>
-              {item.label}
+              {messages(item.label)}
             </SelectItem>
           ))}
         </SelectPopup>
@@ -133,9 +144,10 @@ export function SelectField<V extends string>({
 }
 
 export function SheetSection({ title, children }: { title: string; children: ReactNode }) {
+  const messages = useMessages();
   return (
     <section className="space-y-3">
-      <h3 className="font-medium text-sm">{title}</h3>
+      <h3 className="font-medium text-sm">{messages(title)}</h3>
       {children}
     </section>
   );
@@ -155,6 +167,7 @@ export function DeleteAction({
   disabled: boolean;
   onConfirm: () => void;
 }) {
+  const messages = useMessages();
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -164,16 +177,18 @@ export function DeleteAction({
         disabled={disabled}
         onClick={() => setOpen(true)}
       >
-        {label}
+        {messages(label)}
       </Button>
       <AlertDialog open={open} onOpenChange={setOpen}>
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>{title}</AlertDialogTitle>
-            <AlertDialogDescription>{consequence}</AlertDialogDescription>
+            <AlertDialogTitle>{messages(title)}</AlertDialogTitle>
+            <AlertDialogDescription>{messages(consequence)}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="outline" />}>
+              <T>Cancel</T>
+            </AlertDialogClose>
             <Button
               variant="destructive"
               onClick={() => {
@@ -181,7 +196,7 @@ export function DeleteAction({
                 onConfirm();
               }}
             >
-              Delete
+              <T>Delete</T>
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>
@@ -192,16 +207,17 @@ export function DeleteAction({
 
 /** What happened to the last save: a refusal, or that someone else changed the item. */
 export function SheetNotice({ error, changed }: { error: string | null; changed: string | null }) {
+  const messages = useMessages();
   return (
     <>
       {changed ? (
         <p role="status" className="text-warning-foreground">
-          {changed}
+          {messages(changed)}
         </p>
       ) : null}
       {error ? (
         <p role="alert" className="text-destructive-foreground">
-          {error}
+          {messages(error)}
         </p>
       ) : null}
     </>
@@ -212,7 +228,9 @@ export function SheetNotice({ error, changed }: { error: string | null; changed:
 export function MissingSheet({ title, onClose }: { title: string; onClose: () => void }) {
   return (
     <AutomationSheet title={title} onClose={onClose}>
-      <p className="text-muted-foreground">It was deleted on this machine.</p>
+      <p className="text-muted-foreground">
+        <T>It was deleted on this machine.</T>
+      </p>
     </AutomationSheet>
   );
 }

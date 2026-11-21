@@ -1,6 +1,7 @@
 import {
   EnvironmentId,
   FactoryOriginKey,
+  IssueTrackerKind,
   ProjectId,
   SourceControlProviderKind,
   ThreadId,
@@ -88,6 +89,14 @@ describe("origin keys", () => {
     expect(originKeyForIssue(gitlab, "forge.example/repo", 1)).not.toBe(
       originKeyForIssue(github, "forge.example/repo", 1),
     );
+  });
+
+  it("encodes a standalone tracker issue by its own scope and escaped key", () => {
+    const linear = IssueTrackerKind.make("linear");
+    expect(originKeyForIssue(linear, 'issue:["linear","linear.app","acme"]', "ENG-12")).toBe(
+      'linear:issue%3A["linear","linear.app","acme"]#ENG-12',
+    );
+    expect(originKeyForIssue(github, "r", "a#b")).toBe("github:r#a%23b");
   });
 
   it("encodes a feed item as feed:<repository>|<locator>|<item key>", () => {

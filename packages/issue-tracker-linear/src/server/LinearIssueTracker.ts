@@ -555,7 +555,10 @@ export const make: Effect.Effect<StandaloneIssueTrackerApi, never, LinearApi.Lin
 
       comment: Effect.fn("LinearIssueTracker.comment")(function* (input) {
         const issue = yield* requireTeamIssue("comment", input);
-        yield* linear.createComment({ issueId: issue.id, body: input.body });
+        return toComment(
+          yield* linear.createComment({ issueId: issue.id, body: input.body }),
+          null,
+        );
       }),
 
       update: Effect.fn("LinearIssueTracker.update")(function* (input) {

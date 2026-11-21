@@ -16,6 +16,8 @@ import type {
 } from "@t3tools/contracts";
 import { describeSelectedEffort } from "../modelTraits.ts";
 import { resolveModelShortName } from "../providerClients.ts";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 import {
   providerInstanceInitials,
   resolveProviderInstanceDisplayName,
@@ -48,23 +50,33 @@ export function presentFactoryTaskAssignee(
   assignee: FactoryTaskAssignee,
   catalog: FactoryTaskCatalog,
   labelOptions?: FactoryTaskLabelOptions,
+  resolve: MFunctionType = mFallback,
 ) {
   const mode = assignee.assignment.mode;
-  if (mode === "person") return { label: "You", monogram: "", key: assignee.key };
-  if (mode === "unassigned") return { label: "Unassigned", monogram: "", key: assignee.key };
+  if (mode === "person")
+    return {
+      label: resolve(msg("You", { $context: "the task is assigned to the reader" })),
+      monogram: "",
+      key: assignee.key,
+    };
+  if (mode === "unassigned")
+    return { label: resolve(msg("Unassigned")), monogram: "", key: assignee.key };
   const setup =
     assignee.resolved?.setup ??
     (assignee.assignment.mode === "pinned" ? assignee.assignment.setup : null);
   if (!setup)
     return {
-      label: mode === "auto" ? "Auto → Unassigned" : "Unassigned",
+      label: mode === "auto" ? resolve(msg("Auto → Unassigned")) : resolve(msg("Unassigned")),
       monogram: "",
       key: assignee.key,
     };
   const presented = presentModelSelection(setup.modelSelection, catalog, labelOptions);
   return {
     ...presented,
-    label: `${mode === "auto" ? "Auto → " : ""}${presented.label}`,
+    label:
+      mode === "auto"
+        ? resolve(msg("Auto → {label}", { label: presented.label }))
+        : presented.label,
     key: assignee.key,
   };
 }
@@ -154,6 +166,7 @@ const oneLine = (value: string) => value.replace(/\s+/gu, " ").trim();
 export function resolveFactoryTaskLiveState(
   task: FactoryTaskSummary,
   facts: readonly FactoryTaskThreadFacts[],
+  resolve: MFunctionType = mFallback,
 ) {
   const byThread = new Map(facts.map((fact) => [fact.threadId, fact]));
   const attention: FactoryTaskNeed[] = task.attention.map((entry) => ({
@@ -183,7 +196,7 @@ export function resolveFactoryTaskLiveState(
         attention.push({
           ...base,
           reason: "approve",
-          detail: oneLine(approval.detail ?? approval.reason ?? "Approval requested"),
+          detail: oneLine(approval.detail ?? approval.reason ?? resolve(msg("Approval requested"))),
           requestId: approval.requestId,
         });
       for (const question of fact.requests.userInputs)
@@ -375,11 +388,14 @@ export interface FactoryTaskBannerAction {
 /** A pull request's checks in the words the result line uses. */
 export type FactoryTaskChecks = "passing" | "failing" | "pending";
 const CHECK_WORDS: Record<FactoryTaskChecks, string> = {
-  passing: "checks pass",
-  failing: "checks fail",
-  pending: "checks running",
+  passing: msg("checks pass"),
+  failing: msg("checks fail"),
+  pending: msg("checks running"),
 };
-export const presentFactoryTaskChecks = (checks: FactoryTaskChecks): string => CHECK_WORDS[checks];
+export const presentFactoryTaskChecks = (
+  checks: FactoryTaskChecks,
+  resolve: MFunctionType = mFallback,
+): string => resolve(CHECK_WORDS[checks]);
 
 /**
  * The result line with its pull request: `PR #112 · +184 −20 · 6 files · checks pass`, or
@@ -389,36 +405,43 @@ export const presentFactoryTaskChecks = (checks: FactoryTaskChecks): string => C
 function presentFactoryTaskResultLine(
   result: Pick<FactoryTaskResult, "summary" | "state" | "pullRequest">,
   checks: FactoryTaskChecks | null = null,
+  resolve: MFunctionType = mFallback,
 ): string {
   const pullRequest = result.pullRequest ?? null;
   const lead =
     pullRequest === null
       ? null
       : pullRequest.state === "merged"
-        ? `PR #${pullRequest.number} merged`
+        ? resolve(msg("PR #{number} merged", { number: String(pullRequest.number) }))
         : result.state === "accepted"
-          ? `PR #${pullRequest.number} is open`
-          : `PR #${pullRequest.number}`;
+          ? resolve(msg("PR #{number} is open", { number: String(pullRequest.number) }))
+          : resolve(msg("PR #{number}", { number: String(pullRequest.number) }));
   return [
     lead,
     result.summary,
-    pullRequest?.state === "open" && checks ? CHECK_WORDS[checks] : null,
+    pullRequest?.state === "open" && checks ? resolve(CHECK_WORDS[checks]) : null,
   ]
     .filter((part) => part !== null && part !== "")
     .join(" · ");
 }
 
 /** Where an accepted code result stands on its way out: Publish, then Merge, then merged. */
-function presentDelivery(result: FactoryTaskResult) {
+function presentDelivery(result: FactoryTaskResult, resolve: MFunctionType = mFallback) {
   const pullRequest = result.pullRequest ?? null;
   const delivery = result.delivery ?? null;
   const failed =
     delivery?.state === "failed"
-      ? `${delivery.action === "merge" ? "Merge" : "Publish"} failed${delivery.detail ? `: ${delivery.detail}` : ""}`
+      ? delivery.action === "merge"
+        ? delivery.detail
+          ? resolve(msg("Merge failed: {detail}", { detail: delivery.detail }))
+          : resolve(msg("Merge failed"))
+        : delivery.detail
+          ? resolve(msg("Publish failed: {detail}", { detail: delivery.detail }))
+          : resolve(msg("Publish failed"))
       : null;
   if (pullRequest?.state === "merged")
     return {
-      title: `Accepted · PR #${pullRequest.number} merged`,
+      title: resolve(msg("Accepted · PR #{number} merged", { number: String(pullRequest.number) })),
       detail: result.summary,
       action: null,
     };
@@ -427,17 +450,24 @@ function presentDelivery(result: FactoryTaskResult) {
       title: null,
       detail:
         delivery.action === "merge" && pullRequest
-          ? `Merging PR #${pullRequest.number}…`
-          : "Opening a pull request…",
+          ? resolve(msg("Merging PR #{number}…", { number: String(pullRequest.number) }))
+          : resolve(msg("Opening a pull request…")),
       action: null,
     };
   if (pullRequest)
     return {
       title: null,
       detail: failed,
-      action: { kind: "merge" as const, label: `Merge PR #${pullRequest.number}` },
+      action: {
+        kind: "merge" as const,
+        label: resolve(msg("Merge PR #{number}", { number: String(pullRequest.number) })),
+      },
     };
-  return { title: null, detail: failed, action: { kind: "publish" as const, label: "Publish" } };
+  return {
+    title: null,
+    detail: failed,
+    action: { kind: "publish" as const, label: resolve(msg("Publish")) },
+  };
 }
 /**
  * What a person can do about a task's failed or held work run. A held run refuses Retry and
@@ -445,17 +475,18 @@ function presentDelivery(result: FactoryTaskResult) {
  */
 export function presentFactoryTaskRunRecovery(
   run: Pick<FactoryTaskRun, "state" | "captureFailed"> | null,
+  resolve: MFunctionType = mFallback,
 ): readonly FactoryTaskBannerAction[] {
   if (run?.state !== "held")
     return [
-      { kind: "retry", label: "Retry" },
-      { kind: "reassign", label: "Reassign" },
+      { kind: "retry", label: resolve(msg("Retry")) },
+      { kind: "reassign", label: resolve(msg("Reassign")) },
     ];
   // Giving the result up settles the run as failed, which then offers Retry and Reassign.
   return run.captureFailed
     ? [
-        { kind: "save-again", label: "Save again" },
-        { kind: "give-up", label: "Give up result" },
+        { kind: "save-again", label: resolve(msg("Save again")) },
+        { kind: "give-up", label: resolve(msg("Give up result")) },
       ]
     : [];
 }
@@ -464,16 +495,19 @@ export function presentFactoryTaskRunRecovery(
 export const factoryTaskFailedRun = (task: Pick<FactoryTaskSummary, "run" | "failedRun">) =>
   task.failedRun ?? task.run;
 
-export function presentFactoryTaskBanner(input: {
-  readonly task: FactoryTaskSummary;
-  readonly attention: readonly FactoryTaskNeed[];
-  readonly assigneeLabel: string;
-  readonly liveLabel?: string | null;
-  readonly planCount?: number;
-  readonly runDetail?: string;
-  /** The published pull request's checks, when the screen reads them. */
-  readonly checks?: FactoryTaskChecks | null;
-}) {
+export function presentFactoryTaskBanner(
+  input: {
+    readonly task: FactoryTaskSummary;
+    readonly attention: readonly FactoryTaskNeed[];
+    readonly assigneeLabel: string;
+    readonly liveLabel?: string | null;
+    readonly planCount?: number;
+    readonly runDetail?: string;
+    /** The published pull request's checks, when the screen reads them. */
+    readonly checks?: FactoryTaskChecks | null;
+  },
+  resolve: MFunctionType = mFallback,
+) {
   const { task, assigneeLabel } = input;
   const action = (
     kind: FactoryTaskBannerAction["kind"],
@@ -489,42 +523,76 @@ export function presentFactoryTaskBanner(input: {
     secondary: FactoryTaskBannerAction | null = null,
     additional: readonly FactoryTaskBannerAction[] = [],
   ) => ({ state, tone, title, detail, primary, secondary, additional });
-  if (task.status === "canceled") return banner("canceled", "neutral", "Canceled", "", null);
+  if (task.status === "canceled")
+    return banner("canceled", "neutral", resolve(msg("Canceled")), "", null);
   const need = [...input.attention].sort(
     (a, b) => attentionOrder.indexOf(a.reason) - attentionOrder.indexOf(b.reason),
   )[0];
   // A sent Publish or Merge whose outcome is unknown waits on a person even after Done.
   if (need?.reason === "unconfirmed" && need.ref.taskId === task.ref.taskId)
-    return banner("unconfirmed", "attention", "Unconfirmed", need.detail, action("check", "Check"));
+    return banner(
+      "unconfirmed",
+      "attention",
+      resolve(msg("Unconfirmed")),
+      need.detail,
+      action("check", resolve(msg("Check"))),
+    );
   if (task.status === "done") {
     const result = task.result;
     if (result?.state !== "accepted")
-      return banner("done", "done", "Done", result?.summary ?? "", null);
-    const accepted = `Accepted · rev ${result.acceptedRevision ?? result.revision}`;
-    const line = presentFactoryTaskResultLine(result, input.checks ?? null);
+      return banner("done", "done", resolve(msg("Done")), result?.summary ?? "", null);
+    const accepted = resolve(
+      msg("Accepted · rev {revision}", {
+        revision: String(result.acceptedRevision ?? result.revision),
+      }),
+    );
+    const line = presentFactoryTaskResultLine(result, input.checks ?? null, resolve);
     if (result.kind !== "code") return banner("done", "done", accepted, line, null);
-    const delivery = presentDelivery(result);
+    const delivery = presentDelivery(result, resolve);
     return banner(
       "done",
       "done",
       delivery.title ?? accepted,
       delivery.detail ?? line,
       delivery.action ? action(delivery.action.kind, delivery.action.label) : null,
-      result.pullRequest?.state === "open" ? action("check", "Check") : null,
+      result.pullRequest?.state === "open" ? action("check", resolve(msg("Check"))) : null,
     );
   }
-  if (need && need.ref.taskId !== task.ref.taskId)
+  if (need && need.ref.taskId !== task.ref.taskId) {
+    const attention =
+      need.reason === "question"
+        ? task.progress
+          ? resolve(
+              msg("{done} of {total} done · {displayId} is waiting on an answer", {
+                done: String(task.progress.done),
+                total: String(task.progress.total),
+                displayId: need.displayId,
+              }),
+            )
+          : resolve(msg("{displayId} is waiting on an answer", { displayId: need.displayId }))
+        : task.progress
+          ? resolve(
+              msg("{done} of {total} done · {displayId} needs you", {
+                done: String(task.progress.done),
+                total: String(task.progress.total),
+                displayId: need.displayId,
+              }),
+            )
+          : resolve(msg("{displayId} needs you", { displayId: need.displayId }));
     return banner(
       "subtask-attention",
       "attention",
-      `${task.progress ? `${task.progress.done} of ${task.progress.total} done · ` : ""}${need.displayId} ${need.reason === "question" ? "is waiting on an answer" : "needs you"}`,
+      attention,
       need.detail,
       action(
         "open-task",
-        need.reason === "question" ? "Answer" : `Open ${need.displayId}`,
+        need.reason === "question"
+          ? resolve(msg("Answer"))
+          : resolve(msg("Open {displayId}", { displayId: need.displayId })),
         need.ref.taskId,
       ),
     );
+  }
   const failedRun = factoryTaskFailedRun(task);
   if (
     need?.reason === "failed" &&
@@ -534,18 +602,34 @@ export function presentFactoryTaskBanner(input: {
     return banner(
       "failed",
       "danger",
-      "Break down failed",
+      resolve(msg("Break down failed")),
       input.runDetail ?? need.detail,
-      action("break-down", "Break down"),
+      action("break-down", resolve(msg("Break down"))),
       null,
     );
   if (need?.reason === "failed") {
-    const [primary = null, secondary = null] = presentFactoryTaskRunRecovery(failedRun);
+    const [primary = null, secondary = null] = presentFactoryTaskRunRecovery(failedRun, resolve);
     const outcome = failedRun?.state === "held" ? "" : " failed";
     return banner(
       "failed",
       "danger",
-      `Run ${failedRun?.ordinal ?? ""}${outcome}${failedRun?.note ? `: ${failedRun.note}` : ""}`,
+      failedRun?.note
+        ? outcome === ""
+          ? resolve(
+              msg("Run {ordinal}: {note}", {
+                ordinal: String(failedRun.ordinal ?? ""),
+                note: failedRun.note,
+              }),
+            )
+          : resolve(
+              msg("Run {ordinal} failed: {note}", {
+                ordinal: String(failedRun.ordinal ?? ""),
+                note: failedRun.note,
+              }),
+            )
+        : outcome === ""
+          ? resolve(msg("Run {ordinal}", { ordinal: String(failedRun?.ordinal ?? "") }))
+          : resolve(msg("Run {ordinal} failed", { ordinal: String(failedRun?.ordinal ?? "") })),
       input.runDetail ?? need.detail,
       primary,
       secondary,
@@ -556,50 +640,57 @@ export function presentFactoryTaskBanner(input: {
     return banner(
       "lost",
       "danger",
-      `Run ${task.run?.ordinal ?? ""} lost its agent`,
+      resolve(msg("Run {ordinal} lost its agent", { ordinal: String(task.run?.ordinal ?? "") })),
       need.detail,
-      action("stop", "Stop"),
+      action("stop", resolve(msg("Stop"))),
     );
   if (need?.reason === "approve")
     return banner(
       "approval",
       "attention",
-      `${assigneeLabel} wants to run`,
+      resolve(msg("{assignee} wants to run", { assignee: assigneeLabel })),
       need.detail,
-      action("approve", "Approve once"),
-      action("always-allow", "Always allow for this task"),
-      [action("deny", "Deny")],
+      action("approve", resolve(msg("Approve once"))),
+      action("always-allow", resolve(msg("Always allow for this task"))),
+      [action("deny", resolve(msg("Deny")))],
     );
   if (need?.reason === "question")
     return banner(
       "question",
       "attention",
-      `${assigneeLabel} asks`,
+      resolve(msg("{assignee} asks", { assignee: assigneeLabel })),
       need.detail,
-      action("answer", "Send answer"),
+      action("answer", resolve(msg("Send answer"))),
     );
   if (need?.reason === "plan")
     return banner(
       "plan",
       "attention",
-      input.planCount === undefined ? "Plan ready" : `Plan ready: ${input.planCount} sub-tasks`,
+      input.planCount === undefined
+        ? resolve(msg("Plan ready"))
+        : resolve(msg("Plan ready: {count} sub-tasks", { count: String(input.planCount) })),
       assigneeLabel,
-      action("approve-plan", "Approve plan"),
-      action("edit-plan", "Edit"),
+      action("approve-plan", resolve(msg("Approve plan"))),
+      action("edit-plan", resolve(msg("Edit"))),
     );
   if (task.status === "in-review" || need?.reason === "review" || need?.reason === "changed") {
     const pullRequest = task.result?.pullRequest ?? null;
     return banner(
       need?.reason === "changed" ? "changed" : "review",
       "attention",
-      pullRequest ? `Result ready: PR #${pullRequest.number}` : "Result ready",
+      pullRequest
+        ? resolve(msg("Result ready: PR #{number}", { number: String(pullRequest.number) }))
+        : resolve(msg("Result ready")),
       task.result
-        ? [task.result.summary, pullRequest && input.checks ? CHECK_WORDS[input.checks] : null]
+        ? [
+            task.result.summary,
+            pullRequest && input.checks ? resolve(CHECK_WORDS[input.checks]) : null,
+          ]
             .filter((part) => part !== null && part !== "")
             .join(" · ")
         : (need?.detail ?? ""),
-      action("accept", "Accept"),
-      action("request-changes", "Request changes"),
+      action("accept", resolve(msg("Accept"))),
+      action("request-changes", resolve(msg("Request changes"))),
     );
   }
   if (task.status === "in-progress") {
@@ -610,19 +701,23 @@ export function presentFactoryTaskBanner(input: {
       "working",
       input.liveLabel ??
         (task.run?.state === "stopping"
-          ? "Stopping…"
+          ? resolve(msg("Stopping…"))
           : task.run?.state === "stopped"
-            ? "Stopped"
-            : "In progress"),
+            ? resolve(msg("Stopped"))
+            : resolve(msg("In progress"))),
       input.runDetail ?? assigneeLabel,
       ownLive
         ? task.run?.purpose === "work"
-          ? action("stop", "Stop")
+          ? action("stop", resolve(msg("Stop")))
           : null
         : descendant
-          ? action("open-task", `Open ${descendant.displayId}`, descendant.taskId)
+          ? action(
+              "open-task",
+              resolve(msg("Open {displayId}", { displayId: descendant.displayId })),
+              descendant.taskId,
+            )
           : task.run?.state === "stopped"
-            ? action("retry", "Retry")
+            ? action("retry", resolve(msg("Retry")))
             : null,
     );
   }
@@ -631,59 +726,103 @@ export function presentFactoryTaskBanner(input: {
     return banner(
       "blocked",
       "neutral",
-      `Waiting on ${blocker.displayId}`,
-      `Can start when ${blocker.displayId} is done.`,
-      action("open-task", `Open ${blocker.displayId}`, blocker.taskId),
+      resolve(msg("Waiting on {displayId}", { displayId: blocker.displayId })),
+      resolve(msg("Can start when {displayId} is done.", { displayId: blocker.displayId })),
+      action(
+        "open-task",
+        resolve(msg("Open {displayId}", { displayId: blocker.displayId })),
+        blocker.taskId,
+      ),
     );
   return banner(
     task.status,
     "neutral",
-    task.status === "ready" ? "Ready to start" : "Not started",
+    task.status === "ready" ? resolve(msg("Ready to start")) : resolve(msg("Not started")),
     assigneeLabel,
     task.assignee.assignment.mode === "person"
       ? null
-      : action("start", task.assignee.resolved ? "Start" : "Assign and start"),
+      : action(
+          "start",
+          task.assignee.resolved ? resolve(msg("Start")) : resolve(msg("Assign and start")),
+        ),
   );
 }
 
 export function presentFactoryTaskActivity(
   entry: FactoryTaskActivityEntry,
   catalog: FactoryTaskCatalog = [],
+  resolve: MFunctionType = mFallback,
 ): string {
   const event = entry.event;
   const author = presentFactoryTaskActor(entry.actor, catalog);
   switch (event.type) {
     case "created":
       return event.source.kind === "local"
-        ? "Created task"
-        : `Created from ${event.source.label}${event.ruleName ? ` by the rule ${event.ruleName}` : ""}`;
+        ? resolve(msg("Created task"))
+        : event.ruleName
+          ? resolve(
+              msg("Created from {source} by the rule {rule}", {
+                source: event.source.label,
+                rule: event.ruleName,
+              }),
+            )
+          : resolve(msg("Created from {source}", { source: event.source.label }));
     case "comment":
       return event.body;
     case "status":
-      return `Moved to ${event.to.replaceAll("-", " ")}`;
+      return resolve(msg("Moved to {status}", { status: event.to.replaceAll("-", " ") }));
     case "assigned":
-      return `Assigned to ${presentFactoryTaskAssignee(event.assignee, catalog).label}`;
+      return resolve(
+        msg("Assigned to {assignee}", {
+          assignee: presentFactoryTaskAssignee(event.assignee, catalog, undefined, resolve).label,
+        }),
+      );
     case "edited":
-      return "Updated task";
+      return resolve(msg("Updated task"));
     case "subtasks-added":
-      return `${event.count} sub-tasks added`;
+      return resolve(msg("{count} sub-tasks added", { count: String(event.count) }));
     case "plan-proposed":
-      return `${author} proposed a plan`;
+      return resolve(msg("{author} proposed a plan", { author }));
     case "plan-approved":
-      return `Plan approved: ${event.count} sub-tasks created`;
+      return resolve(
+        msg("Plan approved: {count} sub-tasks created", { count: String(event.count) }),
+      );
     case "run-started":
-      return `Run ${event.ordinal} started`;
+      return resolve(msg("Run {ordinal} started", { ordinal: String(event.ordinal) }));
     case "run-ended":
-      return `Run ${event.ordinal} ${event.outcome}${event.note ? `: ${oneLine(event.note)}` : ""}`;
+      return event.note
+        ? resolve(
+            msg("Run {ordinal} {outcome}: {note}", {
+              ordinal: String(event.ordinal),
+              outcome: event.outcome,
+              note: oneLine(event.note),
+            }),
+          )
+        : resolve(
+            msg("Run {ordinal} {outcome}", {
+              ordinal: String(event.ordinal),
+              outcome: event.outcome,
+            }),
+          );
     case "result-ready":
-      return `Result ready: ${event.summary}`;
+      return resolve(msg("Result ready: {summary}", { summary: event.summary }));
     case "accepted":
-      return `${author} accepted rev ${event.revision}`;
+      return resolve(
+        msg("{author} accepted rev {revision}", {
+          author,
+          revision: String(event.revision),
+        }),
+      );
     case "changes-requested":
-      return `Changes requested: ${oneLine(event.note)}`;
+      return resolve(msg("Changes requested: {note}", { note: oneLine(event.note) }));
     case "reopened":
-      return "Reopened task";
+      return resolve(msg("Reopened task"));
     case "pull-request":
-      return `PR #${event.number} ${event.action}`;
+      return resolve(
+        msg("PR #{number} {action}", {
+          number: String(event.number),
+          action: event.action,
+        }),
+      );
   }
 }

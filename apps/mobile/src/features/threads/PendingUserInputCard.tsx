@@ -276,7 +276,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
       >
         {!canRespond ? (
           <Text className="font-sans text-sm leading-5 text-foreground-muted">
-            This request cannot be answered in this thread.
+            <T>This request cannot be answered in this thread.</T>
           </Text>
         ) : null}
         {props.pendingUserInput.questions.map((question) => {

@@ -62,9 +62,12 @@ export function CliCommandSettingsRow() {
   const installed = state.installedPath !== null;
   const description = state.shadowedBy
     ? resolve(
-        msg("Another t3 at {path} runs first in a new terminal. Remove it to use T3 Code Factory's.", {
-          path: state.shadowedBy,
-        }),
+        msg(
+          "Another t3 at {path} runs first in a new terminal. Remove it to use T3 Code Factory's.",
+          {
+            path: state.shadowedBy,
+          },
+        ),
       )
     : !installed
       ? resolve(msg("Run T3 Code Factory's CLI as `t3` from any terminal."))

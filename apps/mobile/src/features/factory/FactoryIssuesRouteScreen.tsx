@@ -1,14 +1,15 @@
-import { useAtomValue } from "@effect/atom-react";
-import { useIsFocused, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { isStandaloneIssueLink, resolveIssueLinkTarget } from "@t3tools/client-runtime/issue-links";
 import {
   AuthOrchestrationReadScope,
   type EnvironmentId,
   type FactoryIssue,
   type ProjectId,
 } from "@t3tools/contracts";
-import { useProjects } from "../../state/entities";
-import { useMemo, type ReactNode } from "react";
+import { useEnvironmentServerConfig, useProjects } from "../../state/entities";
+import { msg, T, useGT, useMessages } from "gt-react-native";
+import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { RefreshControl } from "../../components/ui/RefreshControl";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,12 +21,14 @@ import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
-import { factoryEnvironment } from "../../state/factory";
+import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
+import { issueTrackerEnvironment } from "../../state/issueTrackers";
 import { useEnvironmentScope } from "../../state/session";
+import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { SettingsSection } from "../settings/components/SettingsSection";
+import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { updateFactoryInboxSelection, useFactoryInboxSelection } from "./factory-inbox-state";
 import { FactoryIssueRow } from "./FactoryIssueRow";
-import { FactoryIssueReviewModal } from "./FactoryIssueReviewModal";
 import {
   describeFactoryFailure,
   FACTORY_ISSUE_FILTERS,
@@ -34,7 +37,6 @@ import {
   safeFactoryIssueUrl,
   type FactoryIssueFilter,
 } from "./factoryIssues";
-import { useFactoryIssueActions } from "./useFactoryIssueActions";
 import { useFactoryIssueList } from "./useFactoryIssueList";
 import { useFactoryLaunchModel } from "./useFactoryLaunch";
 
@@ -50,10 +52,11 @@ function PickerRow(props: {
   readonly disabled?: boolean;
   readonly borderTop?: boolean;
 }) {
+  const gt = useGT();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${props.label}, ${props.value}`}
+      accessibilityLabel={gt("{label}, {value}", { label: props.label, value: props.value })}
       accessibilityState={{ disabled: props.disabled }}
       disabled={props.disabled}
       onPress={props.onPress}
@@ -96,13 +99,14 @@ export function FactoryIssuesRouteScreen({
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<FactoryRoutes>>();
-  const isFocused = useIsFocused();
+  const selectDetail = useSelectWorkspaceDetail();
   const selection = useFactoryInboxSelection();
   const allProjects = useProjects();
   const canRead = useEnvironmentScope(environmentId, AuthOrchestrationReadScope);
-  const canStart = useAtomValue(factoryEnvironment.start.permissionAtom(environmentId));
   const listActive = canRead;
   const list = useFactoryIssueList({
     environmentId: listActive ? environmentId : null,
@@ -110,82 +114,86 @@ export function FactoryIssuesRouteScreen({
     filter: selection.filter,
   });
   const launch = useFactoryLaunchModel({ ...selection, environmentId, projectId });
-
-  const settings = useMemo(
-    () =>
-      environmentId !== null && projectId !== null
-        ? {
-            environmentId,
-            projectId,
-            repository: list.repository,
-            displayName: list.capabilities?.displayName ?? null,
-            modelSelection: launch.modelSelection,
-            modelLabel: launch.label ?? "Default model",
-            baseRef: selection.baseRef,
-            runtimeMode: selection.runtimeMode,
-          }
-        : null,
-    [
-      environmentId,
-      projectId,
-      list.repository,
-      list.capabilities?.displayName,
-      launch.modelSelection,
-      launch.label,
-      selection.baseRef,
-      selection.runtimeMode,
-    ],
-  );
-  const { refresh } = list;
-  const actions = useFactoryIssueActions({
-    settings,
-    scopeKey:
-      isFocused && list.requestKey !== null ? JSON.stringify([list.requestKey, canStart]) : null,
-    onSettled: () => void refresh(),
-  });
+  // Rows open the issue itself; the Factory section there starts and reviews tasks. Without the
+  // issues capability the row has nowhere to go and stays inert.
+  const issuesReadable =
+    useEnvironmentServerConfig(environmentId)?.environment.capabilities.issues === true;
 
   const project =
     allProjects.find((entry) => entry.environmentId === environmentId && entry.id === projectId) ??
     null;
-  const failure = list.error ? describeFactoryFailure(list.error, "Couldn't load issues") : null;
+  const failure = list.error
+    ? describeFactoryFailure(list.error, messages(msg("Couldn't load issues")), undefined, messages)
+    : null;
   const repositoryUrl = list.repository ? safeFactoryIssueUrl(list.repository.url) : null;
 
-  const { capabilities } = list;
-  const renderIssues = (issues: ReadonlyArray<FactoryIssue>) =>
-    // Capabilities arrive with every page, so rows never render without them.
-    capabilities === null ? null : (
-      <SettingsSection>
-        {issues.map((issue, index) => (
-          <FactoryIssueRow
-            key={issue.number}
-            environmentId={environmentId}
-            issue={issue}
-            capabilities={capabilities}
-            borderTop={index > 0}
-            busy={actions.busyIssue === issue.number}
-            locked={actions.busyIssue !== null}
-            canStart={
-              canStart && (issue.task?.status === "launching" || launch.modelSelection !== null)
-            }
-            canOpen
-            onPerform={actions.perform}
-          />
-        ))}
-      </SettingsSection>
-    );
+  const readTrackerConnections = useAtomQueryRunner(issueTrackerEnvironment.connections, {
+    reportFailure: false,
+    reportDefect: false,
+  });
+  const openIssue = (issue: FactoryIssue): (() => void) | null => {
+    if (!issuesReadable) return null;
+    return () => {
+      void (async () => {
+        // Only a standalone tracker's link (Linear) needs the bindings, whose read probes it.
+        const connections = isStandaloneIssueLink(issue.url)
+          ? await readTrackerConnections({ environmentId, input: {} })
+          : null;
+        const target = resolveIssueLinkTarget({
+          url: issue.url,
+          projects: allProjects.filter((candidate) => candidate.environmentId === environmentId),
+          preferredProjectId: projectId,
+          trackers: connections?._tag === "Success" ? connections.value : undefined,
+        });
+        if (target === null) {
+          // A row the issue screen cannot address still opens on its tracker.
+          const url = safeFactoryIssueUrl(issue.url);
+          if (url !== null) void tryOpenExternalUrl(url);
+          return;
+        }
+        selectDetail({
+          name: "Issue",
+          params: {
+            environmentId: String(environmentId),
+            projectId: String(target.ref.projectId),
+            tracker: target.ref.tracker,
+            ...(target.ref.host === undefined ? {} : { host: target.ref.host }),
+            scope: target.ref.scope,
+            issueKey: target.ref.key,
+          },
+        });
+      })();
+    };
+  };
+
+  const renderIssues = (issues: ReadonlyArray<FactoryIssue>) => (
+    <SettingsSection>
+      {issues.map((issue, index) => (
+        <FactoryIssueRow
+          key={issue.key ?? issue.url}
+          issue={issue}
+          borderTop={index > 0}
+          onOpen={openIssue(issue)}
+        />
+      ))}
+    </SettingsSection>
+  );
 
   let body: ReactNode;
   if (!canRead) {
     body = (
       <StateMessage
-        title="Not permitted"
-        detail="This connection can't read orchestration data in this environment."
+        title={gt("Not permitted")}
+        detail={gt("This connection can't read orchestration data in this environment.")}
       />
     );
   } else if (list.loading) {
     body = (
       <View className="items-center py-12">
-        <AppActivityIndicator colorClassName="accent-icon" accessibilityLabel="Loading issues" />
+        <AppActivityIndicator
+          colorClassName="accent-icon"
+          accessibilityLabel={gt("Loading issues")}
+        />
       </View>
     );
   } else if (failure) {
@@ -193,7 +201,9 @@ export function FactoryIssuesRouteScreen({
       <StateMessage
         title={failure.title}
         detail={failure.detail}
-        action={<Button tone="primary" label="Try again" onPress={() => void list.refresh()} />}
+        action={
+          <Button tone="primary" label={gt("Try again")} onPress={() => void list.refresh()} />
+        }
       />
     );
   } else {
@@ -201,11 +211,17 @@ export function FactoryIssuesRouteScreen({
       <>
         {list.issues.length === 0 ? (
           <StateMessage
-            title={selection.filter === "all" ? "No issues" : `No ${selection.filter} issues`}
+            title={
+              selection.filter === "all"
+                ? gt("No issues")
+                : selection.filter === "open"
+                  ? gt("No open issues")
+                  : gt("No closed issues")
+            }
             detail={
               list.hasMore
-                ? "This page had no issues. Load the next page to keep looking."
-                : "This repository has nothing here yet."
+                ? gt("This page had no issues. Load the next page to keep looking.")
+                : gt("This repository has nothing here yet.")
             }
           />
         ) : (
@@ -215,21 +231,28 @@ export function FactoryIssuesRouteScreen({
           <View className="items-center py-4">
             <AppActivityIndicator
               colorClassName="accent-icon"
-              accessibilityLabel="Loading more issues"
+              accessibilityLabel={gt("Loading more issues")}
             />
           </View>
         ) : list.loadMoreError ? (
           <View className="items-center gap-2 px-4">
             <Text className="text-center text-sm text-foreground-muted">
-              {describeFactoryFailure(list.loadMoreError, "Couldn't load more").detail}
+              {
+                describeFactoryFailure(
+                  list.loadMoreError,
+                  messages(msg("Couldn't load more")),
+                  undefined,
+                  messages,
+                ).detail
+              }
             </Text>
-            <Button label="Try again" onPress={() => void list.loadMore()} />
+            <Button label={gt("Try again")} onPress={() => void list.loadMore()} />
           </View>
         ) : list.hasMore ? (
           <View className="items-center">
             <Button
-              label="Load more"
-              accessibilityLabel="Load more issues"
+              label={gt("Load more")}
+              accessibilityLabel={gt("Load more issues")}
               onPress={() => void list.loadMore()}
             />
           </View>
@@ -252,23 +275,25 @@ export function FactoryIssuesRouteScreen({
           ) : undefined
         }
       >
-        <SettingsSection title="Source">
+        <SettingsSection title={gt("Source")}>
           <View className="gap-1 px-4 py-3">
             <Text className="text-lg text-foreground">
-              {project?.title ?? "Project unavailable"}
+              {project?.title ?? gt("Project unavailable")}
             </Text>
             <Text className="text-sm text-foreground-muted" selectable>
               {project?.workspaceRoot}
             </Text>
           </View>
           <View className="min-h-14 justify-center gap-0.5 border-t border-border-subtle px-4 py-3">
-            <Text className="text-sm text-foreground-muted">Issues from</Text>
+            <Text className="text-sm text-foreground-muted">
+              <T>Issues from</T>
+            </Text>
             <Text className="text-base text-foreground" selectable>
               {list.repository && list.capabilities
                 ? `${list.capabilities.displayName} · ${factoryRepositoryLabel(list.repository)}`
                 : list.loading
-                  ? "Resolving repository…"
-                  : "Repository not resolved"}
+                  ? gt("Resolving repository…")
+                  : gt("Repository not resolved")}
             </Text>
             {repositoryUrl ? (
               <Text className="text-xs text-foreground-muted" selectable numberOfLines={1}>
@@ -278,44 +303,53 @@ export function FactoryIssuesRouteScreen({
           </View>
         </SettingsSection>
 
-        <SettingsSection title="New tasks">
+        <SettingsSection title={gt("New tasks")}>
           <PickerRow
-            label="Model"
-            value={launch.label ?? (launch.modelOptions.length ? "Choose model" : "No models")}
+            label={gt("Model")}
+            value={
+              launch.label ?? (launch.modelOptions.length ? gt("Choose model") : gt("No models"))
+            }
             disabled={projectId === null}
             onPress={() => navigation.navigate("SettingsFactoryModel")}
           />
           <PickerRow
             borderTop
-            label="Base branch"
-            value={selection.baseRef ?? "Current HEAD"}
+            label={gt("Base branch")}
+            value={selection.baseRef ?? gt("Current HEAD")}
             disabled={projectId === null}
             onPress={() => navigation.navigate("SettingsFactoryBranch")}
           />
           {selection.baseRef !== null ? (
             <View className="items-start border-t border-border-subtle px-4 py-2">
               <Button
-                label="Use current HEAD"
+                label={gt("Use current HEAD")}
                 tone="text"
                 onPress={() => updateFactoryInboxSelection({ baseRef: null })}
               />
             </View>
           ) : null}
         </SettingsSection>
-        <Text className="px-2 text-sm text-foreground-muted">{FACTORY_SUPERVISION_NOTICE}</Text>
+        <Text className="px-2 text-sm text-foreground-muted">
+          {messages(FACTORY_SUPERVISION_NOTICE)}
+        </Text>
 
         <SegmentedControl<FactoryIssueFilter>
-          options={FACTORY_ISSUE_FILTERS}
+          options={FACTORY_ISSUE_FILTERS.map((filter) => ({
+            ...filter,
+            label: messages(filter.label),
+          }))}
           selected={selection.filter}
           onSelect={(filter) => updateFactoryInboxSelection({ filter })}
         />
         <View className="flex-row items-center justify-between gap-3 px-1">
           <Text className="min-w-0 flex-1 text-xs text-foreground-muted">
-            {list.fetchedAt ? `Updated ${new Date(list.fetchedAt).toLocaleTimeString()}` : " "}
+            {list.fetchedAt
+              ? gt("Updated {time}", { time: new Date(list.fetchedAt).toLocaleTimeString() })
+              : " "}
           </Text>
           <Button
             tone="text"
-            label="Refresh"
+            label={gt("Refresh")}
             icon="arrow.clockwise"
             disabled={!listActive || list.loading || list.refreshing}
             onPress={() => void list.refresh()}
@@ -324,14 +358,6 @@ export function FactoryIssuesRouteScreen({
 
         {body}
       </ScrollView>
-      {actions.review ? (
-        <FactoryIssueReviewModal
-          review={actions.review}
-          pending={actions.busyIssue !== null}
-          onClose={actions.closeReview}
-          onConfirm={actions.confirmReview}
-        />
-      ) : null}
     </View>
   );
 }

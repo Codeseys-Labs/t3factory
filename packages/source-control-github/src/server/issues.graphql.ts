@@ -55,15 +55,6 @@ export const IssueRow = Schema.Struct({
 })
 export interface IssueRow extends Schema.Struct.Type<typeof IssueRow.fields> {}
 
-/** Information about pagination in a connection. */
-export const SearchPageInfoPageInfo = Schema.Struct({
-  /** When paginating forwards, are there more items? */
-  hasNextPage: Schema.Boolean,
-  /** When paginating forwards, the cursor to continue. */
-  endCursor: Schema.NullOr(Schema.String)
-})
-export interface SearchPageInfoPageInfo extends Schema.Struct.Type<typeof SearchPageInfoPageInfo.fields> {}
-
 /** A user is an individual's account on GitHub that owns repositories and can make new content. */
 export const AssigneesNodesUser = Schema.Struct({
   /** The username used to login. */
@@ -76,45 +67,64 @@ export const AssigneesNodesUser = Schema.Struct({
 export interface AssigneesNodesUser extends Schema.Struct.Type<typeof AssigneesNodesUser.fields> {}
 
 /** A list of users. */
-export const NodesAssigneesUserConnection = Schema.Struct({
+export const IssueListItemAssigneesUserConnection = Schema.Struct({
   /** A list of nodes. */
   nodes: Schema.NullOr(Schema.Array(Schema.NullOr(AssigneesNodesUser)))
 })
-export interface NodesAssigneesUserConnection extends Schema.Struct.Type<typeof NodesAssigneesUserConnection.fields> {}
+export interface IssueListItemAssigneesUserConnection extends Schema.Struct.Type<typeof IssueListItemAssigneesUserConnection.fields> {}
 
 /** A label for categorizing Issues, Pull Requests, Milestones, or Discussions with a given Repository. */
-export const NodesLabelsNodesLabel = Schema.Struct({
+export const IssueListItemLabelsNodesLabel = Schema.Struct({
   /** Identifies the label name. */
   name: Schema.String,
   /** Identifies the label color. */
   color: Schema.String
 })
-export interface NodesLabelsNodesLabel extends Schema.Struct.Type<typeof NodesLabelsNodesLabel.fields> {}
+export interface IssueListItemLabelsNodesLabel extends Schema.Struct.Type<typeof IssueListItemLabelsNodesLabel.fields> {}
 
 /** The connection type for Label. */
-export const NodesLabelsLabelConnection = Schema.Struct({
+export const IssueListItemLabelsLabelConnection = Schema.Struct({
   /** A list of nodes. */
-  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(NodesLabelsNodesLabel)))
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(IssueListItemLabelsNodesLabel)))
 })
-export interface NodesLabelsLabelConnection extends Schema.Struct.Type<typeof NodesLabelsLabelConnection.fields> {}
+export interface IssueListItemLabelsLabelConnection extends Schema.Struct.Type<typeof IssueListItemLabelsLabelConnection.fields> {}
 
 /** The connection type for IssueComment. */
-export const NodesCommentsIssueCommentConnection = Schema.Struct({
+export const IssueListItemCommentsIssueCommentConnection = Schema.Struct({
   /** Identifies the total count of items in the connection. */
   totalCount: Shared.Int
 })
-export interface NodesCommentsIssueCommentConnection extends Schema.Struct.Type<typeof NodesCommentsIssueCommentConnection.fields> {}
+export interface IssueListItemCommentsIssueCommentConnection extends Schema.Struct.Type<typeof IssueListItemCommentsIssueCommentConnection.fields> {}
+
+/**
+ * `fragment IssueListItem on Issue`
+ *
+ * An Issue is a place to discuss ideas, enhancements, tasks, and bugs for a project.
+ */
+export const IssueListItem = Schema.Struct({
+  ...IssueRow.fields,
+  /** A list of Users assigned to this object. */
+  assignees: IssueListItemAssigneesUserConnection,
+  /** A list of labels associated with the object. */
+  labels: Schema.NullOr(IssueListItemLabelsLabelConnection),
+  /** A list of comments associated with the Issue. */
+  comments: IssueListItemCommentsIssueCommentConnection
+})
+export interface IssueListItem extends Schema.Struct.Type<typeof IssueListItem.fields> {}
+
+/** Information about pagination in a connection. */
+export const SearchPageInfoPageInfo = Schema.Struct({
+  /** When paginating forwards, are there more items? */
+  hasNextPage: Schema.Boolean,
+  /** When paginating forwards, the cursor to continue. */
+  endCursor: Schema.NullOr(Schema.String)
+})
+export interface SearchPageInfoPageInfo extends Schema.Struct.Type<typeof SearchPageInfoPageInfo.fields> {}
 
 /** An Issue is a place to discuss ideas, enhancements, tasks, and bugs for a project. */
 export const NodesIssue = Schema.Struct({
   __typename: Schema.Literal("Issue"),
-  ...IssueRow.fields,
-  /** A list of Users assigned to this object. */
-  assignees: NodesAssigneesUserConnection,
-  /** A list of labels associated with the object. */
-  labels: Schema.NullOr(NodesLabelsLabelConnection),
-  /** A list of comments associated with the Issue. */
-  comments: NodesCommentsIssueCommentConnection
+  ...IssueListItem.fields
 })
 export interface NodesIssue extends Schema.Struct.Type<typeof NodesIssue.fields> {}
 
@@ -149,9 +159,10 @@ export const IssueSearch = GraphQL.query("IssueSearch", {
       { name: "rows", body: "Int!" }
     ],
     selections: [
-      { name: "search", body: ["(query:$", "q", " type:ISSUE first:$", "rows", " after:$", "cursor", "){pageInfo{hasNextPage endCursor}nodes{__typename...on Issue{...IssueRow assignees(first:20){nodes{login name avatarUrl}}labels(first:20){nodes{name color}}comments{totalCount}}}}"] }
+      { name: "search", body: ["(query:$", "q", " type:ISSUE first:$", "rows", " after:$", "cursor", "){pageInfo{hasNextPage endCursor}nodes{__typename...IssueListItem}}"] }
     ],
     fragments: [
+      { name: "IssueListItem", body: ["on Issue{...IssueRow assignees(first:20){nodes{login name avatarUrl}}labels(first:20){nodes{name color}}comments{totalCount}}"] },
       { name: "IssueRow", body: ["on Issue{number title url state stateReason createdAt updatedAt closedAt author{__typename login avatarUrl...on User{name}}}"] }
     ]
   },
@@ -168,6 +179,59 @@ export const IssueSearch = GraphQL.query("IssueSearch", {
 export declare namespace IssueSearch {
   export type Variables = typeof IssueSearch.variables.Type
   export type Result = typeof IssueSearch.result.Type
+}
+
+/** The connection type for Issue. */
+export const IssueConnection = Schema.Struct({
+  /** Information to aid in pagination. */
+  pageInfo: SearchPageInfoPageInfo,
+  /** A list of nodes. */
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(IssueListItem)))
+})
+export interface IssueConnection extends Schema.Struct.Type<typeof IssueConnection.fields> {}
+
+/** A repository contains the content for a project. */
+export const IssueListRepositoryRepository = Schema.Struct({
+  /** A list of issues that have been opened in the repository. */
+  issues: IssueConnection
+})
+export interface IssueListRepositoryRepository extends Schema.Struct.Type<typeof IssueListRepositoryRepository.fields> {}
+
+/** `query IssueList` */
+export const IssueList = GraphQL.query("IssueList", {
+  document: {
+    variables: [
+      { name: "owner", body: "String!" },
+      { name: "name", body: "String!" },
+      { name: "states", body: "[IssueState!]" },
+      { name: "orderBy", body: "IssueOrder!" },
+      { name: "cursor", body: "String" },
+      { name: "rows", body: "Int!" }
+    ],
+    selections: [
+      { name: "repository", body: ["(owner:$", "owner", " name:$", "name", "){issues(first:$", "rows", " after:$", "cursor", " states:$", "states", " orderBy:$", "orderBy", "){pageInfo{hasNextPage endCursor}nodes{...IssueListItem}}}"] }
+    ],
+    fragments: [
+      { name: "IssueListItem", body: ["on Issue{...IssueRow assignees(first:20){nodes{login name avatarUrl}}labels(first:20){nodes{name color}}comments{totalCount}}"] },
+      { name: "IssueRow", body: ["on Issue{number title url state stateReason createdAt updatedAt closedAt author{__typename login avatarUrl...on User{name}}}"] }
+    ]
+  },
+  variables: {
+    owner: Schema.String,
+    name: Schema.String,
+    states: Schema.optional(Schema.NullOr(Schema.Array(Shared.IssueState))),
+    orderBy: Shared.IssueOrder,
+    cursor: Schema.optional(Schema.NullOr(Schema.String)),
+    rows: Shared.Int
+  },
+  result: Schema.Struct({
+    /** Lookup a given repository by the owner and repository name. */
+    repository: Schema.NullOr(IssueListRepositoryRepository)
+  })
+})
+export declare namespace IssueList {
+  export type Variables = typeof IssueList.variables.Type
+  export type Result = typeof IssueList.result.Type
 }
 
 /** A user is an individual's account on GitHub that owns repositories and can make new content. */
@@ -191,7 +255,7 @@ export const IssueLabelsLabelConnection = Schema.Struct({
   /** Information to aid in pagination. */
   pageInfo: SearchPageInfoPageInfo,
   /** A list of nodes. */
-  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(NodesLabelsNodesLabel)))
+  nodes: Schema.NullOr(Schema.Array(Schema.NullOr(IssueListItemLabelsNodesLabel)))
 })
 export interface IssueLabelsLabelConnection extends Schema.Struct.Type<typeof IssueLabelsLabelConnection.fields> {}
 
@@ -1038,4 +1102,4 @@ export declare namespace IssueCollections {
 }
 
 /** Every operation in issues.graphql. */
-export const IssuesGraphQLGroup = GraphQLGroup.make(IssueSearch, IssueDetail, IssueComments, IssueNodeId, IssueCommentScope, IssueCandidates, IssueTemplates, IssueViewer, IssueCollections)
+export const IssuesGraphQLGroup = GraphQLGroup.make(IssueSearch, IssueList, IssueDetail, IssueComments, IssueNodeId, IssueCommentScope, IssueCandidates, IssueTemplates, IssueViewer, IssueCollections)

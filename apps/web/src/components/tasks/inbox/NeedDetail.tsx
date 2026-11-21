@@ -9,6 +9,7 @@ import type { FactoryTaskSummary } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { useContext, useState } from "react";
+import { T, useGT, useMessages, Var } from "gt-react";
 
 import { useRelativeTimeState } from "../../../hooks/useRelativeTimeState";
 import {
@@ -34,11 +35,18 @@ import { openTaskSetup } from "../taskDialogs";
 export function NeedDetail({ need }: { need: FactoryTaskNeed }) {
   const detail = useFactoryTaskDetail(need.ref);
   const registry = useContext(RegistryContext);
-  if (detail._tag === "Initial") return <p role="status">Loading task…</p>;
+  if (detail._tag === "Initial")
+    return (
+      <p role="status">
+        <T>Loading task…</T>
+      </p>
+    );
   if (detail._tag === "Failure")
     return (
       <div role="alert" className="space-y-3">
-        <p>Couldn't load this task.</p>
+        <p>
+          <T>Couldn't load this task.</T>
+        </p>
         <Button
           size="sm"
           variant="outline"
@@ -51,7 +59,7 @@ export function NeedDetail({ need }: { need: FactoryTaskNeed }) {
             )
           }
         >
-          Reload task
+          <T>Reload task</T>
         </Button>
       </div>
     );
@@ -77,7 +85,7 @@ function OpenTask({ task }: { task: FactoryTaskSummary }) {
       params={{ environmentId: task.ref.environmentId, displayId: task.displayId }}
       className="text-muted-foreground text-xs hover:text-foreground"
     >
-      Open task
+      <T>Open task</T>
     </Link>
   );
 }
@@ -85,20 +93,22 @@ function OpenTask({ task }: { task: FactoryTaskSummary }) {
 function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSummary }) {
   const chip = useTaskAssigneeChip(task.assignee, task.ref.environmentId);
   const permissions = useTaskPermissions(task.ref.environmentId);
+  const messages = useMessages();
+  const gt = useGT();
   if ((need.reason === "approve" || need.reason === "question") && need.threadId)
     return (
       <TaskAsk
         environmentId={task.ref.environmentId}
         threadId={need.threadId}
         requestId={need.requestId}
-        from={assigneeText(chip)}
+        from={assigneeText(chip, messages)}
       />
     );
   if (need.reason === "failed") {
     const failedRun = factoryTaskFailedRun(task);
     return (
       <section
-        aria-label={failedRun?.state === "held" ? "Held run" : "Failed run"}
+        aria-label={failedRun?.state === "held" ? gt("Held run") : gt("Failed run")}
         className="space-y-4 rounded-lg border border-destructive/32 bg-error-surface p-4"
       >
         <p className="whitespace-pre-wrap break-words text-sm">{failedRun?.note || need.detail}</p>
@@ -109,7 +119,7 @@ function NeedAction({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskSu
               disabled={!permissions.breakDown}
               onClick={() => openTaskSetup(task.ref, "break-down")}
             >
-              Break down
+              <T>Break down</T>
             </Button>
           </div>
         ) : (
@@ -146,7 +156,7 @@ function RecoverRun({ task }: { task: FactoryTaskSummary }) {
             void actions.saveAgain(task).then(() => setBusy(false));
           }}
         >
-          Save again
+          <T>Save again</T>
         </Button>
         <Button
           size="sm"
@@ -154,7 +164,7 @@ function RecoverRun({ task }: { task: FactoryTaskSummary }) {
           disabled={busy || !permissions.giveUp || run === null}
           onClick={() => run && giveUp.open(run)}
         >
-          Give up result
+          <T>Give up result</T>
         </Button>
         {giveUp.dialog}
       </div>
@@ -166,7 +176,7 @@ function RecoverRun({ task }: { task: FactoryTaskSummary }) {
         disabled={!permissions.retry}
         onClick={() => openTaskSetup(task.ref, "retry")}
       >
-        Retry
+        <T>Retry</T>
       </Button>
       <Button
         size="sm"
@@ -174,7 +184,7 @@ function RecoverRun({ task }: { task: FactoryTaskSummary }) {
         disabled={!permissions.retry}
         onClick={() => openTaskSetup(task.ref, "retry")}
       >
-        Reassign
+        <T>Reassign</T>
       </Button>
     </div>
   );
@@ -185,12 +195,17 @@ function StopLostRun({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskS
   const actions = useTaskActions();
   const permissions = useTaskPermissions(task.ref.environmentId);
   const [busy, setBusy] = useState(false);
+  const gt = useGT();
   return (
     <section
-      aria-label="Lost run"
+      aria-label={gt("Lost run")}
       className="space-y-3 rounded-lg border border-destructive/32 bg-error-surface p-4"
     >
-      <h3 className="font-medium text-sm">Run {task.run?.ordinal ?? ""} lost its agent</h3>
+      <h3 className="font-medium text-sm">
+        <T>
+          Run <Var>{task.run?.ordinal ?? ""}</Var> lost its agent
+        </T>
+      </h3>
       <p className="text-muted-foreground text-sm">{need.detail}</p>
       <Button
         size="sm"
@@ -201,7 +216,7 @@ function StopLostRun({ need, task }: { need: FactoryTaskNeed; task: FactoryTaskS
           void actions.stop(task).then(() => setBusy(false));
         }}
       >
-        Stop
+        <T>Stop</T>
       </Button>
     </section>
   );
@@ -212,9 +227,12 @@ function CheckDelivery({ need, task }: { need: FactoryTaskNeed; task: FactoryTas
   const actions = useTaskActions();
   const permissions = useTaskPermissions(task.ref.environmentId);
   const [busy, setBusy] = useState(false);
+  const gt = useGT();
   return (
-    <section aria-label="Unconfirmed" className="space-y-3 rounded-lg border bg-card p-4">
-      <h3 className="font-medium text-sm">Unconfirmed</h3>
+    <section aria-label={gt("Unconfirmed")} className="space-y-3 rounded-lg border bg-card p-4">
+      <h3 className="font-medium text-sm">
+        <T>Unconfirmed</T>
+      </h3>
       <p className="text-muted-foreground text-sm">{need.detail}</p>
       <Button
         size="sm"
@@ -224,7 +242,7 @@ function CheckDelivery({ need, task }: { need: FactoryTaskNeed; task: FactoryTas
           void actions.check(task).then(() => setBusy(false));
         }}
       >
-        Check
+        <T>Check</T>
       </Button>
     </section>
   );
@@ -238,11 +256,19 @@ function ReviewResult({ task }: { task: FactoryTaskSummary }) {
   const [busy, setBusy] = useState(false);
   const [changing, setChanging] = useState(false);
   const [note, setNote] = useState("");
-  if (read._tag === "Initial") return <p role="status">Loading result…</p>;
+  const gt = useGT();
+  if (read._tag === "Initial")
+    return (
+      <p role="status">
+        <T>Loading result…</T>
+      </p>
+    );
   if (read._tag === "Failure")
     return (
       <div role="alert" className="space-y-3">
-        <p>Couldn't load the result.</p>
+        <p>
+          <T>Couldn't load the result.</T>
+        </p>
         <Button
           size="sm"
           variant="outline"
@@ -255,13 +281,19 @@ function ReviewResult({ task }: { task: FactoryTaskSummary }) {
             )
           }
         >
-          Reload result
+          <T>Reload result</T>
         </Button>
       </div>
     );
   const result = read.value.result;
   if (result.state === "accepted")
-    return <p className="text-sm">Accepted · rev {result.acceptedRevision ?? result.revision}</p>;
+    return (
+      <p className="text-sm">
+        <T>
+          Accepted · rev <Var>{result.acceptedRevision ?? result.revision}</Var>
+        </T>
+      </p>
+    );
   const pullRequest = result.pullRequest ?? null;
   const run = async (operation: () => Promise<unknown>) => {
     setBusy(true);
@@ -275,10 +307,10 @@ function ReviewResult({ task }: { task: FactoryTaskSummary }) {
           kind={pullRequest ? "pull-request" : result.kind}
           title={
             pullRequest
-              ? `PR #${pullRequest.number}`
+              ? gt("PR #{number}", { number: pullRequest.number })
               : result.kind === "document"
-                ? "Document"
-                : "Code changes"
+                ? gt("Document")
+                : gt("Code changes")
           }
           meta={result.summary}
           review="pending"
@@ -306,10 +338,10 @@ function ReviewResult({ task }: { task: FactoryTaskSummary }) {
           }}
         >
           <Textarea
-            aria-label="What should change"
+            aria-label={gt("What should change")}
             value={note}
             onChange={(event) => setNote(event.currentTarget.value)}
-            placeholder="What should change?"
+            placeholder={gt("What should change?")}
           />
           <div className="flex gap-2">
             <Button
@@ -317,10 +349,10 @@ function ReviewResult({ task }: { task: FactoryTaskSummary }) {
               type="submit"
               disabled={busy || !note.trim() || !permissions.requestChanges}
             >
-              Send
+              <T>Send</T>
             </Button>
             <Button size="sm" variant="outline" type="button" onClick={() => setChanging(false)}>
-              Cancel
+              <T>Cancel</T>
             </Button>
           </div>
         </form>
@@ -335,11 +367,19 @@ function ReviewPlan({ task }: { task: FactoryTaskSummary }) {
   const actions = useTaskActions();
   const permissions = useTaskPermissions(task.ref.environmentId);
   const [busy, setBusy] = useState(false);
-  if (read._tag === "Initial") return <p role="status">Loading plan…</p>;
+  const gt = useGT();
+  if (read._tag === "Initial")
+    return (
+      <p role="status">
+        <T>Loading plan…</T>
+      </p>
+    );
   if (read._tag === "Failure")
     return (
       <div role="alert" className="space-y-3">
-        <p>Couldn't load the plan.</p>
+        <p>
+          <T>Couldn't load the plan.</T>
+        </p>
         <Button
           size="sm"
           variant="outline"
@@ -352,16 +392,24 @@ function ReviewPlan({ task }: { task: FactoryTaskSummary }) {
             )
           }
         >
-          Reload plan
+          <T>Reload plan</T>
         </Button>
       </div>
     );
   const plan = read.value.proposal;
   if (!plan || plan.status !== "proposed")
-    return <p role="status">The plan changed. Open the task to see it.</p>;
+    return (
+      <p role="status">
+        <T>The plan changed. Open the task to see it.</T>
+      </p>
+    );
   return (
-    <section aria-label="Plan ready" className="space-y-3 rounded-lg border bg-card p-4">
-      <h3 className="font-medium text-sm">Plan ready: {plan.items.length} sub-tasks</h3>
+    <section aria-label={gt("Plan ready")} className="space-y-3 rounded-lg border bg-card p-4">
+      <h3 className="font-medium text-sm">
+        <T>
+          Plan ready: <Var>{plan.items.length}</Var> sub-tasks
+        </T>
+      </h3>
       <ol className="list-decimal space-y-2 ps-5 text-sm">
         {plan.items.map((item) => (
           <li key={item.key}>
@@ -380,7 +428,7 @@ function ReviewPlan({ task }: { task: FactoryTaskSummary }) {
           void actions.resolvePlan(task, plan, "approve").then(() => setBusy(false));
         }}
       >
-        Approve plan
+        <T>Approve plan</T>
       </Button>
     </section>
   );
@@ -394,26 +442,30 @@ function RecentActivity({ task }: { task: FactoryTaskSummary }) {
   });
   const read = useAtomValue(latest);
   const catalog = useTaskCatalog(task.ref.environmentId);
+  const messages = useMessages();
+  const gt = useGT();
   return (
-    <section aria-label="Recent activity" className="mt-8 space-y-3">
-      <h3 className="font-medium text-sm">Recent activity</h3>
+    <section aria-label={gt("Recent activity")} className="mt-8 space-y-3">
+      <h3 className="font-medium text-sm">
+        <T>Recent activity</T>
+      </h3>
       {read._tag === "Failure" ? (
         <div role="alert" className="flex items-center gap-2 text-muted-foreground text-xs">
-          Couldn't load recent activity.
+          <T>Couldn't load recent activity.</T>
           <Button size="xs" variant="outline" onClick={() => registry.refresh(latest)}>
-            Reload
+            <T>Reload</T>
           </Button>
         </div>
       ) : read._tag === "Initial" ? (
         <p role="status" className="text-muted-foreground text-xs">
-          Loading activity…
+          <T>Loading activity…</T>
         </p>
       ) : (
         read.value.entries.map((entry) => (
           <RecentEntry
             key={entry.id}
             entry={entry}
-            text={presentFactoryTaskActivity(entry, catalog)}
+            text={presentFactoryTaskActivity(entry, catalog, messages)}
             author={presentFactoryTaskActor(entry.actor, catalog)}
           />
         ))

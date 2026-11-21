@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Test fixture data: sampled source, rule, and arrival copy that only tests read. */
 import {
   ProjectId,
   type FactoryIntakeArrival,

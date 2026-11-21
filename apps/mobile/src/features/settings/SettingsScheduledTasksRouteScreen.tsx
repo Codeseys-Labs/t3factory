@@ -207,6 +207,22 @@ function repeatLabel(
   );
 }
 
+function dispatchStatusLabel(
+  status: ScheduledTask["lastRunStatus"],
+  resolve: MessageResolver,
+): string {
+  switch (status) {
+    case "never":
+      return resolve(msg("Never dispatched"));
+    case "failed":
+      return resolve(msg("Dispatch failed"));
+    case "running":
+      return resolve(msg("Dispatching"));
+    default:
+      return resolve(msg("Dispatch accepted"));
+  }
+}
+
 function FormField(props: {
   readonly label: string;
   readonly value: string;
@@ -494,7 +510,7 @@ export function FactoryScheduledTasksScreen({
   if (invalidScope) {
     return (
       <Text className="p-4 text-base text-danger-foreground">
-        This workflow scope is unavailable. Choose its exact environment and project.
+        <T>This workflow scope is unavailable. Choose its exact environment and project.</T>
       </Text>
     );
   }
@@ -506,12 +522,14 @@ export function FactoryScheduledTasksScreen({
       contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
     >
       <Text className="text-sm text-foreground-muted">
-        Scheduled agent prompts; latest dispatch only, not a dependency graph or historical run
-        timeline. New workflows start paused and supervised.
+        <T>
+          Scheduled agent prompts; latest dispatch only, not a dependency graph or historical run
+          timeline. New workflows start paused and supervised.
+        </T>
       </Text>
       {scopedEnvironments.length === 0 ? (
         <Text className="text-base text-foreground-muted">
-          Connect an environment to manage workflows.
+          <T>Connect an environment to manage workflows.</T>
         </Text>
       ) : null}
       {scopedEnvironments.map((environment) => {
@@ -522,7 +540,7 @@ export function FactoryScheduledTasksScreen({
           return (
             <SettingsSection key={environment.environmentId} title={environment.label}>
               <Text className="p-4 text-base text-foreground-muted">
-                Environment disconnected. Workflow counts and dispatch state are unavailable.
+                <T>Environment disconnected. Workflow counts and dispatch state are unavailable.</T>
               </Text>
             </SettingsSection>
           );
@@ -658,15 +676,16 @@ export function SettingsScheduledTaskNewRouteScreen() {
 }
 
 export function SettingsScheduledTaskEditRouteScreen() {
+  const gt = useGT();
   const { editor } = useScheduledTaskEditor();
   return (
     <SettingsScheduledTaskEditorScreen
       title={
         editor?.factory
           ? editor.draft.task
-            ? "Edit workflow"
-            : "New workflow"
-          : "Edit scheduled task"
+            ? gt("Edit workflow")
+            : gt("New workflow")
+          : gt("Edit scheduled task")
       }
     />
   );
@@ -1065,7 +1084,7 @@ function TaskForm({
       return;
     }
     if (projectScope !== undefined && draft.projectId !== projectScope) {
-      Dialog.alert("Project changed", "Reopen the workflow in its exact project scope.");
+      Dialog.alert(gt("Project changed"), gt("Reopen the workflow in its exact project scope."));
       return;
     }
     const input: ScheduledTaskUpsertInput = {
@@ -1119,13 +1138,15 @@ function TaskForm({
         ) : null}
         {taskUnavailable ? (
           <Text className="px-1 text-base text-danger-foreground">
-            {tasks.error ?? "Loading the current workflow before saving…"}
+            {tasks.error ?? gt("Loading the current workflow before saving…")}
           </Text>
         ) : null}
         {ownerChanged ? (
           <Text className="px-1 text-base text-danger-foreground">
-            This workflow's project or bound thread changed elsewhere. Reopen it to review the
-            current binding before saving.
+            <T>
+              This workflow's project or bound thread changed elsewhere. Reopen it to review the
+              current binding before saving.
+            </T>
           </Text>
         ) : null}
         <SettingsSection>
@@ -1292,7 +1313,7 @@ function TaskForm({
           coordinatorThread &&
           draft.threadId !== coordinator.threadId ? (
             <Button
-              label="Deliver to project orchestrator"
+              label={gt("Deliver to project orchestrator")}
               disabled={saving || dictationPending || environmentUnavailable}
               onPress={() =>
                 setEnvironmentDraft((current) => ({
@@ -1311,28 +1332,30 @@ function TaskForm({
             </Text>
           ) : null}
           {supportsCoordinator && draft.projectId ? (
-            <Button label="Refresh orchestrator" onPress={coordinatorQuery.refresh} />
+            <Button label={gt("Refresh orchestrator")} onPress={coordinatorQuery.refresh} />
           ) : null}
           {bindingUnavailable ? (
             <Text className="px-4 pb-3 text-sm text-danger-foreground">
-              The bound thread is unavailable in this project. Reconnect or choose another thread
-              before saving. The saved binding has not been cleared.
+              <T>
+                The bound thread is unavailable in this project. Reconnect or choose another thread
+                before saving. The saved binding has not been cleared.
+              </T>
             </Text>
           ) : null}
         </SettingsSection>
 
         {draft.threadId === null ? (
           <>
-            <SettingsSection title="Permissions">
+            <SettingsSection title={gt("Permissions")}>
               <SelectRow
-                label="Runtime"
-                value={
+                label={gt("Runtime")}
+                value={m(
                   RUNTIME_MODE_CHOICES.find((choice) => choice.mode === draft.runtimeMode)?.label ??
-                  draft.runtimeMode
-                }
+                    draft.runtimeMode,
+                )}
                 actions={RUNTIME_MODE_CHOICES.map((choice) => ({
                   id: choice.mode,
-                  title: choice.label,
+                  title: m(choice.label),
                   state: draft.runtimeMode === choice.mode ? "on" : undefined,
                 }))}
                 onSelect={(id) => {
@@ -1341,18 +1364,18 @@ function TaskForm({
                 }}
               />
               <SelectRow
-                label="Interaction"
+                label={gt("Interaction")}
                 borderTop
-                value={draft.interactionMode === "plan" ? "Plan" : "Default"}
+                value={draft.interactionMode === "plan" ? gt("Plan") : gt("Default")}
                 actions={[
                   {
                     id: "default",
-                    title: "Default",
+                    title: gt("Default"),
                     state: draft.interactionMode === "default" ? "on" : undefined,
                   },
                   {
                     id: "plan",
-                    title: "Plan",
+                    title: gt("Plan"),
                     state: draft.interactionMode === "plan" ? "on" : undefined,
                   },
                 ]}
@@ -1431,11 +1454,14 @@ function TaskForm({
           </>
         ) : (
           <Text className="px-2 text-sm text-foreground-muted">
-            Bound delivery keeps the thread's current workspace, runtime and interaction modes.
             {boundThread
-              ? ` Current modes: ${boundThread.runtimeMode} / ${boundThread.interactionMode}.`
-              : ""}{" "}
-            Stored new-thread settings are preserved if you later unbind.
+              ? gt(
+                  "Bound delivery keeps the thread's current workspace, runtime and interaction modes. Current modes: {modes}. Stored new-thread settings are preserved if you later unbind.",
+                  { modes: `${boundThread.runtimeMode} / ${boundThread.interactionMode}` },
+                )
+              : gt(
+                  "Bound delivery keeps the thread's current workspace, runtime and interaction modes. Stored new-thread settings are preserved if you later unbind.",
+                )}
           </Text>
         )}
 
@@ -1828,10 +1854,10 @@ function WebhookScheduleDetails({
       {task === null || resolved === null ? (
         <Text className="text-sm text-foreground-muted">
           {!canOperate
-            ? "Webhook URLs require operate permission."
+            ? gt("Webhook URLs require operate permission.")
             : task === null
-              ? "Save the task to get its webhook URL."
-              : "The webhook URL is unavailable in this connection."}
+              ? gt("Save the task to get its webhook URL.")
+              : gt("The webhook URL is unavailable in this connection.")}
         </Text>
       ) : (
         <>
@@ -1977,27 +2003,29 @@ function EnvironmentTasks({
         if (task.schedule.type === "webhook") return;
         const result = await runNow({ environmentId, input: { id: task.id } });
         if (result._tag === "Failure") {
-          failure("Could not dispatch task", result);
+          failure(gt("Could not dispatch task"), result);
         } else if (result.value.task.lastRunStatus === "failed") {
           Dialog.alert(
-            "Dispatch failed",
-            result.value.task.lastRunError ?? "The prompt was not dispatched.",
+            gt("Dispatch failed"),
+            result.value.task.lastRunError ?? gt("The prompt was not dispatched."),
           );
         } else {
           const threadId = result.value.threadId;
           Dialog.alert(
-            "Dispatch accepted",
-            "The prompt was dispatched or queued. This is not confirmation that the agent finished.",
+            gt("Dispatch accepted"),
+            gt(
+              "The prompt was dispatched or queued. This is not confirmation that the agent finished.",
+            ),
             threadId
               ? [
-                  { text: "Close", style: "cancel" },
+                  { text: gt("Close"), style: "cancel" },
                   {
-                    text: "Open thread",
+                    text: gt("Open thread"),
                     onPress: () =>
                       selectDetail({ name: "Thread", params: { environmentId, threadId } }),
                   },
                 ]
-              : [{ text: "Close" }],
+              : [{ text: gt("Close") }],
           );
         }
         return;
@@ -2006,7 +2034,10 @@ function EnvironmentTasks({
         action === "toggle"
           ? await setEnabled({ environmentId, input: { id: task.id, enabled: !task.enabled } })
           : await remove({ environmentId, input: { id: task.id } });
-      failure(`Could not ${action === "toggle" ? "update" : "delete"} task`, result);
+      failure(
+        action === "toggle" ? gt("Could not update task") : gt("Could not delete task"),
+        result,
+      );
     })().finally(() => {
       pendingAction.current = false;
       setPendingTaskId(null);
@@ -2029,13 +2060,13 @@ function EnvironmentTasks({
       {onCreate ? (
         <View className="gap-2 p-4">
           <Button
-            label="New workflow"
+            label={gt("New workflow")}
             disabled={!canOperate || pendingTaskId !== null}
             onPress={onCreate}
           />
           {!canOperate ? (
             <Text className="text-sm text-foreground-muted">
-              Read-only: workflow changes and dispatch require operate permission.
+              <T>Read-only: workflow changes and dispatch require operate permission.</T>
             </Text>
           ) : null}
         </View>
@@ -2043,7 +2074,7 @@ function EnvironmentTasks({
       {tasks.error ? (
         <View className="gap-2 p-4">
           <Text className="text-base text-danger-foreground">{tasks.error}</Text>
-          <Button label="Retry workflows" onPress={tasks.refresh} />
+          <Button label={gt("Retry workflows")} onPress={tasks.refresh} />
         </View>
       ) : !tasks.data ? (
         <Text className="p-4 text-base text-foreground-muted">
@@ -2052,10 +2083,12 @@ function EnvironmentTasks({
       ) : visibleTasks?.length === 0 ? (
         <Text className="p-4 text-base text-foreground-muted">
           {taskId !== undefined
-            ? "This workflow is unavailable in the selected scope. No other workflow has been opened."
+            ? gt(
+                "This workflow is unavailable in the selected scope. No other workflow has been opened.",
+              )
             : projectIds === null
-              ? "No scheduled tasks yet."
-              : "No tasks in this project."}
+              ? gt("No scheduled tasks yet.")
+              : gt("No tasks in this project.")}
         </Text>
       ) : (
         visibleTasks?.map((task, index) => (
@@ -2091,15 +2124,26 @@ function EnvironmentTasks({
                     : describeSchedule(task, tasks.data?.timeZone, m, locale)}
               </Text>
               <Text className="text-sm text-foreground-muted">
-                {task.runCount} dispatch attempt{task.runCount === 1 ? "" : "s"}
-                {task.lastRunAt ? ` · Latest: ${new Date(task.lastRunAt).toLocaleString()}` : ""}
-                {task.lastRunStatus === "never"
-                  ? " · Never dispatched"
-                  : task.lastRunStatus === "failed"
-                    ? " · Dispatch failed"
-                    : task.lastRunStatus === "running"
-                      ? " · Dispatching"
-                      : " · Dispatch accepted"}
+                {task.lastRunAt
+                  ? gt("{attempts} · Latest: {time} · {status}", {
+                      attempts: m(
+                        msg(
+                          "{count, plural, one {{count} dispatch attempt} other {{count} dispatch attempts}}",
+                          { count: task.runCount },
+                        ),
+                      ),
+                      time: new Date(task.lastRunAt).toLocaleString(),
+                      status: dispatchStatusLabel(task.lastRunStatus, m),
+                    })
+                  : gt("{attempts} · {status}", {
+                      attempts: m(
+                        msg(
+                          "{count, plural, one {{count} dispatch attempt} other {{count} dispatch attempts}}",
+                          { count: task.runCount },
+                        ),
+                      ),
+                      status: dispatchStatusLabel(task.lastRunStatus, m),
+                    })}
               </Text>
               {task.blockedByPolicy ? (
                 <Text className="text-sm text-foreground-muted" numberOfLines={2}>
@@ -2108,7 +2152,7 @@ function EnvironmentTasks({
               ) : null}
               {task.lastRunError ? (
                 <Text className="text-sm text-danger-foreground" numberOfLines={2}>
-                  Latest dispatch failed: {task.lastRunError}
+                  {gt("Latest dispatch failed: {error}", { error: task.lastRunError })}
                 </Text>
               ) : null}
             </Pressable>
@@ -2120,7 +2164,7 @@ function EnvironmentTasks({
                   : []),
                 {
                   id: "toggle",
-                  title: task.enabled ? "Pause" : "Resume",
+                  title: task.enabled ? gt("Pause") : gt("Resume"),
                   attributes: { disabled: !canOperate || pendingTaskId !== null },
                 },
                 ...(task.schedule.type === "webhook"
@@ -2128,13 +2172,13 @@ function EnvironmentTasks({
                   : [
                       {
                         id: "run",
-                        title: "Run now",
+                        title: gt("Run now"),
                         attributes: { disabled: !canOperate || pendingTaskId !== null },
                       },
                     ]),
                 {
                   id: "delete",
-                  title: "Delete",
+                  title: gt("Delete", { $context: "verb, delete a workflow" }),
                   attributes: {
                     destructive: true,
                     disabled: !canOperate || pendingTaskId !== null,

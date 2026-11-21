@@ -5,6 +5,7 @@ import type {
   ProjectCoordinatorEnsureInput,
   RuntimeMode,
 } from "@t3tools/contracts";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { useId, useState } from "react";
 
 import { useEnvironmentSettings } from "../../hooks/useSettings";
@@ -52,6 +53,8 @@ export function FactoryOrchestratorDialog(props: {
   readonly onClose: () => void;
   readonly onSubmit: (modes: CoordinatorModes) => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const [target] = useState(props.target);
   const [reviewedCoordinator] = useState(props.coordinator);
   const id = useId();
@@ -128,15 +131,19 @@ export function FactoryOrchestratorDialog(props: {
         <DialogHeader>
           <DialogTitle>
             {resuming
-              ? "Resume orchestrator start"
+              ? gt("Resume orchestrator start")
               : replacing
-                ? "Replace unavailable orchestrator"
-                : "Create and start orchestrator"}
+                ? gt("Replace unavailable orchestrator")
+                : gt("Create and start orchestrator")}
           </DialogTitle>
           <DialogDescription>
             {resuming
-              ? "Recover the original launch with its saved settings. This does not create another orchestrator or resend an accepted orientation."
-              : "Creates a project thread and sends one read-only orientation request to the selected agent."}
+              ? gt(
+                  "Recover the original launch with its saved settings. This does not create another orchestrator or resend an accepted orientation.",
+                )
+              : gt(
+                  "Creates a project thread and sends one read-only orientation request to the selected agent.",
+                )}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
@@ -146,22 +153,26 @@ export function FactoryOrchestratorDialog(props: {
               <p>{props.environmentLabel}</p>
               <p className="font-mono text-xs">{target.workspaceRoot}</p>
               <p className="text-muted-foreground text-xs">
-                Runs in this checkout, not an isolated issue worktree.
+                <T>Runs in this checkout, not an isolated issue worktree.</T>
               </p>
             </div>
             <p className="text-sm text-muted-foreground">
-              The agent is asked to inspect project instructions, tracker and workflows when
-              accessible, then wait. It is not asked to edit files, start workers, enable schedules,
-              publish, merge or spend. Project text is context, not authority. This is an
-              instruction, not a read-only sandbox; the selected provider and permission modes still
-              apply.
+              <T>
+                The agent is asked to inspect project instructions, tracker and workflows when
+                accessible, then wait. It is not asked to edit files, start workers, enable
+                schedules, publish, merge or spend. Project text is context, not authority. This is
+                an instruction, not a read-only sandbox; the selected provider and permission modes
+                still apply.
+              </T>
             </p>
             <fieldset
               disabled={locked || props.failure?.requiresReview}
               className="min-w-0 space-y-4"
             >
-              <div className="space-y-1.5" role="group" aria-label="Orchestrator model">
-                <Label>Model</Label>
+              <div className="space-y-1.5" role="group" aria-label={gt("Orchestrator model")}>
+                <Label>
+                  <T>Model</T>
+                </Label>
                 {activeInstanceId !== null ? (
                   <ProviderModelPicker
                     environmentId={target.environmentId}
@@ -173,15 +184,19 @@ export function FactoryOrchestratorDialog(props: {
                     modelOptionsByInstance={options}
                     isComposerOwned={false}
                     triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
-                    triggerAriaLabel="Choose orchestrator provider and model"
+                    triggerAriaLabel={gt("Choose orchestrator provider and model")}
                     onInstanceModelChange={(instanceId, model) => setPicked({ instanceId, model })}
                   />
                 ) : (
-                  <p className="text-sm text-muted-foreground">No provider is configured.</p>
+                  <p className="text-sm text-muted-foreground">
+                    <T>No provider is configured.</T>
+                  </p>
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor={`${id}-runtime`}>Permissions</Label>
+                <Label htmlFor={`${id}-runtime`}>
+                  <T>Permissions</T>
+                </Label>
                 <Select
                   value={selectedRuntimeMode}
                   onValueChange={(value) => {
@@ -190,19 +205,21 @@ export function FactoryOrchestratorDialog(props: {
                   disabled={locked || props.failure?.requiresReview}
                 >
                   <SelectTrigger id={`${id}-runtime`} className="w-full">
-                    <SelectValue>{runtimeModeConfig[selectedRuntimeMode].label}</SelectValue>
+                    <SelectValue>{m(runtimeModeConfig[selectedRuntimeMode].label)}</SelectValue>
                   </SelectTrigger>
                   <SelectPopup>
                     {availableModes.map((mode) => (
                       <SelectItem key={mode} value={mode}>
-                        {runtimeModeConfig[mode].label}
+                        {m(runtimeModeConfig[mode].label)}
                       </SelectItem>
                     ))}
                   </SelectPopup>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  {runtimeModeConfig[selectedRuntimeMode].description} Connection mode limits remain
-                  enforced by the server.
+                  <T>
+                    <Var>{m(runtimeModeConfig[selectedRuntimeMode].description)}</Var> Connection
+                    mode limits remain enforced by the server.
+                  </T>
                 </p>
               </div>
             </fieldset>
@@ -211,16 +228,20 @@ export function FactoryOrchestratorDialog(props: {
                 <AlertDescription>
                   {!modelAvailable
                     ? (providerBlock ??
-                      "Choose a ready, signed-in provider and model before starting.")
-                    : "The selected modes are not supported by this provider. Choose supported modes before starting."}
+                      gt("Choose a ready, signed-in provider and model before starting."))
+                    : gt(
+                        "The selected modes are not supported by this provider. Choose supported modes before starting.",
+                      )}
                 </AlertDescription>
               </Alert>
             ) : null}
             {replacing ? (
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                  Replacing reviewed thread {reviewedCoordinator.threadId}. The server will reject a
-                  stale binding.
+                  <T>
+                    Replacing reviewed thread <Var>{reviewedCoordinator.threadId}</Var>. The server
+                    will reject a stale binding.
+                  </T>
                 </p>
                 <label className="flex items-start gap-2 text-sm">
                   <input
@@ -231,21 +252,27 @@ export function FactoryOrchestratorDialog(props: {
                     className="mt-1 shrink-0"
                   />
                   <span>
-                    I confirm a new orchestrator. Replacement does not move existing workflow
-                    bindings or restore workflows removed when the old thread was deleted.
+                    <T>
+                      I confirm a new orchestrator. Replacement does not move existing workflow
+                      bindings or restore workflows removed when the old thread was deleted.
+                    </T>
                   </span>
                 </label>
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Deleting an orchestrator thread also deletes workflows bound to it. Use the existing
-                thread controls to archive instead.
+                <T>
+                  Deleting an orchestrator thread also deletes workflows bound to it. Use the
+                  existing thread controls to archive instead.
+                </T>
               </p>
             )}
             {frozen ? (
               <p className="text-xs text-muted-foreground">
-                Destination, model, modes and request ID are frozen. Retry recovers this same
-                request; close to review a different request.
+                <T>
+                  Destination, model, modes and request ID are frozen. Retry recovers this same
+                  request; close to review a different request.
+                </T>
               </p>
             ) : null}
           </div>
@@ -254,8 +281,10 @@ export function FactoryOrchestratorDialog(props: {
           {!props.canStart ? (
             <Alert variant="warning">
               <AlertDescription>
-                The environment must be connected with orchestration operate permission before
-                confirming.
+                <T>
+                  The environment must be connected with orchestration operate permission before
+                  confirming.
+                </T>
               </AlertDescription>
             </Alert>
           ) : null}
@@ -268,7 +297,7 @@ export function FactoryOrchestratorDialog(props: {
         </div>
         <DialogFooter>
           <DialogClose render={<Button variant="outline" size="sm" disabled={props.pending} />}>
-            Cancel
+            <T>Cancel</T>
           </DialogClose>
           <Button
             size="sm"
@@ -284,14 +313,14 @@ export function FactoryOrchestratorDialog(props: {
             }}
           >
             {props.pending
-              ? "Starting…"
+              ? gt("Starting…")
               : frozen
-                ? "Retry same request"
+                ? gt("Retry same request")
                 : resuming
-                  ? "Resume start"
+                  ? gt("Resume start")
                   : replacing
-                    ? "Replace and start"
-                    : "Create and start"}
+                    ? gt("Replace and start")
+                    : gt("Create and start")}
           </Button>
         </DialogFooter>
       </DialogPopup>

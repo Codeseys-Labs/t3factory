@@ -85,6 +85,8 @@ export type ServerSelfUpdateCapability = typeof ServerSelfUpdateCapability.Type;
 
 export const ExecutionEnvironmentCapabilities = Schema.Struct({
   factoryIssues: Schema.optionalKey(Schema.Boolean),
+  /** Accepts native issue `key` values, including standalone trackers such as Linear. */
+  factoryIssueKeys: Schema.optionalKey(Schema.Boolean),
   /** Absent on older servers; clients must not offer feed sources without it. */
   factoryFeeds: Schema.optionalKey(Schema.Boolean),
   /** Absent on older servers; clients must not request issue readiness without it. */

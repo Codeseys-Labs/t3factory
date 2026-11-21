@@ -14,6 +14,7 @@ import {
   type FactoryPreparationReopenInput,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg, T, useGT } from "gt-react";
 import { useRef, useState } from "react";
 import { randomUUID } from "../../lib/utils";
 import { useNowMinute } from "../../hooks/useNowMinute";
@@ -21,6 +22,7 @@ import { factoryEnvironment } from "../../state/factory";
 import { useProjects } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { m } from "~/i18n/messages";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -43,6 +45,7 @@ type Request =
 const decodePolicy = Schema.decodeUnknownSync(FactoryExecutionPolicy);
 
 export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnapshot }) {
+  const gt = useGT();
   const { ref, revision } = plan;
   const environmentId = ref.environmentId;
   const project = useProjects().find(
@@ -108,7 +111,7 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
         data.grant.revokedAt !== null ||
         Date.parse(data.grant.policy.expiresAt) <= Date.now())
     ) {
-      setError("The execution grant is inactive or expired. Refresh before starting work.");
+      setError(m(msg("The execution grant is inactive or expired. Refresh before starting work.")));
       query.refresh();
       return;
     }
@@ -154,7 +157,11 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
       });
     } catch {
       setError(
-        "The execution policy is incomplete or invalid. Review the exact task specs, edge rules, limits and expiry.",
+        m(
+          msg(
+            "The execution policy is incomplete or invalid. Review the exact task specs, edge rules, limits and expiry.",
+          ),
+        ),
       );
     }
   };
@@ -181,21 +188,25 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
   const reviewedAll =
     reviewOutputs.length > 0 && reviewOutputs.every((output) => reviewed.includes(output.resultId));
   return (
-    <section className="space-y-3 rounded border p-3" aria-label="Execution and preparation">
-      <h4 className="font-medium">Execution · revision {revision}</h4>
+    <section className="space-y-3 rounded border p-3" aria-label={gt("Execution and preparation")}>
+      <h4 className="font-medium">
+        {gt("Execution · revision {revision}", { revision: String(revision) })}
+      </h4>
       <p className="text-sm text-muted-foreground">
-        Editing a plan grants no execution. A grant applies only to this exact revision. Revoking
-        future admission does not stop an active attempt.
+        <T>
+          Editing a plan grants no execution. A grant applies only to this exact revision. Revoking
+          future admission does not stop an active attempt.
+        </T>
       </p>
       {query.error ? <p role="alert">{query.error}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
       {request ? (
         <div className="space-x-2">
           <span className="text-sm">
-            The outcome may be uncertain. Retry sends the same command and parameters.
+            <T>The outcome may be uncertain. Retry sends the same command and parameters.</T>
           </span>
           <Button size="sm" disabled={pending} onClick={() => void run(request)}>
-            Retry same request
+            <T>Retry same request</T>
           </Button>
           <Button
             size="sm"
@@ -203,7 +214,7 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
             disabled={pending || query.isPending || !query.isSuccess}
             onClick={() => setRequest(null)}
           >
-            Review refreshed state
+            <T>Review refreshed state</T>
           </Button>
         </div>
       ) : null}
@@ -216,23 +227,41 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
           history.refresh();
         }}
       >
-        Refresh execution
+        <T>Refresh execution</T>
       </Button>
       {data ? (
         <>
           {data.currentRevision !== revision ? (
             <p role="status">
-              Current plan is revision {data.currentRevision}; this revision cannot admit new work.
+              {gt(
+                "Current plan is revision {currentRevision}; this revision cannot admit new work.",
+                { currentRevision: String(data.currentRevision) },
+              )}
             </p>
           ) : null}
           <p className="text-sm">
             {grant
-              ? `Grant ${grant.version} · ${grant.revokedAt ? "revoked" : liveGrant ? "issued" : "expired"} · expires ${grant.policy.expiresAt}`
-              : "No execution grant for this revision."}
+              ? grant.revokedAt
+                ? gt("Grant {version} · revoked · expires {expiresAt}", {
+                    version: String(grant.version),
+                    expiresAt: grant.policy.expiresAt,
+                  })
+                : liveGrant
+                  ? gt("Grant {version} · issued · expires {expiresAt}", {
+                      version: String(grant.version),
+                      expiresAt: grant.policy.expiresAt,
+                    })
+                  : gt("Grant {version} · expired · expires {expiresAt}", {
+                      version: String(grant.version),
+                      expiresAt: grant.policy.expiresAt,
+                    })
+              : gt("No execution grant for this revision.")}
           </p>
           {grant ? (
             <details>
-              <summary>Exact granted policy</summary>
+              <summary>
+                <T>Exact granted policy</T>
+              </summary>
               <pre className="overflow-auto whitespace-pre-wrap break-all text-xs">
                 {JSON.stringify(grant.policy, null, 2)}
               </pre>
@@ -255,11 +284,13 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
                 })
               }
             >
-              Revoke future admission
+              <T>Revoke future admission</T>
             </Button>
           ) : null}
           <details>
-            <summary>Configure an execution grant</summary>
+            <summary>
+              <T>Configure an execution grant</T>
+            </summary>
             {project ? (
               <FactoryExecutionPolicyEditor
                 plan={plan}
@@ -279,17 +310,23 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
                 }
               />
             ) : (
-              <p>Project is unavailable.</p>
+              <p>
+                <T>Project is unavailable.</T>
+              </p>
             )}
           </details>
           <details>
-            <summary>Advanced policy JSON</summary>
+            <summary>
+              <T>Advanced policy JSON</T>
+            </summary>
             <p className="text-sm">
-              Enter the exact policy as JSON: version 1, requesterThreadIds, tasks (taskId,
-              modelSelection, runtimeMode, interactionMode, workspaceStrategy, setup, output), edges
-              (edgeId, slot, rule), maxAttempts, maxRetriesPerTask, maxConcurrent, expiresAt and
-              requiredCapabilities. Setup must be deny; worktree baseRef must be an exact commit.
-              Unsupported hard capabilities are refused.
+              <T>
+                Enter the exact policy as JSON: version 1, requesterThreadIds, tasks (taskId,
+                modelSelection, runtimeMode, interactionMode, workspaceStrategy, setup, output),
+                edges (edgeId, slot, rule), maxAttempts, maxRetriesPerTask, maxConcurrent, expiresAt
+                and requiredCapabilities. Setup must be deny; worktree baseRef must be an exact
+                commit. Unsupported hard capabilities are refused.
+              </T>
             </p>
             <Button
               size="sm"
@@ -327,20 +364,22 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
                 )
               }
             >
-              Fill policy template
+              <T>Fill policy template</T>
             </Button>
             <p className="text-xs text-muted-foreground">
-              Choose the provider instance, model, expiry, output and limits for every task. The
-              template is not a grant and does not assert a hard sandbox or cost limit.
+              <T>
+                Choose the provider instance, model, expiry, output and limits for every task. The
+                template is not a grant and does not assert a hard sandbox or cost limit.
+              </T>
             </p>
             <Textarea
-              aria-label="Execution policy JSON"
+              aria-label={gt("Execution policy JSON")}
               value={policyText}
               onChange={(event) => setPolicyText(event.target.value)}
               rows={12}
             />
             <Button size="sm" disabled={disabled || !canGrant} onClick={submitGrant}>
-              Grant exact revision {revision}
+              {gt("Grant exact revision {revision}", { revision: String(revision) })}
             </Button>
           </details>
           <ul className="space-y-3">
@@ -354,17 +393,28 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
                   <li key={task.id} className="space-y-1 rounded border p-2">
                     <p className="font-medium">{task.title}</p>
                     <p className="text-sm">
-                      {state?.status ?? "unknown"}
-                      {state?.hold ? ` · ${state.hold}` : ""}
-                      {binding?.stopRequested ? " · stop requested" : ""}
-                      {binding && !binding.quiescent ? " · quiescence not established" : ""}
+                      {gt("{status}{hold}{stopRequested}{quiescence}", {
+                        status: state?.status ?? gt("unknown"),
+                        hold: state?.hold ? gt(" · {hold}", { hold: state.hold }) : "",
+                        stopRequested: binding?.stopRequested ? gt(" · stop requested") : "",
+                        quiescence:
+                          binding && !binding.quiescent ? gt(" · quiescence not established") : "",
+                      })}
                     </p>
                     {binding ? (
                       <p className="break-all text-xs">
-                        Thread {binding.threadId} · run {binding.runId} · attempt{" "}
-                        {binding.runAttemptId} · model {binding.spec.modelSelection.model} · harness{" "}
-                        {binding.driver} · provider instance{" "}
-                        {binding.spec.modelSelection.instanceId} · environment {ref.environmentId}.
+                        {gt(
+                          "Thread {threadId} · run {runId} · attempt {attempt} · model {model} · harness {driver} · provider instance {instanceId} · environment {environmentId}.",
+                          {
+                            threadId: binding.threadId,
+                            runId: binding.runId,
+                            attempt: binding.runAttemptId,
+                            model: binding.spec.modelSelection.model,
+                            driver: binding.driver,
+                            instanceId: binding.spec.modelSelection.instanceId,
+                            environmentId: ref.environmentId,
+                          },
+                        )}
                       </p>
                     ) : null}
                     {grant &&
@@ -388,7 +438,7 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
                           })
                         }
                       >
-                        Start task
+                        <T>Start task</T>
                       </Button>
                     ) : null}
                     {binding && !binding.stopRequested && !binding.quiescent ? (
@@ -408,7 +458,7 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
                           })
                         }
                       >
-                        Stop active attempt
+                        <T>Stop active attempt</T>
                       </Button>
                     ) : null}
                     {state?.selectedResult ? (
@@ -419,7 +469,7 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
                           setOpenResult({ selection, resultId: state.selectedResult!.resultId })
                         }
                       >
-                        Review retained result
+                        <T>Review retained result</T>
                       </Button>
                     ) : null}
                     {state ? (
@@ -471,15 +521,21 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
           ) : null}
           {data.assembly ? (
             <div className="space-y-2">
-              <h5 className="font-medium">Preparation assembly</h5>
+              <h5 className="font-medium">
+                <T>Preparation assembly</T>
+              </h5>
               <p className="break-all text-sm">
-                Digest {data.assembly.digest} ·{" "}
                 {data.assembly.complete
-                  ? "complete"
-                  : `held; missing ${data.assembly.missingTaskIds.join(", ")}`}
+                  ? gt("Digest {digest} · complete", { digest: data.assembly.digest })
+                  : gt("Digest {digest} · held; missing {missing}", {
+                      digest: data.assembly.digest,
+                      missing: data.assembly.missingTaskIds.join(", "),
+                    })}
               </p>
               <details>
-                <summary>Exact assembly manifest</summary>
+                <summary>
+                  <T>Exact assembly manifest</T>
+                </summary>
                 <pre className="overflow-auto whitespace-pre-wrap break-all text-xs">
                   {JSON.stringify(data.assembly, null, 2)}
                 </pre>
@@ -493,40 +549,57 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
                     setOpenResult({ selection: output.selection, resultId: output.resultId })
                   }
                 >
-                  Review {output.slot} · {output.digest}
+                  {gt("Review {slot} · {digest}", { slot: output.slot, digest: output.digest })}
                 </Button>
               ))}
             </div>
           ) : null}
           {data.acceptance ? (
             <p className="text-sm">
-              Preparation accepted {data.acceptance.acceptedAt} · {data.acceptance.digest} ·
-              delivery {data.acceptance.delivery}
-              {data.reopened ? " · reopened idle" : ""}
+              {data.reopened
+                ? gt(
+                    "Preparation accepted {acceptedAt} · {digest} · delivery {delivery} · reopened idle",
+                    {
+                      acceptedAt: data.acceptance.acceptedAt,
+                      digest: data.acceptance.digest,
+                      delivery: data.acceptance.delivery,
+                    },
+                  )
+                : gt("Preparation accepted {acceptedAt} · {digest} · delivery {delivery}", {
+                    acceptedAt: data.acceptance.acceptedAt,
+                    digest: data.acceptance.digest,
+                    delivery: data.acceptance.delivery,
+                  })}
             </p>
           ) : null}
           {acceptanceDigest && !data.acceptance ? (
             <div className="space-y-2">
               <p className="text-sm">
-                Review each retained output before accepting the exact preparation. Acceptance does
-                not authorize external actions.
+                <T>
+                  Review each retained output before accepting the exact preparation. Acceptance
+                  does not authorize external actions.
+                </T>
               </p>
               <div className="text-sm">
-                Delivery status
+                <T>Delivery status</T>
                 <Select
                   value={delivery}
                   onValueChange={(value) =>
                     setDelivery(value === "outstanding" ? "outstanding" : "not-requested")
                   }
                 >
-                  <SelectTrigger aria-label="Delivery status">
+                  <SelectTrigger aria-label={gt("Delivery status")}>
                     <SelectValue>
-                      {delivery === "outstanding" ? "Outstanding" : "Not requested"}
+                      {delivery === "outstanding" ? <T>Outstanding</T> : <T>Not requested</T>}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectPopup>
-                    <SelectItem value="not-requested">Not requested</SelectItem>
-                    <SelectItem value="outstanding">Outstanding</SelectItem>
+                    <SelectItem value="not-requested">
+                      <T>Not requested</T>
+                    </SelectItem>
+                    <SelectItem value="outstanding">
+                      <T>Outstanding</T>
+                    </SelectItem>
                   </SelectPopup>
                 </Select>
               </div>
@@ -546,7 +619,7 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
                   })
                 }
               >
-                Accept exact preparation
+                <T>Accept exact preparation</T>
               </Button>
             </div>
           ) : null}
@@ -566,22 +639,30 @@ export function FactoryExecutionPanel({ plan }: { readonly plan: FactoryPlanSnap
                 })
               }
             >
-              Reopen idle
+              <T>Reopen idle</T>
             </Button>
           ) : null}
           {history.error === null && history.data?.items.length ? (
             <details>
-              <summary>Preparation history</summary>
+              <summary>
+                <T>Preparation history</T>
+              </summary>
               {history.data.items.map((item) => (
                 <p key={item.commandId} className="break-all text-xs">
-                  {item.acceptedAt} · {item.digest} · delivery {item.delivery}
+                  {gt("{acceptedAt} · {digest} · delivery {delivery}", {
+                    acceptedAt: item.acceptedAt,
+                    digest: item.digest,
+                    delivery: item.delivery,
+                  })}
                 </p>
               ))}
             </details>
           ) : null}
         </>
       ) : !query.error ? (
-        <p role="status">Loading execution…</p>
+        <p role="status">
+          <T>Loading execution…</T>
+        </p>
       ) : null}
     </section>
   );
@@ -593,6 +674,7 @@ function TaskOutputs(props: {
   readonly onOpen: (resultId: string) => void;
   readonly onRetry: ((resultId: string | null) => void) | null;
 }) {
+  const gt = useGT();
   const [open, setOpen] = useState(false);
   const [beforeResultId, setBeforeResultId] = useState<string | undefined>();
   const [seenAttempt, setSeenAttempt] = useState(false);
@@ -613,11 +695,13 @@ function TaskOutputs(props: {
   return (
     <div className="space-y-1">
       <Button size="xs" variant="outline" onClick={() => setOpen(!open)}>
-        {open
-          ? "Hide result history"
-          : props.onRetry
-            ? "Results and explicit retry"
-            : "Result history"}
+        {open ? (
+          <T>Hide result history</T>
+        ) : props.onRetry ? (
+          <T>Results and explicit retry</T>
+        ) : (
+          <T>Result history</T>
+        )}
       </Button>
       {open && query.error ? <p role="alert">{query.error}</p> : null}
       {open && query.error === null && query.data ? (
@@ -625,15 +709,19 @@ function TaskOutputs(props: {
           <ul>
             {query.data.items.map((output) => (
               <li key={output.resultId} className="space-x-1 text-xs">
-                {output.slot} · {output.status} · {output.digest}
+                {gt("{slot} · {status} · {digest}", {
+                  slot: output.slot,
+                  status: output.status,
+                  digest: output.digest,
+                })}
                 <Button size="xs" variant="outline" onClick={() => props.onOpen(output.resultId)}>
-                  Read
+                  <T>Read</T>
                 </Button>
                 {props.onRetry &&
                 output.status === "failed" &&
                 output.runAttemptId === props.activeRunAttemptId ? (
                   <Button size="xs" onClick={() => props.onRetry?.(output.resultId)}>
-                    Explicitly retry this attempt
+                    <T>Explicitly retry this attempt</T>
                   </Button>
                 ) : null}
               </li>
@@ -649,7 +737,7 @@ function TaskOutputs(props: {
             ),
           }) ? (
             <Button size="xs" onClick={() => props.onRetry?.(null)}>
-              Explicitly retry failed attempt without a result
+              <T>Explicitly retry failed attempt without a result</T>
             </Button>
           ) : null}
           <div className="space-x-1">
@@ -662,7 +750,7 @@ function TaskOutputs(props: {
                   setBeforeResultId(undefined);
                 }}
               >
-                First page
+                <T>First page</T>
               </Button>
             ) : null}
             {query.data.nextBeforeResultId ? (
@@ -680,7 +768,7 @@ function TaskOutputs(props: {
                   setBeforeResultId(query.data?.nextBeforeResultId ?? undefined);
                 }}
               >
-                More results
+                <T>More results</T>
               </Button>
             ) : null}
             <Button
@@ -692,7 +780,7 @@ function TaskOutputs(props: {
                 query.refresh();
               }}
             >
-              Refresh results
+              <T>Refresh results</T>
             </Button>
           </div>
         </>
@@ -714,36 +802,54 @@ function ResultReader(props: {
     }),
   );
   const data = query.error === null ? query.data : null;
+  const gt = useGT();
   return (
-    <section className="space-y-2 rounded border p-3" aria-label="Retained result">
+    <section className="space-y-2 rounded border p-3" aria-label={gt("Retained result")}>
       <Button size="sm" variant="outline" onClick={props.onClose}>
-        Back to execution
+        <T>Back to execution</T>
       </Button>
       {query.error ? (
         <p role="alert">{query.error}</p>
       ) : data ? (
         <>
           <p className="break-all text-xs">
-            {data.output.kind} · {data.output.status} · digest {data.output.digest} · run{" "}
-            {data.binding.runId} · attempt {data.binding.runAttemptId} · model{" "}
-            {data.binding.spec.modelSelection.model} · harness {data.binding.driver} · provider
-            instance {data.binding.spec.modelSelection.instanceId} · environment{" "}
-            {data.binding.selection.ref.environmentId}.
+            {gt(
+              "{kind} · {status} · digest {digest} · run {runId} · attempt {attempt} · model {model} · harness {driver} · provider instance {instanceId} · environment {environmentId}.",
+              {
+                kind: data.output.kind,
+                status: data.output.status,
+                digest: data.output.digest,
+                runId: data.binding.runId,
+                attempt: data.binding.runAttemptId,
+                model: data.binding.spec.modelSelection.model,
+                driver: data.binding.driver,
+                instanceId: data.binding.spec.modelSelection.instanceId,
+                environmentId: data.binding.selection.ref.environmentId,
+              },
+            )}
           </p>
           {data.output.checkpoint ? (
             <p className="break-all text-xs">
-              Commit {data.output.checkpoint.commit} · tree {data.output.checkpoint.tree} ·
-              verification {data.output.checkpoint.verificationDigest} · retained ref{" "}
-              {data.output.checkpoint.retainedRef}
+              {gt(
+                "Commit {commit} · tree {tree} · verification {verification} · retained ref {retainedRef}",
+                {
+                  commit: data.output.checkpoint.commit,
+                  tree: data.output.checkpoint.tree,
+                  verification: data.output.checkpoint.verificationDigest,
+                  retainedRef: data.output.checkpoint.retainedRef,
+                },
+              )}
             </p>
           ) : null}
           <pre className="whitespace-pre-wrap break-words">{data.text}</pre>
           <Button size="sm" onClick={props.onReviewed}>
-            Mark this exact result reviewed
+            <T>Mark this exact result reviewed</T>
           </Button>
         </>
       ) : (
-        <p>Loading retained result…</p>
+        <p>
+          <T>Loading retained result…</T>
+        </p>
       )}
     </section>
   );

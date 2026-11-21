@@ -5,8 +5,10 @@ import {
 } from "@t3tools/client-runtime/state/factory-task-list";
 import { selectProjectGroupingSettings } from "@t3tools/client-runtime/state/project-grouping";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { msg, useMessages } from "gt-react";
 import { useEffect } from "react";
 
+import { m, type MessageResolver } from "../../../i18n/messages";
 import { getClientSettings, useClientSettings } from "../../../hooks/useSettings";
 import { useSidebarProjectGroups } from "../../../hooks/useSidebarProjectGroups";
 import { appAtomRegistry } from "../../../rpc/atomRegistry";
@@ -28,6 +30,7 @@ export function resolveTaskScope(
   input: Parameters<typeof resolveSidebarProjectScopeKeys>[0] & {
     readonly environmentIds: readonly EnvironmentId[];
   },
+  resolve: MessageResolver = m,
 ) {
   const keys = resolveSidebarProjectScopeKeys(input);
   const selected = input.groups.filter((group) => keys.includes(group.projectKey));
@@ -51,8 +54,9 @@ export function resolveTaskScope(
     single: keys.length > 0 && unique.size === 1 ? [...unique.values()][0]! : null,
     label:
       keys.length === 0
-        ? "All projects"
-        : projects.map((project) => project.displayName).join(", ") || "Selected projects",
+        ? resolve(msg("All projects"))
+        : projects.map((project) => project.displayName).join(", ") ||
+          resolve(msg("Selected projects")),
   };
 }
 
@@ -61,15 +65,19 @@ export function useTaskScope() {
   const keys = useUiStateStore((state) => state.sidebarProjectScopeKeys);
   const settings = useClientSettings(selectProjectGroupingSettings);
   const environments = useEnvironmentIdentities();
-  const snapshotsReady = useAllEnvironmentProjectSnapshotsReady();
+  const resolve = useMessages();
   const configsReady = useAtomValue(environmentProjects.projectConfigsReadyAtom);
-  return resolveTaskScope({
-    groups,
-    keys,
-    settings,
-    environmentIds: environments.map((environment) => environment.environmentId),
-    canClearMissingScope: snapshotsReady && configsReady,
-  });
+  const snapshotsReady = useAllEnvironmentProjectSnapshotsReady();
+  return resolveTaskScope(
+    {
+      groups,
+      keys,
+      settings,
+      environmentIds: environments.map((environment) => environment.environmentId),
+      canClearMissingScope: snapshotsReady && configsReady,
+    },
+    resolve,
+  );
 }
 
 export function readTaskScope() {

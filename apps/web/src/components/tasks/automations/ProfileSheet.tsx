@@ -11,7 +11,9 @@ import {
   ProviderInstanceId,
   type RuntimeMode,
 } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { ArrowRightIcon, HistoryIcon } from "lucide-react";
+import { m } from "../../../i18n/messages";
 import { useState } from "react";
 
 import { randomUUID } from "../../../lib/utils";
@@ -21,7 +23,7 @@ import { runtimeModeConfig, runtimeModeOptions } from "../../chat/runtimeModeCon
 import { Checkbox } from "../../ui/checkbox";
 import { Input } from "../../ui/input";
 import { TASK_TYPE_LABELS } from "../kit";
-import { plural, readRefusal, refusalText, TASK_TYPES } from "./automationText";
+import { readRefusal, refusalText, TASK_TYPES } from "./automationText";
 import { useProfileDefaultMode, useProfileHarnesses } from "./profileModels";
 import {
   AutomationSheet,
@@ -60,6 +62,7 @@ const WORKSPACES: readonly { value: FactoryTaskWorkspace; label: string }[] = [
 
 /** `12 tasks this week`, opening the task list of that profile. */
 export function ProfileTasksLink({ profileId, count }: { profileId: string; count: number }) {
+  const gt = useGT();
   return (
     <Link
       to="/tasks"
@@ -67,7 +70,7 @@ export function ProfileTasksLink({ profileId, count }: { profileId: string; coun
       className="inline-flex items-center gap-1.5 text-foreground text-xs hover:underline"
     >
       <HistoryIcon aria-hidden className="size-3.5 text-muted-foreground" />
-      {plural(count, "task")} this week
+      {gt("{count, plural, one {{count} task} other {{count} tasks}} this week", { count })}
       <ArrowRightIcon aria-hidden className="size-3.5" />
     </Link>
   );
@@ -90,6 +93,8 @@ export function ProfileSheet({
   close: () => void;
 }) {
   const defaultMode = useProfileDefaultMode(environmentId);
+  const gt = useGT();
+  const messages = useMessages();
   const draft = useVersionedDraft(profile, profileFields, {
     name: "",
     instanceId: "",
@@ -178,31 +183,40 @@ export function ProfileSheet({
     }
     const refusal = readRefusal(result);
     if (refusal.reason === "version-conflict") draft.conflict(refusal.currentVersion);
-    else setError(refusalText(refusal.reason, "profile"));
+    else setError(refusalText(refusal.reason, "profile", m));
   }
 
   return (
     <AutomationSheet
-      title={draft.item ? draft.item.name : "New profile"}
-      description="Agent profile"
+      title={draft.item ? draft.item.name : msg("New profile")}
+      description={msg("Agent profile")}
       onClose={close}
       footer={
         <>
           {draft.item ? (
             <DeleteAction
-              label="Delete profile"
-              title={`Delete ${draft.item.name}?`}
+              label={msg("Delete profile")}
+              title={msg("Delete {name}?", { name: draft.item.name })}
               consequence={
                 naming.length === 0
-                  ? `Tasks assigned to ${draft.item.name} will show as unassigned.`
-                  : `Tasks assigned to ${draft.item.name} will show as unassigned, as will ${naming.map((item) => ("match" in item ? `the rule ${item.name}` : `the source ${item.label}`)).join(", ")}.`
+                  ? msg("Tasks assigned to {name} will show as unassigned.", {
+                      name: draft.item.name,
+                    })
+                  : msg("Tasks assigned to {name} will show as unassigned, as will {items}.", {
+                      name: draft.item.name,
+                      items: naming
+                        .map((item) =>
+                          "match" in item ? `the rule ${item.name}` : `the source ${item.label}`,
+                        )
+                        .join(", "),
+                    })
               }
               disabled={!remove.permission || pending}
               onConfirm={() => void run(remove)}
             />
           ) : null}
           <SheetActions
-            saveLabel="Save"
+            saveLabel={msg("Save")}
             canSave={
               save.permission &&
               !pending &&
@@ -217,21 +231,26 @@ export function ProfileSheet({
         </>
       }
     >
-      <Field label="Name" htmlFor="profile-name">
+      <Field
+        label={msg("Name", { $context: "noun, the profile name field" })}
+        htmlFor="profile-name"
+      >
         <Input
           id="profile-name"
           value={values.name}
           maxLength={64}
-          placeholder="Implementer"
+          placeholder={gt("Implementer")}
           onChange={(event) => draft.set("name", event.target.value)}
         />
       </Field>
       {harnesses.length === 0 && instanceId === "" ? (
-        <p className="text-muted-foreground">Set up a harness in Settings to pick its model.</p>
+        <p className="text-muted-foreground">
+          <T>Set up a harness in Settings to pick its model.</T>
+        </p>
       ) : (
         <>
           <SelectField
-            label="Harness"
+            label={msg("Harness")}
             value={instanceId}
             items={[
               ...harnesses.map((candidate) => ({
@@ -247,7 +266,7 @@ export function ProfileSheet({
             }}
           />
           <SelectField
-            label="Model"
+            label={msg("Model", { $context: "noun, the model picker" })}
             value={model}
             items={[
               ...(harness?.models ?? []).map((candidate) => ({
@@ -267,7 +286,7 @@ export function ProfileSheet({
       )}
       {effort && effortValue !== null ? (
         <SelectField
-          label="Effort"
+          label={msg("Effort")}
           value={effortValue}
           items={effort.options.map((option) => ({ value: option.id, label: option.label }))}
           onChange={(value) =>
@@ -279,7 +298,7 @@ export function ProfileSheet({
         />
       ) : null}
       <SelectField
-        label="Mode"
+        label={msg("Mode", { $context: "runtime mode" })}
         value={values.runtimeMode}
         items={(modes.includes(values.runtimeMode) ? modes : [...modes, values.runtimeMode]).map(
           (mode) => ({ value: mode, label: runtimeModeConfig[mode].label }),
@@ -288,12 +307,12 @@ export function ProfileSheet({
         onChange={(value) => draft.set("runtimeMode", value)}
       />
       <SelectField
-        label="Workspace"
+        label={msg("Workspace")}
         value={values.workspace}
         items={WORKSPACES}
         onChange={(value) => draft.set("workspace", value)}
       />
-      <Field label="Used for" hint="Auto hands tasks of these types to this profile.">
+      <Field label={msg("Used for")} hint={msg("Auto hands tasks of these types to this profile.")}>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
           {TASK_TYPES.map((type) => (
             <label key={type} className="flex items-center gap-2">
@@ -308,14 +327,20 @@ export function ProfileSheet({
                   )
                 }
               />
-              {TASK_TYPE_LABELS[type]}
+              {messages(TASK_TYPE_LABELS[type])}
             </label>
           ))}
         </div>
       </Field>
       {draft.item ? (
         <p className="flex items-center gap-1 text-muted-foreground text-xs">
-          {usedByRules > 0 ? <span>Used by {plural(usedByRules, "rule")} ·</span> : null}
+          {usedByRules > 0 ? (
+            <span>
+              {gt("Used by {count, plural, one {{count} rule} other {{count} rules}} ·", {
+                count: usedByRules,
+              })}
+            </span>
+          ) : null}
           <ProfileTasksLink profileId={draft.item.id} count={tasksThisWeek} />
         </p>
       ) : null}
@@ -323,9 +348,11 @@ export function ProfileSheet({
         error={error}
         changed={
           draft.reloading
-            ? "This profile changed on another device. Loading the latest version…"
+            ? msg("This profile changed on another device. Loading the latest version…")
             : draft.reloaded
-              ? "This profile changed on another device. It now shows that version, with your edits kept where you changed a different field."
+              ? msg(
+                  "This profile changed on another device. It now shows that version, with your edits kept where you changed a different field.",
+                )
               : null
         }
       />

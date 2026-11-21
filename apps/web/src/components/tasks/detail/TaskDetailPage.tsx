@@ -24,6 +24,7 @@ import * as Option from "effect/Option";
 import type { AsyncResult } from "effect/reactivity";
 import * as Schema from "effect/Schema";
 import type { ReactNode } from "react";
+import { useGT } from "gt-react";
 
 import { useFactoryTaskDetailByDisplayId } from "../../../state/factoryTasks";
 import { useEnvironmentPresentation } from "../../../state/presentation";
@@ -133,34 +134,45 @@ function TaskDetailLoader({
 function TaskDetailState({ displayId, state }: { displayId: string; state: LoadState }) {
   const router = useRouter();
   const canGoBack = useCanGoBack();
+  const gt = useGT();
   const back = () => (canGoBack ? router.history.back() : void router.navigate({ to: "/tasks" }));
   let message: ReactNode;
   switch (state.kind) {
     case "loading":
-      message = <p role="status">Loading {displayId}…</p>;
+      message = <p role="status">{gt("Loading {displayId}…", { displayId })}</p>;
       break;
     case "offline":
       message = (
         <p role="status">
-          {state.machine} is offline. {displayId} shows when it reconnects.
+          {gt("{machine} is offline. {displayId} shows when it reconnects.", {
+            machine: state.machine,
+            displayId,
+          })}
         </p>
       );
       break;
     case "missing":
-      message = <p role="alert">There is no task {displayId} on this machine.</p>;
+      message = (
+        <p role="alert">{gt("There is no task {displayId} on this machine.", { displayId })}</p>
+      );
       break;
     case "forbidden":
-      message = <p role="alert">You don't have access to tasks on this machine.</p>;
+      message = <p role="alert">{gt("You don't have access to tasks on this machine.")}</p>;
       break;
     case "unsupported":
       message = (
-        <p role="alert">{state.detail ?? "Update this machine's T3 Code server to use tasks."}</p>
+        <p role="alert">
+          {state.detail ??
+            gt("Update this machine's {product} server to use tasks.", { product: "T3 Code" })}
+        </p>
       );
       break;
     case "failed":
       message = (
         <p role="alert" className="text-destructive-foreground">
-          Couldn't load {displayId}. Check the machine's connection and reload.
+          {gt("Couldn't load {displayId}. Check the machine's connection and reload.", {
+            displayId,
+          })}
         </p>
       );
       break;
@@ -170,7 +182,13 @@ function TaskDetailState({ displayId, state }: { displayId: string; state: LoadS
       header={
         <PageHeader
           onBack={back}
-          breadcrumb={[{ label: "Tasks", render: <Link to="/tasks" /> }, { label: displayId }]}
+          breadcrumb={[
+            {
+              label: gt("Tasks", { $context: "the Tasks page breadcrumb" }),
+              render: <Link to="/tasks" />,
+            },
+            { label: displayId },
+          ]}
         />
       }
     >

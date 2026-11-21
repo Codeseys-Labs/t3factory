@@ -321,6 +321,30 @@ describe("LinearIssueTracker", () => {
     }),
   );
 
+  it.effect("returns the id Linear assigned a new comment", () =>
+    Effect.gen(function* () {
+      const { tracker } = fakeLinear({
+        T3Issue: (variables) => ({ issue: bareDetail(String(variables.id)) }),
+        T3CommentCreate: () => ({
+          commentCreate: {
+            success: true,
+            comment: {
+              id: "cmt_2",
+              body: "Posted",
+              createdAt: "2026-07-04T00:00:00.000Z",
+              url: "https://linear.app/acme/issue/ENG-1#comment-cmt_2",
+              user: JULIUS,
+              botActor: null,
+              reactions: [],
+            },
+          },
+        }),
+      });
+      const comment = yield* (yield* tracker).comment({ ...target, key: "ENG-1", body: "Posted" });
+      expect(comment.id).toBe("cmt_2");
+    }),
+  );
+
   it.effect("reacts to a comment only when it belongs to the issue named", () =>
     Effect.gen(function* () {
       const created: Array<unknown> = [];

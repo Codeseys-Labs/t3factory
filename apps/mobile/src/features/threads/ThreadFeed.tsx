@@ -1,5 +1,5 @@
 import { CollapsibleUserMessageBody } from "./CollapsibleUserMessageBody";
-import { msg, T, useGT, useLocale, useMessages } from "gt-react-native";
+import { msg, T, useGT, useLocale, useMessages, Var } from "gt-react-native";
 import { m } from "../../i18n/messages";
 import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
 import { toServerClock } from "@t3tools/client-runtime/clock";
@@ -2400,7 +2400,9 @@ function renderFeedEntry(
         >
           {presentation.attribution === "t3code" ? (
             <Text className="mb-1 pr-1 font-t3-medium text-2xs text-foreground-muted opacity-60">
-              Sent by T3 Code Factory
+              <T>
+                Sent by <Var>T3 Code Factory</Var>
+              </T>
             </Text>
           ) : null}
           {presentation.guestName !== undefined ? (

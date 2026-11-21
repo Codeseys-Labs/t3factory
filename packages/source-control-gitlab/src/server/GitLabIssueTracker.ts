@@ -20,6 +20,7 @@ import {
 
 import * as GitLabCli from "./GitLabCli.ts";
 import {
+  decodeCreatedCommentJson,
   decodeCreatedIssueJson,
   decodeUserIdsJson,
   decodeIssueDetailListJson,
@@ -659,13 +660,14 @@ export const make: Effect.Effect<IssueTrackerApi, never, GitLabCli.GitLabCli> = 
       comment: (input) =>
         issuePath(input, "comment").pipe(
           Effect.flatMap(({ path }) =>
-            write({
+            read({
               cwd: input.cwd,
               host: input.host,
               operation: "comment",
               path: `${path}/notes`,
               method: "POST",
               body: { body: input.body },
+              decode: decodeCreatedCommentJson,
             }),
           ),
         ),

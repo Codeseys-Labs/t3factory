@@ -512,12 +512,18 @@ export const make: Effect.Effect<IssueTrackerApi, never, ForgejoCli.ForgejoCli> 
       comment: (input) =>
         issueTarget("comment", input).pipe(
           Effect.flatMap(({ path }) =>
-            write(input, "comment", {
-              path: `${path}/comments`,
-              method: "POST",
-              body: { body: input.body },
-            }),
+            read(
+              input,
+              "comment",
+              {
+                path: `${path}/comments`,
+                method: "POST",
+                body: { body: input.body },
+              },
+              ForgejoComment,
+            ),
           ),
+          Effect.map(forgejoIssueComment),
         ),
 
       update: (input) =>

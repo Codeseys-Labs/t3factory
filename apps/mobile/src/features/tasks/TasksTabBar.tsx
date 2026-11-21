@@ -1,3 +1,4 @@
+import { msg, useGT, useMessages } from "gt-react-native";
 import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -12,9 +13,9 @@ const TABS: readonly {
   readonly label: string;
   readonly icon: AppSymbolName;
 }[] = [
-  { id: "tasks", label: "Tasks", icon: "square.grid.2x2" },
-  { id: "inbox", label: "Inbox", icon: { ios: "tray", android: "folder_open" } },
-  { id: "threads", label: "Threads", icon: "text.bubble" },
+  { id: "tasks", label: msg("Tasks"), icon: "square.grid.2x2" },
+  { id: "inbox", label: msg("Inbox"), icon: { ios: "tray", android: "folder_open" } },
+  { id: "threads", label: msg("Threads"), icon: "text.bubble" },
 ];
 
 /** Tasks, Inbox and Threads. The Inbox count stays amber while tasks need you. */
@@ -24,6 +25,8 @@ export function TasksTabBar(props: {
   readonly needsIncomplete: boolean;
   readonly onSelect: (tab: TasksTab) => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const insets = useSafeAreaInsets();
   return (
     <View
@@ -36,6 +39,7 @@ export function TasksTabBar(props: {
         const count = tab.id === "inbox" ? props.needsCount : 0;
         const incomplete = tab.id === "inbox" && props.needsIncomplete;
         const countLabel = `${count}${incomplete ? "+" : ""}`;
+        const label = m(tab.label);
         return (
           <Pressable
             key={tab.id}
@@ -43,8 +47,10 @@ export function TasksTabBar(props: {
             accessibilityState={{ selected }}
             accessibilityLabel={
               count > 0 || incomplete
-                ? `${tab.label}, ${incomplete ? "at least " : ""}${count} need you`
-                : tab.label
+                ? incomplete
+                  ? gt("{label}, at least {count} need you", { label, count: String(count) })
+                  : gt("{label}, {count} need you", { label, count: String(count) })
+                : label
             }
             onPress={() => props.onSelect(tab.id)}
             className="min-h-14 flex-1 items-center justify-center gap-1 py-2 active:opacity-70"
@@ -67,7 +73,7 @@ export function TasksTabBar(props: {
               textRole="caption"
               className={cn(selected ? "font-t3-medium" : "text-foreground-muted")}
             >
-              {tab.label}
+              {label}
             </Text>
           </Pressable>
         );

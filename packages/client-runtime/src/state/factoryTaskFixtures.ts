@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Test fixture data: sampled task titles, labels, and pills that only tests read. */
 import {
   EnvironmentId,
   ProjectId,

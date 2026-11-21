@@ -19,6 +19,9 @@ import { FactoryResearchLaunchIntent } from "../persistence/FactoryResearchStore
 import {
   feedItemOriginKey,
   issueOriginKey,
+  issueKeyOf,
+  issueScopeKey,
+  issueTrackerOf,
   knowledgeBriefOriginKey,
   researchRunOriginKey,
 } from "./FactoryOriginKey.ts";
@@ -60,6 +63,10 @@ const decodeRows = Schema.decodeUnknownEffect(
   ),
 );
 const isClaimOrigin = Schema.is(FactoryClaim.fields.origin);
+// The origins a client that sends no `issueKeys` decodes; one more fails its whole list.
+const isLegacyClaimOrigin = Schema.is(
+  Schema.Literals(["github-issue", "gitlab-issue", "feed-item", "research-run", "knowledge-brief"]),
+);
 
 export class FactoryClaimsService extends Context.Service<
   FactoryClaimsService,
@@ -121,9 +128,11 @@ const make = Effect.gen(function* () {
         FactoryIssueError
       > {
         const { intent } = row;
+        if (row.origin === "issue" && row.intent.issue.number === null && input.issueKeys !== true)
+          return null;
         // An issue claim's origin is the provider frozen into its intent at admission.
         const origin =
-          row.origin === "issue" ? `${row.intent.repository.provider}-issue` : row.origin;
+          row.origin === "issue" ? `${issueTrackerOf(row.intent.repository)}-issue` : row.origin;
         if (!isClaimOrigin(origin)) {
           // A host the contract has no origin for is left out rather than mislabelled, and one
           // such row does not fail the list.
@@ -133,13 +142,14 @@ const make = Effect.gen(function* () {
           });
           return null;
         }
+        if (input.issueKeys !== true && !isLegacyClaimOrigin(origin)) return null;
         const originKey =
           row.originKey ??
           (row.origin === "issue"
             ? issueOriginKey(
-                row.intent.repository.provider,
-                row.intent.repository.canonicalKey,
-                row.intent.issue.number,
+                issueTrackerOf(row.intent.repository),
+                issueScopeKey(row.intent.repository),
+                issueKeyOf(row.intent.issue),
               )
             : row.origin === "feed-item"
               ? feedItemOriginKey(

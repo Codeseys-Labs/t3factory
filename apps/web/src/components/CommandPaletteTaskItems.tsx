@@ -6,6 +6,7 @@ import type { FactoryTaskSummary, ScopedProjectRef } from "@t3tools/contracts";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useNavigate } from "@tanstack/react-router";
 import { InboxIcon, PanelsTopLeftIcon, SquarePenIcon, ZapIcon } from "lucide-react";
+import { useGT } from "gt-react";
 
 import { useFactoryTasks } from "../state/factoryTasks";
 import { type CommandPaletteActionItem, ITEM_ICON_CLASS } from "./CommandPalette.logic";
@@ -30,11 +31,14 @@ function TaskAssigneeLabel({ task }: { task: FactoryTaskSummary }) {
   );
 }
 
-function newTaskPaletteAction(single: ScopedProjectRef | null): CommandPaletteActionItem {
+function newTaskPaletteAction(
+  single: ScopedProjectRef | null,
+  gt: ReturnType<typeof useGT>,
+): CommandPaletteActionItem {
   return {
     kind: "action",
     value: "action:new-task",
-    title: "New task",
+    title: gt("New task"),
     searchTerms: ["new task", "create", "capture"],
     icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
     shortcutCommand: "tasks.new",
@@ -47,6 +51,7 @@ function newTaskPaletteAction(single: ScopedProjectRef | null): CommandPaletteAc
 export function useCommandPaletteTaskItems(query: string, enabled: boolean) {
   const scope = useTaskScope();
   const navigate = useNavigate();
+  const gt = useGT();
   const [text] = useDebouncedValue(query.trim().slice(0, 256), { wait: 200 });
   const list = useFactoryTasks(
     enabled && !text.startsWith(">")
@@ -70,11 +75,11 @@ export function useCommandPaletteTaskItems(query: string, enabled: boolean) {
       });
     },
   }));
-  const taskActions = [newTaskPaletteAction(scope.single)];
+  const taskActions = [newTaskPaletteAction(scope.single, gt)];
   for (const { to, title, Icon } of [
-    { to: "/tasks", title: "Go to Tasks", Icon: PanelsTopLeftIcon },
-    { to: "/inbox", title: "Go to Inbox", Icon: InboxIcon },
-    { to: "/automations", title: "Go to Automations", Icon: ZapIcon },
+    { to: "/tasks", title: gt("Go to Tasks"), Icon: PanelsTopLeftIcon },
+    { to: "/inbox", title: gt("Go to Inbox"), Icon: InboxIcon },
+    { to: "/automations", title: gt("Go to Automations"), Icon: ZapIcon },
   ] as const)
     taskActions.push({
       kind: "action",

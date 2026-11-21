@@ -1,4 +1,5 @@
 import { factoryIssueReviewText } from "@t3tools/client-runtime/state/factory";
+import { T, Var } from "gt-react";
 import { useId } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
@@ -27,8 +28,11 @@ export function FactoryReviewSnapshot(props: {
         {props.heading}
       </h3>
       <p id={`${reviewId}-description`} className="text-muted-foreground text-xs">
-        {props.intro} Backslashes are escaped; control and formatting characters are shown as{" "}
-        <code>{"\\uXXXX"}</code>. Tabs and newlines remain literal. No source text is omitted.
+        <T>
+          <Var>{props.intro}</Var> Backslashes are escaped; control and formatting characters are
+          shown as <code>{"\\uXXXX"}</code>. Tabs and newlines remain literal. No source text is
+          omitted.
+        </T>
       </p>
       <div
         role="region"

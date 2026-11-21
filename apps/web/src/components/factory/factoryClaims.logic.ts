@@ -3,10 +3,16 @@ import {
   type EnvironmentId,
   type FactoryClaim,
   type FactoryClaimListResult,
+  type FactoryIssue,
   type FactoryIssueTask,
+  type FactoryRepository,
+  type IssueTrackerKind,
   type ProjectId,
   type SourceControlProviderKind,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 
 /**
  * Origin keys are compared across environments, so this is the server's encoding byte for byte
@@ -21,14 +27,29 @@ function escapeOriginComponent(value: string): string {
   );
 }
 
-/** The provider kind is the namespace, so `github:` keys match rows written before other forges. */
+/** The tracker kind is the namespace, so `github:` keys match rows written before other forges. */
 export function originKeyForIssue(
-  provider: SourceControlProviderKind,
-  repositoryKey: string,
-  issueNumber: number,
+  tracker: SourceControlProviderKind | IssueTrackerKind,
+  scopeKey: string,
+  key: string | number,
 ): FactoryOriginKey {
   return FactoryOriginKey.make(
-    `${provider}:${escapeOriginComponent(repositoryKey)}#${issueNumber}`,
+    `${tracker}:${escapeOriginComponent(scopeKey)}#${escapeOriginComponent(String(key))}`,
+  );
+}
+
+/**
+ * The origin key of a listed issue: a standalone tracker names its own scope, a git host the
+ * repository. Older servers send no `key`, and their issues are always numbered.
+ */
+export function originKeyForFactoryIssue(
+  repository: Pick<FactoryRepository, "provider" | "canonicalKey" | "issueScope">,
+  issue: Pick<FactoryIssue, "number" | "key">,
+): FactoryOriginKey {
+  return originKeyForIssue(
+    repository.issueScope?.tracker ?? repository.provider,
+    repository.issueScope?.canonicalKey ?? repository.canonicalKey,
+    issue.key ?? String(issue.number),
   );
 }
 
@@ -109,14 +130,21 @@ export function claimProvenance(
   return claim.admittedBy === answeringEnvironmentId ? "this-environment" : "another-environment";
 }
 
-export function describeClaimProvenance(provenance: FactoryClaimProvenance): string {
+export function describeClaimProvenance(
+  provenance: FactoryClaimProvenance,
+  resolve: MessageResolver = m,
+): string {
   switch (provenance) {
     case "this-environment":
-      return "Admitted by this environment.";
+      return resolve(msg("Admitted by this environment."));
     case "another-environment":
-      return "Admitted by another environment. This database was copied or restored; this environment answers for the claim now.";
+      return resolve(
+        msg(
+          "Admitted by another environment. This database was copied or restored; this environment answers for the claim now.",
+        ),
+      );
     case "unknown":
-      return "Provenance unknown. The claim was recorded before provenance tracking.";
+      return resolve(msg("Provenance unknown. The claim was recorded before provenance tracking."));
   }
 }
 
@@ -165,17 +193,30 @@ export interface FactoryClaimConflictPresentation {
 export function describeClaimConflict(
   conflict: FactoryClaimConflict,
   labelOf: EnvironmentLabel,
+  resolve: MessageResolver = m,
 ): FactoryClaimConflictPresentation {
   const labels = conflict.environments.map(labelOf).join(", ");
-  const badge = `Claimed in ${conflict.environments.length} environments`;
+  const badge = resolve(
+    msg("Claimed in {count} environments", { count: conflict.environments.length }),
+  );
   return conflict.kind === "copied-database"
     ? {
         badge,
-        detail: `${labels} hold the same thread, which looks like a copied database. Nothing merges; the environment that answers for the thread owns the work.`,
+        detail: resolve(
+          msg(
+            "{labels} hold the same thread, which looks like a copied database. Nothing merges; the environment that answers for the thread owns the work.",
+            { labels },
+          ),
+        ),
       }
     : {
         badge,
-        detail: `${labels} each started their own thread for this origin, so the work runs more than once. Nothing merges; decide which attempt to keep.`,
+        detail: resolve(
+          msg(
+            "{labels} each started their own thread for this origin, so the work runs more than once. Nothing merges; decide which attempt to keep.",
+            { labels },
+          ),
+        ),
       };
 }
 
@@ -186,12 +227,18 @@ export function describeClaimConflict(
 export function describeClaimsElsewhere(
   elsewhere: ReadonlyArray<FactoryClaimElsewhere>,
   labelOf: EnvironmentLabel,
+  resolve: MessageResolver = m,
 ): string | null {
   if (elsewhere.length === 0) return null;
   const holders = elsewhere.map(
     ({ environmentId, claim }) => `${labelOf(environmentId)} (${claim.status})`,
   );
-  return `Already claimed in ${holders.join(", ")}. Starting here begins a separate attempt in this environment; nothing merges.`;
+  return resolve(
+    msg(
+      "Already claimed in {holders}. Starting here begins a separate attempt in this environment; nothing merges.",
+      { holders: holders.join(", ") },
+    ),
+  );
 }
 
 export interface FactoryClaimRowPresentation {
@@ -220,23 +267,31 @@ export function factoryClaimRowPresentation(input: {
   readonly originKey: FactoryOriginKey;
   readonly task: Pick<FactoryIssueTask, "threadId"> | null;
   readonly labelOf: EnvironmentLabel;
+  readonly resolve?: MessageResolver;
 }): FactoryClaimRowPresentation {
+  const resolve = input.resolve ?? m;
   const conflict = input.conflicts.get(input.originKey);
   const result = input.claimsByEnvironment.get(input.environmentId);
   const claim = claimForTask(result, input.originKey, input.task);
   const sameOrigin = result?.claims.filter((entry) => entry.originKey === input.originKey) ?? [];
   return {
-    conflict: conflict === undefined ? null : describeClaimConflict(conflict, input.labelOf),
+    conflict:
+      conflict === undefined ? null : describeClaimConflict(conflict, input.labelOf, resolve),
     duplicates: sameOrigin.some((entry) => entry.originConflict)
       ? {
-          badge: "Claimed more than once",
-          detail: `${input.labelOf(input.environmentId)} holds ${sameOrigin.length} older claims for this origin. Nothing is merged and further admissions are refused; review the conflicting tasks.`,
+          badge: resolve(msg("Claimed more than once")),
+          detail: resolve(
+            msg(
+              "{label} holds {count} older claims for this origin. Nothing is merged and further admissions are refused; review the conflicting tasks.",
+              { label: input.labelOf(input.environmentId), count: sameOrigin.length },
+            ),
+          ),
         }
       : null,
     provenance:
       claim === null || result === undefined
         ? null
-        : describeClaimProvenance(claimProvenance(claim, result.environmentId)),
+        : describeClaimProvenance(claimProvenance(claim, result.environmentId), resolve),
     ...(claim?.acceptance == null || claim.baseRef === null
       ? {}
       : {
@@ -261,9 +316,10 @@ export function claimOwnerTitle(
   task: Pick<FactoryIssueTask, "projectId"> | null,
   selectedProjectId: ProjectId,
   projectTitleById: ReadonlyMap<ProjectId, string>,
+  resolve: MessageResolver = m,
 ): string | null {
   if (task === null || task.projectId === selectedProjectId) return null;
-  return projectTitleById.get(task.projectId) ?? "another project";
+  return projectTitleById.get(task.projectId) ?? resolve(msg("another project"));
 }
 
 export interface FactoryClaimEnvironmentFacts {
@@ -334,10 +390,10 @@ export function planClaimTargets(input: {
 }
 
 const UNAVAILABLE_LABELS: Record<FactoryClaimsUnavailableReason, string> = {
-  offline: "offline",
-  unsupported: "server needs an update",
-  "no-access": "no read access",
-  failed: "request failed",
+  offline: msg("offline"),
+  unsupported: msg("server needs an update"),
+  "no-access": msg("no read access"),
+  failed: msg("request failed"),
 };
 
 /**
@@ -347,10 +403,16 @@ const UNAVAILABLE_LABELS: Record<FactoryClaimsUnavailableReason, string> = {
 export function describeUnavailableClaims(
   unavailable: ReadonlyArray<FactoryClaimsUnavailable>,
   labelOf: EnvironmentLabel,
+  resolve: MessageResolver = m,
 ): string | null {
   if (unavailable.length === 0) return null;
   const list = unavailable
-    .map(({ environmentId, reason }) => `${labelOf(environmentId)} (${UNAVAILABLE_LABELS[reason]})`)
+    .map(
+      ({ environmentId, reason }) =>
+        `${labelOf(environmentId)} (${resolve(UNAVAILABLE_LABELS[reason])})`,
+    )
     .join(", ");
-  return `Claims could not be read from ${list}. An origin may be claimed there too.`;
+  return resolve(
+    msg("Claims could not be read from {list}. An origin may be claimed there too.", { list }),
+  );
 }

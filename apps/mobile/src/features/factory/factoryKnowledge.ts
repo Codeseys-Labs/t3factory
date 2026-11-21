@@ -16,7 +16,9 @@ import {
   type FactoryKnowledgeTaskReadResult,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg } from "gt-react-native";
 
+import { m, type MessageResolver } from "../../i18n/messages";
 import { describeFactoryFailure, type FactoryFailure } from "./factoryIssues";
 
 export const FACTORY_KNOWLEDGE_LIMITS = {
@@ -29,8 +31,9 @@ export const FACTORY_KNOWLEDGE_LIMITS = {
   instructions: FACTORY_KNOWLEDGE_INSTRUCTIONS_MAX_CHARS,
 } as const;
 
-export const FACTORY_KNOWLEDGE_NOTICE =
-  "Knowledge tasks run in a private folder, not in this checkout. Accepting an artifact records which bytes you reviewed, not that they are correct.";
+export const FACTORY_KNOWLEDGE_NOTICE = msg(
+  "Knowledge tasks run in a private folder, not in this checkout. Accepting an artifact records which bytes you reviewed, not that they are correct.",
+);
 
 export interface FactoryKnowledgeInputDraft {
   readonly key?: string;
@@ -58,50 +61,78 @@ export const EMPTY_FACTORY_KNOWLEDGE_DRAFT: FactoryKnowledgeBriefDraft = {
  * Mirrors the server's rule so a bad path is explained before submitting; the server still
  * decides. The artifact must stay inside the task folder and outside any `.git` directory.
  */
-export function factoryKnowledgeDeliverablePathProblem(path: string): string | null {
+export function factoryKnowledgeDeliverablePathProblem(
+  path: string,
+  resolve: MessageResolver = m,
+): string | null {
   const trimmed = path.trim();
-  if (trimmed.length === 0) return "Enter a deliverable path.";
+  if (trimmed.length === 0) return resolve(msg("Enter a deliverable path."));
   if (/^[/\\]/.test(trimmed) || /^[A-Za-z]:/.test(trimmed)) {
-    return "Use a path relative to the task folder, not an absolute path.";
+    return resolve(msg("Use a path relative to the task folder, not an absolute path."));
   }
   const segments = trimmed.split(/[/\\]/);
-  if (segments.includes("..")) return 'The deliverable path can\'t contain "..".';
+  if (segments.includes("..")) return resolve(msg('The deliverable path can\'t contain "..".'));
   if (segments.some((segment) => segment === "" || segment === ".")) {
-    return "Use a plain relative path such as notes/answer.md.";
+    return resolve(msg("Use a plain relative path such as notes/answer.md."));
   }
   if (segments[0]?.toLowerCase() === ".git") {
-    return "The deliverable can't be written inside .git.";
+    return resolve(msg("The deliverable can't be written inside .git."));
   }
   return null;
 }
 
 /** The first problem that would make the server refuse the brief, or null when it can be sent. */
-export function factoryKnowledgeDraftProblem(draft: FactoryKnowledgeBriefDraft): string | null {
+export function factoryKnowledgeDraftProblem(
+  draft: FactoryKnowledgeBriefDraft,
+  resolve: MessageResolver = m,
+): string | null {
   const limits = FACTORY_KNOWLEDGE_LIMITS;
-  if (draft.title.trim().length === 0) return "Enter a title.";
+  if (draft.title.trim().length === 0) return resolve(msg("Enter a title."));
   if (draft.title.trim().length > limits.title) {
-    return `The title is longer than ${limits.title} characters.`;
+    return resolve(
+      msg("The title is longer than {limit} characters.", { limit: String(limits.title) }),
+    );
   }
-  if (draft.question.trim().length === 0) return "Enter the question the deliverable answers.";
+  if (draft.question.trim().length === 0)
+    return resolve(msg("Enter the question the deliverable answers."));
   if (draft.question.length > limits.question) {
-    return `The question is longer than ${limits.question} characters.`;
+    return resolve(
+      msg("The question is longer than {limit} characters.", { limit: String(limits.question) }),
+    );
   }
-  const pathProblem = factoryKnowledgeDeliverablePathProblem(draft.deliverablePath);
+  const pathProblem = factoryKnowledgeDeliverablePathProblem(draft.deliverablePath, resolve);
   if (pathProblem !== null) return pathProblem;
   if (draft.inputs.length > limits.inputs)
-    return `A brief can have at most ${limits.inputs} inputs.`;
+    return resolve(
+      msg("A brief can have at most {limit} inputs.", { limit: String(limits.inputs) }),
+    );
   for (const [index, input] of draft.inputs.entries()) {
     const label = input.label.trim();
-    if (label.length === 0) return `Input ${index + 1} needs a label.`;
+    if (label.length === 0)
+      return resolve(msg("Input {index} needs a label.", { index: String(index + 1) }));
     if (label.length > limits.inputLabel) {
-      return `Input ${index + 1} has a label longer than ${limits.inputLabel} characters.`;
+      return resolve(
+        msg("Input {index} has a label longer than {limit} characters.", {
+          index: String(index + 1),
+          limit: String(limits.inputLabel),
+        }),
+      );
     }
     if (input.content.length > limits.inputContent) {
-      return `Input ${index + 1} is longer than ${limits.inputContent} characters.`;
+      return resolve(
+        msg("Input {index} is longer than {limit} characters.", {
+          index: String(index + 1),
+          limit: String(limits.inputContent),
+        }),
+      );
     }
   }
   if (draft.acceptanceCriteria.length > limits.criteria) {
-    return `The acceptance criteria are longer than ${limits.criteria} characters.`;
+    return resolve(
+      msg("The acceptance criteria are longer than {limit} characters.", {
+        limit: String(limits.criteria),
+      }),
+    );
   }
   return null;
 }
@@ -150,26 +181,31 @@ export type FactoryKnowledgeAction =
 export function factoryKnowledgeAction(
   brief: FactoryKnowledgeBrief,
   task: FactoryKnowledgeTask | null,
+  resolve: MessageResolver = m,
 ): FactoryKnowledgeAction {
-  const supersededDetail = "A newer brief replaced this one. Start the newer brief instead.";
+  const supersededDetail = resolve(
+    msg("A newer brief replaced this one. Start the newer brief instead."),
+  );
   if (task === null) {
     return brief.supersededBy === null
-      ? { kind: "start", label: "Start task" }
-      : { kind: "unavailable", label: "Superseded", detail: supersededDetail };
+      ? { kind: "start", label: resolve(msg("Start task")) }
+      : { kind: "unavailable", label: resolve(msg("Superseded")), detail: supersededDetail };
   }
   switch (task.status) {
     case "missing":
       return brief.supersededBy === null
-        ? { kind: "restart", label: "Start new attempt", task }
+        ? { kind: "restart", label: resolve(msg("Start new attempt")), task }
         : {
             kind: "unavailable",
-            label: "Thread deleted",
-            detail: `The linked thread was deleted. ${supersededDetail}`,
+            label: resolve(msg("Thread deleted")),
+            detail: resolve(
+              msg("The linked thread was deleted. {detail}", { detail: supersededDetail }),
+            ),
           };
     case "launching":
-      return { kind: "resume", label: "Resume launch" };
+      return { kind: "resume", label: resolve(msg("Resume launch")) };
     default:
-      return { kind: "open", label: "Open thread", task };
+      return { kind: "open", label: resolve(msg("Open thread")), task };
   }
 }
 
@@ -199,34 +235,42 @@ export type FactoryKnowledgeArtifactView =
       readonly unavailable: string;
     };
 
-function artifactUnavailableText(read: FactoryKnowledgeTaskReadResult): string {
-  if (read.task === null) return "No task has started for this brief.";
+function artifactUnavailableText(
+  read: FactoryKnowledgeTaskReadResult,
+  resolve: MessageResolver,
+): string {
+  if (read.task === null) return resolve(msg("No task has started for this brief."));
   if (read.task.folderPath === null) {
-    return "The task folder is no longer available, so the artifact can't be read.";
+    return resolve(msg("The task folder is no longer available, so the artifact can't be read."));
   }
   switch (read.artifactIssue) {
     case "too-large":
-      return "The artifact is too large to read and accept.";
+      return resolve(msg("The artifact is too large to read and accept."));
     case "unreadable":
-      return "The artifact exists but can't be read.";
+      return resolve(msg("The artifact exists but can't be read."));
     default:
-      return `No artifact yet at ${read.brief.deliverablePath}.`;
+      return resolve(msg("No artifact yet at {path}.", { path: read.brief.deliverablePath }));
   }
 }
 
 export function factoryKnowledgeArtifactView(
   read: FactoryKnowledgeTaskReadResult,
+  resolve: MessageResolver = m,
 ): FactoryKnowledgeArtifactView {
   const { acceptance, artifact } = read;
   if (acceptance === null) {
     return {
       kind: "none",
       artifact,
-      unavailable: artifact === null ? artifactUnavailableText(read) : null,
+      unavailable: artifact === null ? artifactUnavailableText(read, resolve) : null,
     };
   }
   if (artifact === null) {
-    return { kind: "unverifiable", acceptance, unavailable: artifactUnavailableText(read) };
+    return {
+      kind: "unverifiable",
+      acceptance,
+      unavailable: artifactUnavailableText(read, resolve),
+    };
   }
   // `current` is the server's comparison; the digests are compared here only to never claim a
   // match the server did not report.
@@ -239,8 +283,11 @@ export function shortFactoryDigest(sha256: string): string {
   return sha256.slice(0, 7);
 }
 
-export function formatFactoryBytes(bytes: number): string {
-  if (bytes < 1024) return bytes === 1 ? "1 byte" : `${bytes} bytes`;
+export function formatFactoryBytes(bytes: number, resolve: MessageResolver = m): string {
+  if (bytes < 1024)
+    return resolve(
+      msg("{count, plural, one {{count} byte} other {{count} bytes}}", { count: bytes }),
+    );
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
@@ -294,62 +341,75 @@ const isFactoryKnowledgeError = Schema.is(FactoryKnowledgeError);
 export function describeFactoryKnowledgeFailure(
   error: unknown,
   fallbackTitle: string,
+  resolve: MessageResolver = m,
 ): FactoryFailure {
   if (isFactoryKnowledgeError(error)) {
     switch (error.reason) {
       case "unknown-brief":
         return {
           kind: "changed",
-          title: "Brief unavailable",
-          detail: "This brief no longer exists in this project. Refresh the list.",
+          title: resolve(msg("Brief unavailable")),
+          detail: resolve(msg("This brief no longer exists in this project. Refresh the list.")),
         };
       case "revision-mismatch":
         return {
           kind: "changed",
-          title: "Brief changed",
-          detail: "The brief changed since you reviewed it. Close this review and refresh.",
+          title: resolve(msg("Brief changed")),
+          detail: resolve(
+            msg("The brief changed since you reviewed it. Close this review and refresh."),
+          ),
         };
       case "already-started":
         return {
           kind: "changed",
-          title: "Already started",
-          detail: "A task is already running for this brief. Refresh to open it.",
+          title: resolve(msg("Already started")),
+          detail: resolve(msg("A task is already running for this brief. Refresh to open it.")),
         };
       case "unknown-task":
         return {
           kind: "changed",
-          title: "No task",
-          detail: "No task has started for this brief. Refresh the list.",
+          title: resolve(msg("No task")),
+          detail: resolve(msg("No task has started for this brief. Refresh the list.")),
         };
       case "folder-unavailable":
         return {
           kind: "repository",
-          title: "Folder unavailable",
-          detail: "The task folder is no longer available, so the artifact can't be read.",
+          title: resolve(msg("Folder unavailable")),
+          detail: resolve(
+            msg("The task folder is no longer available, so the artifact can't be read."),
+          ),
         };
       case "artifact-missing":
         return {
           kind: "changed",
-          title: "No artifact",
-          detail: "There is no readable artifact to accept. Refresh to see why.",
+          title: resolve(msg("No artifact")),
+          detail: resolve(msg("There is no readable artifact to accept. Refresh to see why.")),
         };
       case "artifact-changed":
         return {
           kind: "changed",
-          title: "Artifact changed",
-          detail: "The artifact changed while you were reviewing it. Refresh and review again.",
+          title: resolve(msg("Artifact changed")),
+          detail: resolve(
+            msg("The artifact changed while you were reviewing it. Refresh and review again."),
+          ),
         };
       case "already-accepted":
         return {
           kind: "changed",
-          title: "Already accepted",
-          detail: "An artifact is already accepted for this brief. Refresh, then use Re-accept.",
+          title: resolve(msg("Already accepted")),
+          detail: resolve(
+            msg("An artifact is already accepted for this brief. Refresh, then use Re-accept."),
+          ),
         };
       case "invalid-path":
-        return { kind: "error", title: "Invalid deliverable path", detail: error.message };
+        return {
+          kind: "error",
+          title: resolve(msg("Invalid deliverable path")),
+          detail: error.message,
+        };
       default:
         return { kind: "error", title: fallbackTitle, detail: error.message };
     }
   }
-  return describeFactoryFailure(error, fallbackTitle);
+  return describeFactoryFailure(error, fallbackTitle, undefined, resolve);
 }

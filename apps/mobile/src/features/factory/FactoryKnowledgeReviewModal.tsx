@@ -1,4 +1,5 @@
 import type { RuntimeMode } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages } from "gt-react-native";
 import { useState } from "react";
 import { Modal, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,10 +11,10 @@ import { FACTORY_KNOWLEDGE_LIMITS, FACTORY_KNOWLEDGE_NOTICE } from "./factoryKno
 import type { FactoryKnowledgeReview } from "./useFactoryKnowledge";
 
 const RUNTIME_MODE_LABELS: Record<RuntimeMode, string> = {
-  "approval-required": "Approval required",
-  "auto-accept-edits": "Auto-accept edits",
-  auto: "Auto",
-  "full-access": "Full access",
+  "approval-required": msg("Approval required"),
+  "auto-accept-edits": msg("Auto-accept edits"),
+  auto: msg("Auto"),
+  "full-access": msg("Full access"),
 };
 
 function ReviewField(props: {
@@ -47,12 +48,14 @@ export function FactoryKnowledgeReviewModal(props: {
   readonly onClose: () => void;
   readonly onConfirm: (instructions: string) => void;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const insets = useSafeAreaInsets();
   const [instructions, setInstructions] = useState("");
   const { snapshot, failure } = props.review;
   const restart = snapshot.restartDeleted;
   const changed = failure?.kind === "changed";
-  const action = restart ? "Start new attempt" : "Start task";
+  const action = restart ? gt("Start new attempt") : gt("Start task");
 
   return (
     <Modal
@@ -75,56 +78,65 @@ export function FactoryKnowledgeReviewModal(props: {
       >
         <SheetHeader
           presentation="inline"
-          title="Review brief"
-          accessibilityLabel="Close brief review"
+          title={gt("Review brief")}
+          accessibilityLabel={gt("Close brief review")}
           dismissDisabled={props.pending}
           onClose={props.onClose}
         />
         <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-5 px-5 py-4">
           <View className="gap-2">
             <Text accessibilityRole="header" className="text-xl font-t3-semibold text-foreground">
-              {restart ? "Start a new attempt" : "Start task"} for this brief
+              {restart ? gt("Start a new attempt for this brief") : gt("Start task for this brief")}
             </Text>
             <Text selectable className="text-sm text-foreground-muted">
-              Revision {snapshot.brief.revision}
+              {gt("Revision {revision}", { revision: snapshot.brief.revision })}
             </Text>
             <Text className="text-sm text-foreground-muted">
               {restart
-                ? "The earlier thread was deleted. A new attempt gets a new private folder."
-                : "The task gets a private folder outside this checkout."}
+                ? gt("The earlier thread was deleted. A new attempt gets a new private folder.")
+                : gt("The task gets a private folder outside this checkout.")}
             </Text>
           </View>
           <View className="gap-2">
             <Text selectable className="text-base text-foreground">
-              Model: {snapshot.modelLabel}
+              {gt("Model: {model}", { model: snapshot.modelLabel })}
             </Text>
             <Text className="text-base text-foreground">
-              Runtime: {RUNTIME_MODE_LABELS[snapshot.runtimeMode]}
+              {gt("Runtime: {mode}", { mode: m(RUNTIME_MODE_LABELS[snapshot.runtimeMode]) })}
             </Text>
-            <Text className="text-sm text-foreground-muted">{FACTORY_KNOWLEDGE_NOTICE}</Text>
+            <Text className="text-sm text-foreground-muted">{m(FACTORY_KNOWLEDGE_NOTICE)}</Text>
             <Text className="text-sm text-foreground-muted">
-              Confirm uses this exact brief revision. If a task was already reserved, its saved
-              brief and settings are used instead.
+              <T>
+                Confirm uses this exact brief revision. If a task was already reserved, its saved
+                brief and settings are used instead.
+              </T>
             </Text>
           </View>
           <Text className="text-sm text-foreground-muted">
-            {
-              "Backslashes are escaped; control and formatting characters are shown as \\uXXXX. Tabs and newlines stay literal; no brief text is omitted."
-            }
+            <T>
+              Backslashes are escaped; control and formatting characters are shown as \uXXXX. Tabs
+              and newlines stay literal; no brief text is omitted.
+            </T>
           </Text>
-          <ReviewField title="Title" text={snapshot.titleText} empty="No title." />
-          <ReviewField title="Question" text={snapshot.questionText} empty="No question." />
+          <ReviewField title={gt("Title")} text={snapshot.titleText} empty={gt("No title.")} />
           <ReviewField
-            title="Deliverable path"
+            title={gt("Question")}
+            text={snapshot.questionText}
+            empty={gt("No question.")}
+          />
+          <ReviewField
+            title={gt("Deliverable path")}
             text={snapshot.deliverablePathText}
-            empty="No path."
+            empty={gt("No path.")}
           />
           <View className="gap-3">
             <Text accessibilityRole="header" className="text-base font-t3-semibold text-foreground">
-              Inputs ({snapshot.inputs.length})
+              {gt("Inputs ({count})", { count: String(snapshot.inputs.length) })}
             </Text>
             {snapshot.inputs.length === 0 ? (
-              <Text className="text-sm text-foreground-muted">This brief has no inputs.</Text>
+              <Text className="text-sm text-foreground-muted">
+                <T>This brief has no inputs.</T>
+              </Text>
             ) : (
               snapshot.inputs.map((entry, index) => (
                 // oxlint-disable-next-line react/no-array-index-key -- Frozen reviewed inputs never edit or reorder their rows.
@@ -133,7 +145,9 @@ export function FactoryKnowledgeReviewModal(props: {
                     {index + 1}. {entry.labelText}
                   </Text>
                   {entry.contentText === "" ? (
-                    <Text className="text-sm text-foreground-muted">Empty input.</Text>
+                    <Text className="text-sm text-foreground-muted">
+                      <T>Empty input.</T>
+                    </Text>
                   ) : (
                     <Text selectable className="text-sm text-foreground">
                       {entry.contentText}
@@ -144,9 +158,9 @@ export function FactoryKnowledgeReviewModal(props: {
             )}
           </View>
           <ReviewField
-            title="Acceptance criteria"
+            title={gt("Acceptance criteria")}
             text={snapshot.criteriaText}
-            empty="No acceptance criteria."
+            empty={gt("No acceptance criteria.")}
           />
         </ScrollView>
         <ScrollView
@@ -156,8 +170,8 @@ export function FactoryKnowledgeReviewModal(props: {
           keyboardShouldPersistTaps="handled"
         >
           <AppTextInput
-            accessibilityLabel="Optional instructions for the agent"
-            placeholder="Optional instructions"
+            accessibilityLabel={gt("Optional instructions for the agent")}
+            placeholder={gt("Optional instructions")}
             value={instructions}
             multiline
             maxLength={FACTORY_KNOWLEDGE_LIMITS.instructions}
@@ -180,7 +194,7 @@ export function FactoryKnowledgeReviewModal(props: {
             fullWidth
             tone="primary"
             label={action}
-            accessibilityLabel={`${action} for the reviewed brief`}
+            accessibilityLabel={gt("{action} for the reviewed brief", { action })}
             loading={props.pending}
             disabled={changed}
             onPress={() => props.onConfirm(instructions)}

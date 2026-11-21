@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { EnvironmentId, ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
+import { T, useGT, Var } from "gt-react";
 import { useState } from "react";
 
 import { useEnvironmentSettings } from "../../hooks/useSettings";
@@ -85,10 +86,13 @@ export function FactoryLaunchFields(props: {
   readonly showBaseRef?: boolean;
 }) {
   const { draft } = props;
+  const gt = useGT();
   return (
     <>
       <div className="space-y-1.5">
-        <Label>Model</Label>
+        <Label>
+          <T>Model</T>
+        </Label>
         <div>
           {draft.activeInstanceId !== null ? (
             <ProviderModelPicker
@@ -104,32 +108,41 @@ export function FactoryLaunchFields(props: {
               onInstanceModelChange={(instanceId, model) => draft.pick({ instanceId, model })}
             />
           ) : (
-            <p className="text-muted-foreground text-sm">No provider is configured.</p>
+            <p className="text-muted-foreground text-sm">
+              <T>No provider is configured.</T>
+            </p>
           )}
         </div>
       </div>
       {props.showBaseRef !== false ? (
         <div className="space-y-1.5">
           <Label htmlFor="factory-base-ref">
-            Base ref <span className="font-normal text-muted-foreground">optional</span>
+            <T>Base ref</T>{" "}
+            <span className="font-normal text-muted-foreground">
+              <T>optional</T>
+            </span>
           </Label>
           <Input
             id="factory-base-ref"
             value={draft.baseRef}
-            placeholder="Current HEAD of the project checkout"
+            placeholder={gt("Current HEAD of the project checkout")}
             onChange={(event) => draft.setBaseRef(event.target.value)}
           />
           <p className="text-muted-foreground text-xs">
-            A local branch, tag or commit. It is resolved to a fixed commit when the task starts;
-            your checkout is not fetched or changed.
+            <T>
+              A local branch, tag or commit. It is resolved to a fixed commit when the task starts;
+              your checkout is not fetched or changed.
+            </T>
           </p>
         </div>
       ) : null}
       <Alert variant="info">
         <AlertDescription>
-          The task starts with approval required. {props.untrustedText} is treated as untrusted task
-          data, and nothing here authorizes publishing, merging or releasing. You can change the
-          thread's controls afterwards.
+          <T>
+            The task starts with approval required. <Var>{props.untrustedText}</Var> is treated as
+            untrusted task data, and nothing here authorizes publishing, merging or releasing. You
+            can change the thread's controls afterwards.
+          </T>
         </AlertDescription>
       </Alert>
     </>

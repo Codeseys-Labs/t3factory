@@ -198,3 +198,13 @@ lanes is real and blocks the merge.
   the update it started still writes there. Both failed on unmodified upstream once several
   copies ran at once. The third was a fork browser case with about twenty interactions under a
   15 second limit.
+- **A commit made while agents were still editing the checkout.** The pre-commit hook stashes
+  unstaged changes and restores them afterward; files the agents wrote in between went back to
+  their old content without notice. Commit only when nothing else is writing to the checkout.
+- **Both sides added the same field in a file that merged cleanly.** Fork and upstream each added
+  `expectedHeadSha` to pull request actions; the merge kept both declarations and both spreads, and
+  the fork's raw value overrode upstream's pinned head. Typecheck caught the duplicate declaration,
+  not the duplicate spread; an upstream test did.
+- **`GIT_SEQUENCE_EDITOR` set in an agent's shell** overrides a test's `-c sequence.editor`, so a
+  storage-cleanup test whose rebase must pause finishes it instead. Unset it before calling that
+  failure the code's.

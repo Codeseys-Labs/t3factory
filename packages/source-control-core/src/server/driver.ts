@@ -15,8 +15,7 @@ import type * as Scope from "effect/Scope";
 import type { SourceControlDefinition } from "../shared/definition.ts";
 
 import type { SourceControlProviderDiscoverySpec } from "./discovery.ts";
-import type { IssueTrackerApi } from "./IssueTracker.ts";
-import type { IssueTrackerProviderApi } from "./IssueTrackerProvider.ts";
+import type { IssueTrackerApi, IssueTrackerError } from "./IssueTracker.ts";
 import type { PullRequestProviderApi } from "./PullRequestProvider.ts";
 import type * as SourceControlHost from "./SourceControlHost.ts";
 import type * as SourceControlProvider from "./SourceControlProvider.ts";
@@ -29,6 +28,15 @@ export interface SourceControlMediaRequest {
   readonly headers: Readonly<Record<string, string>>;
   /** `owner/name` of the change request the media is in, else of the checkout it was shown in. */
   readonly repository?: string;
+}
+
+/** One resource as a host's REST API answered it. */
+export interface SourceControlApiResource {
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string | undefined>>;
+  readonly body: string;
+  readonly truncated: boolean;
+  readonly invalidUtf8: boolean;
 }
 
 /** The server side of a definition's `credentials.appSignIn`. */
@@ -69,8 +77,15 @@ export interface SourceControlDriverInstance {
     Scope.Scope
   >;
   readonly signIn?: SourceControlSignIn;
-  /** Null for a host whose Factory issues this build cannot read. */
-  readonly factoryIssues: IssueTrackerProviderApi | null;
+  /**
+   * One GET of `path` on the host's REST API as the server's account, through the credential,
+   * quota and rate-limit pause the host's other readers share. The Factory reads issue relations
+   * (blockers, sub-issues) with it, which no tracker method covers.
+   */
+  readonly readApiResource?: (input: {
+    readonly host: string;
+    readonly path: string;
+  }) => Effect.Effect<SourceControlApiResource, IssueTrackerError>;
   /** Whether the server's account on `host` starred `repository` (`owner/name`). */
   readonly isRepositoryStarred?: (host: string, repository: string) => Effect.Effect<boolean>;
   /** Stars `repository` as the server's account on `host`; false when the forge refused. */

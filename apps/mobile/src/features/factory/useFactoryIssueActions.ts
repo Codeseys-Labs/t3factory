@@ -1,6 +1,7 @@
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { factoryIssueReviewText } from "@t3tools/client-runtime/state/factory";
 import {
+  executeAtomQuery,
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
@@ -24,9 +25,11 @@ import {
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { msg } from "gt-react-native";
+import { use, useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import * as Dialog from "../../components/ui/Dialog";
+import { m } from "../../i18n/messages";
 import { uuidv4 } from "../../lib/uuid";
 import {
   factoryAcceptanceSupportedAtom,
@@ -44,11 +47,13 @@ import {
   describeFactoryMergeFailure,
   factoryAcceptanceView,
   factoryIssueStartKey,
+  factoryIssueTargetOf,
   isFactoryArtifactPrepareResult,
   isFactoryCommitIntent,
   isLiveFactoryDelivery,
   sameFactoryDeliveryPayload,
   type FactoryIssueAction,
+  type FactoryIssueTarget,
   type FactoryFailure,
 } from "./factoryIssues";
 
@@ -64,6 +69,8 @@ export interface FactoryStartSettings {
   readonly repository: FactoryRepository | null;
   /** Names the issue host in failure text; null until the list has loaded. */
   readonly displayName: string | null;
+  /** The server addresses issues by native key; without it only decimal numbers start. */
+  readonly factoryIssueKeys: boolean;
   readonly modelSelection: ModelSelection | null;
   readonly modelLabel: string;
   readonly baseRef: string | null;
@@ -75,6 +82,8 @@ interface FactoryLaunchRequest {
   readonly input: FactoryIssueStartInput;
   readonly displayName: string | null;
   readonly key: string;
+  /** The issue's native key; identifies the busy launch on screen. */
+  readonly issueKey: string;
 }
 
 export interface FactoryIssueReviewSnapshot {
@@ -108,13 +117,14 @@ export function useFactoryIssueActions(input: {
   readonly scopeKey: string | null;
 }) {
   const { settings, onSettled, scopeKey } = input;
+  const registry = use(RegistryContext);
   const run = useAtomCommand(factoryEnvironment.start, { reportFailure: false });
   const openThread = useOpenFactoryThread();
   const lifetime = useRef<ActionLifetime | null>(null);
   const commandIds = useRef(new Map<string, string>());
   const [state, setState] = useState<{
     readonly key: string | null;
-    readonly busyIssue: number | null;
+    readonly busyIssue: string | null;
     readonly review: FactoryIssueReview | null;
   }>({ key: scopeKey, busyIssue: null, review: null });
   if (state.key !== scopeKey) setState({ key: scopeKey, busyIssue: null, review: null });
@@ -145,7 +155,11 @@ export function useFactoryIssueActions(input: {
       )
         return;
       current.pending = true;
-      setState({ key: scopeKey, busyIssue: request.input.issueNumber, review: current.review });
+      setState({
+        key: scopeKey,
+        busyIssue: request.issueKey,
+        review: current.review,
+      });
       const result = await run({ environmentId: request.environmentId, input: request.input });
       current.pending = false;
       if (!current.active || lifetime.current !== current) return;
@@ -176,6 +190,69 @@ export function useFactoryIssueActions(input: {
     [onSettled, openThread, run, scopeKey],
   );
 
+  /**
+   * A listing row carries no body, and its revision covers only what the row showed, so a start
+   * or restart first reads the issue as it is now: the review shows that read's title and body,
+   * and the launch pins that read's revision, never the row's.
+   */
+  const beginReview = useCallback(
+    async (
+      target: FactoryIssueTarget,
+      issueKey: string,
+      requestFor: (revisionSource: FactoryIssue) => FactoryLaunchRequest,
+      repository: FactoryRepository,
+    ) => {
+      const current = lifetime.current;
+      if (
+        current === null ||
+        !current.active ||
+        current.key !== scopeKey ||
+        current.pending ||
+        settings === null
+      )
+        return;
+      current.pending = true;
+      setState({ key: scopeKey, busyIssue: issueKey, review: null });
+      const read = await executeAtomQuery(
+        registry,
+        factoryEnvironment.readIssue({
+          environmentId: settings.environmentId,
+          input: { projectId: settings.projectId, ...target },
+        }),
+        { refresh: true, reportFailure: false },
+      );
+      current.pending = false;
+      if (!current.active || lifetime.current !== current) return;
+      if (read._tag === "Failure") {
+        if (!isAtomCommandInterrupted(read)) {
+          const failure = describeFactoryFailure(
+            squashAtomCommandFailure(read),
+            "Couldn't read the issue",
+            settings.displayName ?? undefined,
+          );
+          Dialog.alert(failure.title, failure.detail);
+        }
+        setState({ key: scopeKey, busyIssue: null, review: null });
+        onSettled();
+        return;
+      }
+      const fresh = read.value.issue;
+      current.review = {
+        snapshot: {
+          issue: { ...fresh, labels: [...fresh.labels] },
+          repository: { ...repository },
+          modelLabel: settings.modelLabel,
+          request: requestFor(fresh),
+          titleText: factoryIssueReviewText(fresh.title),
+          bodyText: fresh.body === null ? null : factoryIssueReviewText(fresh.body),
+        },
+        failure: null,
+      };
+      setState({ key: scopeKey, busyIssue: null, review: current.review });
+    },
+    [onSettled, registry, scopeKey, settings],
+  );
+
   const perform = useCallback(
     (issue: FactoryIssue, action: FactoryIssueAction) => {
       const current = lifetime.current;
@@ -194,74 +271,78 @@ export function useFactoryIssueActions(input: {
         return;
       }
       if (settings === null) return;
+      // Every launch path addresses the issue; `factoryIssueAction` already refuses issues the
+      // server cannot address, so this only narrows the type.
+      const target = factoryIssueTargetOf(issue, settings.factoryIssueKeys);
+      if (target === null) return;
+      const issueKey = "key" in target ? target.key : String(target.issueNumber);
       const reserved =
         action.kind === "resume" && issue.task?.status === "launching" ? issue.task : null;
       const modelSelection = reserved?.modelSelection ?? settings.modelSelection;
       if (modelSelection === null) {
-        Dialog.alert("Choose a model", "Pick a model and provider before starting a task.");
+        Dialog.alert(
+          m(msg("Choose a model")),
+          m(msg("Pick a model and provider before starting a task.")),
+        );
         return;
       }
-      if (settings.repository === null) {
-        Dialog.alert("Repository unavailable", "Refresh the inbox before starting a task.");
+      const repository = settings.repository;
+      if (repository === null) {
+        Dialog.alert(
+          m(msg("Repository unavailable")),
+          m(msg("Refresh the inbox before starting a task.")),
+        );
         return;
       }
       const restartDeleted = action.kind === "restart";
-      const key = factoryIssueStartKey({
-        environmentId: settings.environmentId,
-        projectId: settings.projectId,
-        expectedRepositoryKey: settings.repository.canonicalKey,
-        issueNumber: issue.number,
-        expectedIssueRevision: issue.revision,
-        restartDeleted,
-        previousThreadId: restartDeleted ? (issue.task?.threadId ?? null) : null,
-      });
-      let commandId = commandIds.current.get(key);
-      if (commandId === undefined) {
-        commandId = uuidv4();
-        commandIds.current.set(key, commandId);
-      }
       const baseRef = reserved?.baseRef ?? settings.baseRef;
-      const request: FactoryLaunchRequest = {
-        key,
-        environmentId: settings.environmentId,
-        displayName: settings.displayName,
-        input: {
-          commandId: CommandId.make(commandId),
+      const requestFor = (revisionSource: FactoryIssue): FactoryLaunchRequest => {
+        const key = factoryIssueStartKey({
+          environmentId: settings.environmentId,
           projectId: settings.projectId,
-          issueNumber: issue.number,
-          expectedRepositoryKey: settings.repository.canonicalKey,
-          expectedIssueRevision: issue.revision,
-          modelSelection: {
-            ...modelSelection,
-            ...(modelSelection.options === undefined
-              ? {}
-              : { options: modelSelection.options.map((option) => ({ ...option })) }),
+          expectedRepositoryKey: repository.canonicalKey,
+          issueKey,
+          expectedIssueRevision: revisionSource.revision,
+          restartDeleted,
+          previousThreadId: restartDeleted ? (revisionSource.task?.threadId ?? null) : null,
+        });
+        let commandId = commandIds.current.get(key);
+        if (commandId === undefined) {
+          commandId = uuidv4();
+          commandIds.current.set(key, commandId);
+        }
+        return {
+          key,
+          issueKey,
+          environmentId: settings.environmentId,
+          displayName: settings.displayName,
+          input: {
+            commandId: CommandId.make(commandId),
+            projectId: settings.projectId,
+            ...target,
+            expectedRepositoryKey: repository.canonicalKey,
+            expectedIssueRevision: revisionSource.revision,
+            modelSelection: {
+              ...modelSelection,
+              ...(modelSelection.options === undefined
+                ? {}
+                : { options: modelSelection.options.map((option) => ({ ...option })) }),
+            },
+            runtimeMode: reserved?.runtimeMode ?? settings.runtimeMode,
+            interactionMode: reserved?.interactionMode ?? "default",
+            ...(baseRef === null ? {} : { baseRef }),
+            ...(restartDeleted ? { restartDeleted: true } : {}),
+            creationSource: "mobile",
           },
-          runtimeMode: reserved?.runtimeMode ?? settings.runtimeMode,
-          interactionMode: reserved?.interactionMode ?? "default",
-          ...(baseRef === null ? {} : { baseRef }),
-          ...(restartDeleted ? { restartDeleted: true } : {}),
-          creationSource: "mobile",
-        },
+        };
       };
       if (action.kind === "resume") {
-        void launch(request, null);
+        void launch(requestFor(issue), null);
         return;
       }
-      current.review = {
-        snapshot: {
-          issue: { ...issue, labels: [...issue.labels] },
-          repository: { ...settings.repository },
-          modelLabel: settings.modelLabel,
-          request,
-          titleText: factoryIssueReviewText(issue.title),
-          bodyText: issue.body === null ? null : factoryIssueReviewText(issue.body),
-        },
-        failure: null,
-      };
-      setState({ key: scopeKey, busyIssue: null, review: current.review });
+      void beginReview(target, issueKey, requestFor, repository);
     },
-    [launch, openThread, scopeKey, settings],
+    [beginReview, launch, openThread, scopeKey, settings],
   );
 
   const snapshot = state.review?.snapshot ?? null;

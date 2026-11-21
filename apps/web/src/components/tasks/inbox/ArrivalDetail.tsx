@@ -6,6 +6,7 @@ import {
   type FactoryTaskSummary,
   type FactoryTaskType,
 } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { useState } from "react";
 
 import { randomUUID } from "~/lib/utils";
@@ -19,11 +20,11 @@ import { TaskAssigneePicker, taskErrorMessage, useTaskAssigneeChip, useTaskSetup
 import type { ArrivalEntry } from "./inboxData";
 
 const TYPES: Record<FactoryTaskType, string> = {
-  task: "Task",
-  bug: "Bug",
-  feature: "Feature",
-  docs: "Docs",
-  research: "Research",
+  task: msg("Task", { $context: "task type" }),
+  bug: msg("Bug", { $context: "task type" }),
+  feature: msg("Feature", { $context: "task type" }),
+  docs: msg("Docs", { $context: "task type" }),
+  research: msg("Research", { $context: "task type" }),
 };
 
 export function ArrivalDetail({
@@ -36,6 +37,8 @@ export function ArrivalDetail({
   onAccepted: (task: FactoryTaskSummary) => void;
 }) {
   const { arrival, environmentId } = entry;
+  const gt = useGT();
+  const messages = useMessages();
   const [type, setType] = useState<FactoryTaskType>(arrival.suggestion?.type ?? "task");
   const [assignment, setAssignment] = useState<FactoryTaskAssignment>(
     arrival.suggestion?.assignee.assignment ?? { mode: "unassigned" },
@@ -69,7 +72,8 @@ export function ArrivalDetail({
     const result = await selected.run();
     setBusy(false);
     setCommandId(CommandId.make(randomUUID()));
-    if (result._tag === "Failure") setError(taskErrorMessage(squashAtomCommandFailure(result)));
+    if (result._tag === "Failure")
+      setError(taskErrorMessage(squashAtomCommandFailure(result), {}, messages));
     else if (result.value.task) onAccepted(result.value.task);
   };
   const sourceUrl = arrival.url && /^https?:\/\//iu.test(arrival.url) ? arrival.url : null;
@@ -91,7 +95,9 @@ export function ArrivalDetail({
       <h2 className="mt-3 font-semibold text-xl">{arrival.title}</h2>
       {arrival.snoozedUntil ? (
         <p className="mt-2 text-muted-foreground text-sm">
-          Snoozed until {new Date(arrival.snoozedUntil).toLocaleString()}
+          <T>
+            Snoozed until <Var>{new Date(arrival.snoozedUntil).toLocaleString()}</Var>
+          </T>
         </p>
       ) : null}
       <div className="mt-3">
@@ -106,26 +112,38 @@ export function ArrivalDetail({
         />
       </div>
       {arrival.bodyTruncated ? (
-        <p className="mt-2 text-muted-foreground text-xs">Read the full item at its source.</p>
+        <p className="mt-2 text-muted-foreground text-xs">
+          <T>Read the full item at its source.</T>
+        </p>
       ) : null}
       {arrival.suggestion ? (
-        <section aria-label="Suggestion" className="mt-6 space-y-2 rounded-lg border bg-card p-4">
+        <section
+          aria-label={gt("Suggestion")}
+          className="mt-6 space-y-2 rounded-lg border bg-card p-4"
+        >
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm">
-              Suggested: {TYPES[arrival.suggestion.type]} → {assigneeText(suggested)}
+              <T>
+                Suggested: <Var>{messages(TYPES[arrival.suggestion.type])}</Var> →{" "}
+                <Var>{assigneeText(suggested, messages)}</Var>
+              </T>
             </p>
             <Button
               size="xs"
               variant="ghost-muted"
-              aria-label="Change type or assignee"
+              aria-label={gt("Change type or assignee")}
               disabled={busy || !command.permission}
               onClick={() => setEditing(!editing)}
             >
-              {editing ? "Hide changes" : "Change"}
+              {editing
+                ? gt("Hide changes")
+                : gt("Change", { $context: "verb, toggles the suggestion editor" })}
             </Button>
           </div>
           <p className="text-muted-foreground text-sm">
-            From the rule {arrival.suggestion.ruleName} (Suggest)
+            <T>
+              From the rule <Var>{arrival.suggestion.ruleName}</Var> (Suggest)
+            </T>
           </p>
         </section>
       ) : null}
@@ -138,13 +156,13 @@ export function ArrivalDetail({
             }}
             disabled={busy}
           >
-            <SelectTrigger size="sm" aria-label="Task type">
-              <SelectValue>{TYPES[type]}</SelectValue>
+            <SelectTrigger size="sm" aria-label={gt("Task type")}>
+              <SelectValue>{messages(TYPES[type])}</SelectValue>
             </SelectTrigger>
             <SelectPopup>
               {Object.entries(TYPES).map(([value, label]) => (
                 <SelectItem key={value} value={value}>
-                  {label}
+                  {messages(label)}
                 </SelectItem>
               ))}
             </SelectPopup>
@@ -161,7 +179,12 @@ export function ArrivalDetail({
               trigger={
                 <AssigneeChip
                   assignee={setup.assignee}
-                  render={<button type="button" aria-label="Assignee" />}
+                  render={
+                    <button
+                      type="button"
+                      aria-label={gt("Assignee", { $context: "noun, who does the task" })}
+                    />
+                  }
                 />
               }
             />
@@ -170,7 +193,7 @@ export function ArrivalDetail({
       ) : null}
       <div className="mt-6 flex flex-wrap items-center gap-2">
         <Button size="sm" disabled={busy || !command.permission} onClick={() => void send(command)}>
-          Accept
+          <T>Accept</T>
         </Button>
         <Button
           size="sm"
@@ -180,7 +203,7 @@ export function ArrivalDetail({
             arrival.state === "snoozed" ? void send(unsnooze) : setSnoozing(!snoozing)
           }
         >
-          {arrival.state === "snoozed" ? "Unsnooze" : "Snooze"}
+          {arrival.state === "snoozed" ? gt("Unsnooze") : gt("Snooze")}
         </Button>
         <Button
           size="sm"
@@ -188,7 +211,7 @@ export function ArrivalDetail({
           disabled={busy || !decline.permission}
           onClick={() => void send(decline)}
         >
-          Decline
+          <T>Decline</T>
         </Button>
         <Button
           size="sm"
@@ -196,18 +219,18 @@ export function ArrivalDetail({
           disabled={busy || !duplicate.permission}
           onClick={() => void send(duplicate)}
         >
-          Mark duplicate
+          <T>Mark duplicate</T>
         </Button>
       </div>
       {snoozing && arrival.state !== "snoozed" ? (
-        <div aria-label="Snooze until" className="mt-3 flex gap-2">
+        <div aria-label={gt("Snooze until")} className="mt-3 flex gap-2">
           <Button
             size="sm"
             variant="outline"
             disabled={busy || !tomorrow.permission}
             onClick={() => void send(tomorrow)}
           >
-            Tomorrow
+            <T>Tomorrow</T>
           </Button>
           <Button
             size="sm"
@@ -215,13 +238,13 @@ export function ArrivalDetail({
             disabled={busy || !nextWeek.permission}
             onClick={() => void send(nextWeek)}
           >
-            Next week
+            <T>Next week</T>
           </Button>
         </div>
       ) : null}
       {!command.permission ? (
         <p className="mt-3 text-muted-foreground text-sm">
-          Ask the owner of this environment for access.
+          <T>Ask the owner of this environment for access.</T>
         </p>
       ) : null}
       {error ? (

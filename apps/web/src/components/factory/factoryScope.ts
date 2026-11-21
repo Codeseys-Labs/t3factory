@@ -28,7 +28,8 @@ export interface FactorySearch extends SettingsScopeSearch {
   workGroup?: FactoryWorkBoardGrouping | undefined;
   workReturn?: string | undefined;
   reviewId?: string | undefined;
-  reviewIssue?: number | undefined;
+  /** An issue key; a bare number is the legacy link form of a git-host issue. */
+  reviewIssue?: number | string | undefined;
   reviewFeed?: string | undefined;
 }
 
@@ -54,7 +55,11 @@ export function validateFactorySearch(raw: Record<string, unknown>): FactorySear
     Number.isSafeInteger(raw.reviewIssue) &&
     raw.reviewIssue > 0
       ? { reviewIssue: raw.reviewIssue }
-      : {}),
+      : typeof raw.reviewIssue === "string" &&
+          raw.reviewIssue.trim().length > 0 &&
+          raw.reviewIssue.length <= 512
+        ? { reviewIssue: raw.reviewIssue }
+        : {}),
     ...(typeof raw.reviewFeed === "string" && raw.reviewFeed.length <= 4096
       ? { reviewFeed: raw.reviewFeed }
       : {}),

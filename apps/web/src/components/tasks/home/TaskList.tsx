@@ -3,6 +3,7 @@ import { factoryTaskKey } from "@t3tools/client-runtime/state/factory-task-view"
 import type { FactoryTaskStatus, FactoryTaskSummary } from "@t3tools/contracts";
 import { ChevronDownIcon, ChevronRightIcon, CornerDownRightIcon, PlusIcon } from "lucide-react";
 import { type KeyboardEvent, useRef, useState } from "react";
+import { T, useGT, useMessages } from "gt-react";
 
 import { cn } from "~/lib/utils";
 import { useNowMinute } from "../../../hooks/useNowMinute";
@@ -66,6 +67,7 @@ function focusIfListHasFocus(node: HTMLElement | null) {
 
 export function TaskList(props: TaskListProps) {
   const listRef = useRef<LegendListRef | null>(null);
+  const gt = useGT();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set(["done"]));
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
   const nowMinute = useNowMinute();
@@ -147,17 +149,29 @@ export function TaskList(props: TaskListProps) {
       >
         <span className="flex gap-4">
           <span className="w-12">ID</span>
-          <span>Title</span>
+          <span>
+            <T>Title</T>
+          </span>
         </span>
-        {props.showProject ? <span>Project</span> : null}
-        <span>Assignee</span>
-        <span>Result</span>
-        <span className="text-end">Updated</span>
+        {props.showProject ? (
+          <span>
+            <T>Project</T>
+          </span>
+        ) : null}
+        <span>
+          <T>Assignee</T>
+        </span>
+        <span>
+          <T>Result</T>
+        </span>
+        <span className="text-end">
+          <T>Updated</T>
+        </span>
       </div>
       <div
         data-task-list
         role="region"
-        aria-label="Task list"
+        aria-label={gt("Task list")}
         className="min-h-0 flex-1"
         onKeyDown={onKeyDown}
       >
@@ -219,6 +233,8 @@ function SectionHeader({
   const { section } = item;
   const Chevron = item.open ? ChevronDownIcon : ChevronRightIcon;
   const status = section.status;
+  const gt = useGT();
+  const messages = useMessages();
   return (
     <div className="flex h-9 min-w-0 items-center gap-2 border-border border-b bg-muted/40 px-2">
       <button
@@ -231,7 +247,9 @@ function SectionHeader({
         {status !== null ? (
           <>
             <TaskStatusIcon status={status} />
-            <span className="truncate font-medium">{TASK_STATUS_VISUALS[status].label}</span>
+            <span className="truncate font-medium">
+              {messages(TASK_STATUS_VISUALS[status].label)}
+            </span>
           </>
         ) : section.sample === null ? null : grouping === "project" ? (
           <ProjectChip name={projectName(section.sample)} />
@@ -249,7 +267,9 @@ function SectionHeader({
           variant="ghost-muted"
           size="icon-xs"
           className="ms-auto"
-          aria-label={`New task in ${TASK_STATUS_VISUALS[status].label}`}
+          aria-label={gt("New task in {status}", {
+            status: messages(TASK_STATUS_VISUALS[status].label),
+          })}
           onClick={() => onNewTask(status)}
         >
           <PlusIcon aria-hidden />
@@ -288,6 +308,7 @@ function TaskRow({
 }) {
   const { task, depth } = item;
   const updated = formatRelativeTime(task.updatedAt, nowMs)?.value ?? "";
+  const messages = useMessages();
   return (
     <button
       type="button"
@@ -332,7 +353,9 @@ function TaskRow({
       <span className="flex min-w-0">
         <TaskAssigneeChip assignee={task.assignee} environmentId={task.ref.environmentId} />
       </span>
-      <span className="min-w-0 truncate text-muted-foreground text-xs">{listResultText(task)}</span>
+      <span className="min-w-0 truncate text-muted-foreground text-xs">
+        {listResultText(task, messages)}
+      </span>
       <span className="text-end text-muted-foreground text-xs tabular-nums">{updated}</span>
     </button>
   );

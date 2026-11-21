@@ -3,6 +3,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { AuthOrchestrationReadScope, type EnvironmentId, type ProjectId } from "@t3tools/contracts";
+import { T, useGT, useMessages } from "gt-react-native";
 import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { RefreshControl } from "../../components/ui/RefreshControl";
@@ -48,15 +49,17 @@ function NewBriefForm(props: {
   readonly onCreated: () => void;
   readonly onCancel: () => void;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const create = useFactoryKnowledgeCreate(props);
   const [draft, setDraft] = useState<FactoryKnowledgeBriefDraft>(EMPTY_FACTORY_KNOWLEDGE_DRAFT);
   const limits = FACTORY_KNOWLEDGE_LIMITS;
   const editable = !create.pending;
-  const problem = factoryKnowledgeDraftProblem(draft);
-  const pathProblem = factoryKnowledgeDeliverablePathProblem(draft.deliverablePath);
+  const problem = factoryKnowledgeDraftProblem(draft, messages);
+  const pathProblem = factoryKnowledgeDeliverablePathProblem(draft.deliverablePath, messages);
   const permissionReason = create.canCreate
     ? null
-    : "This connection isn't permitted to create briefs in this environment.";
+    : gt("This connection isn't permitted to create briefs in this environment.");
   const update = (patch: Partial<FactoryKnowledgeBriefDraft>) =>
     setDraft((current) => ({ ...current, ...patch }));
   const updateInput = (index: number, patch: { label?: string; content?: string }) =>
@@ -68,13 +71,15 @@ function NewBriefForm(props: {
     }));
 
   return (
-    <SettingsSection title="New brief">
+    <SettingsSection title={gt("New brief")}>
       <View className="gap-4 px-4 py-4">
         <View className="gap-2">
-          <FieldLabel>Title</FieldLabel>
+          <FieldLabel>
+            <T>Title</T>
+          </FieldLabel>
           <AppTextInput
-            accessibilityLabel="Brief title"
-            placeholder="What the deliverable is"
+            accessibilityLabel={gt("Brief title")}
+            placeholder={gt("What the deliverable is")}
             value={draft.title}
             maxLength={limits.title}
             editable={editable}
@@ -82,10 +87,12 @@ function NewBriefForm(props: {
           />
         </View>
         <View className="gap-2">
-          <FieldLabel>Question</FieldLabel>
+          <FieldLabel>
+            <T>Question</T>
+          </FieldLabel>
           <AppTextInput
-            accessibilityLabel="Brief question"
-            placeholder="The question the deliverable answers"
+            accessibilityLabel={gt("Brief question")}
+            placeholder={gt("The question the deliverable answers")}
             value={draft.question}
             multiline
             maxLength={limits.question}
@@ -96,9 +103,11 @@ function NewBriefForm(props: {
           />
         </View>
         <View className="gap-2">
-          <FieldLabel>Deliverable path</FieldLabel>
+          <FieldLabel>
+            <T>Deliverable path</T>
+          </FieldLabel>
           <AppTextInput
-            accessibilityLabel="Deliverable path"
+            accessibilityLabel={gt("Deliverable path")}
             value={draft.deliverablePath}
             autoCapitalize="none"
             autoCorrect={false}
@@ -106,23 +115,23 @@ function NewBriefForm(props: {
             onChangeText={(deliverablePath) => update({ deliverablePath })}
           />
           <Text className="text-xs text-foreground-muted">
-            {pathProblem ?? "Relative to the task's private folder."}
+            {pathProblem ?? gt("Relative to the task's private folder.")}
           </Text>
         </View>
         {draft.inputs.map((entry, index) => (
           <View key={entry.key} className="gap-2 rounded-2xl border border-border-subtle p-3">
-            <FieldLabel>Input {index + 1}</FieldLabel>
+            <FieldLabel>{gt("Input {index}", { index: String(index + 1) })}</FieldLabel>
             <AppTextInput
-              accessibilityLabel={`Input ${index + 1} label`}
-              placeholder="Label"
+              accessibilityLabel={gt("Input {index} label", { index: String(index + 1) })}
+              placeholder={gt("Label", { $context: "noun, the label of a brief input" })}
               value={entry.label}
               maxLength={limits.inputLabel}
               editable={editable}
               onChangeText={(label) => updateInput(index, { label })}
             />
             <AppTextInput
-              accessibilityLabel={`Input ${index + 1} content`}
-              placeholder="Paste the source text"
+              accessibilityLabel={gt("Input {index} content", { index: String(index + 1) })}
+              placeholder={gt("Paste the source text")}
               value={entry.content}
               multiline
               maxLength={limits.inputContent}
@@ -133,8 +142,8 @@ function NewBriefForm(props: {
             />
             <Button
               tone="text"
-              label="Remove input"
-              accessibilityLabel={`Remove input ${index + 1}`}
+              label={gt("Remove input")}
+              accessibilityLabel={gt("Remove input {index}", { index: String(index + 1) })}
               disabled={!editable}
               onPress={() =>
                 setDraft((current) => ({
@@ -150,8 +159,8 @@ function NewBriefForm(props: {
           icon="plus"
           label={
             draft.inputs.length >= limits.inputs
-              ? `Input limit reached (${limits.inputs})`
-              : "Add input"
+              ? gt("Input limit reached ({count})", { count: String(limits.inputs) })
+              : gt("Add input")
           }
           disabled={!editable || draft.inputs.length >= limits.inputs}
           onPress={() =>
@@ -166,10 +175,12 @@ function NewBriefForm(props: {
           }
         />
         <View className="gap-2">
-          <FieldLabel>Acceptance criteria</FieldLabel>
+          <FieldLabel>
+            <T>Acceptance criteria</T>
+          </FieldLabel>
           <AppTextInput
-            accessibilityLabel="Acceptance criteria"
-            placeholder="What a good answer must include"
+            accessibilityLabel={gt("Acceptance criteria")}
+            placeholder={gt("What a good answer must include")}
             value={draft.acceptanceCriteria}
             multiline
             maxLength={limits.criteria}
@@ -192,7 +203,7 @@ function NewBriefForm(props: {
         <Button
           fullWidth
           tone="primary"
-          label="Create brief"
+          label={gt("Create brief")}
           accessibilityHint={permissionReason ?? problem ?? undefined}
           loading={create.pending}
           disabled={permissionReason !== null || problem !== null}
@@ -207,7 +218,12 @@ function NewBriefForm(props: {
         {(permissionReason ?? problem) ? (
           <Text className="text-xs text-foreground-muted">{permissionReason ?? problem}</Text>
         ) : null}
-        <Button tone="text" label="Cancel" disabled={create.pending} onPress={props.onCancel} />
+        <Button
+          tone="text"
+          label={gt("Cancel")}
+          disabled={create.pending}
+          onPress={props.onCancel}
+        />
       </View>
     </SettingsSection>
   );
@@ -232,6 +248,8 @@ export function FactoryBriefsRouteScreen({
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<FactoryRoutes>>();
   const isFocused = useIsFocused();
@@ -249,15 +267,23 @@ export function FactoryBriefsRouteScreen({
   const launch = useFactoryLaunchModel({ ...selection, environmentId, projectId });
   const [composing, setComposing] = useState(false);
 
+  const defaultModelLabel = gt("Default model");
   const settings = useMemo(
     () => ({
       environmentId,
       projectId,
       modelSelection: launch.modelSelection,
-      modelLabel: launch.label ?? "Default model",
+      modelLabel: launch.label ?? defaultModelLabel,
       runtimeMode: selection.runtimeMode,
     }),
-    [environmentId, projectId, launch.modelSelection, launch.label, selection.runtimeMode],
+    [
+      environmentId,
+      projectId,
+      launch.modelSelection,
+      launch.label,
+      defaultModelLabel,
+      selection.runtimeMode,
+    ],
   );
   const refreshList = list.refresh;
   const start = useFactoryKnowledgeStart({
@@ -279,25 +305,29 @@ export function FactoryBriefsRouteScreen({
   if (!canRead) {
     body = (
       <StateMessage
-        title="Not permitted"
-        detail="This connection can't read orchestration data in this environment."
+        title={gt("Not permitted")}
+        detail={gt("This connection can't read orchestration data in this environment.")}
       />
     );
   } else if (list.data === null && list.error) {
     body = (
       <StateMessage
-        title="Couldn't load briefs"
+        title={gt("Couldn't load briefs")}
         detail={list.error}
-        action={<Button tone="primary" label="Try again" onPress={refreshList} />}
+        action={<Button tone="primary" label={gt("Try again")} onPress={refreshList} />}
       />
     );
   } else if (list.data === null) {
-    body = <Text className="py-6 text-center text-sm text-foreground-muted">Loading briefs…</Text>;
+    body = (
+      <Text className="py-6 text-center text-sm text-foreground-muted">
+        <T>Loading briefs…</T>
+      </Text>
+    );
   } else if (briefs.length === 0) {
     body = (
       <StateMessage
-        title="No briefs"
-        detail="Write a brief to ask a bounded question and get one reviewed deliverable."
+        title={gt("No briefs")}
+        detail={gt("Write a brief to ask a bounded question and get one reviewed deliverable.")}
       />
     );
   } else {
@@ -339,10 +369,10 @@ export function FactoryBriefsRouteScreen({
           ) : undefined
         }
       >
-        <SettingsSection title="Project">
+        <SettingsSection title={gt("Project")}>
           <View className="gap-1 px-4 py-3">
             <Text className="text-lg text-foreground">
-              {project?.title ?? "Project unavailable"}
+              {project?.title ?? gt("Project unavailable")}
             </Text>
             <Text className="text-sm text-foreground-muted" selectable>
               {project?.workspaceRoot}
@@ -350,16 +380,20 @@ export function FactoryBriefsRouteScreen({
           </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Model, ${launch.label ?? "Choose model"}`}
+            accessibilityLabel={gt("Model, {model}", {
+              model: launch.label ?? gt("Choose model"),
+            })}
             onPress={() => navigation.navigate("SettingsFactoryModel")}
             className="min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3 active:opacity-70"
           >
-            <Text className="text-lg text-foreground">Model</Text>
+            <Text className="text-lg text-foreground">
+              <T>Model</T>
+            </Text>
             <Text
               className="min-w-0 flex-1 text-right text-base text-foreground-muted"
               numberOfLines={1}
             >
-              {launch.label ?? (launch.modelOptions.length ? "Choose model" : "No models")}
+              {launch.label ?? (launch.modelOptions.length ? gt("Choose model") : gt("No models"))}
             </Text>
             <SymbolView
               name="chevron.right"
@@ -369,7 +403,9 @@ export function FactoryBriefsRouteScreen({
             />
           </Pressable>
         </SettingsSection>
-        <Text className="px-2 text-sm text-foreground-muted">{FACTORY_KNOWLEDGE_NOTICE}</Text>
+        <Text className="px-2 text-sm text-foreground-muted">
+          {messages(FACTORY_KNOWLEDGE_NOTICE)}
+        </Text>
 
         {composing ? (
           <NewBriefForm
@@ -383,7 +419,7 @@ export function FactoryBriefsRouteScreen({
           <Button
             tone="primary"
             icon="plus"
-            label="New brief"
+            label={gt("New brief")}
             disabled={!canRead}
             onPress={() => setComposing(true)}
           />
@@ -391,20 +427,22 @@ export function FactoryBriefsRouteScreen({
 
         <View className="flex-row items-center justify-between gap-3 px-1">
           <Text className="min-w-0 flex-1 text-xs text-foreground-muted">
-            {list.data ? `Updated ${new Date(list.data.fetchedAt).toLocaleTimeString()}` : " "}
+            {list.data
+              ? gt("Updated {time}", { time: new Date(list.data.fetchedAt).toLocaleTimeString() })
+              : " "}
           </Text>
           <Button
             tone="text"
-            label="Refresh"
+            label={gt("Refresh")}
             icon="arrow.clockwise"
-            accessibilityLabel="Refresh briefs"
+            accessibilityLabel={gt("Refresh briefs")}
             disabled={!canRead || list.isPending}
             onPress={refreshList}
           />
         </View>
         {list.data !== null && list.error ? (
           <Text className="px-1 text-sm text-danger-foreground">
-            Couldn't refresh briefs: {list.error}
+            {gt("Couldn't refresh briefs: {error}", { error: list.error })}
           </Text>
         ) : null}
 

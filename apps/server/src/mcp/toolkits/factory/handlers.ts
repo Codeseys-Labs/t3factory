@@ -276,7 +276,7 @@ export const layer = McpToolAccess.toLayer(FactoryToolkit, {
     Effect.gen(function* () {
       yield* readCaller();
       return yield* (yield* Delivery.FactoryDeliveryService)
-        .prepare(input)
+        .prepare({ ...input, commentKeys: true })
         .pipe(Effect.mapError(failure));
     }),
   ),
@@ -284,7 +284,7 @@ export const layer = McpToolAccess.toLayer(FactoryToolkit, {
     Effect.gen(function* () {
       yield* readCaller();
       return yield* (yield* Delivery.FactoryDeliveryService)
-        .read(input)
+        .read({ ...input, commentKeys: true })
         .pipe(Effect.mapError(failure));
     }),
   ),

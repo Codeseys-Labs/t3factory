@@ -67,6 +67,7 @@ import {
   ProjectCoordinatorGetResult,
 } from "@t3tools/contracts";
 import { McpSchema, Tool, Toolkit } from "effect/ai";
+import * as Struct from "effect/Struct";
 import * as Factory from "../../../factory/FactoryIssueService.ts";
 import * as Relations from "../../../factory/FactoryIssueRelations.ts";
 import * as Feeds from "../../../factory/FactoryFeedService.ts";
@@ -133,7 +134,8 @@ const prepareDelivery = Tool.make("factory_prepare_delivery", {
   ],
   description:
     "Propose a delivery that only a person can grant from the app. publish-pr and merge-pr propose a pull request for a claimed task's accepted commit and return the exact repository, base, head and payload digest. publish-artifact proposes one comment carrying a knowledge brief's accepted deliverable on issue payload.issueNumber of the project's origin repository (threadId is the brief's task thread); it returns the destination issue, the artifact digest, the exact server-rendered comment body and the payload digest. This never pushes, comments, creates a pull request or changes any state, and no tool can grant or reconcile a delivery. Refused unless the accepted commit or deliverable is still current, and with capability-unsupported on a host that cannot deliver it with the guarantee the Factory requires.",
-  parameters: FactoryDeliveryPrepareInput,
+  // The handler always asks for the tracker's own comment ids.
+  parameters: FactoryDeliveryPrepareInput.mapFields(Struct.omit(["commentKeys"])),
   success: FactoryDeliveryPrepareResult,
 })
   .annotate(Tool.Readonly, true)
@@ -147,7 +149,7 @@ const readDeliveries = Tool.make("factory_read_deliveries", {
   ],
   description:
     "Read the deliveries a person granted for a claimed task or knowledge brief task thread, newest first: pull requests (publish-pr, merge-pr) and issue comments (publish-artifact). Each has its status (pending, sending, confirmed, failed or unknown) and, once confirmed, the pull request number and URL or the comment id and URL. This read never sends, grants or reconciles anything.",
-  parameters: FactoryDeliveryReadInput,
+  parameters: FactoryDeliveryReadInput.mapFields(Struct.omit(["commentKeys"])),
   success: FactoryDeliveryReadResult,
 })
   .annotate(Tool.Readonly, true)

@@ -338,7 +338,7 @@ it.effect(
 );
 
 it.effect(
-  "a GitLab launch lists as a gitlab-issue claim and a row from a host with no claim origin is left out",
+  "a GitLab launch lists as a gitlab-issue claim, Forgejo and Azure DevOps launches only as keyed claims, and a host with no claim origin is left out",
   () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -352,6 +352,8 @@ it.effect(
       for (const [provider, number] of [
         ["gitlab", 12],
         ["forgejo", 13],
+        ["azure-devops", 14],
+        ["bitbucket", 15],
         ["linear", "ENG-123"],
       ] as const) {
         const intent: FactoryLaunchIntent = {
@@ -400,8 +402,13 @@ it.effect(
         issueKeys: true,
       });
       assert.deepEqual(
-        native.claims.map((claim) => claim.origin),
-        ["gitlab-issue", "linear-issue"],
+        native.claims.map((claim) => [claim.origin, claim.originKey]),
+        [
+          ["azure-devops-issue", "azure-devops:gitlab.com/group/sub/repo#14"],
+          ["forgejo-issue", "forgejo:gitlab.com/group/sub/repo#13"],
+          ["gitlab-issue", "gitlab:gitlab.com/group/sub/repo#12"],
+          ["linear-issue", 'linear:issue%3A["linear","linear.app","eng"]#ENG-123'],
+        ],
       );
     }).pipe(Effect.provide(layerFor("https://gitlab.com/group/sub/repo.git"))),
 );

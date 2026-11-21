@@ -140,6 +140,36 @@ const describe = (prefix: string, error: { readonly message: string }) =>
 const isMergePayload = (payload: FactoryDeliveryPayload): payload is FactoryDeliveryMergePayload =>
   "mergeMethod" in payload;
 
+// A client that sends no `commentKeys` decodes a comment id only as an integer (GitHub's REST id),
+// and one of another shape fails its whole reply. Such a reply names the comment by the stored id
+// when it is one, else by the one its URL anchor carries.
+const COMMENT_URL_ANCHOR = /#(?:issuecomment-|note_)(\d+)$/;
+const legacyCommentId = (remote: FactoryArtifactDeliveryRemote): number | null => {
+  if (typeof remote.commentId === "number") return remote.commentId;
+  const id = Number(
+    /^\d+$/.test(remote.commentId) ? remote.commentId : COMMENT_URL_ANCHOR.exec(remote.url)?.[1],
+  );
+  return Number.isSafeInteger(id) ? id : null;
+};
+
+/** Null for an artifact delivery whose comment has no integer id to be named by. */
+const legacyArtifact = (
+  intent: FactoryArtifactDeliveryIntent,
+): FactoryArtifactDeliveryIntent | null => {
+  if (intent.remote === null) return intent;
+  const commentId = legacyCommentId(intent.remote);
+  return commentId === null ? null : { ...intent, remote: { ...intent.remote, commentId } };
+};
+
+// A reply that is one intent cannot leave it out, so it leaves out the comment it cannot name.
+const replyIntent = (
+  commentKeys: boolean | undefined,
+  intent: FactoryDeliveryIntent,
+): FactoryDeliveryIntent =>
+  commentKeys === true || intent.kind !== "publish-artifact"
+    ? intent
+    : (legacyArtifact(intent) ?? { ...intent, remote: null });
+
 /** A kind and the payload shape it takes; any other pairing is a payload the grantor did not see. */
 type DeliveryTarget =
   | { readonly kind: "publish-pr"; readonly payload: FactoryDeliveryPublishPayload }
@@ -597,6 +627,9 @@ const makeService = Effect.gen(function* () {
       const attempt = yield* random.uuidV4();
       const seen = yield* observeArtifact(input, attempt);
       const destination = yield* artifactDestination(input, input.payload.issueNumber);
+      const existing = Option.getOrNull(
+        yield* store.getLiveArtifact(seen.originKey, destination.destinationKey),
+      );
       return {
         attempt,
         acceptance: seen.acceptance,
@@ -607,9 +640,8 @@ const makeService = Effect.gen(function* () {
         body: seen.body,
         payload: input.payload,
         payloadDigest: artifactDigest(destination.destinationKey, seen),
-        existing: Option.getOrNull(
-          yield* store.getLiveArtifact(seen.originKey, destination.destinationKey),
-        ),
+        existing:
+          existing === null || input.commentKeys === true ? existing : legacyArtifact(existing),
       };
     }
     const target = targetOf(input);
@@ -695,9 +727,10 @@ const makeService = Effect.gen(function* () {
         )
           return yield* new FactoryDeliveryError({ reason: "payload-changed" });
       }
-      return replay.value;
+      return replyIntent(input.commentKeys, replay.value);
     }
-    if (input.kind === "publish-artifact") return yield* grantArtifact(input);
+    if (input.kind === "publish-artifact")
+      return replyIntent(input.commentKeys, yield* grantArtifact(input));
     const target = targetOf(input);
     if (target === null) return yield* new FactoryDeliveryError({ reason: "payload-changed" });
     // The host is read once, before the transaction: a network call must not hold the database
@@ -1054,8 +1087,15 @@ const makeService = Effect.gen(function* () {
       .pipe(Effect.mapError(persistenceFailure));
     if (shell === null || shell.projectId !== input.projectId)
       return yield* new FactoryDeliveryError({ reason: "unknown-thread" });
-    const intents = yield* store.listByThread(input.threadId);
-    return { intents: intents.filter((intent) => intent.projectId === input.projectId) };
+    const intents = (yield* store.listByThread(input.threadId)).filter(
+      (intent) => intent.projectId === input.projectId,
+    );
+    if (input.commentKeys === true) return { intents };
+    return {
+      intents: intents
+        .map((intent) => (intent.kind === "publish-artifact" ? legacyArtifact(intent) : intent))
+        .filter((intent) => intent !== null),
+    };
   });
 
   const settle = Effect.fn("FactoryDeliveryService.settle")(function* (
@@ -1676,7 +1716,8 @@ const makeService = Effect.gen(function* () {
     }
     if (intent.status !== "unknown" && intent.status !== "failed")
       return yield* new FactoryDeliveryError({ reason: "not-reconcilable" });
-    if (intent.kind === "publish-artifact") return yield* reconcileArtifact(intent);
+    if (intent.kind === "publish-artifact")
+      return replyIntent(input.commentKeys, yield* reconcileArtifact(intent));
     if (intent.status === "failed") {
       const live = yield* store.getLive(intent.originKey, intent.kind);
       if (Option.isSome(live) && live.value.id !== intent.id)

@@ -1189,12 +1189,12 @@ it.effect(
         Layer.mock(Delivery.FactoryDeliveryService)({
           prepare: (received) => {
             calls.push("prepare");
-            assert.deepEqual(received, prepareInput);
+            assert.deepEqual(received, { ...prepareInput, commentKeys: true });
             return refusal === null ? Effect.succeed(prepared) : Effect.fail(refusal);
           },
           read: (received) => {
             calls.push("read");
-            assert.deepEqual(received, { projectId, threadId });
+            assert.deepEqual(received, { projectId, threadId, commentKeys: true });
             return Effect.succeed({ intents: [artifactIntent, commitIntent] });
           },
         }),

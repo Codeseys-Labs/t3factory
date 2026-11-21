@@ -1645,6 +1645,9 @@ const makeResearchHarness = Effect.fn("TestFactory.makeResearchHarness")(functio
       [WS_METHODS.factoryReadDeliveries]: read(id, WS_METHODS.factoryReadDeliveries, () => ({
         intents: [],
       })),
+      [WS_METHODS.factoryPrepareDelivery]: read(id, WS_METHODS.factoryPrepareDelivery, () => ({
+        existing: null,
+      })),
       [WS_METHODS.factoryReadAcceptance]: read(id, WS_METHODS.factoryReadAcceptance, () => ({
         acceptance: null,
         liveHeadSha: null,
@@ -2174,5 +2177,39 @@ describe("Factory research commands", () => {
         yield* settle();
         expect(reads()).toEqual([3, 2]);
       }).pipe(Effect.scoped),
+  );
+
+  it.effect("asks every delivery read and command for the tracker's own comment keys", () =>
+    Effect.gen(function* () {
+      const h = yield* makeResearchHarness();
+      const thread = { projectId, threadId: researchTask.threadId };
+      const deliveries = h.atoms.readDeliveries({ environmentId, input: thread });
+      const prepared = h.atoms.prepareDelivery({
+        environmentId,
+        input: { ...thread, kind: "publish-artifact", payload: { issueNumber: 53 } },
+      });
+      yield* AtomRegistry.mount(h.registry, deliveries);
+      yield* AtomRegistry.mount(h.registry, prepared);
+      yield* AtomRegistry.getResult(h.registry, deliveries, { suspendOnWaiting: true });
+      yield* AtomRegistry.getResult(h.registry, prepared, { suspendOnWaiting: true });
+      yield* Deferred.succeed(h.release, undefined);
+      yield* h.atoms.grantDelivery.run(h.registry, {
+        environmentId,
+        input: artifactGrantInput("grant-artifact"),
+      });
+      yield* h.atoms.reconcileDelivery.run(h.registry, {
+        environmentId,
+        input: { projectId, intentId: "delivery:1" },
+      });
+      expect(new Set(h.calls.map((call) => call.method))).toEqual(
+        new Set([
+          WS_METHODS.factoryReadDeliveries,
+          WS_METHODS.factoryPrepareDelivery,
+          WS_METHODS.factoryGrantDelivery,
+          WS_METHODS.factoryReconcileDelivery,
+        ]),
+      );
+      for (const call of h.calls) expect(call.input).toMatchObject({ commentKeys: true });
+    }).pipe(Effect.scoped),
   );
 });

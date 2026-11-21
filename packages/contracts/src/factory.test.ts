@@ -1,9 +1,16 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
-import { CommandId, ProjectId, ThreadId } from "./baseSchemas.ts";
+import { CommandId, EnvironmentId, ProjectId, ThreadId } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import { FactoryIssue, FactoryIssueListInput, FactoryIssueStartInput } from "./factory.ts";
-import { FactoryArtifactDeliveryGrantInput } from "./factoryDelivery.ts";
+import { FactoryOriginKey } from "./factoryClaims.ts";
+import {
+  FactoryArtifactDeliveryGrantInput,
+  FactoryArtifactDeliveryIntent,
+  FactoryCommitDeliveryIntent,
+  FactoryDeliveryReadResult,
+} from "./factoryDelivery.ts";
+import { SourceControlProviderKind } from "./sourceControl.ts";
 
 const input = {
   commandId: CommandId.make("start"),
@@ -84,5 +91,67 @@ describe("factory wire contract", () => {
     ]) {
       expect(() => decode({ ...grant, attempt })).toThrow();
     }
+  });
+
+  it("keeps a delivery reply without comment keys decodable by clients that predate them", () => {
+    // The read reply as shipped clients decode it (47ddccebbc): only the comment id differs.
+    const decodeShipped = Schema.decodeUnknownSync(
+      Schema.Struct({
+        intents: Schema.Array(
+          Schema.Union([
+            FactoryCommitDeliveryIntent,
+            FactoryArtifactDeliveryIntent.mapFields((fields) => ({
+              ...fields,
+              remote: Schema.NullOr(Schema.Struct({ commentId: Schema.Int, url: Schema.String })),
+            })),
+          ]),
+        ),
+      }),
+    );
+    const encode = Schema.encodeSync(FactoryDeliveryReadResult);
+    const url = "https://github.com/owner/repo/issues/7#issuecomment-91";
+    const intent = {
+      id: "delivery:artifact:1",
+      originKey: FactoryOriginKey.make("knowledge:brief"),
+      threadId: ThreadId.make("knowledge-thread"),
+      projectId: input.projectId,
+      acceptanceId: "acceptance",
+      payloadDigest: "b".repeat(64),
+      grantedBy: EnvironmentId.make("person"),
+      grantedAt: "2026-10-28T00:00:00.000Z",
+      requestCommandId: "grant",
+      status: "confirmed",
+      failure: null,
+      updatedAt: "2026-10-28T00:00:01.000Z",
+      kind: "publish-artifact",
+      briefId: "brief",
+      artifactPath: "DELIVERABLE.md",
+      artifactSha256: "a".repeat(64),
+      artifactBytes: 10,
+      repository: {
+        provider: SourceControlProviderKind.make("github"),
+        host: "github.com",
+        repository: "owner/repo",
+        canonicalKey: "github.com/owner/repo",
+        url: "https://github.com/owner/repo",
+      },
+      destinationKey: "comment:github:github.com/owner/repo#7",
+      payload: { issueNumber: 7 },
+      body: "# Findings",
+      remote: { commentId: 91, url },
+    } satisfies FactoryArtifactDeliveryIntent;
+    expect(decodeShipped(encode({ intents: [intent] }))).toEqual({ intents: [intent] });
+    const keyed = { ...intent, remote: { commentId: "IC_kwDOabc", url } };
+    expect(() => decodeShipped(encode({ intents: [keyed] }))).toThrow();
+    const decodeShippedInput = Schema.decodeUnknownSync(
+      Schema.Struct({ projectId: ProjectId, threadId: ThreadId }),
+    );
+    expect(
+      decodeShippedInput({
+        projectId: intent.projectId,
+        threadId: intent.threadId,
+        commentKeys: true,
+      }),
+    ).toEqual({ projectId: intent.projectId, threadId: intent.threadId });
   });
 });

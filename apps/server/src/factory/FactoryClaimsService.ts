@@ -63,6 +63,10 @@ const decodeRows = Schema.decodeUnknownEffect(
   ),
 );
 const isClaimOrigin = Schema.is(FactoryClaim.fields.origin);
+// The origins a client that sends no `issueKeys` decodes; one more fails its whole list.
+const isLegacyClaimOrigin = Schema.is(
+  Schema.Literals(["github-issue", "gitlab-issue", "feed-item", "research-run", "knowledge-brief"]),
+);
 
 export class FactoryClaimsService extends Context.Service<
   FactoryClaimsService,
@@ -138,6 +142,7 @@ const make = Effect.gen(function* () {
           });
           return null;
         }
+        if (input.issueKeys !== true && !isLegacyClaimOrigin(origin)) return null;
         const originKey =
           row.originKey ??
           (row.origin === "issue"

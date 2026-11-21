@@ -5,6 +5,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { readIssueListPreferences } from "../issue/issueListPreferences";
 import { ISSUES_PANEL_REF, useRightPanelStore } from "../../rightPanelStore";
 import { useProjects, useServerConfigs } from "../../state/entities";
+import { issueTrackerEnvironment } from "../../state/issueTrackers";
+import { useEnvironmentQuery } from "../../state/query";
 
 /**
  * Resolves a Factory issue's URL to the Issues page's panel, like `useOpenIssueLink` does for a
@@ -20,12 +22,19 @@ export function useOpenFactoryIssue(input: {
   const allProjects = useProjects();
   const serverConfigs = useServerConfigs();
   const navigate = useNavigate();
+  const issuesEnabled = serverConfigs.get(environmentId)?.environment.capabilities.issues === true;
+  // Standalone trackers (Linear) resolve only through the environment's tracker bindings.
+  const trackers =
+    useEnvironmentQuery(
+      issuesEnabled ? issueTrackerEnvironment.connections({ environmentId, input: {} }) : null,
+    ).data ?? undefined;
   return (url) => {
-    if (serverConfigs.get(environmentId)?.environment.capabilities.issues !== true) return null;
+    if (!issuesEnabled) return null;
     const target = resolveIssueLinkTarget({
       url,
       projects: allProjects.filter((project) => project.environmentId === environmentId),
       preferredProjectId: projectId,
+      trackers,
     });
     if (target === null) return null;
     return (options) => {

@@ -226,6 +226,7 @@ export function FactoryWorkKindPicker(props: {
         options={FACTORY_WORK_KINDS.map((option) => ({
           ...option,
           label: messages(option.label),
+          accessibilityLabel: messages(option.accessibilityLabel),
         }))}
         selected={selected}
         onSelect={choose}

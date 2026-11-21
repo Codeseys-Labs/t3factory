@@ -19,10 +19,14 @@ export type FactoryOriginKey = typeof FactoryOriginKey.Type;
 
 export const FactoryClaim = Schema.Struct({
   originKey: FactoryOriginKey,
+  // Only an `issueKeys` listing carries the trackers added with the issue layer (Linear, Forgejo,
+  // Azure DevOps): older clients reject a whole list holding an origin they do not know.
   origin: Schema.Literals([
     "github-issue",
     "gitlab-issue",
     "linear-issue",
+    "forgejo-issue",
+    "azure-devops-issue",
     "feed-item",
     "research-run",
     "knowledge-brief",

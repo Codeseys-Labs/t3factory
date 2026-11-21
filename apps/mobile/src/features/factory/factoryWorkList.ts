@@ -301,7 +301,9 @@ export function resolveFactoryWorkReview(input: {
     projectId: detail.reviewProjectId,
     label:
       target.kind === "issue"
-        ? resolve(msg("Find #{number} in Issues", { number: String(target.issueNumber) }))
+        ? target.issueNumber === null
+          ? resolve(msg("Find {key} in Issues", { key: target.key ?? "" }))
+          : resolve(msg("Find #{number} in Issues", { number: String(target.issueNumber) }))
         : resolve(msg("Review brief")),
     operateNote: input.canOperate
       ? null

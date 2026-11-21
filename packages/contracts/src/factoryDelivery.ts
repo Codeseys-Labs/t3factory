@@ -101,6 +101,12 @@ const FactoryDeliveryIntentCore = {
 };
 
 /**
+ * Set by clients that decode a comment by the tracker's own id. Without it a reply names an
+ * artifact comment by the integer id older clients decode, and leaves out one that has none.
+ */
+const CommentKeys = { commentKeys: Schema.optionalKey(Schema.Boolean) };
+
+/**
  * A grant-then-execute record. It is committed before the side effect and pinned to an exact
  * `(repository, baseRef, baseBranch, headSha, payloadDigest)`: a head move or changed destination invalidates
  * the grant, and a lost response leaves it `unknown` rather than retried.
@@ -126,7 +132,7 @@ export type FactoryCommitDeliveryIntent = typeof FactoryCommitDeliveryIntent.Typ
 
 export const FactoryArtifactDeliveryRemote = Schema.Struct({
   // The tracker's own comment id: GitHub's GraphQL node id now; rows and servers from before the
-  // issue layer recorded GitHub's numeric REST id.
+  // issue layer recorded GitHub's numeric REST id. Only a `commentKeys` reply carries a string.
   commentId: Schema.Union([Schema.Int, TrimmedNonEmptyString]),
   url: Schema.String,
 });
@@ -165,6 +171,7 @@ export const FactoryDeliveryPrepareInput = Schema.Struct({
   threadId: ThreadId,
   kind: FactoryDeliveryKind,
   payload: FactoryDeliveryPayload,
+  ...CommentKeys,
 });
 export type FactoryDeliveryPrepareInput = typeof FactoryDeliveryPrepareInput.Type;
 
@@ -245,6 +252,7 @@ export const FactoryCommitDeliveryGrantInput = Schema.Struct({
   expectedHeadSha: TrimmedNonEmptyString,
   expectedPayloadDigest: TrimmedNonEmptyString,
   payload: FactoryDeliveryCommitPayload,
+  ...CommentKeys,
 });
 export type FactoryCommitDeliveryGrantInput = typeof FactoryCommitDeliveryGrantInput.Type;
 
@@ -258,6 +266,7 @@ export const FactoryArtifactDeliveryGrantInput = Schema.Struct({
   // Echoed from the prepare result so the server re-renders the very body the grantor read.
   attempt: ArtifactDeliveryAttempt,
   payload: FactoryDeliveryArtifactPayload,
+  ...CommentKeys,
 });
 export type FactoryArtifactDeliveryGrantInput = typeof FactoryArtifactDeliveryGrantInput.Type;
 
@@ -270,6 +279,7 @@ export type FactoryDeliveryGrantInput = typeof FactoryDeliveryGrantInput.Type;
 export const FactoryDeliveryReadInput = Schema.Struct({
   projectId: ProjectId,
   threadId: ThreadId,
+  ...CommentKeys,
 });
 export type FactoryDeliveryReadInput = typeof FactoryDeliveryReadInput.Type;
 
@@ -282,6 +292,7 @@ export type FactoryDeliveryReadResult = typeof FactoryDeliveryReadResult.Type;
 export const FactoryDeliveryReconcileInput = Schema.Struct({
   projectId: ProjectId,
   intentId: Schema.String,
+  ...CommentKeys,
 });
 export type FactoryDeliveryReconcileInput = typeof FactoryDeliveryReconcileInput.Type;
 

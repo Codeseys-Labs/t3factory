@@ -2413,6 +2413,71 @@ it.effect(
 );
 
 it.effect.each([
+  { name: "a decimal id", found: { id: "91", url: null }, legacy: 91 },
+  {
+    name: "a node id and a GitHub comment URL",
+    found: { id: "IC_kwDOabc", url: "https://github.com/owner/repo/issues/7#issuecomment-92" },
+    legacy: 92,
+  },
+  {
+    name: "a key and a GitLab note URL",
+    found: { id: "note-key", url: "https://gitlab.com/owner/repo/-/issues/7#note_93" },
+    legacy: 93,
+  },
+  {
+    name: "no integer id",
+    found: { id: "IC_kwDOabc", url: "https://github.com/owner/repo/issues/7" },
+    legacy: null,
+  },
+] as const)(
+  "a reply without commentKeys names a comment with $name by its integer id or leaves it out",
+  ({ found, legacy }) =>
+    withArtifact((h) =>
+      Effect.gen(function* () {
+        yield* acceptArtifact(h);
+        h.host.send = "ambiguous";
+        const prepared = yield* prepareArtifact();
+        const input: FactoryArtifactDeliveryGrantInput = {
+          projectId,
+          threadId: artifactThread,
+          kind: "publish-artifact",
+          commandId: "artifact-grant",
+          expectedArtifactSha256: prepared.artifactSha256,
+          expectedPayloadDigest: prepared.payloadDigest,
+          attempt: prepared.attempt,
+          payload: prepared.payload,
+        };
+        const service = yield* Delivery.FactoryDeliveryService;
+        const granted = yield* service.grant(input);
+        if (granted.kind !== "publish-artifact") return yield* Effect.die("expected artifact");
+        yield* drain;
+        h.host.listings = [
+          {
+            comments: [{ ...found, author: null, body: granted.body, createdAt: at }],
+            nextPage: null,
+          },
+        ];
+        const reconciled = yield* service.reconcile({ projectId, intentId: granted.id });
+        const thread = { projectId, threadId: artifactThread };
+        const [keyed] = (yield* service.read({ ...thread, commentKeys: true })).intents;
+        if (keyed?.kind !== "publish-artifact" || keyed.remote === null)
+          return yield* Effect.die("expected a confirmed artifact delivery");
+        assert.deepEqual(keyed.remote, {
+          commentId: found.id,
+          url: found.url ?? "https://github.com/owner/repo/issues/7",
+        });
+        const named =
+          legacy === null ? null : { ...keyed, remote: { ...keyed.remote, commentId: legacy } };
+        assert.deepEqual(reconciled, named ?? { ...keyed, remote: null });
+        assert.deepEqual((yield* service.read(thread)).intents, named === null ? [] : [named]);
+        assert.deepEqual((yield* prepareArtifact()).existing, named);
+        assert.deepEqual(yield* service.grant(input), named ?? { ...keyed, remote: null });
+        assert.deepEqual(yield* service.grant({ ...input, commentKeys: true }), keyed);
+      }),
+    ),
+);
+
+it.effect.each([
   { send: "definite", status: "failed" },
   { send: "ambiguous", status: "unknown" },
 ] as const)(
@@ -2459,7 +2524,7 @@ it.effect(
         yield* drain;
         yield* h.fs.remove(h.folder, { recursive: true });
         const service = yield* Delivery.FactoryDeliveryService;
-        const request = { projectId, intentId: granted.id };
+        const request = { projectId, intentId: granted.id, commentKeys: true };
         const unknown = Option.getOrThrow(
           yield* (yield* DeliveryStore.FactoryDeliveryStore).get(granted.id),
         );
@@ -2562,6 +2627,7 @@ it.effect.each([
         const reconciled = yield* (yield* Delivery.FactoryDeliveryService).reconcile({
           projectId,
           intentId: granted.id,
+          commentKeys: true,
         });
         assert.equal(
           reconciled.status,
@@ -2624,6 +2690,7 @@ it.effect.each([1, 2])(
         const reconciled = yield* (yield* Delivery.FactoryDeliveryService).reconcile({
           projectId,
           intentId: granted.id,
+          commentKeys: true,
         });
         assert.equal(reconciled.status, "confirmed");
         assert.deepEqual(reconciled.remote, remote);
@@ -2658,6 +2725,7 @@ it.effect.each(["posted-after-system-notes", "nothing-posted"] as const)(
         const reconciled = yield* (yield* Delivery.FactoryDeliveryService).reconcile({
           projectId,
           intentId: granted.id,
+          commentKeys: true,
         });
         if (scenario === "posted-after-system-notes") {
           assert.equal(reconciled.status, "confirmed");
@@ -2760,7 +2828,11 @@ it.effect.each(["pending", "confirmed"] as const)(
             nextPage: null,
           },
         ];
-        const reconciled = yield* service.reconcile({ projectId, intentId: first.id });
+        const reconciled = yield* service.reconcile({
+          projectId,
+          intentId: first.id,
+          commentKeys: true,
+        });
         assert.equal(reconciled.status, "failed");
         assert.deepEqual(reconciled.remote, remote);
         assert.equal(
@@ -2814,7 +2886,11 @@ it.effect(
             nextPage: null,
           },
         ];
-        const adopted = yield* service.reconcile({ projectId, intentId: granted.id });
+        const adopted = yield* service.reconcile({
+          projectId,
+          intentId: granted.id,
+          commentKeys: true,
+        });
         assert.equal(adopted.status, "confirmed");
         assert.deepEqual(adopted.remote, {
           commentId: "6",
@@ -2853,7 +2929,11 @@ it.effect("artifact reconciliation ignores public markers quoted by the accepted
           nextPage: null,
         },
       ];
-      const present = yield* service.reconcile({ projectId, intentId: granted.id });
+      const present = yield* service.reconcile({
+        projectId,
+        intentId: granted.id,
+        commentKeys: true,
+      });
       assert.equal(present.status, "confirmed");
       assert.deepEqual(present.remote, {
         commentId: "6",

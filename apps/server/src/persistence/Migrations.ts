@@ -110,6 +110,13 @@ import Migration0093 from "./Migrations/093_ProviderTurnAttemptIndex.ts";
 import Migration0094 from "./Migrations/094_TurnItemMessageOrdinalIndex.ts";
 import Migration0095 from "./Migrations/095_TurnItemInlineWorkOutput.ts";
 import Migration0096 from "./Migrations/096_RepairStaleTitleRegeneration.ts";
+import Migration0097 from "./Migrations/097_IssueTrackerBindings.ts";
+import Migration0098 from "./Migrations/098_ActiveShellIndexIndexes.ts";
+import Migration0099 from "./Migrations/099_BackgroundRecoveryIndexes.ts";
+import Migration0100 from "./Migrations/100_TurnStartReadIndexes.ts";
+import Migration0101 from "./Migrations/101_DelegatedTaskReadIndexes.ts";
+import Migration0102 from "./Migrations/102_ThreadItemCounts.ts";
+import Migration0103 from "./Migrations/103_IssueTrackerAdditionalScopes.ts";
 import Migration10001 from "./Migrations/10001_FactoryIssueLaunches.ts";
 import Migration10002 from "./Migrations/10002_ProjectCoordinators.ts";
 import Migration10003 from "./Migrations/10003_FactoryFeeds.ts";
@@ -230,6 +237,13 @@ const migrationEntries = [
   [94, "TurnItemMessageOrdinalIndex", Migration0094],
   [95, "TurnItemInlineWorkOutput", Migration0095],
   [96, "RepairStaleTitleRegeneration", Migration0096],
+  [97, "IssueTrackerBindings", Migration0097],
+  [98, "ActiveShellIndexIndexes", Migration0098],
+  [99, "BackgroundRecoveryIndexes", Migration0099],
+  [100, "TurnStartReadIndexes", Migration0100],
+  [101, "DelegatedTaskReadIndexes", Migration0101],
+  [102, "ThreadItemCounts", Migration0102],
+  [103, "IssueTrackerAdditionalScopes", Migration0103],
   // Factory migrations use ids 10001 and up; each new Factory id is the highest Factory id plus one.
   [10001, "FactoryIssueLaunches", Migration10001],
   [10002, "ProjectCoordinators", Migration10002],
@@ -608,10 +622,13 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
   if (hadPendingMigrations) yield* Effect.log(DATABASE_MIGRATIONS_STARTED_MESSAGE);
   const includesV2 =
     toMigrationInclusive === undefined || toMigrationInclusive >= FIRST_V2_MIGRATION_ID;
-  const previewMigrations = includesV2 ? yield* reconcileV2PreviewMigration() : [];
-  const factoryMigrations = includesV2
-    ? yield* reconcileFactoryMigrations(toMigrationInclusive, disposableDevSeedSnapshot)
-    : [];
+  // The reconciles take the write lock; CLI startup must not contend with the server for a no-op.
+  const previewMigrations =
+    includesV2 && hadPendingMigrations ? yield* reconcileV2PreviewMigration() : [];
+  const factoryMigrations =
+    includesV2 && hadPendingMigrations
+      ? yield* reconcileFactoryMigrations(toMigrationInclusive, disposableDevSeedSnapshot)
+      : [];
   if (includesV2) {
     yield* assertV2MigrationsCanRun(toMigrationInclusive);
   }

@@ -31,7 +31,7 @@ export function fromProviders(
 /** @public */
 export const make = Effect.gen(function* () {
   const drivers = (yield* BuiltInDrivers.SourceControlDrivers).map(
-    ({ instance }) => instance.issues,
+    ({ instance }) => instance.factoryIssues,
   );
   return fromProviders(
     drivers.filter((provider): provider is IssueTrackerProviderApi => provider !== null),

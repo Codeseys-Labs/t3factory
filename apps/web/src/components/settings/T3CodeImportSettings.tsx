@@ -22,7 +22,7 @@ import {
 import { Spinner } from "../ui/spinner";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -62,6 +62,7 @@ function T3CodeImportRow({ environmentId }: { readonly environmentId: Environmen
     serverEnvironment.previewT3CodeImport.permissionAtom(environmentId),
   );
   const [open, setOpen] = useState(false);
+  const searchableSetting = useSearchableSetting();
   const [state, setState] = useState<PreviewState>({ kind: "loading" });
   const [includeProjects, setIncludeProjects] = useState(true);
   const [includeSettings, setIncludeSettings] = useState(true);

@@ -1867,7 +1867,7 @@
       "origin": "Synthetic transfer task grounded in checkout source; not a captured failure.",
       "path": "packages/shared/src/markdownLinks.test.ts",
       "anchor": "D:/Programme/t3code/ChatMarkdown.tsx",
-      "sha256": "f47bbf675f82c56033c24b1c1e5868127eabf1775c7bcfea2c93e4704aae4f15"
+      "sha256": "41a3f19738cd61f17bf3662c1481a4a1a6a54ce45d45e2efe597990ce3e9f28c"
     },
     "scenario": "Repair the seeded windows-link behavior in an actual sandbox repository.",
     "expectedActions": [
@@ -2033,7 +2033,7 @@
       "origin": "Synthetic transfer task grounded in checkout source; not a captured failure.",
       "path": "apps/server/src/assets/AssetAccess.test.ts",
       "anchor": "preserves UTF-8 bytes across stream chunks",
-      "sha256": "9736760e5a2eaf410fd0828fb406f8a5944784d626a9918c8534f32e655fd633"
+      "sha256": "267a258590d9c1d793f5d672f6367d94db6ab7afdca8601b59f1e7171bda98c7"
     },
     "scenario": "Repair the seeded utf8-chunks behavior in an actual sandbox repository.",
     "expectedActions": [

@@ -502,5 +502,29 @@
     "name": "service state persistence > records no update when the server exits during the backup check",
     "issue": 189,
     "why": "POSIX service and runtime fixtures do not run on Windows"
+  },
+  {
+    "file": "packages/provider-pi/src/server/driver.test.ts",
+    "name": "PiDriver workspace discovery > keeps each workspace's skills and commands separate from the machine catalog",
+    "issue": 128,
+    "why": "the mock matches cwd with endsWith('/pi-status-probe') but the driver joins it with Windows separators; unmodified upstream source"
+  },
+  {
+    "file": "packages/provider-pi/src/server/driver.test.ts",
+    "name": "PiDriver workspace discovery > fails command discovery instead of returning an empty successful workspace catalog",
+    "issue": 128,
+    "why": "the mock matches cwd with endsWith('/pi-status-probe') but the driver joins it with Windows separators; unmodified upstream source"
+  },
+  {
+    "file": "apps/server/src/orchestration-v2/ThreadLaunchService.test.ts",
+    "name": "launches from stable with the fetched commit and remote PR base",
+    "issue": 128,
+    "why": "upstream createWorktree path.resolve()s the worktree path, so the test's mixed-separator expected path never matches on Windows; unmodified upstream test"
+  },
+  {
+    "file": "apps/server/src/orchestration-v2/ThreadLaunchService.test.ts",
+    "name": "launches from upstream/release with the fetched commit and remote PR base",
+    "issue": 128,
+    "why": "upstream createWorktree path.resolve()s the worktree path, so the test's mixed-separator expected path never matches on Windows; unmodified upstream test"
   }
 ]

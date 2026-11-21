@@ -170,5 +170,5 @@ const THREAD_STATUS_TONES: Record<ThreadStatusPill["label"], LiveTone> = {
 
 /** The tone for a pill from `resolveThreadStatusPill`, so a run reads as its thread does. */
 export function liveToneForThreadStatus(label: ThreadStatusPill["label"]): LiveTone {
-  return THREAD_STATUS_TONES[label];
+  return THREAD_STATUS_TONES[label] ?? "neutral";
 }

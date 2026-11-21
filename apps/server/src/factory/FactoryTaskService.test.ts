@@ -62,6 +62,7 @@ import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as GitManager from "../git/GitManager.ts";
+import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -703,6 +704,8 @@ const layerWith = (settings: TestSettings = {}, fileTrusted = true) => {
         generationHost,
         Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
         Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({}),
+        // GitManager reads a PR only to mark one it opened as a draft; tasks open none.
+        Layer.mock(PullRequestService.PullRequestService)({}),
       ).pipe(Layer.provideMerge(base)),
     ),
   );

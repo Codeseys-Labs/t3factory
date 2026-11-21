@@ -9,6 +9,7 @@ import type {
   ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { CircleDotIcon } from "lucide-react";
 import { useContext, useEffect, useId, useRef, useState } from "react";
 
@@ -58,6 +59,8 @@ export function FactoryArtifactDeliveryPanel(props: {
   readonly acceptanceCurrent: boolean;
 }) {
   const { environmentId, projectId, threadId, acceptanceCurrent } = props;
+  const gt = useGT();
+  const m = useMessages();
   const registry = useContext(RegistryContext);
   const headingId = useId();
   const issueId = useId();
@@ -92,11 +95,11 @@ export function FactoryArtifactDeliveryPanel(props: {
     factoryEnvironment.reconcileDelivery.permissionAtom(environmentId),
   );
   const runGrant = useAtomCommand(factoryEnvironment.grantDelivery, {
-    label: "factory grant artifact delivery",
+    label: gt("factory grant artifact delivery"),
     reportFailure: false,
   });
   const runReconcile = useAtomCommand(factoryEnvironment.reconcileDelivery, {
-    label: "factory reconcile artifact delivery",
+    label: gt("factory reconcile artifact delivery"),
     reportFailure: false,
   });
 
@@ -112,24 +115,29 @@ export function FactoryArtifactDeliveryPanel(props: {
             intent.destinationKey === prepared.destinationKey && isLiveFactoryDelivery(intent),
         ) ?? prepared.existing);
   const prepareFailure =
-    preview.error === null ? null : factoryArtifactDeliveryFailure(preview.failure, preview.error);
+    preview.error === null
+      ? null
+      : factoryArtifactDeliveryFailure(preview.failure, preview.error, m);
   const readFailure =
     deliveries.error === null
       ? null
-      : factoryArtifactDeliveryFailure(deliveries.failure, deliveries.error);
+      : factoryArtifactDeliveryFailure(deliveries.failure, deliveries.error, m);
   const visibleFailure = failure ?? prepareFailure ?? readFailure;
   const disabledReason = preview.isPending
-    ? "Preparing the comment…"
-    : (artifactGrantDisabledReason({
-        acceptanceCurrent,
-        existing,
-        hasPermission: hasGrantPermission,
-        prepared,
-      }) ??
+    ? gt("Preparing the comment…")
+    : (artifactGrantDisabledReason(
+        {
+          acceptanceCurrent,
+          existing,
+          hasPermission: hasGrantPermission,
+          prepared,
+        },
+        m,
+      ) ??
       (preview.error !== null || failure !== null
-        ? "Prepare again before granting the comment."
+        ? gt("Prepare again before granting the comment.")
         : deliveries.error !== null || deliveries.data === null || deliveries.isPending
-          ? "Refresh delivery status before granting the comment."
+          ? gt("Refresh delivery status before granting the comment.")
           : null));
   const destinationHref = prepared === null ? null : safeExternalUrl(prepared.destination.url);
 
@@ -204,16 +212,16 @@ export function FactoryArtifactDeliveryPanel(props: {
     <section aria-labelledby={headingId} aria-busy={busy} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 id={headingId} className="font-medium text-sm">
-          Publish as issue comment
+          <T>Publish as issue comment</T>
         </h4>
         <Button
           size="xs"
           variant="outline"
           disabled={busy || deliveries.isPending}
           onClick={() => deliveries.refresh()}
-          aria-label="Refresh delivery status"
+          aria-label={gt("Refresh delivery status")}
         >
-          Refresh
+          <T>Refresh</T>
         </Button>
       </div>
       {acceptanceCurrent ? (
@@ -227,7 +235,7 @@ export function FactoryArtifactDeliveryPanel(props: {
           >
             <div className="space-y-1">
               <label htmlFor={issueId} className="text-xs">
-                Issue number
+                <T>Issue number</T>
               </label>
               <Input
                 id={issueId}
@@ -247,14 +255,16 @@ export function FactoryArtifactDeliveryPanel(props: {
               variant="outline"
               disabled={busy || preview.isPending || issueNumber === null}
             >
-              {preview.isPending ? "Preparing…" : "Prepare"}
+              {preview.isPending ? gt("Preparing…") : gt("Prepare")}
             </Button>
           </form>
           {prepared !== null && !preview.isPending && prepareFailure === null ? (
             <div className="min-w-0 space-y-2 rounded-lg border p-3">
               <dl className="space-y-1 text-xs [overflow-wrap:anywhere]">
                 <div>
-                  <dt>Destination</dt>
+                  <dt>
+                    <T>Destination</T>
+                  </dt>
                   <dd className="flex flex-wrap items-center gap-2">
                     {destinationHref === null ? (
                       <span>
@@ -274,18 +284,28 @@ export function FactoryArtifactDeliveryPanel(props: {
                   </dd>
                 </div>
                 <div>
-                  <dt>Repository</dt>
+                  <dt>
+                    <T>Repository</T>
+                  </dt>
                   <dd>{prepared.repository.canonicalKey}</dd>
                 </div>
                 <div>
-                  <dt>Accepted artifact</dt>
+                  <dt>
+                    <T>Accepted artifact</T>
+                  </dt>
                   <dd>
-                    <code>{prepared.artifactSha256.slice(0, 7)}</code> ·{" "}
-                    {prepared.artifactBytes.toLocaleString()} bytes
+                    <T>
+                      <code>
+                        <Var>{prepared.artifactSha256.slice(0, 7)}</Var>
+                      </code>{" "}
+                      · <Var>{prepared.artifactBytes.toLocaleString()}</Var> bytes
+                    </T>
                   </dd>
                 </div>
                 <div>
-                  <dt>Payload digest</dt>
+                  <dt>
+                    <T>Payload digest</T>
+                  </dt>
                   <dd>
                     <code>{prepared.payloadDigest.slice(0, 7)}</code>
                   </dd>
@@ -294,17 +314,19 @@ export function FactoryArtifactDeliveryPanel(props: {
               {prepared.destination.state === "closed" ? (
                 <Alert variant="warning">
                   <AlertDescription>
-                    This issue is closed. The comment is still posted to it.
+                    <T>This issue is closed. The comment is still posted to it.</T>
                   </AlertDescription>
                 </Alert>
               ) : null}
               <p className="text-muted-foreground text-xs">
-                The server rendered this comment from the accepted file. It is posted exactly as
-                shown, and it cannot be edited here.
+                <T>
+                  The server rendered this comment from the accepted file. It is posted exactly as
+                  shown, and it cannot be edited here.
+                </T>
               </p>
               <pre
                 tabIndex={0}
-                aria-label="Comment body"
+                aria-label={gt("Comment body")}
                 className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border p-3 text-sm [overflow-wrap:anywhere]"
               >
                 {prepared.body}
@@ -319,7 +341,7 @@ export function FactoryArtifactDeliveryPanel(props: {
               aria-describedby={disabledReason === null ? undefined : disabledReasonId}
               onClick={() => void grant()}
             >
-              Grant publish
+              <T>Grant publish</T>
             </Button>
             {disabledReason !== null ? (
               <p id={disabledReasonId} className="text-muted-foreground text-xs">
@@ -331,25 +353,29 @@ export function FactoryArtifactDeliveryPanel(props: {
       ) : (
         <>
           <p className="text-muted-foreground text-xs">
-            Accept the current artifact before publishing it as a comment.
+            <T>Accept the current artifact before publishing it as a comment.</T>
           </p>
           <DeliveryFailure failure={failure ?? readFailure} />
         </>
       )}
       {deliveries.data === null && readFailure === null ? (
         <p role="status" className="text-muted-foreground text-xs">
-          Reading deliveries…
+          <T>Reading deliveries…</T>
         </p>
       ) : null}
-      <ul aria-label="Comment deliveries" className="space-y-2 text-xs">
+      <ul aria-label={gt("Comment deliveries")} className="space-y-2 text-xs">
         {intents.map((intent) => {
           const href = intent.remote === null ? null : safeExternalUrl(intent.remote.url);
-          const status = describeDeliveryStatus(intent, intent.repository.host);
+          const status = describeDeliveryStatus(intent, intent.repository.host, m);
           return (
             <li key={intent.id} className="space-y-1">
               <p className="[overflow-wrap:anywhere]">
-                Issue #{intent.payload.issueNumber} · artifact{" "}
-                <code>{intent.artifactSha256.slice(0, 7)}</code>
+                <T>
+                  Issue #<Var>{intent.payload.issueNumber}</Var> · artifact{" "}
+                  <code>
+                    <Var>{intent.artifactSha256.slice(0, 7)}</Var>
+                  </code>
+                </T>
               </p>
               {intent.status === "pending" || intent.status === "sending" ? (
                 <Badge variant="outline">
@@ -368,7 +394,7 @@ export function FactoryArtifactDeliveryPanel(props: {
                   rel="noopener noreferrer"
                   className="underline underline-offset-4"
                 >
-                  View comment
+                  <T>View comment</T>
                 </a>
               ) : null}
               {intent.status === "unknown" || intent.status === "failed" ? (
@@ -379,7 +405,7 @@ export function FactoryArtifactDeliveryPanel(props: {
                   aria-describedby={hasReconcilePermission ? undefined : reconcileReasonId}
                   onClick={() => void reconcile(intent.id)}
                 >
-                  Reconcile
+                  <T>Reconcile</T>
                 </Button>
               ) : null}
             </li>
@@ -389,7 +415,7 @@ export function FactoryArtifactDeliveryPanel(props: {
       {!hasReconcilePermission &&
       intents.some((intent) => intent.status === "unknown" || intent.status === "failed") ? (
         <p id={reconcileReasonId} className="text-muted-foreground text-xs">
-          Reconciling needs operate and source-control write permissions on this environment.
+          <T>Reconciling needs operate and source-control write permissions on this environment.</T>
         </p>
       ) : null}
     </section>

@@ -47,6 +47,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { usePullToRefresh } from "../../state/use-pull-to-refresh";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { useAndroidWorkspaceBack } from "../layout/workspace/useAndroidWorkspaceNavigation";
+import { FactoryIssueActionsSection } from "../factory/FactoryIssueActionsSection";
 import { PullRequestDescription } from "../pull-requests/PullRequestDescription";
 import {
   PullRequestMarkdown,
@@ -692,6 +693,7 @@ function IssueRoute({ params }: { readonly params: IssueParams }) {
                       <LinkedPullRequests params={params} links={detail.linkedPullRequests} />
                     ) : null}
                     <LinkedThreads params={params} host={detail.host} />
+                    <FactoryIssueActionsSection params={params} />
                     <View className="gap-3">
                       <PullRequestSectionHeading>
                         {detail.commentCount > 0

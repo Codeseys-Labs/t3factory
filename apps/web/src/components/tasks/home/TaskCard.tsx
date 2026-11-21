@@ -2,6 +2,7 @@ import { useDraggable } from "@dnd-kit/core";
 import { factoryTaskKey } from "@t3tools/client-runtime/state/factory-task-view";
 import type { FactoryTaskSummary } from "@t3tools/contracts";
 import type { KeyboardEvent } from "react";
+import { useGT, useMessages } from "gt-react";
 
 import { cn } from "~/lib/utils";
 import { ProjectChip, TaskIdText, TaskProgress, TypeTag } from "../kit";
@@ -37,6 +38,7 @@ export function taskItemKeyDown(
 
 export function TaskCard(props: TaskCardProps) {
   const { task } = props;
+  const gt = useGT();
   // The drag attributes are left off: they describe a keyboard drag, and arrows move focus here.
   const { setNodeRef, listeners, isDragging } = useDraggable({
     id: factoryTaskKey(task.ref),
@@ -48,7 +50,7 @@ export function TaskCard(props: TaskCardProps) {
       type="button"
       data-task-card
       {...listeners}
-      aria-roledescription="task card"
+      aria-roledescription={gt("task card")}
       aria-pressed={props.selected}
       onClick={() => props.onPeek(task)}
       onDoubleClick={() => props.onOpen(task)}
@@ -73,7 +75,8 @@ export function TaskCardBody({
   task: FactoryTaskSummary;
   projectName: string | null;
 }) {
-  const meta = cardMeta(task);
+  const messages = useMessages();
+  const meta = cardMeta(task, messages);
   return (
     <>
       <span className="flex h-5 min-w-0 items-center gap-1.5">

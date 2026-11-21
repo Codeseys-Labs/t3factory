@@ -53,7 +53,7 @@ import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexA
 import { DispatchModeLimit } from "../orchestration-v2/DispatchModeLimit.ts";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import { feedItemOriginKey } from "./FactoryOriginKey.ts";
-import { issueTrackersLayer } from "./IssueTrackerProviderRegistry.testkit.ts";
+import { issueTrackersLayer } from "./FactoryIssueHosts.testkit.ts";
 
 const environmentId = EnvironmentId.make("feed-environment");
 

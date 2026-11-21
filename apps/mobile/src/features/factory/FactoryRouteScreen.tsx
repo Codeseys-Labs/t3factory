@@ -7,6 +7,7 @@ import {
 } from "@t3tools/contracts";
 import { StackActions, useNavigation, usePreventRemove } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { msg, T, useGT, useMessages } from "gt-react-native";
 import { Pressable, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -44,12 +45,12 @@ import {
 } from "./factory-inbox-state";
 
 const SECTIONS: ReadonlyArray<{ readonly value: FactorySection; readonly label: string }> = [
-  { value: "work", label: "Work" },
-  { value: "overview", label: "Overview" },
-  { value: "issues", label: "Issues" },
-  { value: "briefs", label: "Briefs" },
-  { value: "workflows", label: "Workflows" },
-  { value: "orchestrator", label: "Orchestrator" },
+  { value: "work", label: msg("Work") },
+  { value: "overview", label: msg("Overview") },
+  { value: "issues", label: msg("Issues") },
+  { value: "briefs", label: msg("Briefs") },
+  { value: "workflows", label: msg("Workflows") },
+  { value: "orchestrator", label: msg("Orchestrator") },
 ];
 
 function ScopePicker({
@@ -63,11 +64,12 @@ function ScopePicker({
   readonly actions: MenuAction[];
   readonly onSelect: (id: string) => void;
 }) {
+  const gt = useGT();
   return (
     <Menu actions={actions} onPressAction={({ nativeEvent }) => onSelect(nativeEvent.event)}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${label}, ${value}`}
+        accessibilityLabel={gt("{label}, {value}", { label, value })}
         className="min-h-12 flex-row items-center gap-3 px-4 py-3 active:opacity-70"
       >
         <Text className="text-base text-foreground">{label}</Text>
@@ -97,6 +99,7 @@ function EnvironmentOverview({
   ) => void;
 }) {
   const environmentId = environment.environmentId;
+  const gt = useGT();
   const canRead = useEnvironmentScope(environmentId, AuthOrchestrationReadScope);
   const connected = environment.connection.phase === "connected";
   const config = environment.serverConfig;
@@ -122,11 +125,11 @@ function EnvironmentOverview({
   );
   const threads = useThreadShells();
   const unavailable = !connected
-    ? "Offline. Reconnect to read current Factory data."
+    ? gt("Offline. Reconnect to read current Factory data.")
     : config === null
-      ? "Server metadata is loading."
+      ? gt("Server metadata is loading.")
       : !canRead
-        ? "This connection cannot read orchestration data."
+        ? gt("This connection cannot read orchestration data.")
         : null;
   return (
     <SettingsSection title={environment.label}>
@@ -136,8 +139,8 @@ function EnvironmentOverview({
       {projects.length === 0 ? (
         <Text className="p-4 text-sm text-foreground-muted">
           {unavailable
-            ? "Project metadata is unavailable."
-            : "No project checkouts in this environment."}
+            ? gt("Project metadata is unavailable.")
+            : gt("No project checkouts in this environment.")}
         </Text>
       ) : (
         projects.map((project) => {
@@ -155,11 +158,11 @@ function EnvironmentOverview({
           );
           const featureUnavailable =
             section === "issues" && !issuesSupported
-              ? "Issue inbox unsupported by this server."
+              ? gt("Issue inbox unsupported by this server.")
               : section === "briefs" && !knowledgeSupported
-                ? "Briefs unsupported by this server."
+                ? gt("Briefs unsupported by this server.")
                 : section === "orchestrator" && !coordinatorSupported
-                  ? "Orchestrators unsupported by this server."
+                  ? gt("Orchestrators unsupported by this server.")
                   : null;
           return (
             <View key={project.id} className="gap-2 border-t border-border-subtle p-4">
@@ -170,20 +173,37 @@ function EnvironmentOverview({
               {readable && section === "overview" ? (
                 <>
                   <Text className="text-sm text-foreground-muted">
-                    {projectThreads.length} sessions · {running} running
+                    {gt("{sessions} sessions · {running} running", {
+                      sessions: String(projectThreads.length),
+                      running: String(running),
+                    })}
                   </Text>
                   <Text className="text-sm text-foreground-muted">
                     {tasks.error
-                      ? "Workflows unavailable: could not load definitions."
+                      ? gt("Workflows unavailable: could not load definitions.")
                       : workflows === undefined
-                        ? "Loading workflows…"
-                        : `${workflows.length} workflows · ${workflows.filter((task) => task.enabled).length} enabled`}
+                        ? gt("Loading workflows…")
+                        : gt("{count} workflows · {enabled} enabled", {
+                            count: String(workflows.length),
+                            enabled: String(workflows.filter((task) => task.enabled).length),
+                          })}
                   </Text>
                   {workflows?.map((task) => (
                     <Button
                       key={task.id}
                       tone="text"
-                      label={`${task.title} · ${task.lastRunStatus ?? "Not dispatched"}${task.lastRunAt ? ` · ${new Date(task.lastRunAt).toLocaleString()}` : ""}`}
+                      label={
+                        task.lastRunAt
+                          ? gt("{title} · {status} · {time}", {
+                              title: task.title,
+                              status: task.lastRunStatus ?? gt("Not dispatched"),
+                              time: new Date(task.lastRunAt).toLocaleString(),
+                            })
+                          : gt("{title} · {status}", {
+                              title: task.title,
+                              status: task.lastRunStatus ?? gt("Not dispatched"),
+                            })
+                      }
                       onPress={() => onWorkflow(environmentId, project.id, task.id)}
                     />
                   ))}
@@ -192,14 +212,14 @@ function EnvironmentOverview({
               {readable && section !== "issues" && section !== "briefs" ? (
                 <Text className="text-sm text-foreground-muted">
                   {!coordinatorSupported
-                    ? "Orchestrators unsupported by this server."
+                    ? gt("Orchestrators unsupported by this server.")
                     : coordinators.error
-                      ? "Orchestrator unavailable: could not load binding."
+                      ? gt("Orchestrator unavailable: could not load binding.")
                       : coordinators.data === null
-                        ? "Loading orchestrator…"
+                        ? gt("Loading orchestrator…")
                         : coordinator
-                          ? `Orchestrator: ${coordinator.status}`
-                          : "No orchestrator created"}
+                          ? gt("Orchestrator: {status}", { status: coordinator.status })
+                          : gt("No orchestrator created")}
                 </Text>
               ) : null}
               {featureUnavailable ? (
@@ -208,12 +228,12 @@ function EnvironmentOverview({
               <Button
                 label={
                   section === "issues"
-                    ? "Choose this checkout for issues"
+                    ? gt("Choose this checkout for issues")
                     : section === "briefs"
-                      ? "Choose this checkout for briefs"
+                      ? gt("Choose this checkout for briefs")
                       : section === "orchestrator"
-                        ? "Choose orchestrator checkout"
-                        : "Show this checkout"
+                        ? gt("Choose orchestrator checkout")
+                        : gt("Show this checkout")
                 }
                 disabled={unavailable !== null || featureUnavailable !== null}
                 onPress={() => onChoose(environmentId, project.id)}
@@ -226,7 +246,7 @@ function EnvironmentOverview({
         <View className="items-start p-3">
           <Button
             tone="text"
-            label="Refresh overview"
+            label={gt("Refresh overview")}
             onPress={() => {
               if (section === "overview") tasks.refresh();
               if (coordinatorSupported) coordinators.refresh();
@@ -239,6 +259,8 @@ function EnvironmentOverview({
 }
 
 export function FactoryRouteScreen() {
+  const gt = useGT();
+  const messages = useMessages();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<FactoryWorkRoutes>>();
   const { fontScale } = useWindowDimensions();
@@ -271,9 +293,13 @@ export function FactoryRouteScreen() {
         ) ?? null);
   const invalid =
     selection.projectId !== null && (selection.environmentId === null || selectedProject === null)
-      ? "This checkout was removed or is unavailable. Select a known checkout or reset to all projects."
+      ? gt(
+          "This checkout was removed or is unavailable. Select a known checkout or reset to all projects.",
+        )
       : selection.environmentId !== null && selectedEnvironment === null
-        ? "This environment was removed or is unavailable. Select another environment or reset the scope."
+        ? gt(
+            "This environment was removed or is unavailable. Select another environment or reset the scope.",
+          )
         : null;
   const scopedEnvironments =
     selection.environmentId === null
@@ -294,12 +320,15 @@ export function FactoryRouteScreen() {
   const environmentActions: MenuAction[] = [
     {
       id: "all",
-      title: "All environments",
+      title: gt("All environments"),
       state: selection.environmentId === null ? "on" : undefined,
     },
     ...environments.map<MenuAction>((environment) => ({
       id: environment.environmentId,
-      title: `${environment.label}${environment.connection.phase === "connected" ? "" : " (offline)"}`,
+      title:
+        environment.connection.phase === "connected"
+          ? environment.label
+          : gt("{label} (offline)", { label: environment.label }),
       state: environment.environmentId === selection.environmentId ? "on" : undefined,
     })),
   ];
@@ -310,12 +339,12 @@ export function FactoryRouteScreen() {
   const projectActions: MenuAction[] = [
     {
       id: "all",
-      title: "All project checkouts",
+      title: gt("All project checkouts"),
       state: selection.projectId === null ? "on" : undefined,
     },
     ...scopeProjects.map<MenuAction>((project) => ({
       id: JSON.stringify([project.environmentId, project.id]),
-      title: `${project.title} · ${environments.find((entry) => entry.environmentId === project.environmentId)?.label ?? "Unavailable environment"} · ${project.workspaceRoot}`,
+      title: `${project.title} · ${environments.find((entry) => entry.environmentId === project.environmentId)?.label ?? gt("Unavailable environment")} · ${project.workspaceRoot}`,
       state:
         project.id === selection.projectId && project.environmentId === selection.environmentId
           ? "on"
@@ -337,16 +366,18 @@ export function FactoryRouteScreen() {
   ]);
 
   return (
-    <SettingsScreen title="Factory">
+    <SettingsScreen title={gt("Factory")}>
       <View className="gap-3 px-5 pt-3 pb-2">
-        <Text className="text-sm text-foreground-muted">Showing work for</Text>
+        <Text className="text-sm text-foreground-muted">
+          <T>Showing work for</T>
+        </Text>
         <SettingsSection>
           <ScopePicker
-            label="Environment"
+            label={gt("Environment")}
             value={
               selection.environmentId === null
-                ? "All environments"
-                : (selectedEnvironment?.label ?? "Unavailable environment")
+                ? gt("All environments")
+                : (selectedEnvironment?.label ?? gt("Unavailable environment"))
             }
             actions={environmentActions}
             onSelect={(id) => {
@@ -358,11 +389,11 @@ export function FactoryRouteScreen() {
             }}
           />
           <ScopePicker
-            label="Checkout"
+            label={gt("Checkout")}
             value={
               selection.projectId === null
-                ? "All project checkouts"
-                : (selectedProject?.workspaceRoot ?? "Unavailable checkout")
+                ? gt("All project checkouts")
+                : (selectedProject?.workspaceRoot ?? gt("Unavailable checkout"))
             }
             actions={projectActions}
             onSelect={(id) => {
@@ -378,18 +409,20 @@ export function FactoryRouteScreen() {
         </SettingsSection>
         {fontScale < FACTORY_LARGE_TEXT_SCALE ? (
           <SegmentedControl<FactorySection>
-            options={SECTIONS}
+            options={SECTIONS.map((entry) => ({ ...entry, label: messages(entry.label) }))}
             selected={selection.section}
             onSelect={selectFactorySection}
           />
         ) : (
           <SettingsSection>
             <ScopePicker
-              label="Section"
-              value={SECTIONS.find((entry) => entry.value === selection.section)?.label ?? ""}
+              label={gt("Section")}
+              value={messages(
+                SECTIONS.find((entry) => entry.value === selection.section)?.label ?? "",
+              )}
               actions={SECTIONS.map<MenuAction>((entry) => ({
                 id: entry.value,
-                title: entry.label,
+                title: messages(entry.label),
                 state: entry.value === selection.section ? "on" : undefined,
               }))}
               onSelect={(id) => {
@@ -402,18 +435,22 @@ export function FactoryRouteScreen() {
         {reviewingWork ? (
           <Button
             icon="chevron.left"
-            label="Back to Work"
-            accessibilityHint="Restores the Work scope and reopens the item you were reviewing"
+            label={gt("Back to Work")}
+            accessibilityHint={gt(
+              "Restores the Work scope and reopens the item you were reviewing",
+            )}
             onPress={backToWork}
           />
         ) : null}
       </View>
       {!isReady ? (
-        <Text className="p-5 text-foreground-muted">Loading environments…</Text>
+        <Text className="p-5 text-foreground-muted">
+          <T>Loading environments…</T>
+        </Text>
       ) : invalid ? (
         <View className="gap-3 p-5">
-          <EmptyState variant="plain" title="Scope unavailable" detail={invalid} />
-          <Button label="Show all projects" onPress={() => selectFactoryScope(null, null)} />
+          <EmptyState variant="plain" title={gt("Scope unavailable")} detail={invalid} />
+          <Button label={gt("Show all projects")} onPress={() => selectFactoryScope(null, null)} />
         </View>
       ) : selection.section === "work" ? (
         <FactoryWorkSection
@@ -457,20 +494,24 @@ export function FactoryRouteScreen() {
           {environments.length === 0 ? (
             <EmptyState
               variant="plain"
-              title="Connect an environment"
-              detail="Connect to a server to see its projects, sessions and workflows."
+              title={gt("Connect an environment")}
+              detail={gt("Connect to a server to see its projects, sessions and workflows.")}
             />
           ) : null}
           {selection.section === "issues" ? (
             <Text className="text-sm text-foreground-muted">
-              Choose one connected, supported checkout to review its issue source and start issue
-              work. This is not an aggregate issue queue.
+              <T>
+                Choose one connected, supported checkout to review its issue source and start issue
+                work. This is not an aggregate issue queue.
+              </T>
             </Text>
           ) : null}
           {selection.section === "briefs" ? (
             <Text className="text-sm text-foreground-muted">
-              Choose one connected, supported checkout to write briefs and review their artifacts.
-              Briefs belong to one project.
+              <T>
+                Choose one connected, supported checkout to write briefs and review their artifacts.
+                Briefs belong to one project.
+              </T>
             </Text>
           ) : null}
           {selection.section === "orchestrator" &&

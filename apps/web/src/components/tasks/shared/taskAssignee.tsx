@@ -12,7 +12,9 @@ import type {
 } from "@t3tools/contracts";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { type ReactElement, useState } from "react";
+import { msg, T, useGT, useMessages } from "gt-react";
 
+import { m } from "../../../i18n/messages";
 import { factoryTasks, useFactoryAgentProfiles } from "../../../state/factoryTasks";
 import { ComposerEffortColumn } from "../../chat/ComposerModelEffort";
 import { ProviderModelPicker } from "../../chat/ProviderModelPicker";
@@ -118,6 +120,8 @@ function useAutoDetail(input: {
 }): string {
   const catalog = useTaskCatalog(input.environmentId);
   const local = input.autoResolution !== undefined;
+  const messages = useMessages();
+  const gt = useGT();
   const preview = usePreview(
     input.environmentId,
     local
@@ -135,9 +139,11 @@ function useAutoDetail(input: {
     parentDisplayId: input.autoResolution?.parentDisplayId ?? input.parent?.displayId,
   };
   if (input.autoResolution !== undefined)
-    return autoDetailLine(input.autoResolution.resolved, context);
-  if (preview._tag === "Success") return autoDetailLine(preview.value.resolved, context);
-  return preview._tag === "Initial" ? "Looking up the agent…" : "Picks an agent when it starts";
+    return autoDetailLine(input.autoResolution.resolved, context, messages);
+  if (preview._tag === "Success") return autoDetailLine(preview.value.resolved, context, messages);
+  return preview._tag === "Initial"
+    ? gt("Looking up the agent…")
+    : gt("Picks an agent when it starts");
 }
 
 export interface TaskAssigneePickerProps {
@@ -169,6 +175,7 @@ export function TaskAssigneePicker({
   autoResolution,
 }: TaskAssigneePickerProps) {
   const catalog = useTaskCatalog(environmentId);
+  const gt = useGT();
   const profilesResult = useFactoryAgentProfiles(environmentId);
   const autoDetail = useAutoDetail({ environmentId, projectId, type, parent, autoResolution });
   const choices = useTaskModelChoices(environmentId, projectId);
@@ -208,7 +215,10 @@ export function TaskAssigneePicker({
   };
   const pin = () => {
     if (activeInstanceId === null) {
-      toastManager.add({ type: "error", title: "Add a provider in Settings to pin a model." });
+      toastManager.add({
+        type: "error",
+        title: m(msg("Add a provider in Settings to pin a model.")),
+      });
       return;
     }
     setPinning(true);
@@ -229,7 +239,7 @@ export function TaskAssigneePicker({
         trigger={trigger}
         auto={{ detail: autoDetail }}
         profiles={profiles}
-        person={{ label: "You", initials: "Y", detail: "Person" }}
+        person={{ label: gt("You"), initials: "Y", detail: gt("Person") }}
         pinned={pinned}
         allowUnassigned={allowUnassigned}
         selected={pickerValue(value)}
@@ -256,7 +266,7 @@ export function TaskAssigneePicker({
               <ComposerEffortColumn traits={traits} />
             ) : (
               <p className="px-3 pt-3 text-muted-foreground text-sm">
-                Choose a model to set its options.
+                <T>Choose a model to set its options.</T>
               </p>
             )
           }

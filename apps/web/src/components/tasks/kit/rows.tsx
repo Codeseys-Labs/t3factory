@@ -16,6 +16,7 @@ import {
   SquareIcon,
   UsersIcon,
 } from "lucide-react";
+import { T } from "gt-react";
 import { cn } from "~/lib/utils";
 import { PullRequestGlyph } from "../../pullRequest/pullRequestIcons";
 import { Button } from "../../ui/button";
@@ -366,7 +367,7 @@ export function ResultCard({
         ) : (
           <CheckIcon aria-hidden className="size-3" />
         )}
-        {review === "pending" ? "Needs review" : "Accepted"}
+        {review === "pending" ? <T>Needs review</T> : <T>Accepted</T>}
         <span aria-hidden>·</span>
         {revisionLabel}
       </span>
@@ -374,12 +375,12 @@ export function ResultCard({
         <div className="flex shrink-0 items-center gap-2">
           {onAccept ? (
             <Button size="sm" disabled={pending} onClick={onAccept}>
-              Accept
+              <T>Accept</T>
             </Button>
           ) : null}
           {onRequestChanges ? (
             <Button variant="outline" size="sm" disabled={pending} onClick={onRequestChanges}>
-              Request changes
+              <T>Request changes</T>
             </Button>
           ) : null}
         </div>

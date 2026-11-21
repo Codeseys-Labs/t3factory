@@ -15,6 +15,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
+import { T, useGT, useMessages } from "gt-react";
 import { useEffect, useRef, useState } from "react";
 
 import { randomUUID } from "../../lib/utils";
@@ -78,36 +79,44 @@ export function FactoryOrchestratorPage() {
     <section className="min-w-0 space-y-5" aria-labelledby="factory-orchestrator-title">
       <div className="space-y-1">
         <h1 id="factory-orchestrator-title" className="text-lg font-semibold">
-          Project orchestrator
+          <T>Project orchestrator</T>
         </h1>
         <p className="text-sm text-muted-foreground">
-          One ordinary agent thread per project checkout. Opening this page or an existing thread
-          sends nothing. Create and start explicitly sends a one-time orientation request.
+          <T>
+            One ordinary agent thread per project checkout. Opening this page or an existing thread
+            sends nothing. Create and start explicitly sends a one-time orientation request.
+          </T>
         </p>
         <p className="text-xs text-muted-foreground">
-          Use the thread's existing delegation and workflow tools for later operator requests. No
-          workers or schedules are started by visiting Factory.
+          <T>
+            Use the thread's existing delegation and workflow tools for later operator requests. No
+            workers or schedules are started by visiting Factory.
+          </T>
         </p>
       </div>
       {scope.kind === "unavailable" ? (
         <Alert variant="error">
-          <AlertTitle>Unavailable selection</AlertTitle>
+          <AlertTitle>
+            <T>Unavailable selection</T>
+          </AlertTitle>
           <AlertDescription>{scope.message}</AlertDescription>
         </Alert>
       ) : !isReady ? (
         <p role="status" className="text-sm text-muted-foreground">
-          Loading environments…
+          <T>Loading environments…</T>
         </p>
       ) : selectedEnvironments.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Connect an environment to view its project orchestrators.
+          <T>Connect an environment to view its project orchestrators.</T>
         </p>
       ) : (
         <>
           {member === null ? (
             <p className="text-sm text-muted-foreground">
-              Choose an exact checkout to create or resume its orchestrator. Existing threads can be
-              opened below.
+              <T>
+                Choose an exact checkout to create or resume its orchestrator. Existing threads can
+                be opened below.
+              </T>
             </p>
           ) : null}
           {selectedEnvironments.map((environment) => (
@@ -132,6 +141,8 @@ function CoordinatorEnvironment(props: {
   readonly exactMember: SidebarProjectGroupMember | null;
 }) {
   const { environment, targets, exactMember } = props;
+  const gt = useGT();
+  const m = useMessages();
   const environmentId = environment.environmentId;
   const connected =
     environment.connection.phase === "connected" && environment.serverConfig !== null;
@@ -150,22 +161,26 @@ function CoordinatorEnvironment(props: {
       : null,
   );
   const query = exactMember === null ? listQuery : getQuery;
-  const failure = query.error === null ? null : coordinatorFailure(query.failure);
+  const failure = query.error === null ? null : coordinatorFailure(query.failure, m);
   const unavailable = !connected
-    ? "Environment offline. Reconnect to read or start an orchestrator."
+    ? gt("Environment offline. Reconnect to read or start an orchestrator.")
     : !supported
-      ? "Project orchestrators are unsupported on this server. Update the server to use this feature."
+      ? gt(
+          "Project orchestrators are unsupported on this server. Update the server to use this feature.",
+        )
       : session.data === null && !session.hasError
-        ? "Checking orchestration read permission…"
+        ? gt("Checking orchestration read permission…")
         : !canRead
-          ? "Orchestration read permission required. This connection cannot read project orchestrators."
+          ? gt(
+              "Orchestration read permission required. This connection cannot read project orchestrators.",
+            )
           : null;
   const loaded = queryEnabled && failure === null && query.data !== null;
 
   return (
     <section
       className="min-w-0 space-y-3 rounded-xl border p-4"
-      aria-label={`${environment.label} orchestrators`}
+      aria-label={gt("{label} orchestrators", { label: environment.label })}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="min-w-0 font-medium text-sm [overflow-wrap:anywhere]">
@@ -180,7 +195,7 @@ function CoordinatorEnvironment(props: {
             onClick={query.refresh}
           >
             <RefreshIcon size="sm" refreshing={query.isPending} />
-            Refresh
+            <T>Refresh</T>
           </Button>
         ) : null}
       </div>
@@ -195,12 +210,12 @@ function CoordinatorEnvironment(props: {
         </Alert>
       ) : !loaded ? (
         <p role="status" className="text-sm text-muted-foreground">
-          Loading orchestrators…
+          <T>Loading orchestrators…</T>
         </p>
       ) : null}
       {targets.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No project checkouts in this scope on this environment.
+          <T>No project checkouts in this scope on this environment.</T>
         </p>
       ) : (
         targets.map(({ member, group }) => {
@@ -224,21 +239,21 @@ function CoordinatorEnvironment(props: {
                 {loaded ? (
                   coordinator === null ? (
                     <p className="text-sm">
-                      Not created. No orientation has been requested for this checkout.
+                      <T>Not created. No orientation has been requested for this checkout.</T>
                     </p>
                   ) : (
                     <>
                       <p className="text-sm font-medium">
-                        {coordinatorPresentation(coordinator.status).label}
+                        {coordinatorPresentation(coordinator.status, m).label}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {coordinatorPresentation(coordinator.status).detail}
+                        {coordinatorPresentation(coordinator.status, m).detail}
                       </p>
                     </>
                   )
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    Orchestrator state unavailable until this environment can be read.
+                    <T>Orchestrator state unavailable until this environment can be read.</T>
                   </p>
                 )}
               </div>
@@ -258,7 +273,7 @@ function CoordinatorEnvironment(props: {
                       />
                     }
                   >
-                    Choose checkout
+                    <T>Choose checkout</T>
                   </Button>
                   {loaded &&
                   coordinator !== null &&
@@ -302,7 +317,7 @@ function OpenCoordinator(props: {
         />
       }
     >
-      Open thread
+      <T>Open thread</T>
     </Button>
   );
 }
@@ -314,6 +329,7 @@ function ExactCoordinator(props: {
   readonly refreshing: boolean;
 }) {
   const { target, coordinator } = props;
+  const gt = useGT();
   const navigate = useNavigate();
   const router = useRouter();
   const canStart = useAtomValue(
@@ -324,7 +340,7 @@ function ExactCoordinator(props: {
     environments.find((environment) => environment.environmentId === target.environmentId)
       ?.serverConfig?.environment.capabilities.projectCoordinatorAssignments === true;
   const ensure = useAtomCommand(factoryEnvironment.coordinatorsEnsure, {
-    label: "project orchestrator start",
+    label: gt("project orchestrator start"),
     reportFailure: false,
   });
   const [dialog, setDialog] = useState<{ readonly coordinator: ProjectCoordinator | null } | null>(
@@ -378,9 +394,10 @@ function ExactCoordinator(props: {
       const binding = result.value.coordinator;
       if (!binding.current || binding.projectId !== target.id || binding.status === "missing") {
         setFailure({
-          title: "Review the current orchestrator",
-          message:
+          title: gt("Review the current orchestrator"),
+          message: gt(
             "This request refers to a superseded or unavailable binding. Close the dialog and review the refreshed checkout before starting again.",
+          ),
           requiresReview: true,
         });
         return;
@@ -406,8 +423,10 @@ function ExactCoordinator(props: {
     <div className="space-y-3">
       {!canStart ? (
         <p className="text-xs text-muted-foreground">
-          Read-only connection. Orchestration operate permission is required to create or resume an
-          orchestrator; existing threads remain readable.
+          <T>
+            Read-only connection. Orchestration operate permission is required to create or resume
+            an orchestrator; existing threads remain readable.
+          </T>
         </p>
       ) : null}
       <div className="flex flex-wrap gap-2">
@@ -421,10 +440,10 @@ function ExactCoordinator(props: {
         coordinator.status === "launching" ? (
           <Button size="sm" disabled={!canStart || props.refreshing || pending} onClick={review}>
             {coordinator === null
-              ? "Create and start"
+              ? gt("Create and start")
               : coordinator.status === "missing"
-                ? "Replace unavailable orchestrator…"
-                : "Resume start…"}
+                ? gt("Replace unavailable orchestrator…")
+                : gt("Resume start…")}
           </Button>
         ) : null}
       </div>
@@ -470,6 +489,7 @@ function AssignCoordinator({
   readonly coordinator: ProjectCoordinator | null;
   readonly refreshing: boolean;
 }) {
+  const gt = useGT();
   const candidates = projectCoordinatorCandidates(
     useThreadShellsForProjectRefs([scopeProjectRef(target.environmentId, target.id)]),
     {
@@ -482,7 +502,7 @@ function AssignCoordinator({
     factoryEnvironment.coordinatorsAssign.permissionAtom(target.environmentId),
   );
   const assign = useAtomCommand(factoryEnvironment.coordinatorsAssign, {
-    label: "set project coordinator",
+    label: gt("set project coordinator"),
     reportFailure: false,
   });
   const [threadId, setThreadId] = useState<ThreadId | null>(null);
@@ -515,8 +535,10 @@ function AssignCoordinator({
       setRequest(null);
       if (!result.value.coordinator.current)
         setFailure({
-          title: "Binding changed",
-          message: "This request refers to an earlier assignment. Review the current coordinator.",
+          title: gt("Binding changed"),
+          message: gt(
+            "This request refers to an earlier assignment. Review the current coordinator.",
+          ),
           requiresReview: true,
         });
     } else if (!isAtomCommandInterrupted(result))
@@ -529,17 +551,24 @@ function AssignCoordinator({
   return (
     <div className="space-y-2">
       <p className="text-sm text-muted-foreground">
-        Set an existing thread as coordinator. This sends no message and starts no new work. It does
-        not stop existing or pending work; schedules and active tasks stay with their threads.
+        <T>
+          Set an existing thread as coordinator. This sends no message and starts no new work. It
+          does not stop existing or pending work; schedules and active tasks stay with their
+          threads.
+        </T>
       </p>
       {coordinator?.status === "launching" ? (
         <p className="text-sm text-muted-foreground">
-          A start is pending for the current coordinator. Reassigning removes its resume option but
-          does not cancel a launch that already began.
+          <T>
+            A start is pending for the current coordinator. Reassigning removes its resume option
+            but does not cancel a launch that already began.
+          </T>
         </p>
       ) : null}
       <div className="space-y-1">
-        <Label htmlFor={`coordinator-thread-${target.id}`}>Existing thread</Label>
+        <Label htmlFor={`coordinator-thread-${target.id}`}>
+          <T>Existing thread</T>
+        </Label>
         <Select
           value={selected?.id ?? null}
           onValueChange={(value) => {
@@ -553,7 +582,7 @@ function AssignCoordinator({
           <SelectTrigger id={`coordinator-thread-${target.id}`} className="w-full">
             <SelectValue>
               {selected?.title ??
-                (candidates.length === 0 ? "No eligible threads" : "Choose a thread")}
+                (candidates.length === 0 ? gt("No eligible threads") : gt("Choose a thread"))}
             </SelectValue>
           </SelectTrigger>
           <SelectPopup>
@@ -572,11 +601,11 @@ function AssignCoordinator({
           disabled={blocked || (request === null && selected === null)}
           onClick={() => void submit()}
         >
-          {request ? "Retry assignment" : "Set project coordinator"}
+          {request ? gt("Retry assignment") : gt("Set project coordinator")}
         </Button>
         {request !== null || failure?.requiresReview === true ? (
           <Button variant="ghost" size="sm" disabled={pending} onClick={review}>
-            Review refreshed binding
+            <T>Review refreshed binding</T>
           </Button>
         ) : null}
       </div>

@@ -6,6 +6,7 @@ import {
   type FactoryResearchProtocol,
   type ModelSelection,
 } from "@t3tools/contracts";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { useId, useState } from "react";
 
 import { Alert, AlertDescription } from "../ui/alert";
@@ -61,6 +62,8 @@ export function FactoryResearchAdmitDialog(props: {
   }) => void;
 }) {
   const { protocol, finding, pending } = props;
+  const gt = useGT();
+  const m = useMessages();
   const draft = useFactoryLaunchDraft(props.settings);
   const instructionsId = useId();
   const [instructions, setInstructions] = useState("");
@@ -74,7 +77,7 @@ export function FactoryResearchAdmitDialog(props: {
     selection,
     instructions,
   });
-  const presentation = factoryFindingPresentation(finding, protocol.metric);
+  const presentation = factoryFindingPresentation(finding, protocol.metric, m);
 
   return (
     <Dialog
@@ -86,58 +89,73 @@ export function FactoryResearchAdmitDialog(props: {
       <DialogPopup className="max-w-xl">
         <DialogHeader>
           <DialogTitle>
-            {props.restart ? "Start a new attempt" : "Admit implementation"}
+            {props.restart ? gt("Start a new attempt") : gt("Admit implementation")}
           </DialogTitle>
           <DialogDescription>
             {props.restart
-              ? "The previous implementation's thread was deleted. Confirming creates a new isolated worktree and a new attempt on the selected commit. This approval is the record: it names this finding revision and your instructions."
-              : "Creates an implementation task in its own isolated worktree on the selected commit and sends the reviewed finding to the selected agent. This approval is the record: it names this finding revision and your instructions."}
+              ? gt(
+                  "The previous implementation's thread was deleted. Confirming creates a new isolated worktree and a new attempt on the selected commit. This approval is the record: it names this finding revision and your instructions.",
+                )
+              : gt(
+                  "Creates an implementation task in its own isolated worktree on the selected commit and sends the reviewed finding to the selected agent. This approval is the record: it names this finding revision and your instructions.",
+                )}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
           <fieldset disabled={pending || changed} className="min-w-0 space-y-4">
             <div className="space-y-1">
               <p className="text-muted-foreground text-xs [overflow-wrap:anywhere]">
-                {`${props.repository.host}/${props.repository.repository}`} · task project{" "}
-                {props.projectTitle}
+                <T>
+                  <Var>{`${props.repository.host}/${props.repository.repository}`}</Var> · task
+                  project <Var>{props.projectTitle}</Var>
+                </T>
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant={presentation.variant}>{presentation.statusLabel}</Badge>
                 <span className="text-muted-foreground text-xs [overflow-wrap:anywhere]">
-                  Finding revision {shortFactoryCommit(finding.revision)} · commit{" "}
-                  {finding.selectedCommit === null
-                    ? "not selected"
-                    : shortFactoryCommit(finding.selectedCommit)}
+                  <T>
+                    Finding revision <Var>{shortFactoryCommit(finding.revision)}</Var> · commit{" "}
+                    <Var>
+                      {finding.selectedCommit === null
+                        ? gt("not selected")
+                        : shortFactoryCommit(finding.selectedCommit)}
+                    </Var>
+                  </T>
                 </span>
               </div>
             </div>
             <FactoryReviewSnapshot
-              heading="Full protocol and finding"
-              intro="Review the complete evidence this admission approves."
+              heading={gt("Full protocol and finding")}
+              intro={gt("Review the complete evidence this admission approves.")}
               fields={[
                 {
-                  label: "Protocol and finding (JSON)",
+                  label: gt("Protocol and finding (JSON)"),
                   text: factoryFindingReviewJson(protocol, finding),
-                  emptyNote: "The finding is empty.",
+                  emptyNote: gt("The finding is empty."),
                 },
               ]}
             />
             <div className="space-y-1.5">
               <Label htmlFor={instructionsId}>
-                Instructions <span className="font-normal text-muted-foreground">optional</span>
+                <T>Instructions</T>{" "}
+                <span className="font-normal text-muted-foreground">
+                  <T>optional</T>
+                </span>
               </Label>
               <Textarea
                 id={instructionsId}
                 value={instructions}
                 aria-invalid={count.overLimit}
                 aria-describedby={`${instructionsId}-help`}
-                placeholder="Requirements for the implementation in your own words"
+                placeholder={gt("Requirements for the implementation in your own words")}
                 onChange={(event) => setInstructions(event.target.value)}
               />
               <div className="flex items-start justify-between gap-3">
                 <p id={`${instructionsId}-help`} className="text-muted-foreground text-xs">
-                  Your own requirements, frozen into the task and sent apart from the finding, which
-                  stays untrusted.
+                  <T>
+                    Your own requirements, frozen into the task and sent apart from the finding,
+                    which stays untrusted.
+                  </T>
                 </p>
                 <span
                   className={
@@ -154,13 +172,15 @@ export function FactoryResearchAdmitDialog(props: {
               environmentId={props.environmentId}
               disabled={pending || changed}
               draft={draft}
-              untrustedText="The finding"
+              untrustedText={gt("The finding")}
               showBaseRef={false}
             />
             <Alert variant="info">
               <AlertDescription>
-                A supported finding is evidence, not a decision. Nothing starts until you admit it,
-                and admitting does not publish, merge or release anything.
+                <T>
+                  A supported finding is evidence, not a decision. Nothing starts until you admit
+                  it, and admitting does not publish, merge or release anything.
+                </T>
               </AlertDescription>
             </Alert>
           </fieldset>
@@ -169,12 +189,14 @@ export function FactoryResearchAdmitDialog(props: {
           <FactoryReviewFailure
             failure={props.failure}
             changed={changed}
-            staleHint="This finding is no longer current. Close this dialog and review the current finding before admitting work."
+            staleHint={gt(
+              "This finding is no longer current. Close this dialog and review the current finding before admitting work.",
+            )}
           />
         ) : null}
         <DialogFooter>
           <DialogClose render={<Button variant="outline" size="sm" disabled={pending} />}>
-            Cancel
+            <T>Cancel</T>
           </DialogClose>
           <Button
             size="sm"
@@ -185,7 +207,11 @@ export function FactoryResearchAdmitDialog(props: {
               props.onSubmit({ modelSelection: selection, instructions });
             }}
           >
-            {pending ? "Starting…" : props.restart ? "Start new attempt" : "Admit and start"}
+            {pending
+              ? gt("Starting…")
+              : props.restart
+                ? gt("Start new attempt")
+                : gt("Admit and start")}
           </Button>
         </DialogFooter>
       </DialogPopup>

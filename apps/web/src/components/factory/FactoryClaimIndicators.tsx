@@ -1,3 +1,5 @@
+import { T, Var } from "gt-react";
+
 import { Alert, AlertDescription } from "../ui/alert";
 import { Badge } from "../ui/badge";
 import type { FactoryClaimRowPresentation } from "./factoryClaims.logic";
@@ -32,20 +34,30 @@ export function FactoryClaimIndicators(props: {
       ) : null}
       {acceptedCommit !== undefined ? (
         <p className="text-muted-foreground text-xs">
-          Accepted commit <code>{acceptedCommit.shortSha}</code>
-          {" · "}
-          <time dateTime={acceptedCommit.acceptedAt}>
-            {new Date(acceptedCommit.acceptedAt).toLocaleDateString()}
-          </time>
+          <T>
+            Accepted commit{" "}
+            <code>
+              <Var>{acceptedCommit.shortSha}</Var>
+            </code>
+            {" · "}
+            <time dateTime={acceptedCommit.acceptedAt}>
+              <Var>{new Date(acceptedCommit.acceptedAt).toLocaleDateString()}</Var>
+            </time>
+          </T>
         </p>
       ) : null}
       {acceptedArtifact !== undefined ? (
         <p className="text-muted-foreground text-xs">
-          Accepted artifact <code>{acceptedArtifact.shortSha}</code>
-          {" · "}
-          <time dateTime={acceptedArtifact.acceptedAt}>
-            {new Date(acceptedArtifact.acceptedAt).toLocaleDateString()}
-          </time>
+          <T>
+            Accepted artifact{" "}
+            <code>
+              <Var>{acceptedArtifact.shortSha}</Var>
+            </code>
+            {" · "}
+            <time dateTime={acceptedArtifact.acceptedAt}>
+              <Var>{new Date(acceptedArtifact.acceptedAt).toLocaleDateString()}</Var>
+            </time>
+          </T>
         </p>
       ) : null}
     </div>

@@ -16,6 +16,9 @@ import type {
   ThreadPendingUserInput,
 } from "@t3tools/client-runtime/state/thread-requests";
 
+import { msg } from "gt-react-native";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 import { elapsedSince } from "./taskPresentation";
 
 export type TaskAsk =
@@ -71,25 +74,22 @@ export function approvalAvailability(approval: ThreadPendingApproval) {
 
 const APPROVAL_COPY: Record<
   ProviderRequestKind,
-  { readonly wants: string; readonly detailLabel: string; readonly asked: string }
+  { readonly wants: string; readonly detailLabel: string }
 > = {
-  command: { wants: "Wants to run", detailLabel: "Command", asked: "asked to run a command" },
+  command: { wants: msg("Wants to run"), detailLabel: msg("Command") },
   "file-change": {
-    wants: "Wants to change files",
-    detailLabel: "Change",
-    asked: "asked to change files",
+    wants: msg("Wants to change files"),
+    detailLabel: msg("Change", { $context: "noun, a file change an agent asked to make" }),
   },
   "file-read": {
-    wants: "Wants to read files",
-    detailLabel: "Files",
-    asked: "asked to read files",
+    wants: msg("Wants to read files"),
+    detailLabel: msg("Files"),
   },
   "mcp-elicitation": {
-    wants: "Needs your input",
-    detailLabel: "Request",
-    asked: "asked for input",
+    wants: msg("Needs your input"),
+    detailLabel: msg("Request"),
   },
-  permission: { wants: "Needs permission", detailLabel: "Request", asked: "asked for permission" },
+  permission: { wants: msg("Needs permission"), detailLabel: msg("Request") },
 };
 
 export function approvalCopy(kind: ProviderRequestKind) {
@@ -97,9 +97,12 @@ export function approvalCopy(kind: ProviderRequestKind) {
 }
 
 /** `4m ago`, or `just now` inside the first minute. */
-export function agoLabel(at: string, now: number): string {
-  const elapsed = elapsedSince(at, now);
-  return elapsed === "<1m" ? "just now" : `${elapsed} ago`;
+export function agoLabel(at: string, now: number, resolve: MessageResolver = m): string {
+  const started = Date.parse(at);
+  const underAMinute = Number.isNaN(started) || Math.floor(Math.max(0, now - started) / 60_000) < 1;
+  return underAMinute
+    ? resolve(msg("just now"))
+    : resolve(msg("{elapsed} ago", { elapsed: elapsedSince(at, now, resolve) }));
 }
 
 const ACTIVITY_LINES = 6;
@@ -109,24 +112,61 @@ export function activityLines(
   entries: readonly FactoryTaskActivityEntry[],
   catalog: FactoryTaskCatalog,
   now: number,
+  resolve: MessageResolver = m,
 ): readonly { readonly key: string; readonly text: string }[] {
   return entries.slice(-ACTIVITY_LINES).map((entry) => {
     const text = presentFactoryTaskActivity(entry, catalog);
     const author = presentFactoryTaskActor(entry.actor, catalog);
     const line =
       entry.actor.kind === "agent" && !text.startsWith(author) ? `${author} · ${text}` : text;
-    return { key: entry.id, text: `${line} · ${agoLabel(entry.at, now)}` };
+    return { key: entry.id, text: `${line} · ${agoLabel(entry.at, now, resolve)}` };
   });
 }
 
+/** The words for who asked, per approval kind, as one sentence with how long ago it was. */
+function approvalAskedLine(
+  kind: ProviderRequestKind,
+  assignee: string,
+  ago: string,
+  resolve: MessageResolver,
+): string {
+  switch (kind) {
+    case "command":
+      return resolve(msg("{assignee} asked to run a command · {ago}", { assignee, ago }));
+    case "file-change":
+      return resolve(msg("{assignee} asked to change files · {ago}", { assignee, ago }));
+    case "file-read":
+      return resolve(msg("{assignee} asked to read files · {ago}", { assignee, ago }));
+    case "mcp-elicitation":
+      return resolve(msg("{assignee} asked for input · {ago}", { assignee, ago }));
+    case "permission":
+      return resolve(msg("{assignee} asked for permission · {ago}", { assignee, ago }));
+  }
+}
+
 /** The lines the live ask adds after the recorded activity. */
-export function askLines(ask: TaskAsk, assigneeLabel: string, now: number): readonly string[] {
+export function askLines(
+  ask: TaskAsk,
+  assigneeLabel: string,
+  now: number,
+  resolve: MessageResolver = m,
+): readonly string[] {
   return ask.kind === "question"
     ? [
-        `${assigneeLabel} asked a question · ${agoLabel(ask.input.createdAt, now)}`,
-        "Waiting for your answer",
+        resolve(
+          msg("{assignee} asked a question · {ago}", {
+            assignee: assigneeLabel,
+            ago: agoLabel(ask.input.createdAt, now, resolve),
+          }),
+        ),
+        resolve(msg("Waiting for your answer")),
       ]
     : [
-        `${assigneeLabel} ${approvalCopy(ask.approval.requestKind).asked} · ${agoLabel(ask.approval.createdAt, now)}`,
+        approvalAskedLine(
+          ask.approval.requestKind,
+          assigneeLabel,
+          agoLabel(ask.approval.createdAt, now, resolve),
+          resolve,
+        ),
       ];
 }

@@ -227,6 +227,7 @@ export const make = Effect.gen(function* () {
     ...(databaseMigration === undefined ? {} : { databaseMigration }),
     capabilities: {
       factoryIssues: true,
+      factoryIssueKeys: true,
       factoryReadiness: true,
       factoryFeeds: true,
       factoryResearch: true,

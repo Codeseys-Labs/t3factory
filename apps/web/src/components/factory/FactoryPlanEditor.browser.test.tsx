@@ -37,6 +37,8 @@ vi.mock(import("../../state/factory"), async () => {
       createPlan: { key: "create", permissionAtom },
       applyPlan: { key: "apply", permissionAtom },
     },
+    factoryIssueKeysInput: () => ({}),
+    useFactoryIssueKeysSupported: () => false,
   } as never;
 });
 

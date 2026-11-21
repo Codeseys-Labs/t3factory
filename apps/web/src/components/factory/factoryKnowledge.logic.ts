@@ -13,7 +13,9 @@ import {
   type FactoryKnowledgeTaskReadResult,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg } from "gt-react";
 
+import { m, type MessageResolver } from "../../i18n/messages";
 import { describeFactoryFailure } from "./factoryIssues.logic";
 
 export const KNOWLEDGE_LIMITS = {
@@ -27,24 +29,37 @@ export const KNOWLEDGE_LIMITS = {
 } as const;
 
 const FAILURE_MESSAGES: Record<FactoryKnowledgeError["reason"], string> = {
-  "unknown-brief": "This brief is no longer available. Refresh the brief list.",
-  "revision-mismatch": "The brief revision changed. Close this dialog, refresh and review again.",
-  "already-started": "This brief already has a task. Refresh to open its thread.",
-  "unknown-task": "This brief has no task available. Refresh the brief list.",
-  "folder-unavailable":
+  "unknown-brief": msg("This brief is no longer available. Refresh the brief list."),
+  "revision-mismatch": msg(
+    "The brief revision changed. Close this dialog, refresh and review again.",
+  ),
+  "already-started": msg("This brief already has a task. Refresh to open its thread."),
+  "unknown-task": msg("This brief has no task available. Refresh the brief list."),
+  "folder-unavailable": msg(
     "The task folder is unavailable. Starting a knowledge task needs a server data directory outside any git repository; an existing folder must be restored before accepting.",
-  "artifact-missing": "No artifact was found. Open the thread and refresh when it is ready.",
-  "artifact-changed": "The artifact changed while you were reviewing. Refresh and review it again.",
-  "already-accepted": "An artifact is already accepted. Refresh and use Re-accept if it changed.",
-  "invalid-path": "Use a relative file path without parent traversal or a .git directory.",
-  "persistence-failure": "The environment could not save the change. Refresh before trying again.",
+  ),
+  "artifact-missing": msg("No artifact was found. Open the thread and refresh when it is ready."),
+  "artifact-changed": msg(
+    "The artifact changed while you were reviewing. Refresh and review it again.",
+  ),
+  "already-accepted": msg(
+    "An artifact is already accepted. Refresh and use Re-accept if it changed.",
+  ),
+  "invalid-path": msg("Use a relative file path without parent traversal or a .git directory."),
+  "persistence-failure": msg(
+    "The environment could not save the change. Refresh before trying again.",
+  ),
 };
 
 const isKnowledgeError = Schema.is(FactoryKnowledgeError);
 
-export function factoryKnowledgeFailureMessage(error: unknown, fallbackMessage?: string): string {
+export function factoryKnowledgeFailureMessage(
+  error: unknown,
+  fallbackMessage?: string,
+  resolve: MessageResolver = m,
+): string {
   return isKnowledgeError(error)
-    ? FAILURE_MESSAGES[error.reason]
+    ? resolve(FAILURE_MESSAGES[error.reason])
     : describeFactoryFailure(error, fallbackMessage).message;
 }
 
@@ -53,14 +68,19 @@ export type FactoryKnowledgeArtifactState = "none" | "current" | "changed" | "un
 export function factoryKnowledgeArtifactIssueMessage(
   issue: FactoryKnowledgeTaskReadResult["artifactIssue"],
   path: string,
+  resolve: MessageResolver = m,
 ): string | null {
   switch (issue) {
     case "missing":
-      return `No artifact yet at ${path}`;
+      return resolve(msg("No artifact yet at {path}", { path }));
     case "too-large":
-      return `The artifact is larger than ${FACTORY_KNOWLEDGE_ARTIFACT_MAX_BYTES / (1024 * 1024)} MiB and cannot be read or accepted.`;
+      return resolve(
+        msg("The artifact is larger than {size} MiB and cannot be read or accepted.", {
+          size: FACTORY_KNOWLEDGE_ARTIFACT_MAX_BYTES / (1024 * 1024),
+        }),
+      );
     case "unreadable":
-      return "The artifact exists but cannot be read.";
+      return resolve(msg("The artifact exists but cannot be read."));
     case null:
       return null;
   }
@@ -112,25 +132,33 @@ export function isFactoryKnowledgeDeliverablePath(value: string): boolean {
   );
 }
 
-export function validateFactoryKnowledgeDraft(draft: FactoryKnowledgeDraft): string | null {
-  if (draft.title.trim().length === 0) return "Enter a brief title.";
-  if (draft.title.length > KNOWLEDGE_LIMITS.title) return "Keep the title to 200 characters.";
+export function validateFactoryKnowledgeDraft(
+  draft: FactoryKnowledgeDraft,
+  resolve: MessageResolver = m,
+): string | null {
+  if (draft.title.trim().length === 0) return resolve(msg("Enter a brief title."));
+  if (draft.title.length > KNOWLEDGE_LIMITS.title)
+    return resolve(msg("Keep the title to 200 characters."));
   if (draft.question.length > KNOWLEDGE_LIMITS.question)
-    return "Keep the question to 8,000 characters.";
+    return resolve(msg("Keep the question to 8,000 characters."));
   if (draft.acceptanceCriteria.length > KNOWLEDGE_LIMITS.acceptanceCriteria) {
-    return "Keep acceptance criteria to 4,000 characters.";
+    return resolve(msg("Keep acceptance criteria to 4,000 characters."));
   }
   if (!isFactoryKnowledgeDeliverablePath(draft.deliverablePath)) {
-    return FAILURE_MESSAGES["invalid-path"];
+    return resolve(FAILURE_MESSAGES["invalid-path"]);
   }
-  if (draft.inputs.length > KNOWLEDGE_LIMITS.inputs) return "Use no more than 8 inputs.";
+  if (draft.inputs.length > KNOWLEDGE_LIMITS.inputs)
+    return resolve(msg("Use no more than 8 inputs."));
   for (const [index, input] of draft.inputs.entries()) {
-    if (input.label.trim().length === 0) return `Enter a label for input ${index + 1}.`;
+    if (input.label.trim().length === 0)
+      return resolve(msg("Enter a label for input {index}.", { index: index + 1 }));
     if (input.label.length > KNOWLEDGE_LIMITS.inputLabel) {
-      return `Keep input ${index + 1}'s label to 120 characters.`;
+      return resolve(msg("Keep input {index}''s label to 120 characters.", { index: index + 1 }));
     }
     if (input.content.length > KNOWLEDGE_LIMITS.inputContent) {
-      return `Keep input ${index + 1}'s content to 64,000 characters.`;
+      return resolve(
+        msg("Keep input {index}''s content to 64,000 characters.", { index: index + 1 }),
+      );
     }
   }
   return null;

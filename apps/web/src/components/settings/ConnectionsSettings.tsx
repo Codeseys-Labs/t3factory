@@ -1125,7 +1125,9 @@ function ConnectionsSettingsContent({
         {desktopWslState.enabled ? (
           <SettingsRow
             title={gt("WSL only")}
-            description={gt("Run only the WSL backend. T3 Code Factory restarts when this changes.")}
+            description={gt(
+              "Run only the WSL backend. T3 Code Factory restarts when this changes.",
+            )}
             className="bg-muted/20 pl-7 sm:pl-8"
             control={
               <Switch

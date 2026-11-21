@@ -12,6 +12,23 @@ import { environmentPresentations } from "./presentation";
 export const factoryEnvironment = createFactoryEnvironmentAtoms(connectionAtomRuntime);
 export const factoryTaskEnvironment = createFactoryTaskEnvironmentAtoms(connectionAtomRuntime);
 
+/**
+ * Native issue keys (Linear and other standalone trackers) are opt-in per request: a server that
+ * omits `factoryIssueKeys` keeps serving only numeric git-host issues and would not know the flag.
+ */
+export const factoryIssueKeysSupportedAtom = Atom.family((environmentId: EnvironmentId | null) =>
+  Atom.make(
+    (get) =>
+      environmentId !== null &&
+      get(environmentPresentations.presentationAtom(environmentId))?.serverConfig?.environment
+        .capabilities.factoryIssueKeys === true,
+  ).pipe(Atom.withLabel(`mobile-factory-issue-keys-supported:${environmentId}`)),
+);
+
+export function factoryIssueKeysInput(supported: boolean): { readonly issueKeys?: true } {
+  return supported ? { issueKeys: true } : {};
+}
+
 // Missing capability on an older server is unsupported, never an empty coordinator list.
 export const factoryCoordinatorSupportedAtom = Atom.family((environmentId: EnvironmentId | null) =>
   Atom.make(
@@ -60,7 +77,15 @@ const factoryWorkPagesAtom = Atom.family((key: string) =>
   Atom.make((get) =>
     Schema.decodeSync(workPageTargets)(key).map((target) => ({
       environmentId: target.environmentId,
-      result: get(factoryEnvironment.listWork(target)),
+      result: get(
+        factoryEnvironment.listWork({
+          ...target,
+          input: {
+            ...target.input,
+            ...factoryIssueKeysInput(get(factoryIssueKeysSupportedAtom(target.environmentId))),
+          },
+        }),
+      ),
     })),
   ).pipe(Atom.setIdleTTL(0), Atom.withLabel("mobile-factory-work-pages")),
 );
@@ -77,6 +102,16 @@ export function useFactoryWorkPages(
   return {
     pages,
     refresh: (target: (typeof targets)[number]) =>
-      registry.refresh(factoryEnvironment.listWork(target)),
+      registry.refresh(
+        factoryEnvironment.listWork({
+          ...target,
+          input: {
+            ...target.input,
+            ...factoryIssueKeysInput(
+              registry.get(factoryIssueKeysSupportedAtom(target.environmentId)),
+            ),
+          },
+        }),
+      ),
   };
 }

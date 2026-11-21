@@ -17,6 +17,9 @@ import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
+import { msg } from "gt-react-native";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 
 export const FACTORY_WORK_PAGE_LIMIT = 25;
 /** Bounds how many keyset pages one owner keeps mounted; a refresh starts again from the first. */
@@ -28,27 +31,31 @@ export const FACTORY_WORK_KINDS: ReadonlyArray<{
   readonly label: string;
   readonly accessibilityLabel: string;
 }> = [
-  { value: "all", label: "All", accessibilityLabel: "All work" },
-  { value: "issue", label: "Issues", accessibilityLabel: "Issue admissions" },
-  { value: "feed", label: "Feeds", accessibilityLabel: "Feed admissions" },
-  { value: "brief", label: "Briefs", accessibilityLabel: "Authored briefs" },
-  { value: "protocol", label: "Protocols", accessibilityLabel: "Sealed research protocols" },
+  { value: "all", label: msg("All"), accessibilityLabel: msg("All work") },
+  { value: "issue", label: msg("Issues"), accessibilityLabel: msg("Issue admissions") },
+  { value: "feed", label: msg("Feeds"), accessibilityLabel: msg("Feed admissions") },
+  { value: "brief", label: msg("Briefs"), accessibilityLabel: msg("Authored briefs") },
+  {
+    value: "protocol",
+    label: msg("Protocols"),
+    accessibilityLabel: msg("Sealed research protocols"),
+  },
 ];
 
 export const FACTORY_WORK_KIND_LABELS: Record<FactoryWorkKind, string> = {
-  issue: "Issue admission",
-  feed: "Feed admission",
-  brief: "Authored brief",
-  protocol: "Sealed research protocol",
+  issue: msg("Issue admission"),
+  feed: msg("Feed admission"),
+  brief: msg("Authored brief"),
+  protocol: msg("Sealed research protocol"),
 };
 
 export const FACTORY_WORK_OWNER_MESSAGES: Record<FactoryWorkOwnerStatus, string> = {
-  current: "Loaded pages. Pull to refresh to observe changes.",
-  loading: "Loading this environment's work…",
-  offline: "Offline. Reconnect to inspect or act.",
-  unsupported: "This server doesn't support Unified Work. Update it to list work here.",
-  forbidden: "Read access denied. Protected details are unavailable.",
-  failed: "Couldn't read this environment's work. This is not an empty list.",
+  current: msg("Loaded pages. Pull to refresh to observe changes."),
+  loading: msg("Loading this environment's work…"),
+  offline: msg("Offline. Reconnect to inspect or act."),
+  unsupported: msg("This server doesn't support Unified Work. Update it to list work here."),
+  forbidden: msg("Read access denied. Protected details are unavailable."),
+  failed: msg("Couldn't read this environment's work. This is not an empty list."),
 };
 
 interface WorkEnvironment {
@@ -234,29 +241,45 @@ export function resolveFactoryWorkReview(input: {
     readonly factoryKnowledge?: boolean | undefined;
   };
   readonly canOperate: boolean;
+  readonly resolve?: MessageResolver;
 }): FactoryWorkReview {
+  const resolve = input.resolve ?? m;
   const { detail } = input;
   const target = detail.reviewTarget;
   if (target.kind === "feed") {
     return {
       kind: "unavailable",
       reason: detail.item.originConflict
-        ? "Native actions unavailable: legacy feed admissions conflict. Inspect each execution below; no member is chosen for you."
-        : "Feed review isn't available on mobile. Review, start or resume this admission from Sources on desktop or web.",
+        ? resolve(
+            msg(
+              "Native actions unavailable: legacy feed admissions conflict. Inspect each execution below; no member is chosen for you.",
+            ),
+          )
+        : resolve(
+            msg(
+              "Feed review isn't available on mobile. Review, start or resume this admission from Sources on desktop or web.",
+            ),
+          ),
     };
   }
   if (target.kind === "protocol") {
     return {
       kind: "unavailable",
-      reason:
-        "Research protocol review isn't available on mobile. Review runs and findings from Research on desktop or web.",
+      reason: resolve(
+        msg(
+          "Research protocol review isn't available on mobile. Review runs and findings from Research on desktop or web.",
+        ),
+      ),
     };
   }
   if (detail.reviewProjectId === null || !input.reviewProjectKnown) {
     return {
       kind: "unavailable",
-      reason:
-        "Actions unavailable: the saved review project is missing on this connection. Work provenance is retained.",
+      reason: resolve(
+        msg(
+          "Actions unavailable: the saved review project is missing on this connection. Work provenance is retained.",
+        ),
+      ),
     };
   }
   const supported =
@@ -268,17 +291,24 @@ export function resolveFactoryWorkReview(input: {
       kind: "unavailable",
       reason:
         target.kind === "issue"
-          ? "Issue review is unsupported by this server."
-          : "Brief review is unsupported by this server.",
+          ? resolve(msg("Issue review is unsupported by this server."))
+          : resolve(msg("Brief review is unsupported by this server.")),
     };
   }
   return {
     kind: "open",
     section: target.kind === "issue" ? "issues" : "briefs",
     projectId: detail.reviewProjectId,
-    label: target.kind === "issue" ? `Find #${target.issueNumber} in Issues` : "Review brief",
+    label:
+      target.kind === "issue"
+        ? resolve(msg("Find #{number} in Issues", { number: String(target.issueNumber) }))
+        : resolve(msg("Review brief")),
     operateNote: input.canOperate
       ? null
-      : "Starting or resuming needs operate permission in this environment. Review stays read-only.",
+      : resolve(
+          msg(
+            "Starting or resuming needs operate permission in this environment. Review stays read-only.",
+          ),
+        ),
   };
 }

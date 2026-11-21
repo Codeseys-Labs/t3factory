@@ -1339,19 +1339,22 @@ it.effect(
     ) =>
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
+        // node:sqlite binds a number as REAL; a retained issue number is stored as INTEGER.
         yield* sql`INSERT INTO factory_issue_launches (thread_id, canonical_key, issue_number, request_command_id, intent_json, origin_key, superseded, accepted)
-          VALUES (${threadId}, ${canonicalKey}, ${issueNumber}, ${threadId}, ${JSON.stringify({
-            projectId: options.projectId,
-            createdAt: observedAt,
-            previousThreadId: options.previous ?? null,
-            issue: {
-              number: issueNumber,
-              title: `Issue ${issueNumber}`,
-              body: "",
-              state: "open",
-              url: `https://${canonicalKey}/issues/${issueNumber}`,
+          VALUES (${threadId}, ${canonicalKey}, CAST(${issueNumber} AS INTEGER), ${threadId}, ${JSON.stringify(
+            {
+              projectId: options.projectId,
+              createdAt: observedAt,
+              previousThreadId: options.previous ?? null,
+              issue: {
+                number: issueNumber,
+                title: `Issue ${issueNumber}`,
+                body: "",
+                state: "open",
+                url: `https://${canonicalKey}/issues/${issueNumber}`,
+              },
             },
-          })}, ${`github:${canonicalKey}#${issueNumber}`}, ${options.previous === undefined ? 1 : 0}, 1)`;
+          )}, ${`github:${canonicalKey}#${issueNumber}`}, ${options.previous === undefined ? 1 : 0}, 1)`;
       });
     // Retained roots of every kind plus a distinct retained blocker; the projection answers, not mocks.
     const seed = Effect.gen(function* () {

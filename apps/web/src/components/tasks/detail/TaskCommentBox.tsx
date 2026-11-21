@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { AuthOrchestrationOperateScope, type FactoryTaskSummary } from "@t3tools/contracts";
 import { BotIcon, MessageSquareIcon, SendIcon } from "lucide-react";
+import { T, useGT, useMessages } from "gt-react";
 import { type KeyboardEvent, useState } from "react";
 
 import { factoryTasks } from "../../../state/factoryTasks";
@@ -35,7 +36,8 @@ export function TaskCommentBox({
   const [chosen, setChosen] = useState<Mode>(initialMode);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-
+  const gt = useGT();
+  const messages = useMessages();
   const run = task.run;
   const ownLive =
     run !== null && isRunLive(run) && task.liveRuns.some((live) => live.threadId === run.threadId);
@@ -43,11 +45,11 @@ export function TaskCommentBox({
   const agentReason =
     planningRun === null
       ? ownLive
-        ? "A working run takes replies through its questions and Request changes."
-        : "Message agent opens while a planning run is live."
+        ? gt("A working run takes replies through its questions and Request changes.")
+        : gt("Message agent opens while a planning run is live.")
       : canOperate
         ? null
-        : TASK_PERMISSION_MESSAGE;
+        : messages(TASK_PERMISSION_MESSAGE);
   const mode: Mode = chosen === "agent" && agentReason === null ? "agent" : "comment";
   const agentLabel = planningRun ? presentTaskSetup(planningRun.setup, catalog).label : "agent";
   const allowed = mode === "agent" || canComment;
@@ -74,7 +76,7 @@ export function TaskCommentBox({
     <div className="flex flex-col rounded-lg border border-border bg-card">
       <div className="flex flex-wrap items-center gap-3 border-b border-border p-2">
         <ToggleGroup
-          aria-label="Who this goes to"
+          aria-label={gt("Who this goes to")}
           value={[mode]}
           onValueChange={(value) => {
             const next = value[0];
@@ -83,23 +85,31 @@ export function TaskCommentBox({
         >
           <Toggle value="comment">
             <MessageSquareIcon aria-hidden />
-            Comment
+            <T>Comment</T>
           </Toggle>
           <Toggle value="agent" disabled={agentReason !== null}>
             <BotIcon aria-hidden />
-            Message agent
+            <T>Message agent</T>
           </Toggle>
         </ToggleGroup>
         <span className="text-muted-foreground text-xs">
-          {mode === "agent"
-            ? "Goes to the agent and steers the current run"
-            : "Goes to the people on this task"}
+          {mode === "agent" ? (
+            <T>Goes to the agent and steers the current run</T>
+          ) : (
+            <T>Goes to the people on this task</T>
+          )}
         </span>
       </div>
       <Textarea
         unstyled
-        aria-label={mode === "agent" ? `Message ${agentLabel}` : "Comment"}
-        placeholder={mode === "agent" ? `Message ${agentLabel}` : "Leave a comment…"}
+        aria-label={
+          mode === "agent"
+            ? gt("Message {agent}", { agent: agentLabel })
+            : gt("Comment", { $context: "noun, a comment on a task" })
+        }
+        placeholder={
+          mode === "agent" ? gt("Message {agent}", { agent: agentLabel }) : gt("Leave a comment…")
+        }
         value={text}
         maxLength={8000}
         disabled={!allowed}
@@ -108,7 +118,7 @@ export function TaskCommentBox({
       />
       <div className="flex items-center gap-3 p-2">
         <span className="min-w-0 flex-1 text-muted-foreground text-xs">
-          {!allowed ? TASK_PERMISSION_MESSAGE : mode === "comment" ? agentReason : null}
+          {!allowed ? messages(TASK_PERMISSION_MESSAGE) : mode === "comment" ? agentReason : null}
         </span>
         <Button
           variant="outline"
@@ -119,10 +129,10 @@ export function TaskCommentBox({
           {mode === "agent" ? (
             <>
               <SendIcon aria-hidden />
-              Send to agent
+              <T>Send to agent</T>
             </>
           ) : (
-            "Comment"
+            <T>Comment</T>
           )}
         </Button>
       </div>

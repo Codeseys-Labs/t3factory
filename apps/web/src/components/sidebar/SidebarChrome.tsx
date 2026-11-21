@@ -141,17 +141,18 @@ export function SidebarTaskNavigation() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { isMobile, setOpenMobile } = useSidebar();
   const { needs, incomplete } = useNeedsYou();
+  const gt = useGT();
   const closeMobileSidebar = () => {
     if (isMobile) setOpenMobile(false);
   };
 
   return (
     <div className="shrink-0 pt-2">
-      <SidebarMenu aria-label="Primary navigation">
+      <SidebarMenu aria-label={gt("Primary navigation")}>
         {[
-          { to: "/tasks", label: "Tasks", Icon: PanelsTopLeftIcon },
-          { to: "/inbox", label: "Inbox", Icon: InboxIcon },
-          { to: "/automations", label: "Automations", Icon: ZapIcon },
+          { to: "/tasks", label: gt("Tasks"), Icon: PanelsTopLeftIcon },
+          { to: "/inbox", label: gt("Inbox"), Icon: InboxIcon },
+          { to: "/automations", label: gt("Automations"), Icon: ZapIcon },
         ].map(({ to, label, Icon }) => (
           <SidebarMenuItem key={to}>
             <SidebarMenuButton
@@ -166,8 +167,8 @@ export function SidebarTaskNavigation() {
                 <span
                   aria-label={
                     incomplete
-                      ? `At least ${needs.count} asks; count incomplete`
-                      : `${needs.count} asks`
+                      ? gt("At least {count} asks; count incomplete", { count: needs.count })
+                      : gt("{count} asks", { count: needs.count })
                   }
                 >
                   {incomplete ? (

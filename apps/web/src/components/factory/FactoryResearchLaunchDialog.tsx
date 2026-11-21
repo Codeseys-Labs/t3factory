@@ -6,8 +6,10 @@ import {
   type FactoryResearchRunLaunchInput,
   type ModelSelection,
 } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { useId, useState } from "react";
 
+import { m, type MessageResolver } from "../../i18n/messages";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import {
@@ -41,29 +43,53 @@ import {
 /** The sealed protocol in full, so what a run is launched under is exactly what the server holds. */
 function factoryProtocolReviewFields(
   protocol: FactoryResearchProtocol,
+  resolve: MessageResolver = m,
 ): ReadonlyArray<FactoryReviewField> {
   const { metric, budget } = protocol;
   return [
-    { label: "Hypothesis", text: protocol.hypothesis, emptyNote: "The hypothesis is empty." },
-    { label: "Run command", text: protocol.runCommand, emptyNote: "The run command is empty." },
     {
-      label: "Evaluators (path, blob)",
+      label: resolve(msg("Hypothesis")),
+      text: protocol.hypothesis,
+      emptyNote: resolve(msg("The hypothesis is empty.")),
+    },
+    {
+      label: resolve(msg("Run command")),
+      text: protocol.runCommand,
+      emptyNote: resolve(msg("The run command is empty.")),
+    },
+    {
+      label: resolve(msg("Evaluators (path, blob)")),
       text: protocol.evaluators.map(({ path, blobOid }) => `${path}  ${blobOid}`).join("\n"),
-      emptyNote: "No evaluators were sealed.",
+      emptyNote: resolve(msg("No evaluators were sealed.")),
     },
     {
-      label: "Metric",
-      text: `${metric.name}\nline prefix: ${metric.linePrefix}\n${
-        metric.direction === "lower" ? "lower is better" : "higher is better"
-      }\nminimum effect: ${metric.minimumEffect === null ? "none declared" : String(metric.minimumEffect)}`,
-      emptyNote: "The metric is empty.",
+      label: resolve(msg("Metric")),
+      text: [
+        metric.name,
+        resolve(msg("line prefix: {prefix}", { prefix: metric.linePrefix })),
+        metric.direction === "lower"
+          ? resolve(msg("lower is better"))
+          : resolve(msg("higher is better")),
+        metric.minimumEffect === null
+          ? resolve(msg("minimum effect: none declared"))
+          : resolve(msg("minimum effect: {value}", { value: String(metric.minimumEffect) })),
+      ].join("\n"),
+      emptyNote: resolve(msg("The metric is empty.")),
     },
     {
-      label: "Budget",
-      text: `${budget.maxRuns} runs\n${budget.maxRunMinutes} minutes per run\nwindow closes ${budget.expiresAt}`,
-      emptyNote: "The budget is empty.",
+      label: resolve(msg("Budget")),
+      text: [
+        resolve(msg("{count} runs", { count: budget.maxRuns })),
+        resolve(msg("{minutes} minutes per run", { minutes: budget.maxRunMinutes })),
+        resolve(msg("window closes {when}", { when: budget.expiresAt })),
+      ].join("\n"),
+      emptyNote: resolve(msg("The budget is empty.")),
     },
-    { label: "Base commit", text: protocol.baseCommit, emptyNote: "The base commit is empty." },
+    {
+      label: resolve(msg("Base commit")),
+      text: protocol.baseCommit,
+      emptyNote: resolve(msg("The base commit is empty.")),
+    },
   ];
 }
 
@@ -90,6 +116,8 @@ export function FactoryResearchLaunchDialog(props: {
   }) => void;
 }) {
   const { role, protocol, pending } = props;
+  const gt = useGT();
+  const m = useMessages();
   const draft = useFactoryLaunchDraft(props.settings);
   const instructionsId = useId();
   const [instructions, setInstructions] = useState("");
@@ -105,13 +133,13 @@ export function FactoryResearchLaunchDialog(props: {
   });
   const verify = role === "verify";
   const fields: ReadonlyArray<FactoryReviewField> = [
-    ...factoryProtocolReviewFields(protocol),
+    ...factoryProtocolReviewFields(protocol, m),
     ...(verify && props.targetCommit !== null
       ? [
           {
-            label: "Candidate commit under test",
+            label: gt("Candidate commit under test"),
             text: props.targetCommit,
-            emptyNote: "The candidate commit is empty.",
+            emptyNote: gt("The candidate commit is empty."),
           },
         ]
       : []),
@@ -126,45 +154,60 @@ export function FactoryResearchLaunchDialog(props: {
     >
       <DialogPopup className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>{verify ? "Launch verification run" : "Launch explore run"}</DialogTitle>
+          <DialogTitle>
+            {verify ? gt("Launch verification run") : gt("Launch explore run")}
+          </DialogTitle>
           <DialogDescription>
             {verify
-              ? "Starts a separate thread in its own isolated worktree, pinned to the candidate commit. It must measure the same metric under the same protocol and record its own evidence."
-              : "Starts a thread in its own isolated worktree at the sealed base commit. The run records its own evidence; the server reads the lines it cites."}
+              ? gt(
+                  "Starts a separate thread in its own isolated worktree, pinned to the candidate commit. It must measure the same metric under the same protocol and record its own evidence.",
+                )
+              : gt(
+                  "Starts a thread in its own isolated worktree at the sealed base commit. The run records its own evidence; the server reads the lines it cites.",
+                )}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
           <fieldset disabled={pending || changed} className="min-w-0 space-y-4">
             <div className="space-y-0.5">
               <p className="text-muted-foreground text-xs [overflow-wrap:anywhere]">
-                {`${props.repository.host}/${props.repository.repository}`} · task project{" "}
-                {props.projectTitle}
+                <T>
+                  <Var>{`${props.repository.host}/${props.repository.repository}`}</Var> · task
+                  project <Var>{props.projectTitle}</Var>
+                </T>
               </p>
               <p className="text-muted-foreground text-xs [overflow-wrap:anywhere]">
-                Protocol revision {protocol.revision}
+                <T>
+                  Protocol revision <Var>{protocol.revision}</Var>
+                </T>
               </p>
             </div>
             <FactoryReviewSnapshot
-              heading="Sealed protocol"
-              intro="Review the full protocol this run is launched under."
+              heading={gt("Sealed protocol")}
+              intro={gt("Review the full protocol this run is launched under.")}
               fields={fields}
             />
             <div className="space-y-1.5">
               <Label htmlFor={instructionsId}>
-                Instructions <span className="font-normal text-muted-foreground">optional</span>
+                <T>Instructions</T>{" "}
+                <span className="font-normal text-muted-foreground">
+                  <T>optional</T>
+                </span>
               </Label>
               <Textarea
                 id={instructionsId}
                 value={instructions}
                 aria-invalid={count.overLimit}
                 aria-describedby={`${instructionsId}-help`}
-                placeholder="Guidance for this run in your own words"
+                placeholder={gt("Guidance for this run in your own words")}
                 onChange={(event) => setInstructions(event.target.value)}
               />
               <div className="flex items-start justify-between gap-3">
                 <p id={`${instructionsId}-help`} className="text-muted-foreground text-xs">
-                  Your own guidance, frozen into the run and sent apart from the sealed protocol. It
-                  cannot change the protocol.
+                  <T>
+                    Your own guidance, frozen into the run and sent apart from the sealed protocol.
+                    It cannot change the protocol.
+                  </T>
                 </p>
                 <span
                   className={
@@ -181,14 +224,16 @@ export function FactoryResearchLaunchDialog(props: {
               environmentId={props.environmentId}
               disabled={pending || changed}
               draft={draft}
-              untrustedText="Run output"
+              untrustedText={gt("Run output")}
               showBaseRef={false}
             />
             {verify ? (
               <Alert variant="info">
                 <AlertDescription>
-                  Verification is launched here, by you, never by an agent. A verification launched
-                  by the thread that produced the result is refused as not independent.
+                  <T>
+                    Verification is launched here, by you, never by an agent. A verification
+                    launched by the thread that produced the result is refused as not independent.
+                  </T>
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -198,12 +243,14 @@ export function FactoryResearchLaunchDialog(props: {
           <FactoryReviewFailure
             failure={props.failure}
             changed={changed}
-            staleHint="This protocol is no longer current. Close this dialog and review the protocol again before launching."
+            staleHint={gt(
+              "This protocol is no longer current. Close this dialog and review the protocol again before launching.",
+            )}
           />
         ) : null}
         <DialogFooter>
           <DialogClose render={<Button variant="outline" size="sm" disabled={pending} />}>
-            Cancel
+            <T>Cancel</T>
           </DialogClose>
           <Button
             size="sm"
@@ -214,7 +261,11 @@ export function FactoryResearchLaunchDialog(props: {
               props.onSubmit({ modelSelection: selection, instructions });
             }}
           >
-            {pending ? "Starting…" : verify ? "Launch verification" : "Launch explore run"}
+            {pending
+              ? gt("Starting…")
+              : verify
+                ? gt("Launch verification")
+                : gt("Launch explore run")}
           </Button>
         </DialogFooter>
       </DialogPopup>

@@ -12,6 +12,9 @@ import {
   type ProjectId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 
 type FeedBadgeVariant = "info" | "success" | "warning" | "error" | "secondary" | "outline";
 
@@ -28,32 +31,44 @@ export type FactoryFeedUrlCheck =
   | { readonly ok: true; readonly url: string }
   | { readonly ok: false; readonly message: string };
 
-export function checkFactoryFeedUrl(value: string): FactoryFeedUrlCheck {
+export function checkFactoryFeedUrl(
+  value: string,
+  resolve: MessageResolver = m,
+): FactoryFeedUrlCheck {
   const trimmed = value.trim();
-  if (trimmed.length === 0) return { ok: false, message: "Enter a feed address." };
+  if (trimmed.length === 0) return { ok: false, message: resolve(msg("Enter a feed address.")) };
   let parsed: URL;
   try {
     parsed = new URL(trimmed);
   } catch {
-    return { ok: false, message: "Enter an absolute https:// feed address." };
+    return {
+      ok: false,
+      message: resolve(msg("Enter an absolute https:// feed address.")),
+    };
   }
   if (parsed.protocol !== "https:")
-    return { ok: false, message: "Only https:// feeds can be bound." };
+    return { ok: false, message: resolve(msg("Only https:// feeds can be bound.")) };
   if (parsed.username !== "" || parsed.password !== "")
-    return { ok: false, message: "Feed addresses cannot contain credentials." };
+    return { ok: false, message: resolve(msg("Feed addresses cannot contain credentials.")) };
   return { ok: true, url: trimmed };
 }
 
-export function describeFactoryFeedSource(source: FactoryFeedSource): {
+export function describeFactoryFeedSource(
+  source: FactoryFeedSource,
+  resolve: MessageResolver = m,
+): {
   readonly badge: FactoryFeedBadge;
   readonly detail: string | null;
 } {
   return source.status === "active"
-    ? { badge: { label: "Active", variant: "success" }, detail: null }
+    ? { badge: { label: resolve(msg("Active")), variant: "success" }, detail: null }
     : {
-        badge: { label: "Unbound", variant: "warning" },
-        detail:
-          "Unbound. Items and tasks are kept, but this feed is not checked. Bind the same address again to resume.",
+        badge: { label: resolve(msg("Unbound")), variant: "warning" },
+        detail: resolve(
+          msg(
+            "Unbound. Items and tasks are kept, but this feed is not checked. Bind the same address again to resume.",
+          ),
+        ),
       };
 }
 
@@ -101,24 +116,29 @@ export function visibleFactoryFeedCandidates(
 
 export function factoryFeedCandidateBadges(
   candidate: FactoryFeedCandidate,
+  resolve: MessageResolver = m,
 ): ReadonlyArray<FactoryFeedBadge> {
   const badges: FactoryFeedBadge[] = [];
   switch (candidate.disposition) {
     case "dismissed":
-      badges.push({ label: "Dismissed", variant: "secondary" });
+      badges.push({ label: resolve(msg("Dismissed")), variant: "secondary" });
       break;
     case "retracted":
-      badges.push({ label: "Retracted by publisher", variant: "error" });
+      badges.push({ label: resolve(msg("Retracted by publisher")), variant: "error" });
       break;
     case "unreviewable":
-      badges.push({ label: "Unreviewable", variant: "error" });
+      badges.push({ label: resolve(msg("Unreviewable")), variant: "error" });
       break;
     case "open":
       break;
   }
-  if (!candidate.inWindow) badges.push({ label: "Not in current feed", variant: "outline" });
+  if (!candidate.inWindow)
+    badges.push({ label: resolve(msg("Not in current feed")), variant: "outline" });
   if (candidate.ordinal > 1)
-    badges.push({ label: `Edited · revision ${candidate.ordinal}`, variant: "info" });
+    badges.push({
+      label: resolve(msg("Edited · revision {ordinal}", { ordinal: candidate.ordinal })),
+      variant: "info",
+    });
   return badges;
 }
 
@@ -148,28 +168,43 @@ function newWorkBlock(
   candidate: FactoryFeedCandidate,
   source: FactoryFeedSource,
   repository: FactoryRepository | null,
+  resolve: MessageResolver = m,
 ): FactoryFeedCandidateAction | null {
   if (repository === null)
     return {
       kind: "unavailable",
-      reason: "This project has no GitHub repository, so feed items cannot start tasks.",
+      reason: resolve(
+        msg("This project has no GitHub repository, so feed items cannot start tasks."),
+      ),
     };
   switch (candidate.disposition) {
     case "retracted":
-      return { kind: "unavailable", reason: "The publisher retracted this item." };
+      return {
+        kind: "unavailable",
+        reason: resolve(msg("The publisher retracted this item.")),
+      };
     case "unreviewable":
       return {
         kind: "unavailable",
-        reason:
-          "This item has no stable identity or exceeds the size bounds, so it cannot be reviewed.",
+        reason: resolve(
+          msg(
+            "This item has no stable identity or exceeds the size bounds, so it cannot be reviewed.",
+          ),
+        ),
       };
     case "dismissed":
-      return { kind: "unavailable", reason: "Dismissed. Restore it to review it for admission." };
+      return {
+        kind: "unavailable",
+        reason: resolve(msg("Dismissed. Restore it to review it for admission.")),
+      };
     case "open":
       break;
   }
   if (source.status !== "active")
-    return { kind: "unavailable", reason: "This source is unbound. Bind it again to admit items." };
+    return {
+      kind: "unavailable",
+      reason: resolve(msg("This source is unbound. Bind it again to admit items.")),
+    };
   if (pointsAtProjectIssue(candidate, repository)) return { kind: "project-issue" };
   return null;
 }
@@ -184,21 +219,28 @@ export function resolveFactoryFeedCandidateAction(
     readonly source: FactoryFeedSource;
     readonly repository: FactoryRepository | null;
   },
+  resolve: MessageResolver = m,
 ): FactoryFeedCandidateAction {
   const { task } = candidate;
   if (task === null)
-    return newWorkBlock(candidate, context.source, context.repository) ?? { kind: "admit" };
+    return (
+      newWorkBlock(candidate, context.source, context.repository, resolve) ?? { kind: "admit" }
+    );
   switch (task.status) {
     case "launching":
       // The server resumes a reserved launch from its frozen intent before any other guard.
       return context.repository === null
         ? {
             kind: "unavailable",
-            reason: "This project has no GitHub repository, so the launch cannot resume.",
+            reason: resolve(
+              msg("This project has no GitHub repository, so the launch cannot resume."),
+            ),
           }
         : { kind: "resume" };
     case "missing":
-      return newWorkBlock(candidate, context.source, context.repository) ?? { kind: "restart" };
+      return (
+        newWorkBlock(candidate, context.source, context.repository, resolve) ?? { kind: "restart" }
+      );
     default:
       return { kind: "open", task };
   }
@@ -307,17 +349,19 @@ export interface FactoryFeedFailure {
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 const isFactoryFeedError = Schema.is(FactoryFeedError);
 
-const GENERIC_FAILURE_MESSAGE = "The environment request failed.";
+const GENERIC_FAILURE_MESSAGE = msg("The environment request failed.");
 
 export function describeFactoryFeedFailure(
   error: unknown,
   fallbackMessage?: string,
+  resolve: MessageResolver = m,
 ): FactoryFeedFailure {
   if (isAuthorizationError(error)) {
     return {
       kind: "permission",
-      title: "Permission required",
-      message: error.message.trim() || "This connection lacks permission for feed sources.",
+      title: resolve(msg("Permission required")),
+      message:
+        error.message.trim() || resolve(msg("This connection lacks permission for feed sources.")),
       reason: null,
     };
   }
@@ -325,42 +369,62 @@ export function describeFactoryFeedFailure(
     const { reason, message } = error;
     switch (reason) {
       case "candidate-changed":
-        return { kind: "changed", title: "Item changed", message, reason };
+        return { kind: "changed", title: resolve(msg("Item changed")), message, reason };
       case "missing-project":
       case "missing-repository":
       case "unsupported-provider":
       case "repository-changed":
-        return { kind: "repository", title: "Repository unavailable", message, reason };
+        return {
+          kind: "repository",
+          title: resolve(msg("Repository unavailable")),
+          message,
+          reason,
+        };
       case "refresh-throttled":
-        return { kind: "throttled", title: "Checked too recently", message, reason };
+        return { kind: "throttled", title: resolve(msg("Checked too recently")), message, reason };
       case "invalid-url":
       case "unsafe-host":
-        return { kind: "other", title: "Feed address rejected", message, reason };
+        return { kind: "other", title: resolve(msg("Feed address rejected")), message, reason };
       case "feed-unavailable":
       case "feed-too-large":
       case "invalid-feed":
-        return { kind: "other", title: "Feed could not be read", message, reason };
+        return { kind: "other", title: resolve(msg("Feed could not be read")), message, reason };
       case "missing-source":
       case "source-suspended":
       case "source-exists":
-        return { kind: "other", title: "Feed source unavailable", message, reason };
+        return { kind: "other", title: resolve(msg("Feed source unavailable")), message, reason };
       case "missing-candidate":
       case "candidate-dismissed":
       case "candidate-retracted":
       case "candidate-unreviewable":
       case "forge-issue-source":
-        return { kind: "other", title: "Item cannot be admitted", message, reason };
+        return { kind: "other", title: resolve(msg("Item cannot be admitted")), message, reason };
       case "origin-conflict":
         // Older records already claim this item more than once; the server keeps them all.
-        return { kind: "other", title: "Item claimed more than once", message, reason };
+        return {
+          kind: "other",
+          title: resolve(msg("Item claimed more than once")),
+          message,
+          reason,
+        };
       default:
-        return { kind: "other", title: "Could not complete the request", message, reason };
+        return {
+          kind: "other",
+          title: resolve(msg("Could not complete the request")),
+          message,
+          reason,
+        };
     }
   }
   const message =
     fallbackMessage ??
     (error instanceof Error && error.message.trim().length > 0
       ? error.message
-      : GENERIC_FAILURE_MESSAGE);
-  return { kind: "other", title: "Could not complete the request", message, reason: null };
+      : resolve(GENERIC_FAILURE_MESSAGE));
+  return {
+    kind: "other",
+    title: resolve(msg("Could not complete the request")),
+    message,
+    reason: null,
+  };
 }

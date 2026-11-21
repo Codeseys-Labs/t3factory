@@ -6,6 +6,7 @@ import {
 import type { FactoryTaskActivityEntry, FactoryTaskDetail, ThreadId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { T, useGT, useMessages } from "gt-react";
 
 import { useNowMinute } from "../../../hooks/useNowMinute";
 import { useFactoryTaskActivity, useRefreshFactoryTaskActivity } from "../../../state/factoryTasks";
@@ -83,9 +84,9 @@ function ActivityPages({
       <div className="flex flex-col gap-1.5">
         {result._tag === "Failure" ? (
           <p role="alert" className="text-destructive-foreground flex items-center gap-2 text-sm">
-            Couldn't load earlier activity.
+            <T>Couldn't load earlier activity.</T>
             <Button variant="ghost-muted" size="xs" onClick={retry}>
-              Try again
+              <T>Try again</T>
             </Button>
           </p>
         ) : null}
@@ -95,12 +96,12 @@ function ActivityPages({
   if (result._tag === "Failure")
     return (
       <p role="alert" className="text-destructive-foreground text-sm">
-        Couldn't load the activity. Check the machine's connection and reload.
+        <T>Couldn't load the activity. Check the machine's connection and reload.</T>
       </p>
     );
   return (
     <p role="status" className="text-muted-foreground text-sm">
-      Loading activity…
+      <T>Loading activity…</T>
     </p>
   );
 }
@@ -115,13 +116,14 @@ function ActivityList({
   onShowEarlier?: (() => void) | undefined;
 }) {
   const present = useActivityPresenter(detail);
+  const gt = useGT();
   if (entries.length === 0) return null;
   return (
-    <ol aria-label="Activity" className="flex flex-col gap-1.5">
+    <ol aria-label={gt("Activity")} className="flex flex-col gap-1.5">
       {onShowEarlier ? (
         <li>
           <Button variant="ghost-muted" size="xs" onClick={onShowEarlier}>
-            Show earlier
+            <T>Show earlier</T>
           </Button>
         </li>
       ) : null}
@@ -140,6 +142,8 @@ function useActivityPresenter(detail: FactoryTaskDetail) {
   const catalog = useTaskCatalog(ref.environmentId);
   const machine = useEnvironmentPresentation(ref.environmentId).presentation?.entry.target.label;
   const navigate = useNavigate();
+  const gt = useGT();
+  const messages = useMessages();
   const nowMinute = useNowMinute();
   const now = Date.parse(`${nowMinute}:00Z`);
   const openThread = (threadId: ThreadId) =>
@@ -163,7 +167,12 @@ function useActivityPresenter(detail: FactoryTaskDetail) {
       return {
         kind: "run",
         author: actorLabel,
-        text: `${presentFactoryTaskActivity(entry, catalog)}${machine ? ` on ${machine}` : ""}`,
+        text: machine
+          ? gt("{activity} on {machine}", {
+              activity: presentFactoryTaskActivity(entry, catalog, messages),
+              machine,
+            })
+          : presentFactoryTaskActivity(entry, catalog, messages),
         time,
         onOpen: () => openThread(event.threadId),
       };
@@ -173,14 +182,18 @@ function useActivityPresenter(detail: FactoryTaskDetail) {
       return {
         kind: "run",
         author: actorLabel,
-        text: presentFactoryTaskActivity({ ...entry, event: { ...event, note: reason } }, catalog),
+        text: presentFactoryTaskActivity(
+          { ...entry, event: { ...event, note: reason } },
+          catalog,
+          messages,
+        ),
         time,
         outcome: "failed",
         excerpt: event.note,
         onOpen: () => openThread(event.threadId),
       };
     }
-    const text = presentFactoryTaskActivity(entry, catalog);
+    const text = presentFactoryTaskActivity(entry, catalog, messages);
     // A pull request opened or merged reads as a fact of the task, as C7 draws it.
     const named =
       (actor.kind === "person" || actor.kind === "agent") &&

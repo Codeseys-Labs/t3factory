@@ -16,6 +16,7 @@ import {
   type FactoryIntakeChange,
   type FactoryIntakeSourceConfig,
   type FactoryIssue,
+  type FactoryIssueCapabilities,
   type FactoryTaskCreateInput,
   type FactoryTaskSummary,
 } from "@t3tools/contracts";
@@ -56,6 +57,16 @@ const repository = {
   repository: "owner/repo",
   canonicalKey: "github.com/owner/repo",
   url: "https://github.com/owner/repo",
+};
+const capabilities: FactoryIssueCapabilities = {
+  provider: github,
+  displayName: "GitHub",
+  blockedBy: "none",
+  subIssues: false,
+  closeAcceptance: "none",
+  publish: false,
+  headPinnedMerge: false,
+  issueComment: false,
 };
 const issue = (
   number: number,
@@ -184,7 +195,7 @@ const harness = Effect.gen(function* () {
         ),
     }),
     Layer.mock(Issues.FactoryIssueService)({
-      list: (input) =>
+      scan: (input) =>
         Effect.gen(function* () {
           yield* Ref.update(issueCalls, (calls) =>
             new Map(calls).set(input.projectId, (calls.get(input.projectId) ?? 0) + 1),
@@ -194,24 +205,25 @@ const harness = Effect.gen(function* () {
           const listed = [
             ...((yield* Ref.get(issueLists)).get(input.projectId) ?? []),
           ].toReversed();
-          const offset = ((input.page ?? 1) - 1) * 30;
+          const offset = input.cursor === undefined ? 0 : Number(input.cursor);
           return {
             repository,
-            capabilities: {
-              provider: github,
-              displayName: "GitHub",
-              blockedBy: "none",
-              subIssues: false,
-              closeAcceptance: "none",
-              publish: false,
-              headPinnedMerge: false,
-              issueComment: false,
-            },
+            capabilities,
             // The tracker lists newest first.
             issues: listed.slice(offset, offset + 30),
-            nextPage: offset + 30 < listed.length ? (input.page ?? 1) + 1 : null,
-            fetchedAt: now,
+            nextCursor: offset + 30 < listed.length ? String(offset + 30) : null,
           };
+        }),
+      read: (input) =>
+        Effect.gen(function* () {
+          const issue = ((yield* Ref.get(issueLists)).get(input.projectId) ?? []).find(
+            (candidate) =>
+              (candidate.key ?? String(candidate.number)) ===
+              (input.key ?? String(input.issueNumber)),
+          );
+          if (issue === undefined)
+            return yield* Effect.die(`Unlisted issue ${input.key ?? input.issueNumber}`);
+          return { repository, capabilities, issue, fetchedAt: now };
         }),
     }),
     Layer.mock(Feeds.FactoryFeedService)({

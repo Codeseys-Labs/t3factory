@@ -34,11 +34,13 @@ export function BrandMark(props: { readonly compact?: boolean; readonly stageLab
       <View className="min-w-0 shrink gap-1">
         <View className="min-w-0 flex-row items-center gap-2">
           <Text
+            // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
             accessibilityLabel="T3 Code Factory"
             numberOfLines={1}
             ellipsizeMode="tail"
             className="min-w-0 shrink text-lg font-t3-bold tracking-[-0.4px] text-foreground"
           >
+            {/* oxlint-disable-next-line t3code/no-untranslated-copy -- product name */}
             T3 Code Factory
           </Text>
           <View className="shrink-0 rounded-full bg-subtle px-2 py-1">

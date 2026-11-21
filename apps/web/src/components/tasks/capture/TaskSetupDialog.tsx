@@ -11,7 +11,9 @@ import type {
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { type ComponentProps, useContext, useState } from "react";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 
+import { m } from "../../../i18n/messages";
 import {
   factoryTasks,
   useFactoryAgentProfiles,
@@ -56,26 +58,51 @@ const NO_PREVIEW: Atom.Atom<Result<FactoryTaskAssignee>> = Atom.make(AsyncResult
 
 const INTENT_COPY: Record<
   Intent,
-  { title: (id: string) => string; primary: string; wait: string }
+  {
+    title: (id: string) => string;
+    primary: string;
+    wait: (blockers: string, count: number) => string;
+  }
 > = {
-  start: { title: (id) => `Start ${id}`, primary: "Start", wait: "Can start when" },
-  retry: { title: (id) => `Run ${id} again`, primary: "Retry", wait: "Can run again when" },
+  start: {
+    title: (id) => msg("Start {id}", { id }),
+    primary: msg("Start", { $context: "verb, starts the task" }),
+    wait: (blockers, count) =>
+      msg("Can start when {blockers} {count, plural, one {is} other {are}} done.", {
+        blockers,
+        count,
+      }),
+  },
+  retry: {
+    title: (id) => msg("Run {id} again", { id }),
+    primary: msg("Retry", { $context: "verb, runs the task again" }),
+    wait: (blockers, count) =>
+      msg("Can run again when {blockers} {count, plural, one {is} other {are}} done.", {
+        blockers,
+        count,
+      }),
+  },
   "break-down": {
-    title: (id) => `Break down ${id}`,
-    primary: "Ask for a plan",
-    wait: "Can start when",
+    title: (id) => msg("Break down {id}", { id }),
+    primary: msg("Ask for a plan"),
+    wait: (blockers, count) =>
+      msg("Can start when {blockers} {count, plural, one {is} other {are}} done.", {
+        blockers,
+        count,
+      }),
   },
 };
 const RUNTIME_MODES = Object.keys(runtimeModeConfig) as RuntimeMode[];
 const WORKSPACES: ReadonlyArray<{ value: FactoryTaskWorkspace; label: string }> = [
-  { value: "worktree", label: "New worktree" },
-  { value: "root", label: "Project checkout" },
+  { value: "worktree", label: msg("New worktree") },
+  { value: "root", label: msg("Project checkout") },
 ];
 
 /** The "who runs this and how" sheet for one task: start it, run it again, or ask for a breakdown. */
 export function TaskSetupDialog({ taskRef, intent }: { taskRef: FactoryTaskRef; intent: Intent }) {
   const detail = useFactoryTaskDetail(taskRef);
   const close = useTaskDialogStore((state) => state.close);
+  const gt = useGT();
   if (detail._tag === "Success") return <ParentGate task={detail.value.task} intent={intent} />;
   return (
     <Dialog
@@ -86,14 +113,18 @@ export function TaskSetupDialog({ taskRef, intent }: { taskRef: FactoryTaskRef; 
     >
       <DialogPopup className="max-w-120">
         <DialogHeader>
-          <DialogTitle>{intent === "break-down" ? "Break down task" : "Start task"}</DialogTitle>
+          <DialogTitle>
+            {intent === "break-down" ? gt("Break down task") : gt("Start task")}
+          </DialogTitle>
           <DialogDescription>
-            {detail._tag === "Failure" ? "The task could not be loaded." : "Loading the task…"}
+            {detail._tag === "Failure"
+              ? gt("The task could not be loaded.")
+              : gt("Loading the task…")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={close}>
-            Close
+            <T>Close</T>
           </Button>
         </DialogFooter>
       </DialogPopup>
@@ -151,6 +182,8 @@ function useAssigneeLine(input: {
   const { environmentId, projectId } = task.ref;
   const catalog = useTaskCatalog(environmentId);
   const profiles = useFactoryAgentProfiles(environmentId);
+  const gt = useGT();
+  const messages = useMessages();
   const unchangedAuto =
     assignment.mode === "auto" && sameAssignment(assignment, task.assignee.assignment);
   const asksServer = assignment.mode === "auto" && !unchangedAuto;
@@ -173,13 +206,15 @@ function useAssigneeLine(input: {
         ? profiles.value.profiles.find(({ profile }) => profile.id === assignment.profileId)
             ?.profile.name
         : undefined;
-    return name ? `Uses the ${name} profile` : null;
+    return name ? gt("Uses the {name} profile", { name }) : null;
   }
   if (assignment.mode !== "auto") return null;
   const context = { type: task.type, catalog, parentDisplayId: parent?.displayId };
-  if (unchangedAuto) return autoDetailLine(task.assignee.resolved, context);
-  if (preview._tag === "Success") return autoDetailLine(preview.value.resolved, context);
-  return preview._tag === "Initial" ? "Looking up the agent…" : "Picks an agent when it starts";
+  if (unchangedAuto) return autoDetailLine(task.assignee.resolved, context, messages);
+  if (preview._tag === "Success") return autoDetailLine(preview.value.resolved, context, messages);
+  return preview._tag === "Initial"
+    ? gt("Looking up the agent…")
+    : gt("Picks an agent when it starts");
 }
 
 function Field({
@@ -210,6 +245,8 @@ function TaskSetupForm({
   parent: TaskAssigneeParent | undefined;
 }) {
   const close = useTaskDialogStore((state) => state.close);
+  const gt = useGT();
+  const messages = useMessages();
   const registry = useContext(RegistryContext);
   const commands = useCaptureCommands();
   const navigate = useNavigate();
@@ -259,10 +296,16 @@ function TaskSetupForm({
   const shownMode = setup?.runtimeMode ?? mode ?? defaultMode;
   const shownWorkspace = setup?.workspace ?? workspace ?? "worktree";
   // The mode governs the agent. The server's own run of the project's setup script is outside it.
+  const modeDescription = messages(runtimeModeConfig[shownMode].description);
   const modeHint =
     shownWorkspace === "worktree" && shownMode !== "full-access"
-      ? `${runtimeModeConfig[shownMode].description} When the server runs the project's setup script first, it does not ask.`
-      : runtimeModeConfig[shownMode].description;
+      ? gt(
+          "{description} When the server runs the project's setup script first, it does not ask.",
+          {
+            description: modeDescription,
+          },
+        )
+      : modeDescription;
   const blockers = planning ? [] : task.blockedBy.map((blocker) => blocker.displayId);
   const changedAssignment = !sameAssignment(assignment, task.assignee.assignment);
   const ready =
@@ -310,13 +353,13 @@ function TaskSetupForm({
       if (!asked.ok) return refused(asked.message, asked.conflict);
       const path = `/tasks/${task.ref.environmentId}/${task.displayId}`;
       toastManager.add({
-        title: `Asked for a plan for ${task.displayId}`,
-        description: "Review it on the task page.",
+        title: m(msg("Asked for a plan for {displayId}", { displayId: task.displayId })),
+        description: m(msg("Review it on the task page.")),
         ...(here === path
           ? {}
           : {
               actionProps: {
-                children: `Open ${task.displayId}`,
+                children: m(msg("Open {displayId}", { displayId: task.displayId })),
                 onClick: () =>
                   void navigate({
                     to: "/tasks/$environmentId/$displayId",
@@ -338,26 +381,30 @@ function TaskSetupForm({
     >
       <DialogPopup className="max-w-120">
         <DialogHeader>
-          <DialogTitle>{copy.title(task.displayId)}</DialogTitle>
+          <DialogTitle>{messages(copy.title(task.displayId))}</DialogTitle>
           <DialogDescription>{task.title}</DialogDescription>
         </DialogHeader>
         <DialogPanel>
           {blockers.length > 0 ? (
             <div className="flex flex-col gap-0.5">
-              <p className="font-medium text-sm">Waiting on {blockers.join(", ")}</p>
+              <p className="font-medium text-sm">
+                <T>
+                  Waiting on <Var>{blockers.join(", ")}</Var>
+                </T>
+              </p>
               <p className="text-muted-foreground text-xs">
-                {copy.wait} {blockers.join(", ")} {blockers.length === 1 ? "is" : "are"} done.
+                {messages(copy.wait(blockers.join(", "), blockers.length))}
               </p>
             </div>
           ) : null}
-          <Field label="Assignee" hint={line}>
+          <Field label={gt("Assignee", { $context: "noun, who does the task" })} hint={line}>
             <TaskAssigneePicker
               environmentId={environmentId}
               projectId={projectId}
               type={task.type}
               value={assignment}
               onChange={pick}
-              trigger={<AssigneeField label={assigneeText(resolved.assignee)} />}
+              trigger={<AssigneeField label={assigneeText(resolved.assignee, messages)} />}
               {...(parent ? { parent } : {})}
               {...(assignment.mode === "auto" &&
               sameAssignment(assignment, task.assignee.assignment)
@@ -370,50 +417,50 @@ function TaskSetupForm({
                 : {})}
             />
           </Field>
-          <Field label="Mode" hint={modeHint}>
+          <Field label={gt("Mode")} hint={modeHint}>
             <Select
               value={shownMode}
               disabled={base === null}
               onValueChange={(value) => value !== null && setMode(value)}
             >
-              <SelectTrigger aria-label="Mode">
-                <SelectValue>{runtimeModeConfig[shownMode].label}</SelectValue>
+              <SelectTrigger aria-label={gt("Mode")}>
+                <SelectValue>{messages(runtimeModeConfig[shownMode].label)}</SelectValue>
               </SelectTrigger>
               <SelectPopup>
                 {RUNTIME_MODES.map((value) => (
                   <SelectItem key={value} value={value}>
-                    {runtimeModeConfig[value].label}
+                    {messages(runtimeModeConfig[value].label)}
                   </SelectItem>
                 ))}
               </SelectPopup>
             </Select>
           </Field>
-          <Field label="Workspace">
+          <Field label={gt("Workspace")}>
             {planning ? (
-              <Input readOnly aria-label="Workspace" value="Project checkout" />
+              <Input readOnly aria-label={gt("Workspace")} value={gt("Project checkout")} />
             ) : (
               <Select
                 value={shownWorkspace}
                 disabled={base === null}
                 onValueChange={(value) => value !== null && setWorkspace(value)}
               >
-                <SelectTrigger aria-label="Workspace">
+                <SelectTrigger aria-label={gt("Workspace")}>
                   <SelectValue>
-                    {WORKSPACES.find((entry) => entry.value === shownWorkspace)?.label}
+                    {messages(WORKSPACES.find((entry) => entry.value === shownWorkspace)?.label)}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
                   {WORKSPACES.map((entry) => (
                     <SelectItem key={entry.value} value={entry.value}>
-                      {entry.label}
+                      {messages(entry.label)}
                     </SelectItem>
                   ))}
                 </SelectPopup>
               </Select>
             )}
           </Field>
-          <Field label="Machine">
-            <Input readOnly aria-label="Machine" value={machine ?? ""} />
+          <Field label={gt("Machine")}>
+            <Input readOnly aria-label={gt("Machine")} value={machine ?? ""} />
           </Field>
           {error ? (
             <p role="alert" className="text-destructive-foreground text-xs">
@@ -423,10 +470,10 @@ function TaskSetupForm({
         </DialogPanel>
         <DialogFooter>
           <Button variant="outline" onClick={close} disabled={busy}>
-            Cancel
+            <T>Cancel</T>
           </Button>
           <Button disabled={!ready} onClick={() => void submit()}>
-            {copy.primary}
+            {messages(copy.primary)}
           </Button>
         </DialogFooter>
       </DialogPopup>

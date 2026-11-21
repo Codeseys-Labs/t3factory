@@ -823,26 +823,30 @@ export function WorktreeCleanupSection() {
                 ) && (
                   <>
                     <SettingsRow
-                      title="Delete worktrees no thread uses"
+                      title={gt("Delete worktrees no thread uses")}
                       status={ruleStatus("orphanWorktrees")}
-                      description="Remove worktrees in the worktree folder that no thread uses. Worktrees with local changes, open terminals or running agents are kept, and so are their branches."
+                      description={gt(
+                        "Remove worktrees in the worktree folder that no thread uses. Worktrees with local changes, open terminals or running agents are kept, and so are their branches.",
+                      )}
                       serverScoped
                       control={
                         <Switch
-                          aria-label="Delete worktrees no thread uses"
+                          aria-label={gt("Delete worktrees no thread uses")}
                           checked={settings.orphanWorktrees}
                           onCheckedChange={(orphanWorktrees) => update({ orphanWorktrees })}
                         />
                       }
                     />
                     <SettingsRow
-                      title="Delete merged branches"
+                      title={gt("Delete merged branches")}
                       status={ruleStatus("mergedBranches")}
-                      description="Delete local t3/ and t3-factory/ branches that are merged into the default branch, aren't checked out, and no thread uses."
+                      description={gt(
+                        "Delete local t3/ and t3-factory/ branches that are merged into the default branch, aren't checked out, and no thread uses.",
+                      )}
                       serverScoped
                       control={
                         <Switch
-                          aria-label="Delete merged branches"
+                          aria-label={gt("Delete merged branches")}
                           checked={settings.mergedBranches}
                           onCheckedChange={(mergedBranches) => update({ mergedBranches })}
                         />

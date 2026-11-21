@@ -20,7 +20,6 @@ const makeInstance = Effect.all({
   discovery: Effect.succeed(AzureDevOpsSourceControlProvider.discovery),
   pullRequests: AzureDevOpsPullRequestProvider.make,
   issues: AzureDevOpsIssueTracker.make,
-  factoryIssues: Effect.succeed(null),
 });
 
 export const driver = defineSourceControlDriver({

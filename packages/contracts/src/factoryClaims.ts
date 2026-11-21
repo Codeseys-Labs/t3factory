@@ -10,10 +10,9 @@ import { FactoryIssueTask, FactoryRepository } from "./factory.ts";
 import { OrchestrationV2CreationSource } from "./orchestrationV2.ts";
 
 /**
- * A comparable identity for an admitted origin across environments:
- * `github:<canonicalKey>#<n>`, `feed:<canonicalKey>|<locator>|<itemKey>`,
- * `research:<protocolId>:<role>`, `knowledge:<briefId>`. Same key in two environments with different threads is
- * duplicate execution; with the same thread it is a copied database.
+ * An admitted origin's identity across environments: `<tracker>:<canonicalScopeKey>#<key>` (git numeric
+ * keys keep their bytes), `feed:<canonicalKey>|<locator>|<itemKey>`, `research:<protocolId>:<role>`,
+ * `knowledge:<briefId>`. Equal keys with different threads are duplicate execution; same thread, a copied DB.
  */
 export const FactoryOriginKey = Schema.String.pipe(Schema.brand("FactoryOriginKey"));
 export type FactoryOriginKey = typeof FactoryOriginKey.Type;
@@ -23,6 +22,7 @@ export const FactoryClaim = Schema.Struct({
   origin: Schema.Literals([
     "github-issue",
     "gitlab-issue",
+    "linear-issue",
     "feed-item",
     "research-run",
     "knowledge-brief",
@@ -53,7 +53,10 @@ export const FactoryClaim = Schema.Struct({
 });
 export type FactoryClaim = typeof FactoryClaim.Type;
 
-export const FactoryClaimListInput = Schema.Struct({ projectId: ProjectId });
+export const FactoryClaimListInput = Schema.Struct({
+  projectId: ProjectId,
+  issueKeys: Schema.optionalKey(Schema.Boolean),
+});
 export type FactoryClaimListInput = typeof FactoryClaimListInput.Type;
 export const FactoryClaimListResult = Schema.Struct({
   environmentId: EnvironmentId,

@@ -14,6 +14,9 @@ import {
 } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import { useState } from "react";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
+
+import { m } from "../../../i18n/messages";
 
 import { randomUUID } from "../../../lib/utils";
 import {
@@ -101,6 +104,8 @@ export function RuleEditor({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [commandId, setCommandId] = useState(() => CommandId.make(randomUUID()));
+  const gt = useGT();
+  const messages = useMessages();
   const autoStart = values.autonomy === "auto-start";
   const seenState = draft.item?.state;
   const state: FactoryIntakeRuleState = autoStart
@@ -146,7 +151,7 @@ export function RuleEditor({
     },
     { reportFailure: false },
   );
-  const assignee = assigneeSelect(values.assignment, profiles, catalog);
+  const assignee = assigneeSelect(values.assignment, profiles, catalog, messages);
   const source = matchable.find((candidate) => candidate.id === values.sourceId);
 
   async function run(command: typeof save | typeof remove) {
@@ -161,26 +166,26 @@ export function RuleEditor({
     }
     const refusal = readRefusal(result);
     if (refusal.reason === "version-conflict") draft.conflict(refusal.currentVersion);
-    else setError(refusalText(refusal.reason, "rule"));
+    else setError(refusalText(refusal.reason, "rule", m));
   }
 
   return (
     <AutomationSheet
-      title={rule ? rule.name : "New rule"}
+      title={rule ? rule.name : msg("New rule")}
       onClose={close}
       footer={
         <>
           {draft.item ? (
             <DeleteAction
-              label="Delete rule"
-              title={`Delete ${draft.item.name}?`}
+              label={msg("Delete rule")}
+              title={msg("Delete {name}?", { name: draft.item.name })}
               consequence="Tasks and Inbox items it already made stay."
               disabled={!remove.permission || pending}
               onConfirm={() => void run(remove)}
             />
           ) : null}
           <SheetActions
-            saveLabel="Save rule"
+            saveLabel={msg("Save rule")}
             canSave={
               save.permission &&
               !pending &&
@@ -194,34 +199,38 @@ export function RuleEditor({
         </>
       }
     >
-      <Field label="Name" htmlFor="rule-name">
+      <Field label={msg("Name", { $context: "noun, the rule name field" })} htmlFor="rule-name">
         <Input
           id="rule-name"
           value={values.name}
           maxLength={64}
-          placeholder="Bugs from GitHub"
+          placeholder={gt("Bugs from GitHub")}
           onChange={(event) => draft.set("name", event.target.value)}
         />
       </Field>
-      <SheetSection title="When">
+      <SheetSection title={msg("When", { $context: "when the rule matches" })}>
         <SelectField
-          label="Source"
+          label={msg("Source")}
           value={values.sourceId}
           items={matchable.map((candidate) => ({
             value: candidate.id,
-            label: `${candidate.label} · ${sourceDetail(candidate)}`,
+            label: `${candidate.label} · ${sourceDetail(candidate, messages)}`,
           }))}
           onChange={(value) => draft.set("sourceId", value)}
         />
-        <Field label="Labels" htmlFor="rule-labels" hint="Matches an item with any of these.">
+        <Field
+          label={msg("Labels", { $context: "noun, issue labels to match" })}
+          htmlFor="rule-labels"
+          hint={msg("Matches an item with any of these.")}
+        >
           <Input
             id="rule-labels"
             value={values.labels}
-            placeholder="bug, regression"
+            placeholder={gt("bug, regression")}
             onChange={(event) => draft.set("labels", event.target.value)}
           />
         </Field>
-        <Field label="Title contains" htmlFor="rule-title">
+        <Field label={msg("Title contains")} htmlFor="rule-title">
           <Input
             id="rule-title"
             value={values.titleContains}
@@ -230,24 +239,24 @@ export function RuleEditor({
           />
         </Field>
       </SheetSection>
-      <SheetSection title="Then">
+      <SheetSection title={msg("Then", { $context: "what the rule does on a match" })}>
         <SelectField
-          label="Type"
+          label={msg("Type", { $context: "noun, the task type it makes" })}
           value={values.type}
           items={TASK_TYPES.map((type) => ({ value: type, label: TASK_TYPE_LABELS[type] }))}
           onChange={(value) => draft.set("type", value)}
         />
         <SelectField
-          label="Assignee"
+          label={msg("Assignee")}
           value={assignee.value}
           items={assignee.items}
           onChange={(value) => draft.set("assignment", assignee.pick(value))}
         />
       </SheetSection>
-      <Field label="Autonomy">
+      <Field label={msg("Autonomy")}>
         <div className="rounded-lg border p-1">
           <RadioGroup
-            aria-label="Autonomy"
+            aria-label={gt("Autonomy")}
             value={values.autonomy}
             onValueChange={(value) => draft.set("autonomy", value as FactoryIntakeAutonomy)}
           >
@@ -257,9 +266,9 @@ export function RuleEditor({
                 className="flex cursor-pointer items-start gap-3 rounded-md px-3 py-2 has-data-checked:bg-accent"
               >
                 <Radio value={level} />
-                <span className="shrink-0 font-medium">{AUTONOMY[level].label}</span>
+                <span className="shrink-0 font-medium">{messages(AUTONOMY[level].label)}</span>
                 <span className="text-muted-foreground text-xs leading-5">
-                  {AUTONOMY[level].description}
+                  {messages(AUTONOMY[level].description)}
                 </span>
               </label>
             ))}
@@ -273,10 +282,10 @@ export function RuleEditor({
             disabled={autoStart}
             onCheckedChange={(checked) => draft.set("trial", checked)}
           />
-          Try once on the next match, then ask me
+          <T>Try once on the next match, then ask me</T>
         </label>
         {autoStart ? (
-          <p className="text-muted-foreground text-xs">{EVERY_START_NEEDS_A_PERSON}</p>
+          <p className="text-muted-foreground text-xs">{messages(EVERY_START_NEEDS_A_PERSON)}</p>
         ) : null}
       </div>
       {source ? (
@@ -307,25 +316,33 @@ function MatchPreview({
 }: {
   environmentId: EnvironmentId;
   match: FactoryIntakeRuleMatch;
-  noun: string;
+  noun: "issue" | "item";
 }) {
   // Typing in Labels or Title contains asks the server once it settles, not on every key.
   const [settled] = useDebouncedValue(JSON.stringify(match), { wait: 300 });
+  const messages = useMessages();
   const result = useFactoryIntakePreview(environmentId, {
     match: JSON.parse(settled) as FactoryIntakeRuleMatch,
   });
   const preview = AsyncResult.getOrElse(result, () => null);
   if (result._tag === "Failure")
-    return <p className="text-muted-foreground text-xs">Couldn't count past matches.</p>;
+    return (
+      <p className="text-muted-foreground text-xs">
+        <T>Couldn't count past matches.</T>
+      </p>
+    );
   if (!preview)
     return (
       <p role="status" className="text-muted-foreground text-xs">
-        Counting past matches…
+        <T>Counting past matches…</T>
       </p>
     );
   return (
     <p className="text-muted-foreground text-xs">
-      In the last 30 days this would have matched {plural(preview.matchedLast30Days, noun)}.
+      <T>
+        In the last 30 days this would have matched{" "}
+        <Var>{plural(preview.matchedLast30Days, noun, messages)}</Var>.
+      </T>
     </p>
   );
 }

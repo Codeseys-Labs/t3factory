@@ -9,8 +9,10 @@ import {
   type FactoryWorkSummary,
   type ProjectId,
 } from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 export type FactoryWorkOwnerStatus =
   | "current"
@@ -136,26 +138,36 @@ export type FactoryWorkPrerequisitesView =
     };
 
 const unavailableMessages: Record<Exclude<FactoryWorkOwnerStatus, "current">, string> = {
-  loading: "Loading owner…",
-  offline:
+  loading: msg("Loading owner…"),
+  offline: msg(
     "Owner offline. Prerequisites are unavailable until it reconnects; this is not an empty graph.",
-  unsupported: "Owner does not advertise Unified Work. Update its server.",
-  forbidden: "Owner read access denied. Prerequisites are hidden.",
-  failed: "Owner read failed. Prerequisites are unavailable; this is not an empty graph.",
+  ),
+  unsupported: msg("Owner does not advertise Unified Work. Update its server."),
+  forbidden: msg("Owner read access denied. Prerequisites are hidden."),
+  failed: msg("Owner read failed. Prerequisites are unavailable; this is not an empty graph."),
 };
 type OwnerUnavailable = Extract<FactoryWorkPrerequisitesResult, { status: "owner-unavailable" }>;
 const ownerUnavailableMessages: Record<OwnerUnavailable["reason"], string> = {
-  "ambiguous-owner":
+  "ambiguous-owner": msg(
     "The current review owner is missing or ambiguous, so source blockers are not read.",
-  "missing-project":
+  ),
+  "missing-project": msg(
     "The current review project no longer exists, so source blockers are not read.",
-  "missing-repository": "The current review project has no usable repository remote.",
-  "unsupported-provider": "The current review project's host cannot report issue blockers here.",
-  "repository-changed":
+  ),
+  "missing-repository": msg("The current review project has no usable repository remote."),
+  "unsupported-provider": msg(
+    "The current review project's host cannot report issue blockers here.",
+  ),
+  "repository-changed": msg(
     "The review project's origin no longer matches the admitted repository, so another repository's blockers are not shown.",
-  "read-failed": "Prerequisite read failed. This is not an empty graph.",
+  ),
+  "read-failed": msg("Prerequisite read failed. This is not an empty graph."),
 };
-const notModeledLabels = { feed: "feed work", brief: "briefs", protocol: "protocols" } as const;
+const notModeledLabels = {
+  feed: msg("feed work"),
+  brief: msg("briefs"),
+  protocol: msg("protocols"),
+} as const;
 const toneOrder: Record<FactoryWorkPrerequisiteTone, number> = {
   blocking: 0,
   unknown: 1,
@@ -163,21 +175,21 @@ const toneOrder: Record<FactoryWorkPrerequisiteTone, number> = {
   removed: 3,
 };
 const resolutionLabels: Record<FactoryReadinessEdge["resolution"], string> = {
-  open: "Open at source",
-  "closed-unaccepted": "Closed at source without completion",
-  accepted: "Completed at source",
-  deleted: "Deleted at source",
-  inaccessible: "Inaccessible to this environment; details withheld",
-  moved: "Moved at source",
-  unverified: "Unverified at source",
+  open: msg("Open at source"),
+  "closed-unaccepted": msg("Closed at source without completion"),
+  accepted: msg("Completed at source"),
+  deleted: msg("Deleted at source"),
+  inaccessible: msg("Inaccessible to this environment; details withheld"),
+  moved: msg("Moved at source"),
+  unverified: msg("Unverified at source"),
 };
 const unresolvedLabels: Record<
   Extract<FactoryWorkPrerequisiteLink, { kind: "unresolved" }>["reason"],
   string
 > = {
-  cycle: "Retained Work lineage has a cycle; not linked",
-  "missing-ancestry": "Retained Work lineage is incomplete; not linked",
-  "bound-exhausted": "Retained Work lineage exceeds the traversal bound; not linked",
+  cycle: msg("Retained Work lineage has a cycle; not linked"),
+  "missing-ancestry": msg("Retained Work lineage is incomplete; not linked"),
+  "bound-exhausted": msg("Retained Work lineage exceeds the traversal bound; not linked"),
 };
 type Observed = Extract<FactoryWorkPrerequisitesResult, { status: "observed" }>;
 type FilterTest = (link: {
@@ -188,6 +200,7 @@ function prerequisiteNode(
   { edge, link }: Observed["prerequisites"][number],
   overrides: Observed["readiness"]["overrides"],
   withinFilter: FilterTest,
+  resolve: MFunctionType,
 ): FactoryWorkPrerequisiteNode {
   const present = edge.status === "present";
   const override = overrides.find((candidate) => candidate.id === edge.override)?.kind;
@@ -207,8 +220,8 @@ function prerequisiteNode(
               : "unknown";
   const source =
     edge.status === "removed-at-source"
-      ? "No longer listed as a blocker at source"
-      : resolutionLabels[edge.resolution];
+      ? resolve(msg("No longer listed as a blocker at source"))
+      : resolve(resolutionLabels[edge.resolution]);
   const within = link.kind === "retained" && withinFilter(link);
   return {
     key: `${edge.targetHost}/${edge.targetId}`,
@@ -217,9 +230,9 @@ function prerequisiteNode(
     tone,
     sourceLabel:
       override === "force-not-ready"
-        ? `${source} · override: not ready`
+        ? resolve(msg("{source} · override: not ready", { source }))
         : override === "waive"
-          ? `${source} · override: waived`
+          ? resolve(msg("{source} · override: waived", { source }))
           : source,
     sourceUrl: present ? edge.targetUrl : null,
     link:
@@ -229,48 +242,60 @@ function prerequisiteNode(
     linkLabel:
       link.kind === "retained"
         ? within
-          ? "Open retained Work"
-          : "Open retained Work (outside current filter)"
+          ? resolve(msg("Open retained Work"))
+          : resolve(msg("Open retained Work (outside current filter)"))
         : link.kind === "none"
-          ? "No retained Work in this environment"
+          ? resolve(msg("No retained Work in this environment"))
           : link.kind === "not-current"
-            ? "Not linked: this blocker was not verified in the latest source observation"
-            : unresolvedLabels[link.reason],
+            ? resolve(
+                msg("Not linked: this blocker was not verified in the latest source observation"),
+              )
+            : resolve(unresolvedLabels[link.reason]),
   };
 }
 /** One presenter for every client; protected content appears only while the owner is current. */
-export function presentFactoryWorkPrerequisites(input: {
-  readonly status: FactoryWorkOwnerStatus;
-  readonly supported: boolean;
-  readonly failed: boolean;
-  readonly result: FactoryWorkPrerequisitesResult | null;
-  readonly withinFilter: FilterTest;
-  readonly page: number;
-  readonly nowMs: number;
-}): FactoryWorkPrerequisitesView {
+export function presentFactoryWorkPrerequisites(
+  input: {
+    readonly status: FactoryWorkOwnerStatus;
+    readonly supported: boolean;
+    readonly failed: boolean;
+    readonly result: FactoryWorkPrerequisitesResult | null;
+    readonly withinFilter: FilterTest;
+    readonly page: number;
+    readonly nowMs: number;
+  },
+  resolve: MFunctionType = mFallback,
+): FactoryWorkPrerequisitesView {
   if (input.status !== "current")
-    return { state: "unavailable", message: unavailableMessages[input.status] };
+    return { state: "unavailable", message: resolve(unavailableMessages[input.status]) };
   if (!input.supported)
     return {
       state: "unavailable",
-      message:
-        "This owner's server cannot report Work prerequisites. Update it to inspect blockers.",
+      message: resolve(
+        msg("This owner's server cannot report Work prerequisites. Update it to inspect blockers."),
+      ),
     };
   if (input.failed)
-    return { state: "unavailable", message: ownerUnavailableMessages["read-failed"] };
+    return { state: "unavailable", message: resolve(ownerUnavailableMessages["read-failed"]) };
   const result = input.result;
-  if (result === null) return { state: "unavailable", message: "Observing source prerequisites…" };
+  if (result === null)
+    return { state: "unavailable", message: resolve(msg("Observing source prerequisites…")) };
   if (result.status === "not-modeled")
     return {
       state: "not-modeled",
-      message: `Prerequisites are not modeled here for ${notModeledLabels[result.kind]}. This does not mean the work has no real-world dependencies.`,
+      message: resolve(
+        msg(
+          "Prerequisites are not modeled here for {kind}. This does not mean the work has no real-world dependencies.",
+          { kind: resolve(notModeledLabels[result.kind]) },
+        ),
+      ),
     };
   if (result.status === "owner-unavailable")
-    return { state: "unavailable", message: ownerUnavailableMessages[result.reason] };
+    return { state: "unavailable", message: resolve(ownerUnavailableMessages[result.reason]) };
   const { readiness } = result;
   const nodes = result.prerequisites
     .map((entry, index) => ({
-      node: prerequisiteNode(entry, readiness.overrides, input.withinFilter),
+      node: prerequisiteNode(entry, readiness.overrides, input.withinFilter, resolve),
       index,
     }))
     .sort((a, b) => toneOrder[a.node.tone] - toneOrder[b.node.tone] || a.index - b.index)
@@ -284,20 +309,51 @@ export function presentFactoryWorkPrerequisites(input: {
   const verdict =
     readiness.status === "ready"
       ? readiness.basis === "override"
-        ? "Ready at source, relying on an active waiver"
-        : "Ready at source"
+        ? resolve(msg("Ready at source, relying on an active waiver"))
+        : resolve(msg("Ready at source"))
       : readiness.status === "blocked"
-        ? "Blocked"
+        ? resolve(msg("Blocked"))
         : readiness.status === "not-applicable"
-          ? "Not applicable: the item is closed at source"
-          : "Unknown";
+          ? resolve(msg("Not applicable: the item is closed at source"))
+          : resolve(msg("Unknown"));
   const reasons = readiness.reasons.map((reason) => reason.replaceAll("-", " ")).join(", ");
+  const listed = String(readiness.listedCount);
+  const total =
+    readiness.summaryTotal == null
+      ? resolve(msg("an unreported number"))
+      : String(readiness.summaryTotal);
+  const observation = stale
+    ? readiness.complete
+      ? resolve(
+          msg(
+            "Current source observation {observedAt} (stale) · complete listing, {listed} listed of {total}.",
+            { observedAt: readiness.observedAt, listed, total },
+          ),
+        )
+      : resolve(
+          msg(
+            "Current source observation {observedAt} (stale) · partial listing, {listed} listed of {total}.",
+            { observedAt: readiness.observedAt, listed, total },
+          ),
+        )
+    : readiness.complete
+      ? resolve(
+          msg(
+            "Current source observation {observedAt} · complete listing, {listed} listed of {total}.",
+            { observedAt: readiness.observedAt, listed, total },
+          ),
+        )
+      : resolve(
+          msg(
+            "Current source observation {observedAt} · partial listing, {listed} listed of {total}.",
+            { observedAt: readiness.observedAt, listed, total },
+          ),
+        );
   return {
     state: "observed",
-    verdict: reasons.length === 0 ? verdict : `${verdict} · ${reasons}`,
-    observation: `Current source observation ${readiness.observedAt}${stale ? " (stale)" : ""} · ${
-      readiness.complete ? "complete" : "partial"
-    } listing, ${readiness.listedCount} listed of ${readiness.summaryTotal ?? "an unreported number"}.`,
+    verdict:
+      reasons.length === 0 ? verdict : resolve(msg("{verdict} · {reasons}", { verdict, reasons })),
+    observation,
     stale,
     graph: {
       nodes: nodes.slice(0, FACTORY_WORK_PREREQUISITE_GRAPH_LIMIT),
@@ -315,12 +371,26 @@ export function presentFactoryWorkPrerequisites(input: {
       nodes.length > 0
         ? null
         : readiness.complete
-          ? "The source reports no direct blockers in a complete observation."
-          : "No blockers could be listed. The observation is incomplete, so this is not an empty prerequisite set.",
+          ? resolve(msg("The source reports no direct blockers in a complete observation."))
+          : resolve(
+              msg(
+                "No blockers could be listed. The observation is incomplete, so this is not an empty prerequisite set.",
+              ),
+            ),
     notes: [
-      "Closed or completed at source is tracker evidence only. It is not artifact acceptance or publication.",
+      resolve(
+        msg(
+          "Closed or completed at source is tracker evidence only. It is not artifact acceptance or publication.",
+        ),
+      ),
       ...(result.omittedCount > 0
-        ? [`${result.omittedCount} more source edges exceed the response bound and are not shown.`]
+        ? [
+            resolve(
+              msg("{count} more source edges exceed the response bound and are not shown.", {
+                count: String(result.omittedCount),
+              }),
+            ),
+          ]
         : []),
     ],
   };

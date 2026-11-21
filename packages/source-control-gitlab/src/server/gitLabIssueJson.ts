@@ -58,6 +58,7 @@ const RawIssueSchema = Schema.Struct({
   assignees: Schema.optional(Schema.NullOr(Schema.Array(RawUserSchema))),
   labels: Schema.optional(Schema.NullOr(Schema.Array(RawLabelRefSchema))),
   user_notes_count: Schema.optional(Schema.NullOr(Schema.Int)),
+  issue_type: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
 const RawNoteSchema = Schema.Struct({
@@ -164,6 +165,7 @@ const CLOSED: IssueState = { category: "closed", name: "Closed" };
 export const ISSUE_STATES: ReadonlyArray<IssueState> = [OPEN, CLOSED];
 
 function toSummary(raw: typeof RawIssueSchema.Type): TrackerIssueSummary {
+  const kind = trimmed(raw.issue_type)?.toLowerCase();
   return {
     key: String(raw.iid),
     displayKey: `#${raw.iid}`,
@@ -178,6 +180,7 @@ function toSummary(raw: typeof RawIssueSchema.Type): TrackerIssueSummary {
     assignees: (raw.assignees ?? []).flatMap((user) => toActor(user) ?? []),
     labels: toLabels(raw.labels),
     commentCount: Math.max(0, raw.user_notes_count ?? 0),
+    ...(kind === undefined ? {} : { kind }),
   };
 }
 

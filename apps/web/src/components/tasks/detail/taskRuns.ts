@@ -1,4 +1,7 @@
 import type { FactoryTaskRun } from "@t3tools/contracts";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../../../i18n/messages";
 
 import { formatElapsedDurationLabel, formatRelativeTimeLabel } from "../../../timestampFormat";
 import type { ThreadStatusPill } from "../../Sidebar.logic";
@@ -8,11 +11,11 @@ const ENDED: Record<
   Exclude<FactoryTaskRun["state"], "running">,
   { label: string; tone: LiveTone }
 > = {
-  stopping: { label: "Stopping", tone: "neutral" },
-  held: { label: "Held", tone: "failed" },
-  failed: { label: "Failed", tone: "failed" },
-  stopped: { label: "Stopped", tone: "neutral" },
-  completed: { label: "Completed", tone: "completed" },
+  stopping: { label: msg("Stopping", { $context: "run state" }), tone: "neutral" },
+  held: { label: msg("Held", { $context: "run state" }), tone: "failed" },
+  failed: { label: msg("Failed", { $context: "run state" }), tone: "failed" },
+  stopped: { label: msg("Stopped", { $context: "run state" }), tone: "neutral" },
+  completed: { label: msg("Completed", { $context: "run state" }), tone: "completed" },
 };
 
 /**
@@ -22,19 +25,30 @@ const ENDED: Record<
 export function runStateWord(
   run: Pick<FactoryTaskRun, "state">,
   threadLabel: string | null,
+  resolve: MessageResolver = m,
 ): { label: string; tone: LiveTone } {
   if (run.state === "running" && threadLabel !== null)
     return {
-      label: threadLabel,
+      label: resolve(threadLabel),
       tone: liveToneForThreadStatus(threadLabel as ThreadStatusPill["label"]) ?? "neutral",
     };
-  return run.state === "running" ? { label: "Working", tone: "working" } : ENDED[run.state];
+  return run.state === "running"
+    ? { label: resolve(msg("Working", { $context: "run state" })), tone: "working" }
+    : {
+        label: resolve(ENDED[run.state].label),
+        tone: ENDED[run.state].tone,
+      };
 }
 
 /** `13m · DESKTOP-CP4EDJH` for a work run, `Planning · 2d ago` for a planning run. */
-export function runDetailLine(run: FactoryTaskRun, now: number, machine: string | undefined) {
+export function runDetailLine(
+  run: FactoryTaskRun,
+  now: number,
+  machine: string | undefined,
+  resolve: MessageResolver = m,
+) {
   if (run.purpose === "planning")
-    return `Planning · ${formatRelativeTimeLabel(run.startedAt, now)}`;
+    return resolve(msg("Planning · {time}", { time: formatRelativeTimeLabel(run.startedAt, now) }));
   const end = run.endedAt === null ? now : Date.parse(run.endedAt);
   return [formatElapsedDurationLabel(run.startedAt, end), machine].filter(Boolean).join(" · ");
 }

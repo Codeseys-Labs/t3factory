@@ -10,6 +10,9 @@ import type {
 import type { EnvironmentId, RuntimeRequestId, ThreadId } from "@t3tools/contracts";
 import { useState } from "react";
 
+import { msg } from "gt-react";
+
+import { m } from "../../../i18n/messages";
 import { useFactoryTaskRequests } from "../../../state/factoryTasks";
 import { toastManager } from "../../ui/toast";
 import { ApprovalCard, type QuestionAnswer, QuestionCard } from "../kit";
@@ -73,7 +76,7 @@ function TaskApproval({
   const [sending, setSending] = useState(false);
   const respond = async (send: (id: RuntimeRequestId) => Settled) => {
     setSending(true);
-    await settle(send(approval.requestId), "Try sending the answer again.");
+    await settle(send(approval.requestId), m(msg("Try sending the answer again.")));
     setSending(false);
   };
   const canRemember =
@@ -116,7 +119,7 @@ function TaskQuestion({
       ...(answer.text ? { customAnswer: answer.text } : {}),
     };
     if (resolvePendingUserInputAnswer(current, draft) === null) {
-      toastManager.add({ type: "error", title: "Choose one of the answers." });
+      toastManager.add({ type: "error", title: m(msg("Choose one of the answers.")) });
       return;
     }
     const next = { ...drafts, [current.id]: draft };
@@ -126,11 +129,14 @@ function TaskQuestion({
     }
     const answers = buildPendingUserInputAnswers(request.questions, next);
     if (answers === null) {
-      toastManager.add({ type: "error", title: "Choose one of the answers." });
+      toastManager.add({ type: "error", title: m(msg("Choose one of the answers.")) });
       return;
     }
     setSending(true);
-    await settle(requests.answer(request.requestId, answers), "Try sending the answer again.");
+    await settle(
+      requests.answer(request.requestId, answers),
+      m(msg("Try sending the answer again.")),
+    );
     setSending(false);
   };
 

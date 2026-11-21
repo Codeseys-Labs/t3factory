@@ -11,6 +11,7 @@ import {
   type ProjectId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { T, useGT } from "gt-react-native";
 import { useState } from "react";
 import { Linking, Pressable, ScrollView, View } from "react-native";
 
@@ -18,7 +19,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import { useNowMinuteMs } from "../../lib/clock";
 import { useEnvironments } from "../../state/environments";
-import { factoryEnvironment } from "../../state/factory";
+import { factoryEnvironment, factoryIssueKeysInput } from "../../state/factory";
 import { useEnvironmentQuery } from "../../state/query";
 import { useEnvironmentScope } from "../../state/session";
 import { SettingsSection } from "../settings/components/SettingsSection";
@@ -41,12 +42,19 @@ function PrerequisiteDiagram(props: {
   readonly nodes: readonly FactoryWorkPrerequisiteNode[];
   readonly omitted: number;
 }) {
+  const gt = useGT();
   return (
     <View className="gap-2">
       <Text className="text-xs text-foreground-muted">
-        Diagram of {props.nodes.length} direct prerequisites. The list below has equivalent details
-        and links.
-        {props.omitted > 0 ? ` ${props.omitted} more appear only in the list.` : ""}
+        {props.omitted > 0
+          ? gt(
+              "Diagram of {count} direct prerequisites. The list below has equivalent details and links. {omitted} more appear only in the list.",
+              { count: String(props.nodes.length), omitted: String(props.omitted) },
+            )
+          : gt(
+              "Diagram of {count} direct prerequisites. The list below has equivalent details and links.",
+              { count: String(props.nodes.length) },
+            )}
       </Text>
       <ScrollView
         horizontal
@@ -68,7 +76,9 @@ function PrerequisiteDiagram(props: {
           </View>
           <View className="h-5 border-l border-border" />
           <View className="max-w-48 rounded-xl border border-border bg-subtle px-4 py-3">
-            <Text className="text-sm text-foreground">Selected item</Text>
+            <Text className="text-sm text-foreground">
+              <T>Selected item</T>
+            </Text>
           </View>
         </View>
       </ScrollView>
@@ -77,6 +87,7 @@ function PrerequisiteDiagram(props: {
 }
 
 function PrerequisitesBody(props: PrerequisitesProps) {
+  const gt = useGT();
   const [page, setPage] = useState(0);
   const nowMs = useNowMinuteMs();
   const { environments } = useEnvironments();
@@ -92,7 +103,12 @@ function PrerequisitesBody(props: PrerequisitesProps) {
     supported && access === "current"
       ? factoryEnvironment.readWorkPrerequisites({
           environmentId: props.reference.environmentId,
-          input: { ref: props.reference },
+          input: {
+            ref: props.reference,
+            ...factoryIssueKeysInput(
+              environment?.serverConfig?.environment.capabilities.factoryIssueKeys === true,
+            ),
+          },
         })
       : null,
   );
@@ -111,7 +127,7 @@ function PrerequisitesBody(props: PrerequisitesProps) {
     <View className="gap-3">
       <Button
         tone="text"
-        label={query.error === null ? "Refresh prerequisites" : "Try prerequisites again"}
+        label={query.error === null ? gt("Refresh prerequisites") : gt("Try prerequisites again")}
         disabled={status !== "current" || !supported || query.isPending}
         onPress={query.refresh}
       />
@@ -129,11 +145,14 @@ function PrerequisitesBody(props: PrerequisitesProps) {
             <>
               <PrerequisiteDiagram nodes={view.graph.nodes} omitted={view.graph.omitted} />
               <Text className="text-xs text-foreground-muted" accessibilityLiveRegion="polite">
-                Listing {view.list.first}–{view.list.last} of {view.list.total} direct
-                prerequisites.
+                {gt("Listing {first}–{last} of {total} direct prerequisites.", {
+                  first: String(view.list.first),
+                  last: String(view.list.last),
+                  total: String(view.list.total),
+                })}
               </Text>
               <Text className="text-base font-t3-medium text-foreground" accessibilityRole="header">
-                Direct prerequisites
+                <T>Direct prerequisites</T>
               </Text>
               {view.list.entries.map((node) => {
                 const sourceUrl = safeFactoryIssueUrl(node.sourceUrl ?? "");
@@ -144,7 +163,7 @@ function PrerequisitesBody(props: PrerequisitesProps) {
                     className="gap-2 rounded-2xl border border-border-subtle p-3"
                   >
                     <Text className="text-base text-foreground" selectable>
-                      {node.locator} · {node.title ?? "Title unavailable"}
+                      {node.locator} · {node.title ?? gt("Title unavailable")}
                     </Text>
                     <Text className="text-sm text-foreground-muted">
                       {node.tone} · {node.sourceLabel}
@@ -152,8 +171,13 @@ function PrerequisitesBody(props: PrerequisitesProps) {
                     {link.kind === "retained" ? (
                       <Button
                         label={node.linkLabel}
-                        accessibilityLabel={`${node.linkLabel}: ${node.locator}`}
-                        accessibilityHint="Opens the retained Work detail. Back returns to this selection."
+                        accessibilityLabel={gt("{label}: {locator}", {
+                          label: node.linkLabel,
+                          locator: node.locator,
+                        })}
+                        accessibilityHint={gt(
+                          "Opens the retained Work detail. Back returns to this selection.",
+                        )}
                         onPress={() => props.onOpen(link.ref)}
                       />
                     ) : (
@@ -162,8 +186,10 @@ function PrerequisitesBody(props: PrerequisitesProps) {
                     {sourceUrl ? (
                       <Button
                         tone="text"
-                        label="Open source separately"
-                        accessibilityLabel={`Open source separately: ${node.locator}`}
+                        label={gt("Open source separately")}
+                        accessibilityLabel={gt("Open source separately: {locator}", {
+                          locator: node.locator,
+                        })}
                         onPress={() => void Linking.openURL(sourceUrl)}
                       />
                     ) : null}
@@ -173,12 +199,12 @@ function PrerequisitesBody(props: PrerequisitesProps) {
               {view.list.pageCount > 1 ? (
                 <View className="gap-2">
                   <Button
-                    label="Previous prerequisites"
+                    label={gt("Previous prerequisites")}
                     disabled={view.list.page === 0}
                     onPress={() => setPage(view.list.page - 1)}
                   />
                   <Button
-                    label="Next prerequisites"
+                    label={gt("Next prerequisites")}
                     disabled={view.list.page + 1 >= view.list.pageCount}
                     onPress={() => setPage(view.list.page + 1)}
                   />
@@ -194,27 +220,30 @@ function PrerequisitesBody(props: PrerequisitesProps) {
         </>
       )}
       <Text className="text-xs text-foreground-muted">
-        Sub-issues and Factory execution lineage are separate relations and are not shown here.
-        Inspecting prerequisites doesn't launch, edit edges, accept or publish.
+        <T>
+          Sub-issues and Factory execution lineage are separate relations and are not shown here.
+          Inspecting prerequisites doesn't launch, edit edges, accept or publish.
+        </T>
       </Text>
     </View>
   );
 }
 
 function PrerequisiteDisclosure(props: PrerequisitesProps) {
+  const gt = useGT();
   const [expanded, setExpanded] = useState(false);
   return (
-    <SettingsSection title="Prerequisites · direct source blockers">
+    <SettingsSection title={gt("Prerequisites · direct source blockers")}>
       <View className="gap-3 px-4 py-3">
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={expanded ? "Hide prerequisites" : "Show prerequisites"}
+          accessibilityLabel={expanded ? gt("Hide prerequisites") : gt("Show prerequisites")}
           accessibilityState={{ expanded }}
           onPress={() => setExpanded((current) => !current)}
           className="min-h-12 justify-center rounded-2xl border border-border-subtle px-4 py-3 active:opacity-70"
         >
           <Text className="text-base text-foreground">
-            {expanded ? "Hide prerequisites" : "Show prerequisites"}
+            {expanded ? gt("Hide prerequisites") : gt("Show prerequisites")}
           </Text>
         </Pressable>
         {expanded ? <PrerequisitesBody {...props} /> : null}

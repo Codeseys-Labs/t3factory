@@ -13,6 +13,7 @@ import {
   SendIcon,
   ShieldCheckIcon,
 } from "lucide-react";
+import { T, useGT } from "gt-react";
 import { useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -168,7 +169,7 @@ export function QuestionCard({
   from,
   question,
   options,
-  placeholder = "Or write a reply…",
+  placeholder,
   multiSelect = false,
   allowCustomAnswer = true,
   pending = false,
@@ -185,6 +186,8 @@ export function QuestionCard({
 }) {
   const [optionIds, setOptionIds] = useState<readonly string[]>([]);
   const [text, setText] = useState("");
+  const gt = useGT();
+  const replyPlaceholder = placeholder ?? gt("Or write a reply…");
   const canSend = !pending && (optionIds.length > 0 || text.trim().length > 0);
   const send = () => {
     if (canSend) onSend({ optionIds, text: text.trim() });
@@ -225,9 +228,9 @@ export function QuestionCard({
         {allowCustomAnswer ? (
           <InputGroup className="min-w-48 flex-1">
             <InputGroupInput
-              aria-label="Reply"
+              aria-label={gt("Reply", { $context: "noun, the reply field" })}
               size="sm"
-              placeholder={placeholder}
+              placeholder={replyPlaceholder}
               value={text}
               disabled={pending}
               onChange={(event) => setText(event.currentTarget.value)}
@@ -242,7 +245,7 @@ export function QuestionCard({
               <Button
                 variant="ghost-muted"
                 size="icon-xs"
-                aria-label="Send"
+                aria-label={gt("Send")}
                 disabled={!canSend}
                 onClick={send}
               >
@@ -251,8 +254,8 @@ export function QuestionCard({
             </InputGroupAddon>
           </InputGroup>
         ) : (
-          <Button size="sm" aria-label="Send" disabled={!canSend} onClick={send}>
-            Send
+          <Button size="sm" aria-label={gt("Send")} disabled={!canSend} onClick={send}>
+            <T>Send</T>
           </Button>
         )}
       </div>
@@ -279,9 +282,10 @@ export function ApprovalCard({
   onAlwaysAllow?: () => void;
   onDeny: () => void;
 }) {
+  const gt = useGT();
   return (
     <section
-      aria-label={`${from} wants to run a command`}
+      aria-label={gt("{from} wants to run a command", { from })}
       className={cn("flex min-w-0 flex-col gap-3 rounded-lg border p-4", SURFACE_CLASSES.attention)}
     >
       <AskHeader Icon={ShieldCheckIcon} from={from} verb="wants to run" />
@@ -291,15 +295,15 @@ export function ApprovalCard({
       {detail ? <p className="truncate text-muted-foreground text-xs">{detail}</p> : null}
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" disabled={pending} onClick={onApproveOnce}>
-          Approve once
+          <T>Approve once</T>
         </Button>
         {onAlwaysAllow ? (
           <Button variant="outline" size="sm" disabled={pending} onClick={onAlwaysAllow}>
-            Always allow for this task
+            <T>Always allow for this task</T>
           </Button>
         ) : null}
         <Button variant="destructive-outline" size="sm" disabled={pending} onClick={onDeny}>
-          Deny
+          <T>Deny</T>
         </Button>
       </div>
     </section>

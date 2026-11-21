@@ -393,7 +393,16 @@ describe("IssueService", () => {
           fakeTracker({
             getComments: () =>
               record("comments").pipe(Effect.as({ comments: [], nextCursor: null })),
-            comment: () => record("comment"),
+            comment: () =>
+              record("comment").pipe(
+                Effect.as({
+                  id: "comment-1",
+                  author: null,
+                  body: "ok",
+                  createdAt: "2026-07-04T00:00:00Z",
+                  url: null,
+                }),
+              ),
           }),
         ],
       });

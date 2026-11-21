@@ -14,6 +14,7 @@ import {
   type ProjectId,
 } from "@t3tools/contracts";
 import { Link, useSearch } from "@tanstack/react-router";
+import { T, useGT, Var } from "gt-react";
 import { FileTextIcon } from "lucide-react";
 import { useId, useRef, useState } from "react";
 
@@ -65,6 +66,7 @@ import { singleFactoryMember, validateFactorySearch } from "./factoryScope";
 
 export function FactoryBriefsPage() {
   const search = validateFactorySearch(useSearch({ strict: false }));
+  const gt = useGT();
   const { scope, groups, selectScope } = useSettingsScope();
   const { isReady, environments } = useEnvironments();
   const projects = useProjects();
@@ -77,30 +79,44 @@ export function FactoryBriefsPage() {
   const canRead = useEnvironmentScope(member?.environmentId ?? null, AuthOrchestrationReadScope);
 
   if (scope.kind === "unavailable") return null;
-  if (!isReady) return <p role="status">Loading environments…</p>;
+  if (!isReady)
+    return (
+      <p role="status">
+        <T>Loading environments…</T>
+      </p>
+    );
 
   const unavailable =
     !environment || !project
-      ? { title: "Checkout unavailable", description: "Choose another checkout to manage briefs." }
+      ? {
+          title: gt("Checkout unavailable"),
+          description: gt("Choose another checkout to manage briefs."),
+        }
       : environment.connection.phase !== "connected"
         ? {
-            title: "Environment offline",
-            description: `Reconnect ${environment.label} to read briefs.`,
+            title: gt("Environment offline"),
+            description: gt("Reconnect {label} to read briefs.", {
+              label: environment.label,
+            }),
           }
         : environment.serverConfig === null
           ? {
-              title: "Server capabilities unknown",
-              description: "Wait for this environment to finish connecting.",
+              title: gt("Server capabilities unknown"),
+              description: gt("Wait for this environment to finish connecting."),
             }
           : environment.serverConfig.environment.capabilities.factoryKnowledge !== true
             ? {
-                title: "Knowledge briefs unsupported",
-                description: `Update the server on ${environment.label} to use briefs.`,
+                title: gt("Knowledge briefs unsupported"),
+                description: gt("Update the server on {label} to use briefs.", {
+                  label: environment.label,
+                }),
               }
             : !canRead
               ? {
-                  title: "Read access unavailable",
-                  description: "This connection needs orchestration read access to list briefs.",
+                  title: gt("Read access unavailable"),
+                  description: gt(
+                    "This connection needs orchestration read access to list briefs.",
+                  ),
                 }
               : null;
 
@@ -108,11 +124,13 @@ export function FactoryBriefsPage() {
     <section className="min-w-0 space-y-5" aria-labelledby="factory-briefs-title">
       <div className="space-y-1">
         <h2 id="factory-briefs-title" className="font-medium text-lg">
-          Briefs
+          <T>Briefs</T>
         </h2>
         <p className="text-muted-foreground text-sm">
-          Write a knowledge brief, review its frozen revision and start a task in its own folder.
-          Accept the resulting artifact after reviewing it against your criteria.
+          <T>
+            Write a knowledge brief, review its frozen revision and start a task in its own folder.
+            Accept the resulting artifact after reviewing it against your criteria.
+          </T>
         </p>
       </div>
       {member === null ? (
@@ -120,20 +138,22 @@ export function FactoryBriefsPage() {
           scope={scope}
           groups={groups}
           environments={environments}
-          intro="Choose an exact checkout to manage its briefs. Each task works in a separate folder."
-          emptyDescription="Connect an environment and add a project to author briefs."
+          intro={gt(
+            "Choose an exact checkout to manage its briefs. Each task works in a separate folder.",
+          )}
+          emptyDescription={gt("Connect an environment and add a project to author briefs.")}
           statusFor={(owner) =>
             !owner
-              ? "Environment unavailable"
+              ? gt("Environment unavailable")
               : owner.connection.phase !== "connected"
-                ? "Offline. Reconnect to read briefs"
+                ? gt("Offline. Reconnect to read briefs")
                 : owner.serverConfig === null
-                  ? "Server capabilities unknown"
+                  ? gt("Server capabilities unknown")
                   : owner.serverConfig.environment.capabilities.factoryKnowledge !== true
-                    ? "Knowledge briefs unsupported. Update this server"
+                    ? gt("Knowledge briefs unsupported. Update this server")
                     : !readableIds.has(owner.environmentId)
-                      ? "Read access unavailable"
-                      : "Connected · briefs available"
+                      ? gt("Read access unavailable")
+                      : gt("Connected · briefs available")
           }
           onChoose={selectScope}
         />
@@ -178,6 +198,7 @@ function FactoryBriefsWorkspace(props: {
   readonly deliverySupported: boolean;
 }) {
   const { environmentId, project } = props;
+  const gt = useGT();
   const query = useEnvironmentQuery(
     factoryEnvironment.listKnowledgeBriefs({ environmentId, input: { projectId: project.id } }),
   );
@@ -197,15 +218,15 @@ function FactoryBriefsWorkspace(props: {
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
         <Button size="sm" disabled={!canCreate || creating} onClick={() => setCreating(true)}>
-          New brief
+          <T>New brief</T>
         </Button>
         <Button size="sm" variant="outline" disabled={query.isPending} onClick={query.refresh}>
-          Refresh briefs
+          <T>Refresh briefs</T>
         </Button>
       </div>
       {!canCreate || !canStart ? (
         <p className="text-muted-foreground text-xs">
-          Creating briefs and starting tasks need operate permission on this environment.
+          <T>Creating briefs and starting tasks need operate permission on this environment.</T>
         </p>
       ) : null}
       {creating ? (
@@ -225,11 +246,17 @@ function FactoryBriefsWorkspace(props: {
           query.error === null ? null : factoryKnowledgeFailureMessage(query.failure, query.error)
         }
       />
-      {query.isPending ? <p role="status">Loading briefs…</p> : null}
-      {query.error === null && query.data?.briefs.length === 0 ? (
-        <p>No briefs yet. Create a brief to begin.</p>
+      {query.isPending ? (
+        <p role="status">
+          <T>Loading briefs…</T>
+        </p>
       ) : null}
-      <ul className="space-y-3" aria-label="Knowledge briefs">
+      {query.error === null && query.data?.briefs.length === 0 ? (
+        <p>
+          <T>No briefs yet. Create a brief to begin.</T>
+        </p>
+      ) : null}
+      <ul className="space-y-3" aria-label={gt("Knowledge briefs")}>
         {query.data?.briefs.map((brief) => (
           <KnowledgeBriefRow
             key={brief.id}
@@ -283,7 +310,9 @@ function FactorySelectedBrief(props: {
       {query.error ? (
         <p role="alert">{query.error}</p>
       ) : data === null ? (
-        <p role="status">Loading exact brief…</p>
+        <p role="status">
+          <T>Loading exact brief…</T>
+        </p>
       ) : (
         <>
           <ul>
@@ -314,7 +343,7 @@ function FactorySelectedBrief(props: {
         </>
       )}
       <Button size="sm" variant="outline" onClick={query.refresh}>
-        Refresh exact brief
+        <T>Refresh exact brief</T>
       </Button>
     </div>
   );
@@ -328,6 +357,7 @@ function KnowledgeBriefForm(props: {
   readonly onCreated: () => void;
 }) {
   const id = useId();
+  const gt = useGT();
   const [draft, setDraft] = useState<FactoryKnowledgeDraft>(EMPTY_KNOWLEDGE_DRAFT);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -390,13 +420,17 @@ function KnowledgeBriefForm(props: {
         void submit();
       }}
     >
-      <h3 className="font-medium">New brief</h3>
+      <h3 className="font-medium">
+        <T>New brief</T>
+      </h3>
       <p className="text-muted-foreground text-sm">
-        Creating saves an immutable revision. Review it before starting a task.
+        <T>Creating saves an immutable revision. Review it before starting a task.</T>
       </p>
       <fieldset className="min-w-0 space-y-4" disabled={pending || !props.canCreate}>
         <div className="space-y-1.5">
-          <Label htmlFor={`${id}-title`}>Title</Label>
+          <Label htmlFor={`${id}-title`}>
+            <T>Title</T>
+          </Label>
           <Input
             id={`${id}-title`}
             value={draft.title}
@@ -406,7 +440,9 @@ function KnowledgeBriefForm(props: {
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor={`${id}-question`}>Question</Label>
+          <Label htmlFor={`${id}-question`}>
+            <T>Question</T>
+          </Label>
           <Textarea
             id={`${id}-question`}
             value={draft.question}
@@ -415,7 +451,9 @@ function KnowledgeBriefForm(props: {
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor={`${id}-path`}>Deliverable path</Label>
+          <Label htmlFor={`${id}-path`}>
+            <T>Deliverable path</T>
+          </Label>
           <Input
             id={`${id}-path`}
             value={draft.deliverablePath}
@@ -425,18 +463,28 @@ function KnowledgeBriefForm(props: {
             onChange={(event) => update("deliverablePath", event.target.value)}
           />
           <p id={`${id}-path-help`} className="text-muted-foreground text-xs">
-            A relative file path inside the task folder, without parent traversal or a .git
-            directory.
+            <T>
+              A relative file path inside the task folder, without parent traversal or a .git
+              directory.
+            </T>
           </p>
         </div>
         <div className="space-y-3">
           <h4 className="font-medium text-sm">
-            Inputs ({draft.inputs.length}/{KNOWLEDGE_LIMITS.inputs})
+            <T>
+              Inputs (<Var>{draft.inputs.length}</Var>/<Var>{KNOWLEDGE_LIMITS.inputs}</Var>)
+            </T>
           </h4>
           {draft.inputs.map((input, index) => (
             <fieldset key={input.key} className="min-w-0 space-y-2 rounded-lg border p-3">
-              <legend className="text-sm">Input {index + 1}</legend>
-              <Label htmlFor={`${id}-input-${index}-label`}>Label</Label>
+              <legend className="text-sm">
+                <T>
+                  Input <Var>{index + 1}</Var>
+                </T>
+              </legend>
+              <Label htmlFor={`${id}-input-${index}-label`}>
+                <T>Label</T>
+              </Label>
               <Input
                 id={`${id}-input-${index}-label`}
                 value={input.label}
@@ -444,7 +492,9 @@ function KnowledgeBriefForm(props: {
                 maxLength={KNOWLEDGE_LIMITS.inputLabel}
                 onChange={(event) => updateInput(index, "label", event.target.value)}
               />
-              <Label htmlFor={`${id}-input-${index}-content`}>Pasted content</Label>
+              <Label htmlFor={`${id}-input-${index}-content`}>
+                <T>Pasted content</T>
+              </Label>
               <Textarea
                 id={`${id}-input-${index}-content`}
                 value={input.content}
@@ -455,7 +505,7 @@ function KnowledgeBriefForm(props: {
                 type="button"
                 size="xs"
                 variant="outline"
-                aria-label={`Remove input ${index + 1}`}
+                aria-label={gt("Remove input {index}", { index: String(index + 1) })}
                 onClick={() =>
                   setDraft((previous) => ({
                     ...previous,
@@ -463,7 +513,7 @@ function KnowledgeBriefForm(props: {
                   }))
                 }
               >
-                Remove input
+                <T>Remove input</T>
               </Button>
             </fieldset>
           ))}
@@ -479,11 +529,13 @@ function KnowledgeBriefForm(props: {
               }))
             }
           >
-            Add input
+            <T>Add input</T>
           </Button>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor={`${id}-criteria`}>Acceptance criteria</Label>
+          <Label htmlFor={`${id}-criteria`}>
+            <T>Acceptance criteria</T>
+          </Label>
           <Textarea
             id={`${id}-criteria`}
             value={draft.acceptanceCriteria}
@@ -495,7 +547,7 @@ function KnowledgeBriefForm(props: {
       <KnowledgeFailure message={failure} />
       <div className="flex flex-wrap gap-2">
         <Button type="submit" size="sm" disabled={pending || !props.canCreate} aria-busy={pending}>
-          {pending ? "Creating…" : "Create brief"}
+          {pending ? <T>Creating…</T> : <T>Create brief</T>}
         </Button>
         <Button
           type="button"
@@ -504,7 +556,7 @@ function KnowledgeBriefForm(props: {
           disabled={pending}
           onClick={props.onClose}
         >
-          Cancel
+          <T>Cancel</T>
         </Button>
       </div>
     </form>
@@ -531,6 +583,7 @@ function KnowledgeStartDialog(props: {
     label: "factory start knowledge task",
     reportFailure: false,
   });
+  const gt = useGT();
   const { brief } = props;
   const enabled =
     props.canStart &&
@@ -571,40 +624,60 @@ function KnowledgeStartDialog(props: {
     >
       <DialogPopup>
         <DialogHeader>
-          <DialogTitle>{props.restart ? "Review new attempt" : "Review brief"}</DialogTitle>
+          <DialogTitle>
+            {props.restart ? <T>Review new attempt</T> : <T>Review brief</T>}
+          </DialogTitle>
           <DialogDescription>
-            {props.restart ? "The previous thread was deleted. " : ""}
-            Confirm this frozen revision to start a task in a separate folder outside the checkout.
+            {props.restart
+              ? gt(
+                  "The previous thread was deleted. Confirm this frozen revision to start a task in a separate folder outside the checkout.",
+                )
+              : gt(
+                  "Confirm this frozen revision to start a task in a separate folder outside the checkout.",
+                )}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
           <fieldset disabled={pending || failure !== null} className="min-w-0 space-y-4">
             <p className="text-muted-foreground text-xs">
-              Project {props.project.title} · revision <code>{brief.revision.slice(0, 7)}</code>
+              <T>
+                Project <Var>{props.project.title}</Var> · revision{" "}
+                <code>
+                  <Var>{brief.revision.slice(0, 7)}</Var>
+                </code>
+              </T>{" "}
             </p>
             <FactoryReviewSnapshot
-              heading="Frozen brief"
-              intro="Review the complete brief before admitting it."
+              heading={gt("Frozen brief")}
+              intro={gt("Review the complete brief before admitting it.")}
               fields={[
-                { label: "Title", text: brief.title, emptyNote: "No title." },
-                { label: "Question", text: brief.question, emptyNote: "No question supplied." },
+                { label: gt("Title"), text: brief.title, emptyNote: gt("No title.") },
                 {
-                  label: "Deliverable path",
+                  label: gt("Question"),
+                  text: brief.question,
+                  emptyNote: gt("No question supplied."),
+                },
+                {
+                  label: gt("Deliverable path"),
                   text: brief.deliverablePath,
-                  emptyNote: "No path supplied.",
+                  emptyNote: gt("No path supplied."),
                 },
                 ...brief.inputs.flatMap((input, index) => [
-                  { label: `Input ${index + 1} label`, text: input.label, emptyNote: "No label." },
                   {
-                    label: `Input ${index + 1} content`,
+                    label: gt("Input {index} label", { index: String(index + 1) }),
+                    text: input.label,
+                    emptyNote: gt("No label."),
+                  },
+                  {
+                    label: gt("Input {index} content", { index: String(index + 1) }),
                     text: input.content,
-                    emptyNote: "Empty input.",
+                    emptyNote: gt("Empty input."),
                   },
                 ]),
                 {
-                  label: "Acceptance criteria",
+                  label: gt("Acceptance criteria"),
                   text: brief.acceptanceCriteria,
-                  emptyNote: "No acceptance criteria supplied.",
+                  emptyNote: gt("No acceptance criteria supplied."),
                 },
               ]}
             />
@@ -612,11 +685,13 @@ function KnowledgeStartDialog(props: {
               environmentId={props.environmentId}
               disabled={pending || failure !== null}
               draft={draft}
-              untrustedText="Brief text"
+              untrustedText={gt("Brief text")}
               showBaseRef={false}
             />
             <div className="space-y-1.5">
-              <Label htmlFor={id}>Instructions (optional)</Label>
+              <Label htmlFor={id}>
+                <T>Instructions (optional)</T>
+              </Label>
               <Textarea
                 id={id}
                 value={instructions}
@@ -628,17 +703,21 @@ function KnowledgeStartDialog(props: {
           <KnowledgeFailure message={failure} />
           {failure !== null ? (
             <p className="text-muted-foreground text-xs">
-              Close this dialog, refresh and review before trying again.
+              <T>Close this dialog, refresh and review before trying again.</T>
             </p>
           ) : null}
-          {!props.canStart ? <p role="status">Starting a task needs operate permission.</p> : null}
+          {!props.canStart ? (
+            <p role="status">
+              <T>Starting a task needs operate permission.</T>
+            </p>
+          ) : null}
         </DialogPanel>
         <DialogFooter>
           <DialogClose render={<Button size="sm" variant="outline" disabled={pending} />}>
-            Cancel
+            <T>Cancel</T>
           </DialogClose>
           <Button size="sm" disabled={!enabled} aria-busy={pending} onClick={() => void submit()}>
-            {pending ? "Starting…" : "Admit and start"}
+            {pending ? <T>Starting…</T> : <T>Admit and start</T>}
           </Button>
         </DialogFooter>
       </DialogPopup>
@@ -663,14 +742,25 @@ function KnowledgeBriefRow(props: {
       <h3 className="font-medium [overflow-wrap:anywhere]">{brief.title}</h3>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-muted-foreground text-xs">
-          Revision <code>{brief.revision.slice(0, 7)}</code>
+          <T>
+            Revision{" "}
+            <code>
+              <Var>{brief.revision.slice(0, 7)}</Var>
+            </code>
+          </T>
         </span>
         {status !== null ? (
           <Badge variant={status.variant}>{status.label}</Badge>
         ) : (
-          <Badge variant="secondary">Not started</Badge>
+          <Badge variant="secondary">
+            <T>Not started</T>
+          </Badge>
         )}
-        {brief.supersededBy !== null ? <Badge variant="outline">Superseded</Badge> : null}
+        {brief.supersededBy !== null ? (
+          <Badge variant="outline">
+            <T>Superseded</T>
+          </Badge>
+        ) : null}
       </div>
       <div className="flex flex-wrap gap-2">
         {(task === null || task.status === "missing") && brief.supersededBy === null ? (
@@ -679,7 +769,7 @@ function KnowledgeBriefRow(props: {
             disabled={!props.canStart}
             onClick={() => props.onReview(task !== null)}
           >
-            {task === null ? "Start task" : "Start new attempt"}
+            {task === null ? <T>Start task</T> : <T>Start new attempt</T>}
           </Button>
         ) : null}
         {task !== null && task.status !== "missing" ? (
@@ -693,7 +783,7 @@ function KnowledgeBriefRow(props: {
               />
             }
           >
-            Open thread
+            <T>Open thread</T>
           </Button>
         ) : null}
         {task !== null ? (
@@ -703,7 +793,7 @@ function KnowledgeBriefRow(props: {
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
           >
-            {expanded ? "Hide artifact" : "Review artifact"}
+            {expanded ? <T>Hide artifact</T> : <T>Review artifact</T>}
           </Button>
         ) : null}
       </div>
@@ -740,6 +830,7 @@ function KnowledgeArtifact(props: {
   const [failure, setFailure] = useState<string | null>(null);
   const inFlight = useRef(false);
   const id = useId();
+  const gt = useGT();
   const data = query.data;
   const artifact = data?.artifact ?? null;
   const acceptance = data?.acceptance ?? null;
@@ -753,19 +844,19 @@ function KnowledgeArtifact(props: {
   const readFailure =
     query.error === null ? null : factoryKnowledgeFailureMessage(query.failure, query.error);
   const disabledReason = !canAccept
-    ? "Accepting an artifact needs operate permission on this environment."
+    ? gt("Accepting an artifact needs operate permission on this environment.")
     : readFailure !== null
       ? readFailure
       : query.isPending || data === null
-        ? "Reading the artifact…"
+        ? gt("Reading the artifact…")
         : data.task?.folderPath == null
-          ? "The task folder is unavailable. Restore it and refresh before accepting."
+          ? gt("The task folder is unavailable. Restore it and refresh before accepting.")
           : artifactIssueMessage !== null
             ? artifactIssueMessage
             : artifact === null
-              ? "No artifact yet"
+              ? gt("No artifact yet")
               : failure !== null
-                ? "Refresh and review the artifact before accepting again."
+                ? gt("Refresh and review the artifact before accepting again.")
                 : null;
   const accept = async () => {
     if (inFlight.current || disabledReason !== null || artifact === null || state === "current")
@@ -794,11 +885,13 @@ function KnowledgeArtifact(props: {
   return (
     <section
       className="space-y-3"
-      aria-label="Task artifact"
+      aria-label={gt("Task artifact")}
       aria-busy={pending || query.isPending}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-medium text-sm">Artifact</h4>
+        <h4 className="font-medium text-sm">
+          <T>Artifact</T>
+        </h4>
         <Button
           size="xs"
           variant="outline"
@@ -808,19 +901,23 @@ function KnowledgeArtifact(props: {
             query.refresh();
           }}
         >
-          Refresh
+          <T>Refresh</T>
         </Button>
       </div>
       {data !== null ? (
         <FactoryReviewSnapshot
-          heading="Acceptance criteria for this brief"
-          intro="Compare the artifact with the frozen question and criteria."
+          heading={gt("Acceptance criteria for this brief")}
+          intro={gt("Compare the artifact with the frozen question and criteria.")}
           fields={[
-            { label: "Question", text: data.brief.question, emptyNote: "No question supplied." },
             {
-              label: "Acceptance criteria",
+              label: gt("Question"),
+              text: data.brief.question,
+              emptyNote: gt("No question supplied."),
+            },
+            {
+              label: gt("Acceptance criteria"),
               text: data.brief.acceptanceCriteria,
-              emptyNote: "No acceptance criteria supplied.",
+              emptyNote: gt("No acceptance criteria supplied."),
             },
           ]}
         />
@@ -828,25 +925,35 @@ function KnowledgeArtifact(props: {
       {artifact !== null ? (
         <>
           <p className="text-sm [overflow-wrap:anywhere]">
-            <code>{artifact.path}</code> · SHA-256 <code>{artifact.sha256.slice(0, 7)}</code> ·{" "}
-            {artifact.bytes.toLocaleString()} bytes
+            <T>
+              <code>
+                <Var>{artifact.path}</Var>
+              </code>{" "}
+              · SHA-256{" "}
+              <code>
+                <Var>{artifact.sha256.slice(0, 7)}</Var>
+              </code>{" "}
+              · <Var>{artifact.bytes.toLocaleString()}</Var> bytes
+            </T>
           </p>
           {artifact.preview === null ? (
             <p className="text-muted-foreground text-xs">
-              Text preview unavailable. Review the file in the task folder before accepting.
+              <T>Text preview unavailable. Review the file in the task folder before accepting.</T>
             </p>
           ) : (
             <pre
               tabIndex={0}
-              aria-label="Artifact preview"
+              aria-label={gt("Artifact preview")}
               className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border p-3 text-sm [overflow-wrap:anywhere]"
             >
               {artifact.preview}
             </pre>
           )}
           <p className="text-muted-foreground text-xs">
-            The preview contains at most 256 KiB. Acceptance records the digest of the whole file;
-            it does not establish that the contents are true.
+            <T>
+              The preview contains at most 256 KiB. Acceptance records the digest of the whole file;
+              it does not establish that the contents are true.
+            </T>
           </p>
         </>
       ) : null}
@@ -858,25 +965,37 @@ function KnowledgeArtifact(props: {
       ) : null}
       {acceptance !== null ? (
         <p className="text-muted-foreground text-xs">
-          Accepted artifact <code>{acceptance.sha256.slice(0, 7)}</code> ·{" "}
-          <time dateTime={acceptance.acceptedAt}>
-            {new Date(acceptance.acceptedAt).toLocaleString()}
-          </time>
+          <T>
+            Accepted artifact{" "}
+            <code>
+              <Var>{acceptance.sha256.slice(0, 7)}</Var>
+            </code>{" "}
+            ·{" "}
+            <time dateTime={acceptance.acceptedAt}>
+              <Var>{new Date(acceptance.acceptedAt).toLocaleString()}</Var>
+            </time>
+          </T>
         </p>
       ) : null}
       {state === "current" ? (
-        <p className="text-sm">Acceptance matches the observed artifact.</p>
+        <p className="text-sm">
+          <T>Acceptance matches the observed artifact.</T>
+        </p>
       ) : null}
       {state === "changed" ? (
         <Alert variant="warning">
-          <AlertDescription>Artifact changed since acceptance</AlertDescription>
+          <AlertDescription>
+            <T>Artifact changed since acceptance</T>
+          </AlertDescription>
         </Alert>
       ) : null}
       {state === "unverifiable" && acceptance !== null ? (
         <Alert variant="warning">
           <AlertDescription>
-            The accepted artifact cannot currently be compared with the file. Restore access and
-            refresh.
+            <T>
+              The accepted artifact cannot currently be compared with the file. Restore access and
+              refresh.
+            </T>
           </AlertDescription>
         </Alert>
       ) : null}
@@ -890,7 +1009,13 @@ function KnowledgeArtifact(props: {
           aria-describedby={disabledReason === null ? undefined : id}
           onClick={() => void accept()}
         >
-          {pending ? "Accepting…" : acceptance !== null ? "Re-accept" : "Accept this artifact"}
+          {pending ? (
+            <T>Accepting…</T>
+          ) : acceptance !== null ? (
+            <T>Re-accept</T>
+          ) : (
+            <T>Accept this artifact</T>
+          )}
         </Button>
       ) : null}
       {disabledReason !== null ? (

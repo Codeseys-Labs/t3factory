@@ -100,16 +100,19 @@ export function matchesScheduledTaskScope(
   return true;
 }
 
-export function scheduledTaskDispatchLabel(status: ScheduledTask["lastRunStatus"]): string {
+export function scheduledTaskDispatchLabel(
+  status: ScheduledTask["lastRunStatus"],
+  resolve: MessageResolver = m,
+): string {
   switch (status) {
     case "never":
-      return "Not dispatched yet";
+      return resolve(msg("Not dispatched yet"));
     case "running":
-      return "Dispatching";
+      return resolve(msg("Dispatching"));
     case "succeeded":
-      return "Dispatch accepted";
+      return resolve(msg("Dispatch accepted"));
     case "failed":
-      return "Dispatch failed";
+      return resolve(msg("Dispatch failed"));
   }
 }
 

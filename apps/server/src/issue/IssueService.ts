@@ -14,6 +14,7 @@ import {
   type IssueComment,
   type IssueCommentInput,
   type IssueCommentsPage,
+  type IssueCommentsPageInput,
   type IssueCreateInput,
   type IssueCreateResult,
   type IssueDetail,
@@ -147,7 +148,10 @@ export class IssueService extends Context.Service<
   IssueService,
   {
     readonly list: (input: IssueListInput) => Effect.Effect<IssueListResult, IssueError>;
-    readonly detail: (input: IssueRef) => Effect.Effect<IssueDetail, IssueError>;
+    /** `kind` stays on the server: the wire detail has no field for it. */
+    readonly detail: (
+      input: IssueRef,
+    ) => Effect.Effect<IssueDetail & Pick<TrackerIssueDetail, "kind">, IssueError>;
     readonly comments: (
       input: IssueCommentsPageInput,
     ) => Effect.Effect<IssueCommentsPage, IssueError>;
@@ -493,7 +497,7 @@ const make = Effect.gen(function* () {
   const toDetail = (
     project: SupportedProject & { readonly writable: boolean },
     issue: TrackerIssueDetail,
-  ): IssueDetail => ({
+  ): IssueDetail & Pick<TrackerIssueDetail, "kind"> => ({
     ...issue,
     tracker: project.tracker,
     host: project.host,

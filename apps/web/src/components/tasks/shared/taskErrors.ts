@@ -6,56 +6,64 @@ import {
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "~/i18n/messages";
+
 const isTaskError = Schema.is(FactoryTaskError);
 const isIntakeError = Schema.is(FactoryIntakeError);
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 
-export const TASK_PERMISSION_MESSAGE = "Ask the owner of this environment for access.";
-const FALLBACK = "Something went wrong. Try again.";
+export const TASK_PERMISSION_MESSAGE = msg("Ask the owner of this environment for access.");
+const FALLBACK = msg("Something went wrong. Try again.");
 
 type TaskReason = FactoryTaskError["reason"];
 type IntakeReason = FactoryIntakeError["reason"];
 
 const SHARED: Record<TaskReason & IntakeReason, string> = {
-  "wrong-environment": "This belongs to another environment.",
-  "missing-project": "This project was removed.",
-  "missing-task": "This task was removed.",
+  "wrong-environment": msg("This belongs to another environment."),
+  "missing-project": msg("This project was removed."),
+  "missing-task": msg("This task was removed."),
   forbidden: TASK_PERMISSION_MESSAGE,
-  "version-conflict": "Someone else changed this. Try again.",
-  "command-conflict": "This request was already sent with other details. Try again.",
-  "invalid-input": "Check what you entered and try again.",
-  "invalid-cursor": "The list changed. Reload it.",
-  "name-taken": "That name is taken. Choose another.",
-  "persistence-failure": "The change could not be saved. Try again.",
+  "version-conflict": msg("Someone else changed this. Try again."),
+  "command-conflict": msg("This request was already sent with other details. Try again."),
+  "invalid-input": msg("Check what you entered and try again."),
+  "invalid-cursor": msg("The list changed. Reload it."),
+  "name-taken": msg("That name is taken. Choose another."),
+  "persistence-failure": msg("The change could not be saved. Try again."),
 };
 
 const TASK: Omit<Record<TaskReason, string>, keyof typeof SHARED> = {
-  "missing-profile": "That agent profile was deleted. Pick another assignee.",
-  "missing-proposal": "The plan was replaced. Review the latest one.",
-  "invalid-transition": "The task cannot move there from its current status.",
-  "run-active": "Stop the run first.",
-  blocked: "This task waits on another task.",
-  "no-run": "This action needs a work run on this task.",
-  "no-result": "Wait for a result first.",
-  "result-conflict": "A newer result arrived. Review it first.",
-  "assignee-unresolved": "Pick who does this task first.",
-  "provider-unavailable": "That agent is unavailable on this machine. Pick another one.",
-  "unsupported-capability": "That agent can't run tasks on this machine yet. Pick another one.",
-  "task-limit": "A top-level task holds at most 64 tasks.",
-  "not-accepted": "Accept the result first.",
-  "not-code": "Only a code result becomes a pull request.",
-  "not-published": "Publish the pull request first.",
-  "delivery-active": "This was already sent. Wait for it, or Check it if it stays unconfirmed.",
-  "delivery-refused": "The repository's host refused it. Try again later.",
+  "missing-profile": msg("That agent profile was deleted. Pick another assignee."),
+  "missing-proposal": msg("The plan was replaced. Review the latest one."),
+  "invalid-transition": msg("The task cannot move there from its current status."),
+  "run-active": msg("Stop the run first."),
+  blocked: msg("This task waits on another task."),
+  "no-run": msg("This action needs a work run on this task."),
+  "no-result": msg("Wait for a result first."),
+  "result-conflict": msg("A newer result arrived. Review it first."),
+  "assignee-unresolved": msg("Pick who does this task first."),
+  "provider-unavailable": msg("That agent is unavailable on this machine. Pick another one."),
+  "unsupported-capability": msg(
+    "That agent can't run tasks on this machine yet. Pick another one.",
+  ),
+  "task-limit": msg("A top-level task holds at most 64 tasks."),
+  "not-accepted": msg("Accept the result first."),
+  "not-code": msg("Only a code result becomes a pull request."),
+  "not-published": msg("Publish the pull request first."),
+  "delivery-active": msg(
+    "This was already sent. Wait for it, or Check it if it stays unconfirmed.",
+  ),
+  "delivery-refused": msg("The repository's host refused it. Try again later."),
 };
 
 const INTAKE: Omit<Record<IntakeReason, string>, keyof typeof SHARED> = {
-  "missing-source": "That source was removed.",
-  "missing-rule": "That rule was removed.",
-  "missing-arrival": "That item already left the Inbox.",
-  "source-unavailable": "The source is unreachable. Try again later.",
-  "already-resolved": "Someone already handled this.",
-  "autonomy-not-allowed": "A rule can suggest tasks. Auto-start stays off.",
+  "missing-source": msg("That source was removed."),
+  "missing-rule": msg("That rule was removed."),
+  "missing-arrival": msg("That item already left the Inbox."),
+  "source-unavailable": msg("The source is unreachable. Try again later."),
+  "already-resolved": msg("Someone already handled this."),
+  "autonomy-not-allowed": msg("A rule can suggest tasks. Auto-start stays off."),
 };
 
 const TASK_MESSAGES: Record<TaskReason, string> = { ...SHARED, ...TASK };
@@ -70,12 +78,17 @@ export function taskErrorMessage(
   context: {
     readonly task?: Pick<FactoryTaskSummary, "blockedBy" | "status" | "result" | "lane"> | null;
   } = {},
+  resolve: MessageResolver = m,
 ): string {
-  if (isAuthorizationError(error)) return TASK_PERMISSION_MESSAGE;
+  if (isAuthorizationError(error)) return resolve(TASK_PERMISSION_MESSAGE);
   if (isTaskError(error)) {
     const task = context.task;
     if (error.reason === "blocked" && task && task.blockedBy.length > 0)
-      return `This task waits on ${task.blockedBy.map((blocker) => blocker.displayId).join(", ")}.`;
+      return resolve(
+        msg("This task waits on {blockers}.", {
+          blockers: task.blockedBy.map((blocker) => blocker.displayId).join(", "),
+        }),
+      );
     // The server words these itself, since only it knows which check failed.
     if (
       (error.reason === "delivery-refused" ||
@@ -86,12 +99,12 @@ export function taskErrorMessage(
     )
       return error.detail;
     if (error.reason === "invalid-transition" && task) {
-      if (task.status === "in-review") return "Accept the result first.";
+      if (task.status === "in-review") return resolve(msg("Accept the result first."));
       if (task.status === "done" && task.result?.state === "accepted")
-        return "Reopen the task first.";
+        return resolve(msg("Reopen the task first."));
     }
-    return TASK_MESSAGES[error.reason];
+    return resolve(TASK_MESSAGES[error.reason]);
   }
-  if (isIntakeError(error)) return INTAKE_MESSAGES[error.reason];
-  return FALLBACK;
+  if (isIntakeError(error)) return resolve(INTAKE_MESSAGES[error.reason]);
+  return resolve(FALLBACK);
 }

@@ -20,8 +20,10 @@ import type { FactoryTaskStatus, FactoryTaskSummary } from "@t3tools/contracts";
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import { type KeyboardEvent, useContext, useState } from "react";
 
+import { msg, useGT, useMessages } from "gt-react";
 import { cn } from "~/lib/utils";
 import { factoryTasks } from "../../../state/factoryTasks";
+import { m, type MessageResolver } from "~/i18n/messages";
 import { Button } from "../../ui/button";
 import { toastManager } from "../../ui/toast";
 import {
@@ -74,14 +76,19 @@ function dropFor(drag: DragState, status: FactoryTaskStatus): FactoryTaskDrop {
   return drop.kind === "move" && !drag.canUpdate ? { kind: "none" } : drop;
 }
 
-function dropSentence(drag: DragState, status: FactoryTaskStatus): string | null {
+function dropSentence(
+  drag: DragState,
+  status: FactoryTaskStatus,
+  resolve: MessageResolver = m,
+): string | null {
   const drop = resolveFactoryTaskDrop(drag.task, status);
-  if (drop.kind === "refuse") return dropRefusalMessage(drag.task, drop);
-  if (drop.kind === "move" && !drag.canUpdate) return TASK_PERMISSION_MESSAGE;
+  if (drop.kind === "refuse") return dropRefusalMessage(drag.task, drop, resolve);
+  if (drop.kind === "move" && !drag.canUpdate) return resolve(TASK_PERMISSION_MESSAGE);
   return null;
 }
 
-const statusLabel = (status: FactoryTaskStatus) => TASK_STATUS_VISUALS[status].label;
+const statusLabel = (status: FactoryTaskStatus, resolve: MessageResolver = m) =>
+  resolve(TASK_STATUS_VISUALS[status].label);
 
 /** Board keys: arrows move between the cards of a lane, and up or down into the next lane. */
 function moveBoardFocus(event: KeyboardEvent<HTMLElement>) {
@@ -128,6 +135,8 @@ export function TaskBoard(props: TaskBoardProps) {
   const sensors = useSensors(useSensor(PointerSensor, POINTER_OPTIONS));
   const [drag, setDrag] = useState<DragState | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const gt = useGT();
+  const messages = useMessages();
   const tasksByKey = new Map(props.entries.map((entry) => [factoryTaskKey(entry.task.ref), entry]));
   const lanes: readonly TaskLane[] =
     props.grouping === "status"
@@ -143,16 +152,38 @@ export function TaskBoard(props: TaskBoardProps) {
       ? (data.status as FactoryTaskStatus)
       : null;
   const announcements: Announcements = {
-    onDragStart: ({ active }) => `Picked up ${taskOf(active.id)?.displayId ?? "the task"}.`,
+    onDragStart: ({ active }) =>
+      messages(
+        msg("Picked up {displayId}.", {
+          displayId: taskOf(active.id)?.displayId ?? messages(msg("the task")),
+        }),
+      ),
     onDragOver: ({ active, over }) => {
       const status = statusOf(over?.data.current);
       const task = taskOf(active.id);
       if (!task || !status || !drag) return undefined;
-      return dropSentence(drag, status) ?? `${task.displayId} is over ${statusLabel(status)}.`;
+      return (
+        dropSentence(drag, status, messages) ??
+        messages(
+          msg("{displayId} is over {status}.", {
+            displayId: task.displayId,
+            status: statusLabel(status, messages),
+          }),
+        )
+      );
     },
-    onDragEnd: ({ active }) => `Dropped ${taskOf(active.id)?.displayId ?? "the task"}.`,
+    onDragEnd: ({ active }) =>
+      messages(
+        msg("Dropped {displayId}.", {
+          displayId: taskOf(active.id)?.displayId ?? messages(msg("the task")),
+        }),
+      ),
     onDragCancel: ({ active }) =>
-      `${taskOf(active.id)?.displayId ?? "The task"} is back where it was.`,
+      messages(
+        msg("{displayId} is back where it was.", {
+          displayId: taskOf(active.id)?.displayId ?? messages(msg("The task")),
+        }),
+      ),
   };
 
   const onDragStart = (event: DragStartEvent) => {
@@ -170,13 +201,16 @@ export function TaskBoard(props: TaskBoardProps) {
     if (!current || !status) return;
     const drop = resolveFactoryTaskDrop(current.task, status);
     if (drop.kind === "refuse") {
-      toastManager.add({ type: "warning", title: dropRefusalMessage(current.task, drop) });
+      toastManager.add({
+        type: "warning",
+        title: dropRefusalMessage(current.task, drop, messages),
+      });
       return;
     }
     if (drop.kind === "start") props.onStart(current.task);
     if (drop.kind !== "move") return;
     if (!current.canUpdate) {
-      toastManager.add({ type: "warning", title: TASK_PERMISSION_MESSAGE });
+      toastManager.add({ type: "warning", title: messages(TASK_PERMISSION_MESSAGE) });
       return;
     }
     props.onMove(current.task, drop.lane);
@@ -200,7 +234,7 @@ export function TaskBoard(props: TaskBoardProps) {
     >
       <div
         role="region"
-        aria-label="Task board"
+        aria-label={gt("Task board")}
         className="min-h-0 flex-1 overflow-auto px-6 pb-6"
         onKeyDown={moveBoardFocus}
       >
@@ -277,7 +311,9 @@ function ColumnHeader({
   count: number;
   onNewTask: (lane: "backlog" | "ready") => void;
 }) {
-  const label = statusLabel(status);
+  const messages = useMessages();
+  const gt = useGT();
+  const label = statusLabel(status, messages);
   return (
     <div className="flex h-9 min-w-0 items-center gap-2 px-1">
       <TaskStatusIcon status={status} />
@@ -288,7 +324,7 @@ function ColumnHeader({
           variant="ghost-muted"
           size="icon-xs"
           className="ms-auto"
-          aria-label={`New task in ${label}`}
+          aria-label={gt("New task in {status}", { status: label })}
           onClick={() => onNewTask(status)}
         >
           <PlusIcon aria-hidden />
@@ -318,14 +354,16 @@ function LaneHeader({
     sample.ref.environmentId,
     GROUP_ASSIGNEE_LABEL,
   );
-  const name = grouping === "project" ? projectName(sample) : assigneeText(assignee);
+  const gt = useGT();
+  const messages = useMessages();
+  const name = grouping === "project" ? projectName(sample) : assigneeText(assignee, messages);
   return (
     <div className="col-span-full flex h-10 min-w-0 items-center gap-2 border-border border-b px-1">
       <Button
         variant="ghost-muted"
         size="icon-xs"
         aria-expanded={open}
-        aria-label={`${open ? "Collapse" : "Expand"} ${name}`}
+        aria-label={open ? gt("Collapse {name}", { name }) : gt("Expand {name}", { name })}
         onClick={onToggle}
       >
         <Chevron aria-hidden />
@@ -351,17 +389,23 @@ function BoardColumn({
   board: TaskBoardProps;
   stale: (task: FactoryTaskSummary) => boolean;
 }) {
+  const messages = useMessages();
   const { setNodeRef, isOver } = useDroppable({ id: `${laneKey}|${status}`, data: { status } });
   const drop = drag ? dropFor(drag, status) : null;
   const accepts = drop?.kind === "move" || drop?.kind === "start";
   const refused = drag !== null && !accepts && drop?.kind !== "none";
-  const sentence = drag && isOver && refused ? dropSentence(drag, status) : null;
+  const sentence = drag && isOver && refused ? dropSentence(drag, status, messages) : null;
   return (
     <div
       ref={setNodeRef}
       data-task-column
       data-drop={drag === null ? undefined : accepts ? "accepts" : refused ? "refuses" : "same"}
-      aria-label={`${statusLabel(status)}, ${tasks.length} tasks`}
+      aria-label={messages(
+        msg("{status}, {count} tasks", {
+          status: statusLabel(status, messages),
+          count: tasks.length,
+        }),
+      )}
       role="group"
       className={cn(
         "flex min-h-24 min-w-0 flex-col gap-2 rounded-lg p-0.5",

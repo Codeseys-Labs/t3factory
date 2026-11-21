@@ -24,7 +24,9 @@ import {
   type ProjectId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg } from "gt-react";
 
+import { m, type MessageResolver } from "../../i18n/messages";
 import {
   countFactoryFeedText,
   formatFactoryFeedCountdown,
@@ -58,8 +60,11 @@ function formatRemaining(remainingMs: number): string {
   return hours === 0 ? `${days}d` : `${days}d ${hours}h`;
 }
 
-function directionLabel(direction: FactoryResearchMetricSpec["direction"]): string {
-  return direction === "lower" ? "Lower is better" : "Higher is better";
+function directionLabel(
+  direction: FactoryResearchMetricSpec["direction"],
+  resolve: MessageResolver = m,
+): string {
+  return direction === "lower" ? resolve(msg("Lower is better")) : resolve(msg("Higher is better"));
 }
 
 export interface FactoryProtocolPresentation {
@@ -83,29 +88,52 @@ export interface FactoryProtocolPresentation {
 export function factoryProtocolPresentation(
   protocol: FactoryResearchProtocol,
   now: number,
+  resolve: MessageResolver = m,
 ): FactoryProtocolPresentation {
   const { metric, budget } = protocol;
   const expiresAt = Date.parse(budget.expiresAt);
   const readable = !Number.isNaN(expiresAt);
   const remainingMs = readable && expiresAt > now ? expiresAt - now : null;
   return {
-    metricLabel: `${metric.name} · line prefix ${metric.linePrefix} · ${directionLabel(metric.direction)}`,
+    metricLabel: resolve(
+      msg("{name} · line prefix {prefix} · {direction}", {
+        name: metric.name,
+        prefix: metric.linePrefix,
+        direction: directionLabel(metric.direction, resolve),
+      }),
+    ),
     ruleLabel:
       metric.minimumEffect === null
-        ? "No minimum effect was declared, so no result can be judged and the finding stays unknown."
-        : `A result counts only if it is ${formatFactoryResearchNumber(metric.minimumEffect)} or more ${
-            metric.direction === "lower" ? "below" : "above"
-          } the measured baseline.`,
+        ? resolve(
+            msg(
+              "No minimum effect was declared, so no result can be judged and the finding stays unknown.",
+            ),
+          )
+        : metric.direction === "lower"
+          ? resolve(
+              msg("A result counts only if it is {value} or more below the measured baseline.", {
+                value: formatFactoryResearchNumber(metric.minimumEffect),
+              }),
+            )
+          : resolve(
+              msg("A result counts only if it is {value} or more above the measured baseline.", {
+                value: formatFactoryResearchNumber(metric.minimumEffect),
+              }),
+            ),
     budget: {
-      runsLabel: `${budget.maxRuns} ${budget.maxRuns === 1 ? "run" : "runs"}`,
-      runMinutesLabel: `${budget.maxRunMinutes} min per run`,
+      runsLabel: resolve(
+        msg("{count, plural, one {{count} run} other {{count} runs}}", { count: budget.maxRuns }),
+      ),
+      runMinutesLabel: resolve(msg("{count} min per run", { count: budget.maxRunMinutes })),
       expired: remainingMs === null,
       remainingMs,
       label: !readable
-        ? "Budget window unreadable"
+        ? resolve(msg("Budget window unreadable"))
         : remainingMs === null
-          ? "Budget window expired"
-          : `Window closes in ${formatRemaining(remainingMs)}`,
+          ? resolve(msg("Budget window expired"))
+          : resolve(
+              msg("Window closes in {remaining}", { remaining: formatRemaining(remainingMs) }),
+            ),
     },
     evaluators: protocol.evaluators,
   };
@@ -115,12 +143,12 @@ const DISPOSITION_LABELS: Record<
   FactoryResearchDisposition,
   { readonly label: string; readonly variant: ResearchBadgeVariant }
 > = {
-  acceptable: { label: "Acceptable", variant: "success" },
-  "evaluator-changed": { label: "Evaluator changed", variant: "error" },
-  "not-descendant": { label: "Not a descendant", variant: "error" },
-  "citation-invalid": { label: "Citation invalid", variant: "error" },
-  "over-budget": { label: "Over budget", variant: "error" },
-  unknown: { label: "Unknown", variant: "secondary" },
+  acceptable: { label: msg("Acceptable"), variant: "success" },
+  "evaluator-changed": { label: msg("Evaluator changed"), variant: "error" },
+  "not-descendant": { label: msg("Not a descendant"), variant: "error" },
+  "citation-invalid": { label: msg("Citation invalid"), variant: "error" },
+  "over-budget": { label: msg("Over budget"), variant: "error" },
+  unknown: { label: msg("Unknown"), variant: "secondary" },
 };
 
 export interface FactoryArtifactRow {
@@ -152,6 +180,7 @@ function formatKibibytes(bytes: number): string {
 function dispositionReasons(
   observation: FactoryResearchObservation,
   protocol: Pick<FactoryResearchProtocol, "budget">,
+  resolve: MessageResolver = m,
 ): ReadonlyArray<string> {
   switch (observation.disposition) {
     case "acceptable":
@@ -159,38 +188,57 @@ function dispositionReasons(
     case "evaluator-changed": {
       const changed = observation.evaluators.filter((evaluator) => !evaluator.matchesSealed);
       return changed.length === 0
-        ? ["An evaluator no longer matches the sealed protocol."]
+        ? [resolve(msg("An evaluator no longer matches the sealed protocol."))]
         : changed.map(({ path, blobOid }) =>
             blobOid === null
-              ? `${path} could not be read at this commit, so it cannot match the sealed copy.`
-              : `${path} differs from the copy sealed in the protocol.`,
+              ? resolve(
+                  msg(
+                    "{path} could not be read at this commit, so it cannot match the sealed copy.",
+                    { path },
+                  ),
+                )
+              : resolve(msg("{path} differs from the copy sealed in the protocol.", { path })),
           );
     }
     case "not-descendant":
-      return ["This commit is not a descendant of the protocol's base commit."];
+      return [resolve(msg("This commit is not a descendant of the protocol's base commit."))];
     case "citation-invalid": {
       const unreadable = observation.artifacts
         .filter((artifact) => artifact.lineText === null)
-        .map(({ path, line }) => `${path}:${line} does not exist in the run's files.`);
+        .map(({ path, line }) =>
+          resolve(
+            msg("{location} does not exist in the run's files.", { location: `${path}:${line}` }),
+          ),
+        );
       return [
         ...unreadable,
         ...(observation.metricValue === null
-          ? ["No metric value could be read from the cited lines."]
+          ? [resolve(msg("No metric value could be read from the cited lines."))]
           : []),
       ];
     }
     case "over-budget":
       return [
-        `The run recorded ${observation.runCount} ${observation.runCount === 1 ? "run" : "runs"} and ${observation.elapsedMinutes} min against a sealed limit of ${protocol.budget.maxRuns} ${protocol.budget.maxRuns === 1 ? "run" : "runs"} and ${protocol.budget.maxRunMinutes} min. Over-budget evidence is never admissible, whatever the metric.`,
+        resolve(
+          msg(
+            "The run recorded {count, plural, one {{count} run} other {{count} runs}} and {elapsed} min against a sealed limit of {limit, plural, one {{limit} run} other {{limit} runs}} and {limitMinutes} min. Over-budget evidence is never admissible, whatever the metric.",
+            {
+              count: observation.runCount,
+              elapsed: observation.elapsedMinutes,
+              limit: protocol.budget.maxRuns,
+              limitMinutes: protocol.budget.maxRunMinutes,
+            },
+          ),
+        ),
       ];
     case "unknown":
       return [
         ...(observation.ancestorOfBase === null
-          ? ["The ancestry check against the base commit could not run."]
+          ? [resolve(msg("The ancestry check against the base commit could not run."))]
           : []),
         ...observation.evaluators
           .filter((evaluator) => evaluator.blobOid === null)
-          .map(({ path }) => `${path} could not be read at this commit.`),
+          .map(({ path }) => resolve(msg("{path} could not be read at this commit.", { path }))),
       ];
   }
 }
@@ -198,22 +246,33 @@ function dispositionReasons(
 export function factoryObservationPresentation(
   observation: FactoryResearchObservation,
   protocol: Pick<FactoryResearchProtocol, "metric" | "budget">,
+  resolve: MessageResolver = m,
 ): FactoryObservationPresentation {
   const disposition = DISPOSITION_LABELS[observation.disposition];
-  const reasons = dispositionReasons(observation, protocol);
+  const reasons = dispositionReasons(observation, protocol, resolve);
   return {
-    dispositionLabel: disposition.label,
+    dispositionLabel: resolve(disposition.label),
     variant: disposition.variant,
     acceptable: observation.disposition === "acceptable",
     reasons:
       observation.disposition === "unknown" && reasons.length === 0
-        ? ["The server could not derive a verdict from this evidence."]
+        ? [resolve(msg("The server could not derive a verdict from this evidence."))]
         : reasons,
     metric:
       observation.metricValue === null
         ? null
-        : `${protocol.metric.name} ${formatFactoryResearchNumber(observation.metricValue)}`,
-    usage: `${observation.runCount} ${observation.runCount === 1 ? "run" : "runs"} · ${observation.elapsedMinutes} min`,
+        : resolve(
+            msg("{name} {value}", {
+              name: protocol.metric.name,
+              value: formatFactoryResearchNumber(observation.metricValue),
+            }),
+          ),
+    usage: resolve(
+      msg("{count, plural, one {{count} run} other {{count} runs}} · {minutes} min", {
+        count: observation.runCount,
+        minutes: observation.elapsedMinutes,
+      }),
+    ),
     artifacts: observation.artifacts.map((artifact) => ({
       key: `${artifact.path}:${artifact.line}`,
       path: artifact.path,
@@ -222,8 +281,12 @@ export function factoryObservationPresentation(
       bytes: artifact.bytes,
       retentionLabel:
         artifact.retention === "inline"
-          ? "Retained in full"
-          : `Digest only (over ${formatKibibytes(FACTORY_RESEARCH_ARTIFACT_INLINE_MAX_BYTES)})`,
+          ? resolve(msg("Retained in full"))
+          : resolve(
+              msg("Digest only (over {size})", {
+                size: formatKibibytes(FACTORY_RESEARCH_ARTIFACT_INLINE_MAX_BYTES),
+              }),
+            ),
       lineText: artifact.lineText,
     })),
     missing: observation.missing,
@@ -234,25 +297,32 @@ const FINDING_STATUS: Record<
   FactoryResearchFinding["status"],
   { readonly label: string; readonly variant: ResearchBadgeVariant }
 > = {
-  supported: { label: "Supported", variant: "success" },
-  unsupported: { label: "Unsupported", variant: "warning" },
-  unknown: { label: "Unknown", variant: "secondary" },
+  supported: { label: msg("Supported"), variant: "success" },
+  unsupported: { label: msg("Unsupported"), variant: "warning" },
+  unknown: { label: msg("Unknown"), variant: "secondary" },
 };
 
 export const FACTORY_RESEARCH_FINDING_REASONS: Record<FactoryResearchFindingReason, string> = {
-  "rule-not-declared":
+  "rule-not-declared": msg(
     "The protocol sealed no minimum effect, so no result can be judged. Seal a new protocol that declares one.",
-  "baseline-missing":
+  ),
+  "baseline-missing": msg(
     "No acceptable run has measured the baseline at the protocol's base commit yet.",
-  "explore-missing": "No acceptable explore run has recorded a result yet.",
-  "verification-missing":
+  ),
+  "explore-missing": msg("No acceptable explore run has recorded a result yet."),
+  "verification-missing": msg(
     "No acceptable verification has measured the selected commit. Launch one from this page.",
-  "verification-not-independent":
+  ),
+  "verification-not-independent": msg(
     "The verification was launched by the thread that produced the result. Launch it again from this page.",
-  "run-not-acceptable":
+  ),
+  "run-not-acceptable": msg(
     "A run's evidence was not accepted. Its disposition below says why; the metric alone never decides.",
-  "effect-below-minimum": "A measured result does not clear the sealed minimum effect.",
-  "protocol-expired": "The protocol's budget window has closed. Seal a new protocol to run more.",
+  ),
+  "effect-below-minimum": msg("A measured result does not clear the sealed minimum effect."),
+  "protocol-expired": msg(
+    "The protocol's budget window has closed. Seal a new protocol to run more.",
+  ),
 };
 
 export interface FactoryFindingValueRow {
@@ -282,10 +352,14 @@ function effectLabel(
   value: number,
   baseline: number,
   direction: FactoryResearchMetricSpec["direction"],
+  resolve: MessageResolver = m,
 ): string {
   const better = direction === "lower" ? baseline - value : value - baseline;
-  if (better === 0) return "no change from the baseline";
-  return `${formatFactoryResearchNumber(Math.abs(better))} ${better > 0 ? "better" : "worse"} than the baseline`;
+  if (better === 0) return resolve(msg("no change from the baseline"));
+  const amount = formatFactoryResearchNumber(Math.abs(better));
+  return better > 0
+    ? resolve(msg("{amount} better than the baseline", { amount }))
+    : resolve(msg("{amount} worse than the baseline", { amount }));
 }
 
 /**
@@ -295,6 +369,7 @@ function effectLabel(
 export function factoryFindingPresentation(
   finding: FactoryResearchFinding,
   metric: FactoryResearchMetricSpec,
+  resolve: MessageResolver = m,
 ): FactoryFindingPresentation {
   const status = FINDING_STATUS[finding.status];
   const row = (
@@ -305,39 +380,41 @@ export function factoryFindingPresentation(
   ): FactoryFindingValueRow => ({
     key,
     label,
-    value: value === null ? "Not measured" : formatFactoryResearchNumber(value),
+    value: value === null ? resolve(msg("Not measured")) : formatFactoryResearchNumber(value),
     effect:
       key === "baseline" || value === null || finding.baselineValue === null
         ? null
-        : effectLabel(value, finding.baselineValue, metric.direction),
+        : effectLabel(value, finding.baselineValue, metric.direction, resolve),
     threadId,
   });
   return {
-    statusLabel: status.label,
+    statusLabel: resolve(status.label),
     variant: status.variant,
     reasons: finding.reasons.map((reason) => ({
       reason,
-      text: FACTORY_RESEARCH_FINDING_REASONS[reason],
+      text: resolve(FACTORY_RESEARCH_FINDING_REASONS[reason]),
     })),
     values: [
-      row("baseline", "Baseline", finding.baselineValue, finding.baselineThreadId),
-      row("explore", "Explore", finding.exploreValue, finding.exploreThreadId),
-      row("verify", "Verify", finding.verifyValue, finding.verifyThreadId),
+      row("baseline", resolve(msg("Baseline")), finding.baselineValue, finding.baselineThreadId),
+      row("explore", resolve(msg("Explore")), finding.exploreValue, finding.exploreThreadId),
+      row("verify", resolve(msg("Verify")), finding.verifyValue, finding.verifyThreadId),
     ],
     selectedCommit: finding.selectedCommit,
     minimumEffect:
       metric.minimumEffect === null
-        ? "None declared"
+        ? resolve(msg("None declared"))
         : formatFactoryResearchNumber(metric.minimumEffect),
-    direction: directionLabel(metric.direction),
-    varianceNote: "One run per role. Variance is unmeasured, so a small effect may be noise.",
+    direction: directionLabel(metric.direction, resolve),
+    varianceNote: resolve(
+      msg("One run per role. Variance is unmeasured, so a small effect may be noise."),
+    ),
   };
 }
 
 const ROLE_LABELS: Record<FactoryResearchRunRole, string> = {
-  explore: "Explore",
-  verify: "Verify",
-  implementation: "Implementation",
+  explore: msg("Explore"),
+  verify: msg("Verify"),
+  implementation: msg("Implementation"),
 };
 
 export interface FactoryRunPresentation {
@@ -358,6 +435,7 @@ export interface FactoryRunPresentation {
 export function factoryRunPresentations(
   runs: ReadonlyArray<FactoryResearchRun>,
   protocol: Pick<FactoryResearchProtocol, "metric" | "budget" | "revision">,
+  resolve: MessageResolver = m,
 ): ReadonlyArray<FactoryRunPresentation> {
   return runs
     .toSorted(
@@ -367,13 +445,15 @@ export function factoryRunPresentations(
     )
     .map((run) => ({
       key: run.threadId,
-      roleLabel: ROLE_LABELS[run.role],
+      roleLabel: resolve(ROLE_LABELS[run.role]),
       role: run.role,
       threadId: run.threadId,
-      task: factoryTaskPresentation(run.task.status),
+      task: factoryTaskPresentation(run.task.status, resolve),
       commit: run.observation?.commit ?? null,
       observation:
-        run.observation === null ? null : factoryObservationPresentation(run.observation, protocol),
+        run.observation === null
+          ? null
+          : factoryObservationPresentation(run.observation, protocol, resolve),
       staleRevision: run.protocolRevision !== protocol.revision,
       recordsEvidence: run.role !== "implementation",
     }));
@@ -430,6 +510,7 @@ function admitAction(
   finding: FactoryResearchFinding,
   implementation: FactoryResearchRun | null,
   permissions: FactoryResearchPermissions,
+  resolve: MessageResolver = m,
 ): FactoryResearchAdmitAction {
   const status = implementation?.task.status;
   const mode: FactoryResearchAdmitMode =
@@ -444,9 +525,9 @@ function admitAction(
   // Opening an existing implementation reads nothing new and needs no grant or fresh finding.
   if (mode === "open") return { ...ENABLED, mode, task };
   const block = !permissions.canAdmit
-    ? "Admitting needs orchestration operate and source control write access."
+    ? resolve(msg("Admitting needs orchestration operate and source control write access."))
     : finding.status !== "supported"
-      ? "Only a supported finding can be admitted as implementation work."
+      ? resolve(msg("Only a supported finding can be admitted as implementation work."))
       : null;
   return { ...(block === null ? ENABLED : disabled(block)), mode, task };
 }
@@ -482,18 +563,23 @@ export function researchActionsFor(
   runs: ReadonlyArray<FactoryResearchRun>,
   permissions: FactoryResearchPermissions,
   now: number,
+  resolve: MessageResolver = m,
 ): FactoryResearchActions {
-  const expired = factoryProtocolPresentation(protocol, now).budget.expired;
+  const expired = factoryProtocolPresentation(protocol, now, resolve).budget.expired;
   const implementation = latestImplementation(runs);
   // Explore and verify launches spend the same sealed run budget; implementations do not.
   const spent = runs.filter((run) => run.role === "explore" || run.role === "verify").length;
   const grantBlock = permissions.canLaunch
     ? null
-    : "Launching needs orchestration operate and source control write access.";
+    : resolve(msg("Launching needs orchestration operate and source control write access."));
   const budgetBlock = expired
-    ? "The protocol's budget window has closed. Seal a new protocol to run more."
+    ? resolve(msg("The protocol's budget window has closed. Seal a new protocol to run more."))
     : spent >= protocol.budget.maxRuns
-      ? `All ${protocol.budget.maxRuns} runs of the sealed budget are used. Seal a new protocol to run more.`
+      ? resolve(
+          msg("All {count} runs of the sealed budget are used. Seal a new protocol to run more.", {
+            count: protocol.budget.maxRuns,
+          }),
+        )
       : null;
   const launchBlock = grantBlock ?? budgetBlock;
 
@@ -512,15 +598,15 @@ export function researchActionsFor(
   const verifyBlock =
     grantBlock ??
     (finding.exploreThreadId === null || targetCommit === null
-      ? "Verification needs an acceptable explore run on a candidate commit first."
+      ? resolve(msg("Verification needs an acceptable explore run on a candidate commit first."))
       : alreadyVerified
-        ? "This commit already has an acceptable verification."
+        ? resolve(msg("This commit already has an acceptable verification."))
         : budgetBlock);
 
   return {
     launchExplore: launchBlock === null ? ENABLED : disabled(launchBlock),
     launchVerify: { ...(verifyBlock === null ? ENABLED : disabled(verifyBlock)), targetCommit },
-    admitImplementation: admitAction(finding, implementation, permissions),
+    admitImplementation: admitAction(finding, implementation, permissions, resolve),
   };
 }
 
@@ -573,23 +659,28 @@ export type FactoryResearchSealCheck =
 
 const DECIMAL = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
 
-function parsePositiveInt(value: string, label: string): number | string {
+function parsePositiveInt(
+  value: string,
+  label: string,
+  resolve: MessageResolver = m,
+): number | string {
   const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return `${label} must be a whole number of at least 1.`;
+  if (!/^\d+$/.test(trimmed))
+    return resolve(msg("{label} must be a whole number of at least 1.", { label }));
   const parsed = Number(trimmed);
   return Number.isSafeInteger(parsed) && parsed >= 1
     ? parsed
-    : `${label} must be a whole number of at least 1.`;
+    : resolve(msg("{label} must be a whole number of at least 1.", { label }));
 }
 
 /** Repository-relative, forward-slash paths only; the server resolves them at the base commit. */
-function evaluatorPathProblem(path: string): string | null {
-  if (path.includes("\\")) return `${path}: use forward slashes.`;
+function evaluatorPathProblem(path: string, resolve: MessageResolver = m): string | null {
+  if (path.includes("\\")) return resolve(msg("{path}: use forward slashes.", { path }));
   if (path.startsWith("/") || /^[A-Za-z]:/.test(path)) {
-    return `${path}: use a path relative to the repository root.`;
+    return resolve(msg("{path}: use a path relative to the repository root.", { path }));
   }
   if (path.split("/").some((segment) => segment === "..")) {
-    return `${path}: a path cannot leave the repository.`;
+    return resolve(msg("{path}: a path cannot leave the repository.", { path }));
   }
   return null;
 }
@@ -608,61 +699,86 @@ export function splitFactoryResearchEvaluatorPaths(value: string): ReadonlyArray
 export function checkFactoryResearchSealDraft(
   draft: FactoryResearchSealDraft,
   now: number,
+  resolve: MessageResolver = m,
 ): FactoryResearchSealCheck {
   const errors: { -readonly [Field in FactoryResearchSealField]?: string } = {};
 
   const hypothesis = draft.hypothesis.trim();
   if (hypothesis.length === 0)
-    errors.hypothesis = "State the hypothesis in one falsifiable sentence.";
+    errors.hypothesis = resolve(msg("State the hypothesis in one falsifiable sentence."));
   else if (hypothesis.length > FACTORY_RESEARCH_HYPOTHESIS_MAX_CHARS) {
-    errors.hypothesis = `The hypothesis is limited to ${FACTORY_RESEARCH_HYPOTHESIS_MAX_CHARS} characters.`;
+    errors.hypothesis = resolve(
+      msg("The hypothesis is limited to {count} characters.", {
+        count: FACTORY_RESEARCH_HYPOTHESIS_MAX_CHARS,
+      }),
+    );
   }
 
   const runCommand = draft.runCommand.trim();
-  if (runCommand.length === 0) errors.runCommand = "Enter the command a run executes.";
+  if (runCommand.length === 0)
+    errors.runCommand = resolve(msg("Enter the command a run executes."));
   else if (runCommand.length > FACTORY_RESEARCH_RUN_COMMAND_MAX_CHARS) {
-    errors.runCommand = `The run command is limited to ${FACTORY_RESEARCH_RUN_COMMAND_MAX_CHARS} characters.`;
+    errors.runCommand = resolve(
+      msg("The run command is limited to {count} characters.", {
+        count: FACTORY_RESEARCH_RUN_COMMAND_MAX_CHARS,
+      }),
+    );
   }
 
   const evaluatorPaths = splitFactoryResearchEvaluatorPaths(draft.evaluatorPaths);
   const duplicate = evaluatorPaths.find((path, index) => evaluatorPaths.indexOf(path) !== index);
-  const malformed = evaluatorPaths.map(evaluatorPathProblem).find((problem) => problem !== null);
+  const malformed = evaluatorPaths
+    .map((path) => evaluatorPathProblem(path, resolve))
+    .find((problem) => problem !== null);
   if (evaluatorPaths.length === 0) {
-    errors.evaluatorPaths = "List at least one evaluator path, one per line.";
+    errors.evaluatorPaths = resolve(msg("List at least one evaluator path, one per line."));
   } else if (evaluatorPaths.length > FACTORY_RESEARCH_EVALUATOR_MAX_PATHS) {
-    errors.evaluatorPaths = `At most ${FACTORY_RESEARCH_EVALUATOR_MAX_PATHS} evaluator paths can be sealed.`;
+    errors.evaluatorPaths = resolve(
+      msg("At most {count} evaluator paths can be sealed.", {
+        count: FACTORY_RESEARCH_EVALUATOR_MAX_PATHS,
+      }),
+    );
   } else if (malformed !== undefined && malformed !== null) {
     errors.evaluatorPaths = malformed;
   } else if (duplicate !== undefined) {
-    errors.evaluatorPaths = `${duplicate} is listed more than once.`;
+    errors.evaluatorPaths = resolve(msg("{path} is listed more than once.", { path: duplicate }));
   }
 
   const metricName = draft.metricName.trim();
-  if (metricName.length === 0) errors.metricName = "Name the metric.";
+  if (metricName.length === 0) errors.metricName = resolve(msg("Name the metric."));
   const linePrefix = draft.linePrefix.trim();
   if (linePrefix.length === 0) {
-    errors.linePrefix = "Enter the text that precedes the number on the cited line.";
+    errors.linePrefix = resolve(msg("Enter the text that precedes the number on the cited line."));
   }
 
   const minimumEffectText = draft.minimumEffect.trim();
   let minimumEffect: number | null = null;
   if (minimumEffectText.length > 0) {
     const parsed = DECIMAL.test(minimumEffectText) ? Number(minimumEffectText) : Number.NaN;
-    if (!Number.isFinite(parsed)) errors.minimumEffect = "Enter a number, or leave it empty.";
-    else if (parsed < 0) errors.minimumEffect = "The minimum effect cannot be negative.";
+    if (!Number.isFinite(parsed))
+      errors.minimumEffect = resolve(msg("Enter a number, or leave it empty."));
+    else if (parsed < 0)
+      errors.minimumEffect = resolve(msg("The minimum effect cannot be negative."));
     else minimumEffect = parsed;
   }
 
-  const maxRuns = parsePositiveInt(draft.maxRuns, "Maximum runs");
+  const maxRuns = parsePositiveInt(draft.maxRuns, resolve(msg("Maximum runs")), resolve);
   if (typeof maxRuns === "string") errors.maxRuns = maxRuns;
-  const maxRunMinutes = parsePositiveInt(draft.maxRunMinutes, "Maximum minutes per run");
+  const maxRunMinutes = parsePositiveInt(
+    draft.maxRunMinutes,
+    resolve(msg("Maximum minutes per run")),
+    resolve,
+  );
   if (typeof maxRunMinutes === "string") errors.maxRunMinutes = maxRunMinutes;
 
   const expiresAtText = draft.expiresAt.trim();
   const expiresAtMs = expiresAtText.length === 0 ? Number.NaN : Date.parse(expiresAtText);
-  if (expiresAtText.length === 0) errors.expiresAt = "Choose when the budget window closes.";
-  else if (Number.isNaN(expiresAtMs)) errors.expiresAt = "Enter a valid date and time.";
-  else if (expiresAtMs <= now) errors.expiresAt = "The budget window must close in the future.";
+  if (expiresAtText.length === 0)
+    errors.expiresAt = resolve(msg("Choose when the budget window closes."));
+  else if (Number.isNaN(expiresAtMs))
+    errors.expiresAt = resolve(msg("Enter a valid date and time."));
+  else if (expiresAtMs <= now)
+    errors.expiresAt = resolve(msg("The budget window must close in the future."));
 
   if (
     Object.keys(errors).length > 0 ||
@@ -807,17 +923,19 @@ export interface FactoryResearchFailure {
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 const isFactoryResearchError = Schema.is(FactoryResearchError);
 
-const GENERIC_FAILURE_MESSAGE = "The environment request failed.";
+const GENERIC_FAILURE_MESSAGE = msg("The environment request failed.");
 
 export function describeFactoryResearchFailure(
   error: unknown,
   fallbackMessage?: string,
+  resolve: MessageResolver = m,
 ): FactoryResearchFailure {
   if (isAuthorizationError(error)) {
     return {
       kind: "permission",
-      title: "Permission required",
-      message: error.message.trim() || "This connection lacks permission for research runs.",
+      title: resolve(msg("Permission required")),
+      message:
+        error.message.trim() || resolve(msg("This connection lacks permission for research runs.")),
       reason: null,
     };
   }
@@ -825,38 +943,68 @@ export function describeFactoryResearchFailure(
     const { reason, message } = error;
     switch (reason) {
       case "protocol-changed":
-        return { kind: "changed", title: "Protocol changed", message, reason };
+        return { kind: "changed", title: resolve(msg("Protocol changed")), message, reason };
       case "finding-changed":
-        return { kind: "changed", title: "Finding changed", message, reason };
+        return { kind: "changed", title: resolve(msg("Finding changed")), message, reason };
       case "missing-project":
       case "missing-repository":
       case "unsupported-provider":
       case "repository-changed":
-        return { kind: "repository", title: "Repository unavailable", message, reason };
+        return {
+          kind: "repository",
+          title: resolve(msg("Repository unavailable")),
+          message,
+          reason,
+        };
       case "protocol-expired":
       case "budget-exhausted":
-        return { kind: "budget", title: "Budget unavailable", message, reason };
+        return {
+          kind: "budget",
+          title: resolve(msg("Budget unavailable")),
+          message,
+          reason,
+        };
       case "invalid-base-ref":
       case "evaluator-missing":
-        return { kind: "other", title: "Protocol rejected", message, reason };
+        return { kind: "other", title: resolve(msg("Protocol rejected")), message, reason };
       case "missing-protocol":
-        return { kind: "other", title: "Protocol unavailable", message, reason };
+        return { kind: "other", title: resolve(msg("Protocol unavailable")), message, reason };
       case "verify-requires-user":
       case "verify-target-missing":
       case "verification-not-independent":
-        return { kind: "other", title: "Verification refused", message, reason };
+        return {
+          kind: "other",
+          title: resolve(msg("Verification refused")),
+          message,
+          reason,
+        };
       case "finding-not-supported":
-        return { kind: "other", title: "Finding not supported", message, reason };
+        return {
+          kind: "other",
+          title: resolve(msg("Finding not supported")),
+          message,
+          reason,
+        };
       default:
-        return { kind: "other", title: "Could not complete the request", message, reason };
+        return {
+          kind: "other",
+          title: resolve(msg("Could not complete the request")),
+          message,
+          reason,
+        };
     }
   }
   const message =
     fallbackMessage ??
     (error instanceof Error && error.message.trim().length > 0
       ? error.message
-      : GENERIC_FAILURE_MESSAGE);
-  return { kind: "other", title: "Could not complete the request", message, reason: null };
+      : resolve(GENERIC_FAILURE_MESSAGE));
+  return {
+    kind: "other",
+    title: resolve(msg("Could not complete the request")),
+    message,
+    reason: null,
+  };
 }
 
 /**

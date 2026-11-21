@@ -1,6 +1,7 @@
 import { presentFactoryTaskChecks } from "@t3tools/client-runtime/state/factory-task-view";
 import type { FactoryTaskSummary } from "@t3tools/contracts";
 import { FileIcon } from "lucide-react";
+import { T, useGT } from "gt-react";
 
 import { useFactoryTaskResult } from "../../../state/factoryTasks";
 import { ResultCard, SectionHeader, TruncatedText } from "../kit";
@@ -9,23 +10,28 @@ import { useTaskPullRequestChecks } from "../shared";
 /** What the task produced. Accept and Request changes sit in the banner right above. */
 export function TaskResultTab({ task }: { task: FactoryTaskSummary }) {
   if (task.result === null)
-    return <p className="py-2 text-muted-foreground text-sm">No result yet.</p>;
+    return (
+      <p className="py-2 text-muted-foreground text-sm">
+        <T>No result yet.</T>
+      </p>
+    );
   return <TaskResult task={task} />;
 }
 
 function TaskResult({ task }: { task: FactoryTaskSummary }) {
   const read = useFactoryTaskResult(task.ref);
   const checks = useTaskPullRequestChecks(task);
+  const gt = useGT();
   if (read._tag === "Failure")
     return (
       <p role="alert" className="text-destructive-foreground text-sm">
-        Couldn't load the result. Check the machine's connection and reload.
+        <T>Couldn't load the result. Check the machine's connection and reload.</T>
       </p>
     );
   if (read._tag !== "Success")
     return (
       <p role="status" className="text-muted-foreground text-sm">
-        Loading the result…
+        <T>Loading the result…</T>
       </p>
     );
   const { result, files, filesOmitted, text } = read.value;
@@ -36,7 +42,14 @@ function TaskResult({ task }: { task: FactoryTaskSummary }) {
     <div className="flex flex-col gap-4">
       <ResultCard
         kind={pullRequest ? "pull-request" : result.kind}
-        title={pullRequest ? `PR #${pullRequest.number} · ${task.title}` : task.title}
+        title={
+          pullRequest
+            ? gt("PR #{number} · {title}", {
+                number: String(pullRequest.number),
+                title: task.title,
+              })
+            : task.title
+        }
         meta={[
           result.summary,
           pullRequest?.state === "merged"
@@ -52,10 +65,12 @@ function TaskResult({ task }: { task: FactoryTaskSummary }) {
         showActions={false}
       />
       {result.kind === "code" && fileCount > 0 ? (
-        <section aria-label="Changed files" className="flex flex-col">
+        <section aria-label={gt("Changed files")} className="flex flex-col">
           <SectionHeader
-            title="Changed files"
-            meta={`${fileCount} ${fileCount === 1 ? "file" : "files"}`}
+            title={gt("Changed files")}
+            meta={gt("{count, plural, one {{count} file} other {{count} files}}", {
+              count: fileCount,
+            })}
           />
           <ul className="flex flex-col">
             {files.map((file) => (
@@ -76,7 +91,9 @@ function TaskResult({ task }: { task: FactoryTaskSummary }) {
           </ul>
           {filesOmitted > 0 ? (
             <p className="px-2 py-1.5 text-muted-foreground text-xs">
-              And {filesOmitted} more {filesOmitted === 1 ? "file" : "files"}.
+              {gt("And {count, plural, one {{count} more file} other {{count} more files}}.", {
+                count: filesOmitted,
+              })}
             </p>
           ) : null}
         </section>

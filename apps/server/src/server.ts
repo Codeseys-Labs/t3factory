@@ -1,5 +1,5 @@
 import * as FactoryIssueService from "./factory/FactoryIssueService.ts";
-import * as IssueTrackerProviderRegistry from "./factory/IssueTrackerProviderRegistry.ts";
+import * as FactoryIssueHosts from "./factory/FactoryIssueHosts.ts";
 import * as FactoryIssueLaunches from "./persistence/FactoryIssueLaunches.ts";
 import * as FactoryIssueRelations from "./factory/FactoryIssueRelations.ts";
 import * as FactoryIssueRelationStore from "./persistence/FactoryIssueRelationStore.ts";
@@ -780,7 +780,14 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   Layer.provideMerge(layerOrchestrationApplication),
   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
   Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
-  Layer.provideMerge(IssueTrackerProviderRegistry.layer),
+  // The Factory reads and writes issues, delivery's comments included, through the one issue
+  // layer the Issues page reads; the routes below share these instances by memoization.
+  Layer.provideMerge(
+    FactoryIssueHosts.layer.pipe(
+      Layer.provideMerge(layerIssueService.pipe(Layer.provide(RuntimeLayer.layerProjectService))),
+      Layer.provideMerge(IssueTrackerRegistry.layer),
+    ),
+  ),
   Layer.provideMerge(SecretCheck.layer),
   Layer.provideMerge(SecretResolver.layer),
   // Above the settings it writes when a theme is applied.

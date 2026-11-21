@@ -11,8 +11,10 @@ import {
   type FactoryTaskStatus,
   type FactoryTaskSummary,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
 
 import { taskErrorMessage } from "../shared/taskErrors";
+import { m, type MessageResolver } from "../../../i18n/messages";
 
 const BOARD_STATUSES = ["backlog", "ready", "in-progress", "in-review", "done"] as const;
 const LIST_STATUS_ORDER: readonly FactoryTaskStatus[] = [
@@ -98,48 +100,80 @@ export function moveTaskFocus(
  * A card's result: `#99 merged`, `#112 · +184 −20` for a pull request still open, otherwise the
  * summary with `Document` shortened to `Doc`.
  */
-function shortResultLine(result: NonNullable<FactoryTaskSummary["result"]>): string {
+function shortResultLine(
+  result: NonNullable<FactoryTaskSummary["result"]>,
+  resolve: MessageResolver = m,
+): string {
   const pullRequest = result.pullRequest ?? null;
-  if (pullRequest?.state === "merged") return `#${pullRequest.number} merged`;
-  if (pullRequest) return `#${pullRequest.number} · ${result.summary.split(" · ")[0]}`;
+  if (pullRequest?.state === "merged")
+    return resolve(msg("#{number} merged", { number: String(pullRequest.number) }));
+  if (pullRequest)
+    return resolve(
+      msg("#{number} · {summary}", {
+        number: String(pullRequest.number),
+        summary: result.summary.split(" · ")[0],
+      }),
+    );
   return result.summary.replace(/^Document\b/u, "Doc");
 }
 
-const failedRunLine = (task: FactoryTaskSummary) => {
+const failedRunLine = (task: FactoryTaskSummary, resolve: MessageResolver = m) => {
   const run = factoryTaskFailedRun(task);
-  return run?.state === "failed" || run?.state === "held"
-    ? `Run ${run.ordinal}${run.state === "failed" ? " failed" : ""}${run.note ? `: ${run.note}` : ""}`
-    : null;
+  if (run?.state !== "failed" && run?.state !== "held") return null;
+  return run.note
+    ? run.state === "failed"
+      ? resolve(
+          msg("Run {ordinal} failed: {note}", { ordinal: String(run.ordinal), note: run.note }),
+        )
+      : resolve(msg("Run {ordinal}: {note}", { ordinal: String(run.ordinal), note: run.note }))
+    : run.state === "failed"
+      ? resolve(msg("Run {ordinal} failed", { ordinal: String(run.ordinal) }))
+      : resolve(msg("Run {ordinal}", { ordinal: String(run.ordinal) }));
 };
 
 /** The card's meta line beside the project: progress for a parent, else result, run or source. */
 export function cardMeta(
   task: FactoryTaskSummary,
+  resolve: MessageResolver = m,
 ):
   | { readonly kind: "progress"; readonly done: number; readonly total: number }
   | { readonly kind: "text"; readonly text: string }
   | null {
   if (task.progress) return { kind: "progress", ...task.progress };
-  const failed = failedRunLine(task);
+  const failed = failedRunLine(task, resolve);
   if (failed) return { kind: "text", text: failed };
-  if (task.result) return { kind: "text", text: shortResultLine(task.result) };
+  if (task.result) return { kind: "text", text: shortResultLine(task.result, resolve) };
   if (task.source.kind !== "local") return { kind: "text", text: task.source.label };
   return null;
 }
 
 /** The list's Result column. */
-export function listResultText(task: FactoryTaskSummary): string {
-  if (task.progress) return `${task.progress.done} of ${task.progress.total} done`;
-  const failed = failedRunLine(task);
+export function listResultText(task: FactoryTaskSummary, resolve: MessageResolver = m): string {
+  if (task.progress)
+    return resolve(
+      msg("{done} of {total} done", {
+        done: String(task.progress.done),
+        total: String(task.progress.total),
+      }),
+    );
+  const failed = failedRunLine(task, resolve);
   if (failed) return failed;
   if (task.result) {
     const pullRequest = task.result.pullRequest ?? null;
-    if (pullRequest?.state === "merged") return `PR #${pullRequest.number} merged`;
+    if (pullRequest?.state === "merged")
+      return resolve(msg("PR #{number} merged", { number: String(pullRequest.number) }));
     if (task.result.state === "accepted")
       return pullRequest
-        ? `PR #${pullRequest.number} open · accepted`
-        : `Accepted · rev ${task.result.revision}`;
-    return pullRequest ? `PR #${pullRequest.number} · ${task.result.summary}` : task.result.summary;
+        ? resolve(msg("PR #{number} open · accepted", { number: String(pullRequest.number) }))
+        : resolve(msg("Accepted · rev {revision}", { revision: String(task.result.revision) }));
+    return pullRequest
+      ? resolve(
+          msg("PR #{number} · {summary}", {
+            number: String(pullRequest.number),
+            summary: task.result.summary,
+          }),
+        )
+      : task.result.summary;
   }
   return "";
 }
@@ -256,6 +290,7 @@ export function listSections(
 export function dropRefusalMessage(
   task: FactoryTaskSummary,
   drop: Extract<FactoryTaskDrop, { kind: "refuse" }>,
+  resolve: MessageResolver = m,
 ): string {
-  return taskErrorMessage(new FactoryTaskError({ reason: drop.reason }), { task });
+  return taskErrorMessage(new FactoryTaskError({ reason: drop.reason }), { task }, resolve);
 }

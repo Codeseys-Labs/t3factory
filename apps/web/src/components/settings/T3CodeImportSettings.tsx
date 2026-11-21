@@ -4,8 +4,10 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { useAtomValue } from "@effect/atom-react";
+import { msg, T, useGT } from "gt-react";
 import { useState } from "react";
 
+import { m } from "../../i18n/messages";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
@@ -23,8 +25,6 @@ import { Spinner } from "../ui/spinner";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { useSearchableSetting } from "./settingsSearch";
-
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /** Shown only on a server that keeps its data apart from T3 Code's on the same machine. */
 export function T3CodeImportSection() {
@@ -49,10 +49,11 @@ type PreviewState =
 
 function failureMessage(result: Parameters<typeof squashAtomCommandFailure>[0]) {
   const error = squashAtomCommandFailure(result);
-  return error instanceof Error ? error.message : "Something went wrong.";
+  return error instanceof Error ? error.message : m(msg("Something went wrong."));
 }
 
 function T3CodeImportRow({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const gt = useGT();
   const runPreview = useAtomCommand(serverEnvironment.previewT3CodeImport, {
     reportFailure: false,
   });
@@ -99,12 +100,18 @@ function T3CodeImportRow({ environmentId }: { readonly environmentId: Environmen
         {...searchableSetting("import-from-t3code")}
         description={
           canReview
-            ? "Bring projects, provider setups and settings over from T3 Code on this machine. Run it again whenever you like: it only adds what is missing here and never changes or removes anything."
-            : "Reviewing what T3 Code has on this machine needs permission to change settings on this environment."
+            ? gt(
+                "Bring projects, provider setups and settings over from {product} on this machine. Run it again whenever you like: it only adds what is missing here and never changes or removes anything.",
+                { product: "T3 Code" },
+              )
+            : gt(
+                "Reviewing what {product} has on this machine needs permission to change settings on this environment.",
+                { product: "T3 Code" },
+              )
         }
         control={
           <Button size="sm" variant="outline" disabled={!canReview} onClick={openDialog}>
-            Review import
+            <T>Review import</T>
           </Button>
         }
       />
@@ -149,6 +156,7 @@ function T3CodeImportDialog({
   readonly onImport: () => void;
   readonly onClose: () => void;
 }) {
+  const gt = useGT();
   const preview =
     state.kind === "ready" && state.preview.status === "available" ? state.preview : null;
   const newProjects = preview?.projects.filter((project) => project.status === "new") ?? [];
@@ -162,9 +170,11 @@ function T3CodeImportDialog({
     <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
       <DialogPopup>
         <DialogHeader>
-          <DialogTitle>Import from T3 Code</DialogTitle>
+          <DialogTitle>{gt("Import from {product}", { product: "T3 Code" })}</DialogTitle>
           <DialogDescription>
-            Adds what T3 Code has that this app does not. Threads stay in T3 Code.
+            {gt("Adds what {product} has that this app does not. Threads stay in {product}.", {
+              product: "T3 Code",
+            })}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
@@ -173,20 +183,26 @@ function T3CodeImportDialog({
             {state.kind === "loading" ? (
               <p className="flex items-center gap-2 text-muted-foreground">
                 <Spinner size="md" />
-                Reading T3 Code's data
+                {gt("Reading {product}''s data", { product: "T3 Code" })}
               </p>
             ) : state.kind === "failed" ? (
               <p className="text-destructive">{state.message}</p>
             ) : state.preview.status === "unavailable" ? (
               <p className="text-muted-foreground">
                 {state.preview.reason === "same-data"
-                  ? "This app already stores its data in T3 Code's folder, so there is nothing to import."
-                  : `No T3 Code data was found in ${state.preview.source}.`}
+                  ? gt(
+                      "This app already stores its data in {product}''s folder, so there is nothing to import.",
+                      { product: "T3 Code" },
+                    )
+                  : gt("No {product} data was found in {source}.", {
+                      product: "T3 Code",
+                      source: state.preview.source,
+                    })}
               </p>
             ) : (
               <>
                 <ImportGroup
-                  title="Projects"
+                  title={gt("Projects")}
                   checked={includeProjects}
                   onCheckedChange={onIncludeProjects}
                   items={newProjects.map((project) => ({
@@ -214,7 +230,7 @@ function T3CodeImportDialog({
                   ]}
                 />
                 <ImportGroup
-                  title="Settings"
+                  title={gt("Settings")}
                   checked={includeSettings}
                   onCheckedChange={onIncludeSettings}
                   items={newSettings.map((setting) => ({
@@ -222,9 +238,15 @@ function T3CodeImportDialog({
                     label: setting.label,
                     detail:
                       setting.missingSecrets > 0
-                        ? `${plural(setting.missingSecrets, "saved key", "saved keys")} missing in T3 Code; enter it here afterwards`
+                        ? gt(
+                            "{count, plural, one {{count} saved key} other {{count} saved keys}} missing in {product}; enter it here afterwards",
+                            { count: setting.missingSecrets, product: "T3 Code" },
+                          )
                         : setting.secrets > 0
-                          ? `Includes ${plural(setting.secrets, "saved key", "saved keys")}`
+                          ? gt(
+                              "Includes {count, plural, one {{count} saved key} other {{count} saved keys}}",
+                              { count: setting.secrets },
+                            )
                           : null,
                   }))}
                   notes={[
@@ -236,19 +258,21 @@ function T3CodeImportDialog({
             )}
             {!allowed ? (
               <p className="text-muted-foreground">
-                Importing needs permission to change settings, providers and projects on this
-                environment.
+                <T>
+                  Importing needs permission to change settings, providers and projects on this
+                  environment.
+                </T>
               </p>
             ) : null}
           </div>
         </DialogPanel>
         <DialogFooter variant="bare">
           <Button variant="outline" onClick={onClose}>
-            Close
+            <T>Close</T>
           </Button>
           <Button onClick={onImport} disabled={!canImport}>
             {importing ? <Spinner size="md" /> : null}
-            Import
+            <T>Import</T>
           </Button>
         </DialogFooter>
       </DialogPopup>
@@ -282,6 +306,7 @@ function ImportGroup({
   }>;
   readonly notes: ReadonlyArray<string>;
 }) {
+  const gt = useGT();
   return (
     <section className="grid gap-2">
       <label className="flex cursor-pointer items-center gap-2 font-medium">
@@ -292,7 +317,7 @@ function ImportGroup({
         />
         {title}
         <span className="font-normal text-muted-foreground">
-          {items.length === 0 ? "nothing new" : `${items.length} new`}
+          {items.length === 0 ? gt("nothing new") : gt("{count} new", { count: items.length })}
         </span>
       </label>
       {items.length > 0 ? (
@@ -315,23 +340,24 @@ function ImportGroup({
 }
 
 function ImportResult({ result }: { readonly result: T3CodeImportResult }) {
-  const added = [
-    plural(result.projectsAdded, "project", "projects"),
-    plural(result.settingsAdded, "setting", "settings"),
-  ].join(" and ");
+  const gt = useGT();
   return (
     <div className="rounded-lg border border-input bg-muted/25 px-3 py-2 text-xs">
       <p className="font-medium text-foreground">
-        Added {added}
-        {result.secretsCopied > 0
-          ? `, with ${plural(result.secretsCopied, "saved key", "saved keys")}`
-          : ""}
-        .
+        {gt(
+          "Added {projects, plural, one {{projects} project} other {{projects} projects}} and {settings, plural, one {{settings} setting} other {{settings} settings}}{secrets, plural, =0 {} other {, with {secrets, plural, one {{secrets} saved key} other {{secrets} saved keys}}}}.",
+          {
+            projects: result.projectsAdded,
+            settings: result.settingsAdded,
+            secrets: result.secretsCopied,
+          },
+        )}
       </p>
       {result.failed.length > 0 ? (
         <p className="mt-1 text-destructive">
-          Could not add {result.failed.map((item) => item.label).join(", ")}. Importing again
-          retries them.
+          {gt("Could not add {names}. Importing again retries them.", {
+            names: result.failed.map((item) => item.label).join(", "),
+          })}
         </p>
       ) : null}
     </div>

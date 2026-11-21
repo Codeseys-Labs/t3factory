@@ -1,5 +1,6 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { FactoryTaskRun, FactoryTaskSummary } from "@t3tools/contracts";
+import { T, useMessages, Var } from "gt-react";
 import { type ReactNode, useState } from "react";
 
 import { useArchivedThreadSnapshots } from "../../../lib/archivedThreadsState";
@@ -52,20 +53,24 @@ function GiveUpResultDialog({
 }) {
   const actions = useTaskActions();
   const [sending, setSending] = useState(false);
+  const messages = useMessages();
   const shell = useThreadShell(scopeThreadRef(task.ref.environmentId, run.threadId));
   // An archived thread is not among the live shells; its folder is read from the archive.
   const archive = useArchivedThreadSnapshots(shell === null ? [task.ref.environmentId] : []);
   const project = useProject(scopeProjectRef(task.ref.environmentId, task.ref.projectId));
-  const current = presentGiveUpFolder({
-    workspace: run.setup.workspace,
-    worktreePath:
-      shell?.worktreePath ??
-      archive.snapshots
-        .flatMap((entry) => entry.snapshot.threads)
-        .find((thread) => thread.id === run.threadId)?.worktreePath ??
-      null,
-    projectRoot: project?.workspaceRoot ?? null,
-  });
+  const current = presentGiveUpFolder(
+    {
+      workspace: run.setup.workspace,
+      worktreePath:
+        shell?.worktreePath ??
+        archive.snapshots
+          .flatMap((entry) => entry.snapshot.threads)
+          .find((thread) => thread.id === run.threadId)?.worktreePath ??
+        null,
+      projectRoot: project?.workspaceRoot ?? null,
+    },
+    messages,
+  );
   // Held once it names a folder: the archive may answer after opening, and nothing later may rename it.
   const [folder, setFolder] = useState(current);
   if (folder.path === null && current.path !== null) setFolder(current);
@@ -84,9 +89,16 @@ function GiveUpResultDialog({
     >
       <AlertDialogPopup>
         <AlertDialogHeader>
-          <AlertDialogTitle>Give up the result of run {run.ordinal}?</AlertDialogTitle>
+          <AlertDialogTitle>
+            <T>
+              Give up the result of run <Var>{run.ordinal}</Var>?
+            </T>
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            The task won't use what run {run.ordinal} made, and you can retry or reassign it.{" "}
+            <T>
+              The task won't use what run <Var>{run.ordinal}</Var> made, and you can retry or
+              reassign it.
+            </T>{" "}
             {folder.lead}
             {folder.path === null ? null : (
               <>
@@ -99,10 +111,10 @@ function GiveUpResultDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogClose render={<Button variant="outline" size="sm" />}>
-            Cancel
+            <T>Cancel</T>
           </AlertDialogClose>
           <Button size="sm" variant="destructive" disabled={sending} onClick={() => void confirm()}>
-            Give up result
+            <T>Give up result</T>
           </Button>
         </AlertDialogFooter>
       </AlertDialogPopup>

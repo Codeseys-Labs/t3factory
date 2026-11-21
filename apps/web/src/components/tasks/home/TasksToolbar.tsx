@@ -7,6 +7,7 @@ import type {
   FactoryTaskType,
 } from "@t3tools/contracts";
 import { ChevronDownIcon, FilterIcon } from "lucide-react";
+import { msg, T, useMessages } from "gt-react";
 
 import { Button } from "../../ui/button";
 import {
@@ -36,12 +37,16 @@ const STATUS_OPTIONS: readonly FactoryTaskStatus[] = [
 ];
 const TYPE_OPTIONS = Object.keys(TASK_TYPE_LABELS) as FactoryTaskType[];
 const SOURCE_OPTIONS: readonly { value: FactoryTaskSourceKind; label: string }[] = [
-  { value: "local", label: "Local" },
-  { value: "issue", label: "Issue" },
-  { value: "feed", label: "Feed" },
-  { value: "schedule", label: "Schedule" },
+  { value: "local", label: msg("Local", { $context: "task source kind" }) },
+  { value: "issue", label: msg("Issue", { $context: "task source kind" }) },
+  { value: "feed", label: msg("Feed", { $context: "task source kind" }) },
+  { value: "schedule", label: msg("Schedule", { $context: "task source kind" }) },
 ];
-const GROUP_LABELS = { status: "Status", assignee: "Assignee", project: "Project" } as const;
+const GROUP_LABELS = {
+  status: msg("Status", { $context: "group tasks by" }),
+  assignee: msg("Assignee", { $context: "group tasks by" }),
+  project: msg("Project", { $context: "group tasks by" }),
+} as const;
 type TaskGrouping = keyof typeof GROUP_LABELS;
 
 export interface AssigneeOption {
@@ -70,6 +75,7 @@ export function TasksToolbar({
   onFilterOpenChange: (open: boolean) => void;
 }) {
   const active = activeFilterCount(filters);
+  const messages = useMessages();
   const checked = (field: TaskFilterField, value: string) =>
     (filters[field] as readonly string[] | undefined)?.includes(value) ?? false;
   return (
@@ -77,45 +83,51 @@ export function TasksToolbar({
       <Menu onOpenChange={onFilterOpenChange}>
         <MenuTrigger render={<Button variant="outline" size="xs" />}>
           <FilterIcon aria-hidden />
-          Filter
+          <T>Filter</T>
           {active > 0 ? <CountBadge count={active} /> : null}
         </MenuTrigger>
         <MenuPopup align="start" className="max-h-[min(32rem,var(--available-height))]">
           <MenuGroup>
-            <MenuGroupLabel>Status</MenuGroupLabel>
+            <MenuGroupLabel>
+              <T>Status</T>
+            </MenuGroupLabel>
             {STATUS_OPTIONS.map((status) => (
               <MenuCheckboxItem
                 key={status}
                 checked={checked("statuses", status)}
                 onCheckedChange={() => onToggleFilter("statuses", status)}
               >
-                {TASK_STATUS_VISUALS[status].label}
+                {messages(TASK_STATUS_VISUALS[status].label)}
               </MenuCheckboxItem>
             ))}
           </MenuGroup>
           <MenuSeparator />
           <MenuGroup>
-            <MenuGroupLabel>Type</MenuGroupLabel>
+            <MenuGroupLabel>
+              <T>Type</T>
+            </MenuGroupLabel>
             {TYPE_OPTIONS.map((type) => (
               <MenuCheckboxItem
                 key={type}
                 checked={checked("types", type)}
                 onCheckedChange={() => onToggleFilter("types", type)}
               >
-                {TASK_TYPE_LABELS[type]}
+                {messages(TASK_TYPE_LABELS[type])}
               </MenuCheckboxItem>
             ))}
           </MenuGroup>
           <MenuSeparator />
           <MenuGroup>
-            <MenuGroupLabel>Source</MenuGroupLabel>
+            <MenuGroupLabel>
+              <T>Source</T>
+            </MenuGroupLabel>
             {SOURCE_OPTIONS.map((source) => (
               <MenuCheckboxItem
                 key={source.value}
                 checked={checked("sourceKinds", source.value)}
                 onCheckedChange={() => onToggleFilter("sourceKinds", source.value)}
               >
-                {source.label}
+                {messages(source.label)}
               </MenuCheckboxItem>
             ))}
           </MenuGroup>
@@ -123,7 +135,9 @@ export function TasksToolbar({
             <>
               <MenuSeparator />
               <MenuGroup>
-                <MenuGroupLabel>Assignee</MenuGroupLabel>
+                <MenuGroupLabel>
+                  <T>Assignee</T>
+                </MenuGroupLabel>
                 {assignees.map((option) => (
                   <AssigneeFilterItem
                     key={option.key}
@@ -138,7 +152,9 @@ export function TasksToolbar({
           {active > 0 ? (
             <>
               <MenuSeparator />
-              <MenuItem onClick={onClearFilters}>Clear filters</MenuItem>
+              <MenuItem onClick={onClearFilters}>
+                <T>Clear filters</T>
+              </MenuItem>
             </>
           ) : null}
         </MenuPopup>
@@ -146,8 +162,8 @@ export function TasksToolbar({
       <Separator orientation="vertical" className="h-5" />
       <Menu>
         <MenuTrigger render={<Button variant="ghost-muted" size="xs" />}>
-          Group
-          <span className="text-foreground">{GROUP_LABELS[grouping]}</span>
+          <T>Group</T>
+          <span className="text-foreground">{messages(GROUP_LABELS[grouping])}</span>
           <ChevronDownIcon aria-hidden />
         </MenuTrigger>
         <MenuPopup align="start">
@@ -157,7 +173,7 @@ export function TasksToolbar({
           >
             {(Object.keys(GROUP_LABELS) as TaskGrouping[]).map((value) => (
               <MenuRadioItem key={value} value={value} closeOnClick>
-                {GROUP_LABELS[value]}
+                {messages(GROUP_LABELS[value])}
               </MenuRadioItem>
             ))}
           </MenuRadioGroup>
@@ -179,10 +195,11 @@ function AssigneeFilterItem({
   checked: boolean;
   onToggle: () => void;
 }) {
+  const messages = useMessages();
   const chip = useTaskAssigneeChip(option.assignee, option.environmentId, GROUP_ASSIGNEE_LABEL);
   return (
     <MenuCheckboxItem checked={checked} onCheckedChange={onToggle}>
-      {assigneeText(chip)}
+      {assigneeText(chip, messages)}
     </MenuCheckboxItem>
   );
 }

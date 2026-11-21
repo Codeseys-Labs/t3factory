@@ -3,6 +3,7 @@ import { StackActions, useNavigation } from "@react-navigation/native";
 import type { FactoryTaskSummary } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
+import { T, useGT, useMessages } from "gt-react-native";
 import { Platform, View } from "react-native";
 import { RefreshControl } from "../../components/ui/RefreshControl";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -102,6 +103,8 @@ function ListItemView(props: { readonly item: TasksListItem } & Omit<TasksListBo
 /** Each state of the list is its own answer; a failed read is never an empty list. */
 export function TasksListBody(props: TasksListBodyProps) {
   const { state } = props;
+  const gt = useGT();
+  const m = useMessages();
   const insets = useSafeAreaInsets();
   return (
     <LegendList
@@ -124,7 +127,7 @@ export function TasksListBody(props: TasksListBodyProps) {
             ))}
             {props.incomplete ? (
               <Text textRole="footnote" className="px-1 text-foreground-muted">
-                More tasks may be waiting on you.
+                <T>More tasks may be waiting on you.</T>
               </Text>
             ) : null}
           </View>
@@ -134,14 +137,17 @@ export function TasksListBody(props: TasksListBodyProps) {
       ListEmptyComponent={
         state.kind === "loading" ? (
           <View className="items-center py-10">
-            <AppActivityIndicator colorClassName="accent-icon" accessibilityLabel="Loading tasks" />
+            <AppActivityIndicator
+              colorClassName="accent-icon"
+              accessibilityLabel={gt("Loading tasks")}
+            />
           </View>
         ) : state.kind === "ready" || (state.kind === "caught-up" && props.incomplete) ? null : (
           <EmptyState
             variant="plain"
-            title={TASKS_LIST_COPY[state.kind].title}
-            detail={TASKS_LIST_COPY[state.kind].detail}
-            actionLabel={state.kind === "failed" ? "Try again" : undefined}
+            title={m(TASKS_LIST_COPY[state.kind].title)}
+            detail={m(TASKS_LIST_COPY[state.kind].detail)}
+            actionLabel={state.kind === "failed" ? gt("Try again") : undefined}
             onAction={state.kind === "failed" ? props.onRefresh : undefined}
           />
         )

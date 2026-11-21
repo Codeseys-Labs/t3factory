@@ -1,4 +1,5 @@
 import type { ProviderOptionSelection } from "@t3tools/contracts";
+import { T } from "gt-react";
 
 import { SpeedControl, UltracodeControl } from "../../chat/ComposerModelEffort";
 import type { TraitsSelectionInput } from "../../chat/TraitsPicker";
@@ -22,7 +23,7 @@ export function TaskModelOptionsFooter(props: {
       {traits ? <UltracodeControl traits={traits} /> : null}
       <div className="ms-auto">
         <Button variant="ghost-muted" size="compact" disabled={!hasChosen} onClick={onReset}>
-          Use model defaults
+          <T>Use model defaults</T>
         </Button>
       </div>
     </div>

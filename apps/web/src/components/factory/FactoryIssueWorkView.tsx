@@ -16,10 +16,12 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { ChevronDownIcon, CircleDotIcon } from "lucide-react";
 import { Fragment, useContext, useEffect, useId, useRef, useState } from "react";
 
 import { useNowSecond } from "../../hooks/useNowSecond";
+import { m, type MessageResolver } from "../../i18n/messages";
 import { randomUUID } from "../../lib/utils";
 import { factoryEnvironment, useFactoryReadinessSupported } from "../../state/factory";
 import { environmentPresentations } from "../../state/presentation";
@@ -28,19 +30,20 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { RelativeTime } from "../RelativeTime";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { RefreshIcon } from "../ui/refresh-icon";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { FactoryClaimIndicators } from "./FactoryClaimIndicators";
 import { FactoryDeliveryPanel } from "./FactoryDeliveryPanel";
-import { factoryClaimRowPresentation, originKeyForIssue } from "./factoryClaims.logic";
+import { factoryClaimRowPresentation, originKeyForFactoryIssue } from "./factoryClaims.logic";
 import { factoryPublishUnsupportedMessage } from "./factoryDelivery.logic";
 import {
   FACTORY_OVERRIDE_ACTIONS,
-  boundedIssueBody,
   buildFactoryReadinessOverrideInput,
   describeFactoryFailure,
   factoryBlockersUnsupportedMessage,
+  factoryIssueDisplayKey,
+  factoryIssueKeyOf,
   factoryReadinessPresentation,
   factoryTaskPresentation,
   resolveFactoryIssueAction,
@@ -50,7 +53,7 @@ import {
   type FactoryReadinessOverrideAction,
   type FactoryReadinessTone,
 } from "./factoryIssues.logic";
-import { groupFactoryIssuesByStage, type FactoryIssueViewMode } from "./factoryIssues.views";
+import { groupFactoryIssuesByStage, type FactoryIssueLayout } from "./factoryIssues.views";
 import { FactoryIssueFrontier } from "./FactoryIssueFrontier";
 import { FactoryReadinessOverrideDialog } from "./FactoryReadinessOverrideDialog";
 import type { FactoryClaimsView } from "./useFactoryClaims";
@@ -59,11 +62,8 @@ const MAX_VISIBLE_LABELS = 5;
 
 type FactoryIssueWorkViewProps = {
   readonly environmentId: EnvironmentId;
-  readonly mode: FactoryIssueViewMode;
+  readonly layout: FactoryIssueLayout;
   readonly issues: ReadonlyArray<FactoryIssue>;
-  readonly canStart: boolean;
-  readonly busy: boolean;
-  readonly startingIssue: number | null;
   readonly selectedProjectId: ProjectId;
   readonly projectTitleById: ReadonlyMap<ProjectId, string>;
   readonly refreshing: boolean;
@@ -71,15 +71,16 @@ type FactoryIssueWorkViewProps = {
   readonly claims: FactoryClaimsView | null;
   readonly repository: FactoryRepository;
   readonly capabilities: FactoryIssueCapabilities;
-  readonly onStart: (issue: FactoryIssue) => void;
-  readonly onRestart: (issue: FactoryIssue) => void;
-  readonly onResume: (issue: FactoryIssue) => void;
-  readonly onOpen: (task: FactoryIssueTask) => void;
+  /** Reading an issue and starting a task on it happen in the Issues panel, not here. */
+  readonly onOpenIssue: (issue: FactoryIssue) => void;
+  readonly onOpenTask: (task: FactoryIssueTask) => void;
 };
 
 export function FactoryIssueWorkView(props: FactoryIssueWorkViewProps) {
-  // The parent keys this component by repository and page, but not presentation mode.
-  const [expandedIssues, setExpandedIssues] = useState<ReadonlySet<number>>(() => new Set());
+  const gt = useGT();
+  const messages = useMessages();
+  // The parent keys this component by repository and page, but not presentation layout.
+  const [expandedIssues, setExpandedIssues] = useState<ReadonlySet<string>>(() => new Set());
   const readinessSupported = useFactoryReadinessSupported(props.environmentId);
   const acceptanceSupported = useAtomValue(
     environmentPresentations.presentationAtom(props.environmentId),
@@ -91,38 +92,36 @@ export function FactoryIssueWorkView(props: FactoryIssueWorkViewProps) {
     (presentation) => presentation?.serverConfig?.environment.capabilities.factoryDelivery === true,
   );
 
-  const renderIssue = (issue: FactoryIssue) => (
-    <FactoryIssueEntry
-      key={issue.number}
-      mode={props.mode}
-      environmentId={props.environmentId}
-      claims={props.claims}
-      repository={props.repository}
-      capabilities={props.capabilities}
-      readinessSupported={readinessSupported}
-      acceptanceSupported={acceptanceSupported}
-      deliverySupported={deliverySupported}
-      issue={issue}
-      canStart={props.canStart}
-      busy={props.busy}
-      startingIssue={props.startingIssue}
-      selectedProjectId={props.selectedProjectId}
-      projectTitleById={props.projectTitleById}
-      onStart={props.onStart}
-      onRestart={props.onRestart}
-      onResume={props.onResume}
-      onOpen={props.onOpen}
-      expanded={expandedIssues.has(issue.number)}
-      onToggleDetails={() => {
-        setExpandedIssues((current) => {
-          const next = new Set(current);
-          if (next.has(issue.number)) next.delete(issue.number);
-          else next.add(issue.number);
-          return next;
-        });
-      }}
-    />
-  );
+  const renderIssue = (issue: FactoryIssue) => {
+    const identity = factoryIssueKeyOf(issue) ?? issue.url;
+    return (
+      <FactoryIssueEntry
+        key={identity}
+        layout={props.layout}
+        environmentId={props.environmentId}
+        claims={props.claims}
+        repository={props.repository}
+        capabilities={props.capabilities}
+        readinessSupported={readinessSupported}
+        acceptanceSupported={acceptanceSupported}
+        deliverySupported={deliverySupported}
+        issue={issue}
+        selectedProjectId={props.selectedProjectId}
+        projectTitleById={props.projectTitleById}
+        onOpenIssue={props.onOpenIssue}
+        onOpenTask={props.onOpenTask}
+        expanded={expandedIssues.has(identity)}
+        onToggleDetails={() => {
+          setExpandedIssues((current) => {
+            const next = new Set(current);
+            if (next.has(identity)) next.delete(identity);
+            else next.add(identity);
+            return next;
+          });
+        }}
+      />
+    );
+  };
 
   return (
     <div
@@ -130,57 +129,63 @@ export function FactoryIssueWorkView(props: FactoryIssueWorkViewProps) {
       data-refreshing={props.refreshing}
       aria-busy={props.refreshing}
     >
-      {props.mode === "table" ? (
+      {props.layout === "table" ? (
         <div
           className="max-w-full overflow-x-auto rounded-lg border border-border/60 focus-visible:outline-2 focus-visible:outline-ring"
           role="region"
-          aria-label="Issues table, this page only"
+          aria-label={gt("Issues table, this page only")}
           tabIndex={0}
         >
           <table className="w-full min-w-5xl text-left text-sm">
-            <caption className="sr-only">Issues on this page</caption>
+            <caption className="sr-only">
+              <T>Issues on this page</T>
+            </caption>
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground">
                 <th scope="col" className="p-3 font-medium">
-                  Issue
+                  <T>Issue</T>
                 </th>
                 <th scope="col" className="p-3 font-medium">
-                  Source state
+                  <T>Source state</T>
                 </th>
                 <th scope="col" className="p-3 font-medium">
-                  Task state
+                  <T>Task state</T>
                 </th>
                 <th scope="col" className="p-3 font-medium">
-                  Labels
+                  <T>Labels</T>
                 </th>
                 <th scope="col" className="p-3 font-medium">
-                  Updated
+                  <T>Updated</T>
                 </th>
                 <th scope="col" className="p-3 font-medium">
-                  Actions
+                  <T>Actions</T>
                 </th>
               </tr>
             </thead>
             <tbody>{props.issues.map(renderIssue)}</tbody>
           </table>
         </div>
-      ) : props.mode === "board" ? (
+      ) : (
         <div
           className="flex max-w-full items-start gap-3 overflow-x-auto pb-2 focus-visible:outline-2 focus-visible:outline-ring"
           role="region"
-          aria-label="Task stages, this page only"
+          aria-label={gt("Task stages, this page only")}
           tabIndex={0}
         >
           {groupFactoryIssuesByStage(props.issues).map((group) => {
             if (group.issues.length === 0) return null;
             const label =
-              group.stage === "none" ? "No task" : factoryTaskPresentation(group.stage).label;
+              group.stage === "none"
+                ? gt("No task")
+                : factoryTaskPresentation(group.stage, messages).label;
             return (
               <section key={group.stage} className="w-80 shrink-0 space-y-2" aria-label={label}>
                 <h3 className="flex items-center justify-between gap-2 px-1 text-sm font-medium">
                   <span>{label}</span>
                   <span className="text-xs font-normal text-muted-foreground">
-                    {group.issues.length} on this page
+                    <T>
+                      <Var>{group.issues.length}</Var> on this page
+                    </T>
                   </span>
                 </h3>
                 <ul className="flex flex-col gap-2">{group.issues.map(renderIssue)}</ul>
@@ -188,8 +193,6 @@ export function FactoryIssueWorkView(props: FactoryIssueWorkViewProps) {
             );
           })}
         </div>
-      ) : (
-        <ul className="flex flex-col gap-2">{props.issues.map(renderIssue)}</ul>
       )}
     </div>
   );
@@ -205,22 +208,28 @@ function FactoryIssueEntry(
     readonly onToggleDetails: () => void;
   },
 ) {
+  const gt = useGT();
+  const messages = useMessages();
   const { issue, expanded } = props;
   const detailsId = useId();
-  const action = resolveFactoryIssueAction(issue);
-  const presentation = issue.task ? factoryTaskPresentation(issue.task.status) : null;
+  const action = resolveFactoryIssueAction(issue, messages);
+  const presentation = issue.task ? factoryTaskPresentation(issue.task.status, messages) : null;
   const ownerTitle =
     issue.task && issue.task.projectId !== props.selectedProjectId
-      ? (props.projectTitleById.get(issue.task.projectId) ?? "another project")
+      ? (props.projectTitleById.get(issue.task.projectId) ?? gt("another project"))
       : null;
   const href = safeExternalUrl(issue.url);
-  const body = expanded ? boundedIssueBody(issue.body) : null;
-  const startDisabled = !props.canStart || props.busy;
-  const starting = props.startingIssue === issue.number;
+  const displayKey = factoryIssueDisplayKey(issue);
+  const showReadiness = issue.state === "open" && props.readinessSupported;
 
   const identity = (
-    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-      <span className="font-medium text-sm [overflow-wrap:anywhere]">{issue.title}</span>
+    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm">
+      <InlineButton
+        className="min-w-0 shrink text-left [--inline-button-text-align:left] [--inline-button-white-space:normal] [overflow-wrap:anywhere]"
+        onClick={() => props.onOpenIssue(issue)}
+      >
+        {issue.title}
+      </InlineButton>
       {href ? (
         <a
           href={href}
@@ -228,17 +237,21 @@ function FactoryIssueEntry(
           rel="noopener noreferrer"
           className="shrink-0 text-muted-foreground text-xs underline-offset-4 hover:underline"
         >
-          #{issue.number}
+          {displayKey}
         </a>
       ) : (
-        <span className="shrink-0 text-muted-foreground text-xs">#{issue.number}</span>
+        <span className="shrink-0 text-muted-foreground text-xs">{displayKey}</span>
       )}
     </div>
   );
   const sourceState = (
     <Badge variant={issue.state === "open" ? "outline" : "secondary"}>
       <CircleDotIcon />
-      {issue.state === "open" ? "Open" : "Closed"}
+      {issue.state === "open" ? (
+        <T context="issue state">Open</T>
+      ) : (
+        <T context="issue state">Closed</T>
+      )}
     </Badge>
   );
   const updated = (
@@ -267,12 +280,16 @@ function FactoryIssueEntry(
       <span className="text-muted-foreground text-xs">{presentation.detail}</span>
       {ownerTitle ? (
         <span className="text-muted-foreground text-xs [overflow-wrap:anywhere]">
-          Task lives in project {ownerTitle}.
+          <T>
+            Task lives in project <Var>{ownerTitle}</Var>.
+          </T>
         </span>
       ) : null}
     </div>
   ) : (
-    <Badge variant="outline">No task</Badge>
+    <Badge variant="outline">
+      <T>No task</T>
+    </Badge>
   );
   const claimPresentation =
     props.claims === null
@@ -281,13 +298,10 @@ function FactoryIssueEntry(
           claimsByEnvironment: props.claims.claimsByEnvironment,
           conflicts: props.claims.conflicts,
           environmentId: props.environmentId,
-          originKey: originKeyForIssue(
-            props.repository.provider,
-            props.repository.canonicalKey,
-            issue.number,
-          ),
+          originKey: originKeyForFactoryIssue(props.repository, issue),
           task: issue.task,
           labelOf: props.claims.labelOf,
+          resolve: messages,
         });
   const taskStatus = (
     <>
@@ -312,42 +326,38 @@ function FactoryIssueEntry(
   const actions = (
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-expanded={expanded}
-          aria-controls={expanded ? detailsId : undefined}
-          aria-label={`${expanded ? "Hide" : "Show"} issue #${issue.number} body`}
-          onClick={props.onToggleDetails}
-        >
-          <ChevronDownIcon className={expanded ? "rotate-180" : undefined} />
-          Details
-        </Button>
+        {showReadiness ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-expanded={expanded}
+            aria-controls={expanded ? detailsId : undefined}
+            aria-label={
+              expanded
+                ? gt("Hide readiness of issue {issueKey}", { issueKey: displayKey })
+                : gt("Show readiness of issue {issueKey}", { issueKey: displayKey })
+            }
+            onClick={props.onToggleDetails}
+          >
+            <ChevronDownIcon className={expanded ? "rotate-180" : undefined} />
+            <T>Readiness</T>
+          </Button>
+        ) : null}
         {action.kind === "start" ? (
-          <Button size="sm" disabled={startDisabled} onClick={() => props.onStart(issue)}>
-            Start task
+          <Button size="sm" onClick={() => props.onOpenIssue(issue)}>
+            <T>Review and start</T>
           </Button>
         ) : action.kind === "resume" ? (
-          <Button
-            size="sm"
-            disabled={startDisabled}
-            aria-busy={starting}
-            onClick={() => props.onResume(issue)}
-          >
-            {starting ? "Resuming…" : "Resume launch"}
+          <Button size="sm" onClick={() => props.onOpenIssue(issue)}>
+            <T>Review and resume</T>
           </Button>
         ) : action.kind === "restart" ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={startDisabled}
-            onClick={() => props.onRestart(issue)}
-          >
-            New attempt…
+          <Button size="sm" variant="outline" onClick={() => props.onOpenIssue(issue)}>
+            <T>Review new attempt</T>
           </Button>
         ) : action.kind === "open" ? (
-          <Button size="sm" variant="outline" onClick={() => props.onOpen(action.task)}>
-            Open thread
+          <Button size="sm" variant="outline" onClick={() => props.onOpenTask(action.task)}>
+            <T>Open thread</T>
           </Button>
         ) : null}
       </div>
@@ -356,52 +366,33 @@ function FactoryIssueEntry(
       ) : null}
     </div>
   );
-  const details = body ? (
-    <div id={detailsId} className="min-w-0 border-border/60 border-t pt-3">
-      {body.text.length === 0 ? (
-        <p className="text-muted-foreground text-sm">This issue has no description.</p>
-      ) : (
-        <>
-          {/* Remote issue content stays bounded plain text, never markup, links or media. */}
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words font-sans text-sm">
-            {body.text}
-          </pre>
-          {body.truncated ? (
-            <p className="mt-2 text-muted-foreground text-xs">
-              Showing the first part of the description. Open the issue on{" "}
-              {props.capabilities.displayName} to read the rest.
-            </p>
-          ) : null}
-        </>
-      )}
-      {issue.state === "open" && props.readinessSupported ? (
-        <>
-          {props.capabilities.blockedBy === "none" ? (
-            <p className="mt-4 border-border/60 border-t pt-3 text-muted-foreground text-xs">
-              {factoryBlockersUnsupportedMessage(props.capabilities.displayName)}
-            </p>
-          ) : (
-            <FactoryIssueBlockers
-              environmentId={props.environmentId}
-              projectId={props.selectedProjectId}
-              issueNumber={issue.number}
-              displayName={props.capabilities.displayName}
-            />
-          )}
-          {props.capabilities.subIssues ? (
-            <FactoryIssueFrontier
-              environmentId={props.environmentId}
-              projectId={props.selectedProjectId}
-              issueNumber={issue.number}
-              displayName={props.capabilities.displayName}
-            />
-          ) : null}
-        </>
-      ) : null}
-    </div>
-  ) : null;
+  const details =
+    expanded && showReadiness ? (
+      <div id={detailsId} className="min-w-0">
+        {props.capabilities.blockedBy === "none" || issue.number === null ? (
+          <p className="mt-1 border-border/60 border-t pt-3 text-muted-foreground text-xs">
+            {factoryBlockersUnsupportedMessage(props.capabilities.displayName, messages)}
+          </p>
+        ) : (
+          <FactoryIssueBlockers
+            environmentId={props.environmentId}
+            projectId={props.selectedProjectId}
+            issueNumber={issue.number}
+            displayName={props.capabilities.displayName}
+          />
+        )}
+        {props.capabilities.subIssues && issue.number !== null ? (
+          <FactoryIssueFrontier
+            environmentId={props.environmentId}
+            projectId={props.selectedProjectId}
+            issueNumber={issue.number}
+            displayName={props.capabilities.displayName}
+          />
+        ) : null}
+      </div>
+    ) : null;
 
-  if (props.mode === "table") {
+  if (props.layout === "table") {
     return (
       <Fragment>
         <tr className="border-b border-border/60 align-top">
@@ -429,12 +420,16 @@ function FactoryIssueEntry(
 
   return (
     <li className="min-w-0 rounded-lg border border-border/60 bg-card p-3">
-      <div className={props.mode === "board" ? "space-y-3" : "flex flex-wrap items-start gap-3"}>
+      <div className="space-y-3">
         <div className="min-w-0 flex-1 basis-48 space-y-1.5">
           {identity}
           <div className="flex flex-wrap items-center gap-2">
             {sourceState}
-            <span className="text-muted-foreground text-xs">updated {updated}</span>
+            <span className="text-muted-foreground text-xs">
+              <T>
+                updated <Var>{updated}</Var>
+              </T>
+            </span>
           </div>
           {labels}
           {taskStatus}
@@ -448,22 +443,34 @@ function FactoryIssueEntry(
 
 const isFactoryAcceptanceError = Schema.is(FactoryAcceptanceError);
 
-function acceptanceFailureMessage(error: unknown, fallbackMessage?: string): string {
+function acceptanceFailureMessage(
+  error: unknown,
+  resolve: MessageResolver = m,
+  fallbackMessage?: string,
+): string {
   if (isFactoryAcceptanceError(error)) {
     switch (error.reason) {
       case "head-moved":
-        return "The head moved while you were reviewing. Refresh and review again.";
+        return resolve(msg("The head moved while you were reviewing. Refresh and review again."));
       case "already-accepted":
-        return "This task already has an accepted commit. Refresh and use Re-accept at current head if it has changed.";
+        return resolve(
+          msg(
+            "This task already has an accepted commit. Refresh and use Re-accept at current head if it has changed.",
+          ),
+        );
       case "worktree-unavailable":
-        return "The worktree or live head is unavailable. Restore the worktree and refresh to accept a commit.";
+        return resolve(
+          msg(
+            "The worktree or live head is unavailable. Restore the worktree and refresh to accept a commit.",
+          ),
+        );
       case "unknown-thread":
-        return "This thread is no longer available.";
+        return resolve(msg("This thread is no longer available."));
       case "not-a-factory-task":
-        return "This thread is not a claimed Factory task.";
+        return resolve(msg("This thread is not a claimed Factory task."));
     }
   }
-  return describeFactoryFailure(error, fallbackMessage).message;
+  return describeFactoryFailure(error, fallbackMessage, undefined, resolve).message;
 }
 
 function FactoryAcceptedCommit(props: {
@@ -476,6 +483,8 @@ function FactoryAcceptedCommit(props: {
   readonly issueUrl: string;
 }) {
   const { environmentId, projectId, threadId } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const registry = useContext(RegistryContext);
   const headingId = useId();
   const disabledReasonId = useId();
@@ -504,17 +513,19 @@ function FactoryAcceptedCommit(props: {
   const liveHeadSha = data?.liveHeadSha ?? null;
   const moved = acceptance !== null && data?.current === false;
   const readFailure =
-    query.error === null ? null : acceptanceFailureMessage(query.failure, query.error);
+    query.error === null ? null : acceptanceFailureMessage(query.failure, messages, query.error);
   const disabledReason = !canAccept
-    ? "Accepting a commit needs operate permission on this environment."
+    ? gt("Accepting a commit needs operate permission on this environment.")
     : readFailure !== null
       ? readFailure
       : query.isPending || data === null
-        ? "Reading the current head…"
+        ? gt("Reading the current head…")
         : liveHeadSha === null
-          ? "The worktree or live head is unavailable. Restore the worktree and refresh to accept a commit."
+          ? gt(
+              "The worktree or live head is unavailable. Restore the worktree and refresh to accept a commit.",
+            )
           : failure !== null
-            ? "Refresh and review the current head before accepting again."
+            ? gt("Refresh and review the current head before accepting again.")
             : null;
 
   const accept = async () => {
@@ -540,7 +551,7 @@ function FactoryAcceptedCommit(props: {
     if (result._tag === "Success") {
       query.refresh();
     } else if (!isAtomCommandInterrupted(result)) {
-      setFailure(acceptanceFailureMessage(squashAtomCommandFailure(result)));
+      setFailure(acceptanceFailureMessage(squashAtomCommandFailure(result), messages));
     }
   };
 
@@ -549,42 +560,55 @@ function FactoryAcceptedCommit(props: {
       <div className="mt-2 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p id={headingId} className="font-medium text-sm">
-            Accepted commit
+            <T>Accepted commit</T>
           </p>
           <Button
             size="xs"
             variant="outline"
             disabled={saving || query.isPending}
-            aria-label="Refresh accepted commit"
+            aria-label={gt("Refresh accepted commit")}
             onClick={() => {
               setFailure(null);
               query.refresh();
             }}
           >
-            Refresh
+            <T>Refresh</T>
           </Button>
         </div>
         {acceptance !== null ? (
           <p className="text-muted-foreground text-xs">
-            <code>{acceptance.headSha.slice(0, 7)}</code>
-            {" · "}
-            <time dateTime={acceptance.acceptedAt}>
-              {new Date(acceptance.acceptedAt).toLocaleString()}
-            </time>
-            {" · "}
-            {acceptance.evidenceRefs.length} evidence references
+            <T>
+              <code>
+                <Var>{acceptance.headSha.slice(0, 7)}</Var>
+              </code>
+              {" · "}
+              <time dateTime={acceptance.acceptedAt}>
+                <Var>{new Date(acceptance.acceptedAt).toLocaleString()}</Var>
+              </time>
+              {" · "}
+              <Var>{acceptance.evidenceRefs.length}</Var> evidence references
+            </T>
           </p>
         ) : data !== null ? (
-          <p className="text-muted-foreground text-xs">No commit accepted yet.</p>
+          <p className="text-muted-foreground text-xs">
+            <T>No commit accepted yet.</T>
+          </p>
         ) : null}
         {moved ? (
           <Alert variant="warning">
-            <AlertDescription>Head moved since acceptance</AlertDescription>
+            <AlertDescription>
+              <T>Head moved since acceptance</T>
+            </AlertDescription>
           </Alert>
         ) : null}
         {(acceptance === null || moved) && liveHeadSha !== null ? (
           <p className="text-muted-foreground text-xs">
-            Current head <code>{liveHeadSha.slice(0, 7)}</code>
+            <T>
+              Current head{" "}
+              <code>
+                <Var>{liveHeadSha.slice(0, 7)}</Var>
+              </code>
+            </T>
           </p>
         ) : null}
         {failure !== null ? (
@@ -601,7 +625,13 @@ function FactoryAcceptedCommit(props: {
             aria-describedby={disabledReason !== null ? disabledReasonId : undefined}
             onClick={() => void accept()}
           >
-            {saving ? "Accepting…" : moved ? "Re-accept at current head" : "Accept this commit"}
+            {saving ? (
+              <T>Accepting…</T>
+            ) : moved ? (
+              <T>Re-accept at current head</T>
+            ) : (
+              <T>Accept this commit</T>
+            )}
           </Button>
         ) : null}
         {disabledReason !== null ? (
@@ -632,7 +662,7 @@ function FactoryAcceptedCommit(props: {
           />
         ) : (
           <p className="mt-3 text-muted-foreground text-xs">
-            {factoryPublishUnsupportedMessage(props.capabilities.displayName)}
+            {factoryPublishUnsupportedMessage(props.capabilities.displayName, messages)}
           </p>
         )
       ) : null}
@@ -666,6 +696,8 @@ function FactoryIssueBlockers(props: {
   readonly displayName: string;
 }) {
   const { environmentId, projectId, issueNumber, displayName } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const headingId = useId();
   const nowMs = useNowSecond();
   const query = useEnvironmentQuery(
@@ -704,10 +736,12 @@ function FactoryIssueBlockers(props: {
   }, []);
 
   const failure =
-    query.error === null ? null : describeFactoryFailure(query.failure, query.error, displayName);
+    query.error === null
+      ? null
+      : describeFactoryFailure(query.failure, query.error, displayName, messages);
   const presentation =
     failure === null && query.data !== null
-      ? factoryReadinessPresentation(query.data.readiness, nowMs, displayName)
+      ? factoryReadinessPresentation(query.data.readiness, nowMs, displayName, messages)
       : null;
   const refreshing = query.isPending;
   const busy = saving || revokingId !== null || refreshing;
@@ -745,7 +779,7 @@ function FactoryIssueBlockers(props: {
     // The command observes the issue again, so the table behind the dialog already shows the
     // current edge while the dialog keeps the one that was reviewed.
     setDialogFailure(
-      describeFactoryFailure(squashAtomCommandFailure(result), undefined, displayName),
+      describeFactoryFailure(squashAtomCommandFailure(result), undefined, displayName, messages),
     );
   };
 
@@ -764,7 +798,7 @@ function FactoryIssueBlockers(props: {
     if (!mounted.current) return;
     if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
     setRevokeFailure(
-      describeFactoryFailure(squashAtomCommandFailure(result), undefined, displayName),
+      describeFactoryFailure(squashAtomCommandFailure(result), undefined, displayName, messages),
     );
   };
 
@@ -777,7 +811,7 @@ function FactoryIssueBlockers(props: {
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p id={headingId} className="font-medium text-sm">
-          Blockers
+          <T>Blockers</T>
         </p>
         <Button
           size="sm"
@@ -787,10 +821,10 @@ function FactoryIssueBlockers(props: {
             query.refresh();
           }}
           disabled={refreshing}
-          aria-label={`Refresh blockers for issue #${issueNumber}`}
+          aria-label={gt("Refresh blockers for issue #{issueNumber}", { issueNumber })}
         >
           <RefreshIcon size="sm" refreshing={refreshing} />
-          Refresh
+          <T>Refresh</T>
         </Button>
       </div>
       {failure !== null ? (
@@ -800,7 +834,7 @@ function FactoryIssueBlockers(props: {
         </Alert>
       ) : presentation === null ? (
         <p className="text-muted-foreground text-sm" role="status">
-          Observing blockers…
+          <T>Observing blockers…</T>
         </p>
       ) : (
         <>
@@ -816,21 +850,39 @@ function FactoryIssueBlockers(props: {
           ) : null}
           {presentation.edgeRows.length > 0 ? (
             <Table>
-              <caption className="sr-only">Blockers of issue #{issueNumber}</caption>
+              <caption className="sr-only">
+                <T>
+                  Blockers of issue #<Var>{issueNumber}</Var>
+                </T>
+              </caption>
               <TableHeader>
                 <TableRow>
-                  <TableHead scope="col">Blocker</TableHead>
-                  <TableHead scope="col">Title</TableHead>
-                  <TableHead scope="col">State</TableHead>
-                  <TableHead scope="col">Resolution</TableHead>
-                  <TableHead scope="col">Status</TableHead>
-                  <TableHead scope="col">Override</TableHead>
+                  <TableHead scope="col">
+                    <T>Blocker</T>
+                  </TableHead>
+                  <TableHead scope="col">
+                    <T>Title</T>
+                  </TableHead>
+                  <TableHead scope="col">
+                    <T>State</T>
+                  </TableHead>
+                  <TableHead scope="col">
+                    <T>Resolution</T>
+                  </TableHead>
+                  <TableHead scope="col">
+                    <T>Status</T>
+                  </TableHead>
+                  <TableHead scope="col">
+                    <T>Override</T>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {presentation.edgeRows.map((row) => {
                   const action = row.overrideAction;
                   const overrideId = row.overrideId;
+                  const actionLabel =
+                    action === null ? null : messages(FACTORY_OVERRIDE_ACTIONS[action].buttonLabel);
                   return (
                     <TableRow key={row.key}>
                       <TableCell>
@@ -873,21 +925,24 @@ function FactoryIssueBlockers(props: {
                       </TableCell>
                       <TableCell>{row.statusLabel}</TableCell>
                       <TableCell>
-                        {action !== null ? (
+                        {action !== null && actionLabel !== null ? (
                           <Button
                             size="xs"
                             variant="outline"
                             disabled={
                               !canOverride || presentation.overridesLockedReason !== null || busy
                             }
-                            aria-label={`${FACTORY_OVERRIDE_ACTIONS[action].buttonLabel} blocker ${row.locator}`}
+                            aria-label={gt("{action} blocker {locator}", {
+                              action: actionLabel,
+                              locator: row.locator,
+                            })}
                             onClick={() => {
                               setRevokeFailure(null);
                               setDialogFailure(null);
                               setDialog({ row, action });
                             }}
                           >
-                            {FACTORY_OVERRIDE_ACTIONS[action].buttonLabel}
+                            {actionLabel}
                           </Button>
                         ) : overrideId !== null ? (
                           <Button
@@ -895,10 +950,12 @@ function FactoryIssueBlockers(props: {
                             variant="outline"
                             disabled={!canRevoke || busy}
                             aria-busy={revokingId === overrideId}
-                            aria-label={`Revoke override on blocker ${row.locator}`}
+                            aria-label={gt("Revoke override on blocker {locator}", {
+                              locator: row.locator,
+                            })}
                             onClick={() => void revoke(overrideId)}
                           >
-                            {revokingId === overrideId ? "Revoking…" : "Revoke"}
+                            {revokingId === overrideId ? <T>Revoking…</T> : <T>Revoke</T>}
                           </Button>
                         ) : null}
                       </TableCell>
@@ -915,12 +972,14 @@ function FactoryIssueBlockers(props: {
           ) : null}
           {hasControls && (!canOverride || !canRevoke) ? (
             <p className="text-muted-foreground text-xs">
-              Recording or revoking overrides needs operate permission on this environment.
+              <T>Recording or revoking overrides needs operate permission on this environment.</T>
             </p>
           ) : null}
           {presentation.inactiveOverrides.length > 0 ? (
             <div className="space-y-1">
-              <p className="font-medium text-xs">Past overrides</p>
+              <p className="font-medium text-xs">
+                <T>Past overrides</T>
+              </p>
               <ul className="space-y-1 text-muted-foreground text-xs">
                 {presentation.inactiveOverrides.map((override) => (
                   <li key={override.key} className="flex flex-wrap items-baseline gap-x-2">
@@ -928,11 +987,27 @@ function FactoryIssueBlockers(props: {
                       {override.statusLabel}
                     </Badge>
                     <span className="[overflow-wrap:anywhere]">
-                      {override.kindLabel} on {override.locator}: {override.reason}
+                      <T>
+                        <Var>{override.kindLabel}</Var> on <Var>{override.locator}</Var>:{" "}
+                        <Var>{override.reason}</Var>
+                      </T>
                     </span>
                     <span>
-                      {override.revokedAt !== null ? "revoked " : "recorded "}
-                      <RelativeTime timestamp={override.revokedAt ?? override.createdAt} />
+                      {override.revokedAt !== null ? (
+                        <T>
+                          revoked{" "}
+                          <Var>
+                            <RelativeTime timestamp={override.revokedAt} />
+                          </Var>
+                        </T>
+                      ) : (
+                        <T>
+                          recorded{" "}
+                          <Var>
+                            <RelativeTime timestamp={override.createdAt} />
+                          </Var>
+                        </T>
+                      )}
                     </span>
                   </li>
                 ))}
@@ -940,9 +1015,10 @@ function FactoryIssueBlockers(props: {
             </div>
           ) : null}
           <p className="text-muted-foreground text-xs">
-            Observed from {displayName} blocked-by links. Evidence only: it never allows or prevents
-            starting work. A dispute or waiver records your decision here and changes nothing on{" "}
-            {displayName}. Refresh observes again.
+            {gt(
+              "Observed from {displayName} blocked-by links. Evidence only: it never allows or prevents starting work. A dispute or waiver records your decision here and changes nothing on {displayName}. Refresh observes again.",
+              { displayName },
+            )}
           </p>
         </>
       )}

@@ -1,5 +1,11 @@
 import * as Schema from "effect/Schema";
-import { EnvironmentId, IsoDateTime, ProjectId, ThreadId } from "./baseSchemas.ts";
+import {
+  EnvironmentId,
+  IsoDateTime,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { PositiveInt } from "./baseSchemas.ts";
 import { FactoryRepository } from "./factory.ts";
 import { FactoryFeedSourceId } from "./factoryFeeds.ts";
@@ -40,6 +46,7 @@ export const FactoryWorkListInput = Schema.Struct({
   kind: Schema.optional(FactoryWorkKind),
   cursor: Schema.optional(Cursor),
   limit: Schema.optional(Limit),
+  issueKeys: Schema.optionalKey(Schema.Boolean),
 });
 export type FactoryWorkListInput = typeof FactoryWorkListInput.Type;
 export const FactoryWorkListResult = Schema.Struct({
@@ -49,10 +56,17 @@ export const FactoryWorkListResult = Schema.Struct({
   fetchedAt: IsoDateTime,
 });
 export type FactoryWorkListResult = typeof FactoryWorkListResult.Type;
-export const FactoryWorkReadInput = Schema.Struct({ ref: FactoryWorkRef });
+export const FactoryWorkReadInput = Schema.Struct({
+  ref: FactoryWorkRef,
+  issueKeys: Schema.optionalKey(Schema.Boolean),
+});
 export type FactoryWorkReadInput = typeof FactoryWorkReadInput.Type;
 export const FactoryWorkReviewTarget = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("issue"), issueNumber: PositiveInt }),
+  Schema.Struct({
+    kind: Schema.Literal("issue"),
+    issueNumber: Schema.NullOr(PositiveInt),
+    key: Schema.optionalKey(TrimmedNonEmptyString),
+  }),
   Schema.Struct({
     kind: Schema.Literal("feed"),
     sourceId: FactoryFeedSourceId,
@@ -99,7 +113,10 @@ export const FactoryWorkHistoryResult = Schema.Struct({
   fetchedAt: IsoDateTime,
 });
 export type FactoryWorkHistoryResult = typeof FactoryWorkHistoryResult.Type;
-export const FactoryWorkPrerequisitesInput = Schema.Struct({ ref: FactoryWorkRef });
+export const FactoryWorkPrerequisitesInput = Schema.Struct({
+  ref: FactoryWorkRef,
+  issueKeys: Schema.optionalKey(Schema.Boolean),
+});
 export type FactoryWorkPrerequisitesInput = typeof FactoryWorkPrerequisitesInput.Type;
 /** Source edges beyond this are counted in `omittedCount`, never silently dropped. */
 export const FACTORY_WORK_PREREQUISITES_MAX = 500;
@@ -146,7 +163,8 @@ export const FactoryWorkPrerequisitesResult = Schema.Union([
     status: Schema.Literal("observed"),
     reviewProjectId: ProjectId,
     repository: FactoryRepository,
-    issueNumber: PositiveInt,
+    issueNumber: Schema.NullOr(PositiveInt),
+    key: Schema.optionalKey(TrimmedNonEmptyString),
     readiness: FactoryReadiness.mapFields(({ edges: _edges, ...fields }) => fields),
     prerequisites: Schema.Array(FactoryWorkPrerequisite).check(
       Schema.isMaxLength(FACTORY_WORK_PREREQUISITES_MAX),

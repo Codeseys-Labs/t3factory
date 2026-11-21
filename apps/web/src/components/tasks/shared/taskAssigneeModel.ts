@@ -12,6 +12,9 @@ import type {
   RuntimeMode,
 } from "@t3tools/contracts";
 
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../../../i18n/messages";
 import type { AssigneeChipProps, AssigneePickerValue } from "../kit";
 
 /** A task's parent, for resolving Auto the way the server does: the nearest pinned ancestor wins. */
@@ -49,7 +52,7 @@ export function taskAssigneeChipProps(
   labelOptions?: FactoryTaskLabelOptions,
 ): AssigneeChipProps {
   const mode = assignee.assignment.mode;
-  if (mode === "person") return { kind: "person", label: "You" };
+  if (mode === "person") return { kind: "person", label: msg("You") };
   const setup = mode === "unassigned" ? null : assigneeSetup(assignee);
   if (!setup) return { kind: "unassigned" };
   const { label, mono } = presentTaskSetup(setup, catalog, labelOptions);
@@ -68,11 +71,11 @@ export function parentDecidedSetup(parent: TaskAssigneeParent | undefined) {
 }
 
 const TYPE_PLURALS: Record<FactoryTaskType, string> = {
-  task: "tasks",
-  bug: "bugs",
-  feature: "features",
-  docs: "docs",
-  research: "research",
+  task: msg("tasks", { $context: "plural, tasks" }),
+  bug: msg("bugs", { $context: "plural, bugs" }),
+  feature: msg("features", { $context: "plural, features" }),
+  docs: msg("docs", { $context: "plural, docs" }),
+  research: msg("research", { $context: "plural, research" }),
 };
 
 /** Auto's detail line: what it picked and why. */
@@ -83,20 +86,31 @@ export function autoDetailLine(
     readonly catalog: FactoryTaskCatalog;
     readonly parentDisplayId?: string | undefined;
   },
+  resolve: MessageResolver = m,
 ): string {
-  if (!resolved) return "Set a default model to use Auto";
+  if (!resolved) return resolve(msg("Set a default model to use Auto"));
   const { label } = presentTaskSetup(resolved.setup, context.catalog);
   switch (resolved.via) {
     case "parent":
-      return `Follows ${context.parentDisplayId ?? "the parent task"} · ${label}`;
+      return resolve(
+        msg("Follows {parent} · {label}", {
+          parent: context.parentDisplayId ?? resolve(msg("the parent task")),
+          label,
+        }),
+      );
     case "profile-type":
-      return `Picks ${label} for ${TYPE_PLURALS[context.type]}`;
+      return resolve(
+        msg("Picks {label} for {kind}", {
+          label,
+          kind: resolve(TYPE_PLURALS[context.type]),
+        }),
+      );
     case "project-default":
-      return `Picks ${label} for this project`;
+      return resolve(msg("Picks {label} for this project", { label }));
     case "environment-default":
-      return `Picks ${label} on this machine`;
+      return resolve(msg("Picks {label} on this machine", { label }));
     case "assignment":
-      return `Picks ${label}`;
+      return resolve(msg("Picks {label}", { label }));
   }
 }
 

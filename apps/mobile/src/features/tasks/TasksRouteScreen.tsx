@@ -1,4 +1,5 @@
 import { StackActions, useNavigation } from "@react-navigation/native";
+import { useGT, useMessages } from "gt-react-native";
 
 import { TasksListScreen } from "./TasksList";
 import { buildInboxListItems, buildTasksListItems, tasksListNotices } from "./taskPresentation";
@@ -12,17 +13,19 @@ function useOpenTask() {
 
 /** G1: what needs you, then what is in progress. */
 export function TasksRouteScreen() {
+  const gt = useGT();
+  const m = useMessages();
   const data = useTasksData();
   const openTask = useOpenTask();
   return (
     <TasksListScreen
-      title="Tasks"
+      title={gt("Tasks")}
       tab="tasks"
       needsCount={data.sections.count}
       needsIncomplete={data.needsIncomplete}
       incomplete={data.incomplete}
-      items={buildTasksListItems(data.sections, data.needsIncomplete)}
-      notices={tasksListNotices(data.state, data.environmentLabel)}
+      items={buildTasksListItems(data.sections, data.needsIncomplete, m)}
+      notices={tasksListNotices(data.state, data.environmentLabel, m)}
       state={data.state}
       refreshing={data.refreshing}
       onRefresh={data.refresh}
@@ -34,17 +37,19 @@ export function TasksRouteScreen() {
 
 /** The asks alone: those blocking a run, then those ready to review. */
 export function TasksInboxRouteScreen() {
+  const gt = useGT();
+  const m = useMessages();
   const data = useTasksData();
   const openTask = useOpenTask();
   return (
     <TasksListScreen
-      title="Inbox"
+      title={gt("Inbox")}
       tab="inbox"
       needsCount={data.sections.count}
       needsIncomplete={data.needsIncomplete}
       incomplete={data.needsIncomplete}
-      items={buildInboxListItems(data.sections)}
-      notices={tasksListNotices(data.inboxState, data.environmentLabel)}
+      items={buildInboxListItems(data.sections, m)}
+      notices={tasksListNotices(data.inboxState, data.environmentLabel, m)}
       state={data.inboxState}
       refreshing={data.refreshing}
       onRefresh={data.refresh}

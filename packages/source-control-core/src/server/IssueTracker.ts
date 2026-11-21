@@ -72,7 +72,13 @@ export interface IssueTarget extends IssueScopeTarget {
 }
 
 /** An issue as the tracker sees it, before the service attaches project context. */
-export type TrackerIssueSummary = Omit<IssueSummary, "tracker" | "host" | "scope">;
+export type TrackerIssueSummary = Omit<IssueSummary, "tracker" | "host" | "scope"> & {
+  /**
+   * The tracker's own type for the item where it lists several types as issues (GitLab's
+   * `issue_type`: `issue`, `incident`, `test_case`, `task`). Absent where a tracker has one.
+   */
+  readonly kind?: string;
+};
 
 export interface TrackerIssuePage {
   readonly items: ReadonlyArray<TrackerIssueSummary>;

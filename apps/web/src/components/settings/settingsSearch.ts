@@ -988,7 +988,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "import-from-t3code",
-    title: "Import from T3 Code",
+    title: msg("Import from {product}", { product: "T3 Code" }),
     to: "/settings/maintenance",
     searchTerms: ["migrate copy projects settings providers keys sync t3 code"],
   },

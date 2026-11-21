@@ -3,6 +3,7 @@ import {
   FactoryIssueError,
   FactoryRepository,
   PositiveInt,
+  TrimmedNonEmptyString,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -13,14 +14,21 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as SqlSchema from "effect/sql/SqlSchema";
 import { FactoryLaunchCore } from "../factory/FactoryTaskLaunch.ts";
-import { issueOriginKey } from "../factory/FactoryOriginKey.ts";
+import {
+  issueOriginKey,
+  issueKeyOf,
+  issueScopeKey,
+  issueTrackerOf,
+} from "../factory/FactoryOriginKey.ts";
 
 export const FactoryLaunchIntent = Schema.Struct({
   repository: FactoryRepository,
-  // Frozen durable snapshot. Rows written before content revisions decode unchanged, and new rows
-  // keep the shape older binaries read. A revision belongs to live read/list results, never here.
+  // Legacy snapshots have only a number; new snapshots freeze the native key and tracker.
   issue: Schema.Struct({
     number: FactoryIssue.fields.number,
+    key: FactoryIssue.fields.key,
+    displayKey: FactoryIssue.fields.displayKey,
+    tracker: FactoryIssue.fields.tracker,
     title: FactoryIssue.fields.title,
     body: FactoryIssue.fields.body,
     state: FactoryIssue.fields.state,
@@ -29,7 +37,7 @@ export const FactoryLaunchIntent = Schema.Struct({
     updatedAt: FactoryIssue.fields.updatedAt,
     // Always null here; retained because older binaries require the key.
     task: FactoryIssue.fields.task,
-  }),
+  }).check(Schema.makeFilter((issue) => issue.number !== null || issue.key !== undefined)),
   ...FactoryLaunchCore.fields,
 });
 export type FactoryLaunchIntent = typeof FactoryLaunchIntent.Type;
@@ -39,7 +47,10 @@ const Binding = Schema.Struct({
   accepted: Schema.Literals([0, 1]),
 });
 export type FactoryIssueBinding = typeof Binding.Type;
-const Key = Schema.Struct({ canonicalKey: Schema.String, issueNumber: PositiveInt });
+const Key = Schema.Struct({
+  canonicalKey: Schema.String,
+  issueNumber: Schema.Union([PositiveInt, TrimmedNonEmptyString]),
+});
 type Key = typeof Key.Type;
 
 export class FactoryIssueLaunches extends Context.Service<
@@ -82,8 +93,8 @@ const make = Effect.gen(function* () {
     return yield* sql.withTransaction(
       Effect.gen(function* () {
         const key = {
-          canonicalKey: intent.repository.canonicalKey,
-          issueNumber: intent.issue.number,
+          canonicalKey: issueScopeKey(intent.repository),
+          issueNumber: intent.issue.number ?? issueKeyOf(intent.issue),
         };
         const current = yield* find(key);
         if (Option.isSome(current)) {
@@ -99,8 +110,10 @@ const make = Effect.gen(function* () {
         }
         yield* sql`INSERT INTO factory_issue_launches
         (thread_id, canonical_key, issue_number, request_command_id, intent_json, origin_key)
-        VALUES (${intent.threadId}, ${key.canonicalKey}, ${key.issueNumber}, ${intent.requestCommandId}, ${json},
-          ${issueOriginKey(intent.repository.provider, key.canonicalKey, key.issueNumber)})
+        VALUES (${intent.threadId}, ${key.canonicalKey},
+          ${typeof key.issueNumber === "number" ? sql`CAST(${key.issueNumber} AS INTEGER)` : key.issueNumber},
+          ${intent.requestCommandId}, ${json},
+          ${issueOriginKey(issueTrackerOf(intent.repository), key.canonicalKey, key.issueNumber)})
         ON CONFLICT DO NOTHING`;
         const winner = yield* find(key);
         if (Option.isNone(winner))

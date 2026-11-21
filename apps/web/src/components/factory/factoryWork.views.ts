@@ -1,4 +1,7 @@
 import type { FactoryWorkKind, FactoryWorkSummary } from "@t3tools/contracts";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 
 export type FactoryWorkBoardGrouping = "origin" | "project";
 
@@ -7,10 +10,10 @@ export function parseFactoryWorkBoardGrouping(value: unknown): FactoryWorkBoardG
 }
 
 export const FACTORY_WORK_ORIGIN_LABELS: Record<FactoryWorkKind, string> = {
-  issue: "Issue admission",
-  feed: "Feed admission",
-  brief: "Authored brief",
-  protocol: "Sealed protocol",
+  issue: msg("Issue admission"),
+  feed: msg("Feed admission"),
+  brief: msg("Authored brief"),
+  protocol: msg("Sealed protocol"),
 };
 const ORIGIN_ORDER: readonly FactoryWorkKind[] = ["issue", "feed", "brief", "protocol"];
 
@@ -44,13 +47,15 @@ export function groupFactoryWorkForBoard<E extends FactoryWorkEntry>(
       readonly key: string;
       readonly label: string;
     };
+    readonly resolve?: MessageResolver;
   },
 ): readonly FactoryWorkBoardColumn<E>[] {
+  const resolve = options.resolve ?? m;
   if (grouping === "origin") {
     return ORIGIN_ORDER.filter((kind) => options.kind === undefined || options.kind === kind).map(
       (kind) => ({
         key: kind,
-        label: FACTORY_WORK_ORIGIN_LABELS[kind],
+        label: resolve(FACTORY_WORK_ORIGIN_LABELS[kind]),
         entries: entries.filter((entry) => entry.item.ref.kind === kind),
       }),
     );

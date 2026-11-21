@@ -83,7 +83,9 @@ export function LocalEnvironmentSetting() {
                 ? gt(
                     "T3 Code Factory will restart without running a server on this computer. Any agents and terminals running here will stop, and other devices will no longer be able to connect to this computer. Your projects, history, and remote environments are unaffected.",
                   )
-                : gt("T3 Code Factory will restart and start running a server on this computer again.")}
+                : gt(
+                    "T3 Code Factory will restart and start running a server on this computer again.",
+                  )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {error ? <p className="px-6 pb-4 text-sm text-destructive">{error}</p> : null}

@@ -100,6 +100,12 @@ const make = Effect.gen(function* () {
       return { status: "not-modeled", kind: input.ref.kind, fetchedAt: yield* fetchedAt() };
     }
     const owner = yield* projection.issueOwner(input.ref);
+    if (typeof owner.issueNumber === "string" && input.issueKeys !== true)
+      return {
+        status: "owner-unavailable",
+        reason: "unsupported-provider",
+        fetchedAt: yield* fetchedAt(),
+      };
     if (owner.projectId === null)
       return {
         status: "owner-unavailable",
@@ -109,7 +115,9 @@ const make = Effect.gen(function* () {
     const observed = yield* relations
       .readAdmitted({
         projectId: owner.projectId,
-        issueNumber: owner.issueNumber,
+        ...(typeof owner.issueNumber === "number"
+          ? { issueNumber: owner.issueNumber }
+          : { key: owner.issueNumber }),
         canonicalKey: owner.canonicalKey,
       })
       .pipe(Effect.result);
@@ -134,6 +142,7 @@ const make = Effect.gen(function* () {
       reviewProjectId: owner.projectId,
       repository: observed.success.repository,
       issueNumber: observed.success.issueNumber,
+      ...(observed.success.key === undefined ? {} : { key: observed.success.key }),
       readiness,
       prerequisites: retained.map((edge) => ({
         edge,

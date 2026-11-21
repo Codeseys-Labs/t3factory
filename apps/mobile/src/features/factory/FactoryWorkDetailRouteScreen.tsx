@@ -21,6 +21,7 @@ import {
   type ProjectId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg, T, useGT, useMessages } from "gt-react-native";
 import { use } from "react";
 import { Linking, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -31,7 +32,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useProjects } from "../../state/entities";
 import { useEnvironments } from "../../state/environments";
-import { factoryEnvironment } from "../../state/factory";
+import { factoryEnvironment, factoryIssueKeysInput } from "../../state/factory";
 import { useEnvironmentQuery } from "../../state/query";
 import { useEnvironmentScope } from "../../state/session";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
@@ -64,10 +65,19 @@ const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 type DetailRoutes = FactoryWorkRoutes & { SettingsFactoryIssues: undefined };
 
 const HISTORY_TITLES = {
-  executions: "Executions",
-  runs: "Runs",
-  attempts: "Retry attempts",
-  outputs: "Outputs, acceptance and publication",
+  executions: msg("Executions"),
+  runs: msg("Runs"),
+  attempts: msg("Retry attempts"),
+  outputs: msg("Outputs, acceptance and publication"),
+} as const;
+
+const HISTORY_EMPTY = {
+  executions: msg("No retained executions. An unstarted item is not completed."),
+  runs: msg("No retained runs. An unstarted item is not completed."),
+  attempts: msg("No retained retry attempts. An unstarted item is not completed."),
+  outputs: msg(
+    "No retained outputs, acceptance and publication. An unstarted item is not completed.",
+  ),
 } as const;
 
 function Line(props: { readonly label: string; readonly value: string }) {
@@ -98,6 +108,8 @@ function workHistoryQuery(
 
 function WorkHistory(props: { readonly reference: FactoryWorkRef; readonly work: string }) {
   const { reference, work } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const view = useFactoryWorkView();
   const openThread = useOpenFactoryThread();
   const history = factoryWorkHistoryFor(view, work);
@@ -106,60 +118,66 @@ function WorkHistory(props: { readonly reference: FactoryWorkRef; readonly work:
   const section = history.selection.section;
   const pageLimitReached = history.cursors.length + 1 >= FACTORY_WORK_HISTORY_MAX_PAGES;
   return (
-    <SettingsSection title={HISTORY_TITLES[section]}>
+    <SettingsSection title={messages(HISTORY_TITLES[section])}>
       <View className="gap-3 px-4 py-3">
         {section !== "executions" ? (
           <View className="items-start">
             <Button
               tone="text"
-              label="Back to executions"
+              label={gt("Back to executions")}
               onPress={() => selectFactoryWorkHistory(work, { section: "executions" })}
             />
           </View>
         ) : null}
         {section === "outputs" ? (
           <Text className="text-xs text-foreground-muted">
-            Acceptance pins don't assert currentness. An unknown publication never authorizes a
-            retry. Exact evidence and delivery stay in the native review.
+            <T>
+              Acceptance pins don't assert currentness. An unknown publication never authorizes a
+              retry. Exact evidence and delivery stay in the native review.
+            </T>
           </Text>
         ) : null}
         {query.error ? (
           <View className="items-start gap-2">
             <Text className="text-sm text-danger-foreground">{query.error}</Text>
-            <Button label="Try again" onPress={query.refresh} />
+            <Button label={gt("Try again")} onPress={query.refresh} />
           </View>
         ) : data === null ? (
-          <Text className="text-sm text-foreground-muted">Loading history…</Text>
-        ) : data.entries.length === 0 ? (
           <Text className="text-sm text-foreground-muted">
-            No retained {HISTORY_TITLES[section].toLowerCase()}. An unstarted item is not completed.
+            <T>Loading history…</T>
           </Text>
+        ) : data.entries.length === 0 ? (
+          <Text className="text-sm text-foreground-muted">{messages(HISTORY_EMPTY[section])}</Text>
         ) : (
           data.entries.map((entry) => (
             <View key={entry.id} className="gap-2 rounded-2xl border border-border-subtle p-3">
               <Text className="text-sm text-foreground" selectable>
-                {entry.label} · {entry.state}
-                {entry.superseded ? " · superseded" : ""}
+                {entry.superseded
+                  ? gt("{label} · {state} · superseded", {
+                      label: entry.label,
+                      state: entry.state,
+                    })
+                  : gt("{label} · {state}", { label: entry.label, state: entry.state })}
               </Text>
               <Text className="text-xs text-foreground-muted" selectable>
                 {entry.id}
               </Text>
               {entry.pin ? (
                 <Text className="font-mono text-xs text-foreground-muted" selectable>
-                  Pin: {entry.pin}
+                  {gt("Pin: {pin}", { pin: entry.pin })}
                 </Text>
               ) : null}
               <View className="flex-row flex-wrap gap-2">
                 <Button
-                  label="Open owning thread"
+                  label={gt("Open owning thread")}
                   disabled={entry.state === "missing" || entry.state === "reserved or missing"}
                   onPress={() => openThread(reference.environmentId, entry.threadId)}
                 />
                 {section === "executions" ? (
                   <>
                     <Button
-                      label="Runs"
-                      accessibilityLabel={`Runs of ${entry.label}`}
+                      label={gt("Runs")}
+                      accessibilityLabel={gt("Runs of {label}", { label: entry.label })}
                       onPress={() =>
                         selectFactoryWorkHistory(work, {
                           section: "runs",
@@ -168,8 +186,10 @@ function WorkHistory(props: { readonly reference: FactoryWorkRef; readonly work:
                       }
                     />
                     <Button
-                      label="Outputs"
-                      accessibilityLabel={`Outputs, acceptance and publication of ${entry.label}`}
+                      label={gt("Outputs")}
+                      accessibilityLabel={gt("Outputs, acceptance and publication of {label}", {
+                        label: entry.label,
+                      })}
                       onPress={() =>
                         selectFactoryWorkHistory(work, {
                           section: "outputs",
@@ -180,8 +200,8 @@ function WorkHistory(props: { readonly reference: FactoryWorkRef; readonly work:
                   </>
                 ) : section === "runs" && entry.runId !== null ? (
                   <Button
-                    label="Retry attempts"
-                    accessibilityLabel={`Retry attempts of ${entry.label}`}
+                    label={gt("Retry attempts")}
+                    accessibilityLabel={gt("Retry attempts of {label}", { label: entry.label })}
                     onPress={() =>
                       selectFactoryWorkHistory(work, {
                         section: "attempts",
@@ -197,14 +217,14 @@ function WorkHistory(props: { readonly reference: FactoryWorkRef; readonly work:
         )}
         <View className="flex-row flex-wrap gap-2">
           <Button
-            label="Previous page"
-            accessibilityLabel="Previous history page"
+            label={gt("Previous page")}
+            accessibilityLabel={gt("Previous history page")}
             disabled={history.cursors.length === 0}
             onPress={() => moveFactoryWorkHistoryPage(work, null)}
           />
           <Button
-            label="Next page"
-            accessibilityLabel="Next history page"
+            label={gt("Next page")}
+            accessibilityLabel={gt("Next history page")}
             disabled={!data?.nextCursor || pageLimitReached}
             onPress={() => {
               if (data?.nextCursor) moveFactoryWorkHistoryPage(work, data.nextCursor);
@@ -213,8 +233,10 @@ function WorkHistory(props: { readonly reference: FactoryWorkRef; readonly work:
         </View>
         {data?.nextCursor && pageLimitReached ? (
           <Text className="text-xs text-foreground-muted">
-            History page limit reached. Earlier pages remain available; choose a narrower history
-            section to inspect more.
+            <T>
+              History page limit reached. Earlier pages remain available; choose a narrower history
+              section to inspect more.
+            </T>
           </Text>
         ) : null}
       </View>
@@ -231,6 +253,8 @@ function WorkDetail(props: {
   readonly routeContext: FactoryWorkDetailParams;
 }) {
   const { reference, work, data } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const navigation = useNavigation<NativeStackNavigationProp<DetailRoutes>>();
   const openThread = useOpenFactoryThread();
   const scope = useFactoryInboxSelection();
@@ -247,6 +271,7 @@ function WorkDetail(props: {
       data.reviewProjectId !== null && props.projectLabel(data.reviewProjectId) !== null,
     capabilities: props.capabilities,
     canOperate: reference.kind === "issue" ? canStartIssue : canStartBrief,
+    resolve: messages,
   });
   const sourceUrl = data.item.sourceUrl === null ? null : safeFactoryIssueUrl(data.item.sourceUrl);
   const openRelated = (id: string) => {
@@ -255,76 +280,102 @@ function WorkDetail(props: {
     navigation.push("SettingsFactoryWork", { work: JSON.stringify(related) });
   };
   const revisionLabel =
-    reference.kind === "protocol" ? "Protocol" : reference.kind === "brief" ? "Brief" : "Source";
+    reference.kind === "protocol"
+      ? gt("Protocol")
+      : reference.kind === "brief"
+        ? gt("Brief")
+        : gt("Source");
   return (
     <>
-      <SettingsSection title={FACTORY_WORK_KIND_LABELS[reference.kind]}>
+      <SettingsSection title={messages(FACTORY_WORK_KIND_LABELS[reference.kind])}>
         <View className="gap-1 px-4 py-3">
           <Text className="text-lg font-t3-medium text-foreground" selectable>
             {data.item.title}
           </Text>
           <Text className="text-xs text-foreground-muted">
-            Observed {new Date(data.fetchedAt).toLocaleString()} · created{" "}
-            {new Date(data.item.createdAt).toLocaleString()}
+            {gt("Observed {observed} · created {created}", {
+              observed: new Date(data.fetchedAt).toLocaleString(),
+              created: new Date(data.item.createdAt).toLocaleString(),
+            })}
           </Text>
         </View>
         <Line
-          label="Admission or authoring project"
-          value={`${props.projectLabel(data.item.projectId) ?? `${data.item.projectId} (unavailable here)`}${data.projectAvailable ? "" : " · no longer available on its server"}`}
-        />
-        <Line
-          label="Current native review project"
+          label={gt("Admission or authoring project")}
           value={
-            data.reviewProjectId === null
-              ? "Unavailable"
-              : (props.projectLabel(data.reviewProjectId) ??
-                `${data.reviewProjectId} (unavailable here)`)
+            data.projectAvailable
+              ? (props.projectLabel(data.item.projectId) ??
+                gt("{project} (unavailable here)", { project: data.item.projectId }))
+              : gt("{project} · no longer available on its server", {
+                  project:
+                    props.projectLabel(data.item.projectId) ??
+                    gt("{project} (unavailable here)", { project: data.item.projectId }),
+                })
           }
         />
         <Line
-          label="Source"
+          label={gt("Current native review project")}
+          value={
+            data.reviewProjectId === null
+              ? gt("Unavailable")
+              : (props.projectLabel(data.reviewProjectId) ??
+                gt("{project} (unavailable here)", { project: data.reviewProjectId }))
+          }
+        />
+        <Line
+          label={gt("Source")}
           value={[
             reference.kind === "protocol"
-              ? "Sealed protocol."
+              ? gt("Sealed protocol.")
               : reference.kind === "brief"
-                ? "Authored brief."
-                : "Source snapshot saved at admission.",
-            data.item.sourceState === null ? null : `Source state then: ${data.item.sourceState}.`,
+                ? gt("Authored brief.")
+                : gt("Source snapshot saved at admission."),
+            data.item.sourceState === null
+              ? null
+              : gt("Source state then: {state}.", { state: data.item.sourceState }),
             data.item.revision === null
-              ? "No stored revision."
-              : `${revisionLabel} revision ${data.item.revision}.`,
+              ? gt("No stored revision.")
+              : gt("{label} revision {revision}.", {
+                  label: revisionLabel,
+                  revision: String(data.item.revision),
+                }),
             data.item.sourceUrl ?? null,
           ]
             .filter((part): part is string => part !== null)
             .join(" ")}
         />
         <Line
-          label="Planning and runtime"
-          value="Planning stage unavailable. Runtime is shown per execution below; idle is not completion."
+          label={gt("Planning and runtime")}
+          value={gt(
+            "Planning stage unavailable. Runtime is shown per execution below; idle is not completion.",
+          )}
         />
       </SettingsSection>
 
-      <SettingsSection title="Intent snapshot">
+      <SettingsSection title={gt("Intent snapshot")}>
         <View className="gap-2 px-4 py-3">
           <Text className="text-sm text-foreground" selectable>
             {data.snapshot}
           </Text>
           {data.snapshotTruncated ? (
             <Text className="text-xs text-foreground-muted">
-              Preview truncated. The native review holds the full intent.
+              <T>Preview truncated. The native review holds the full intent.</T>
             </Text>
           ) : null}
         </View>
       </SettingsSection>
 
-      <SettingsSection title="Actions">
+      <SettingsSection title={gt("Actions")}>
         <View className="items-start gap-3 px-4 py-3">
           {review.kind === "open" ? (
             <>
               <Button
                 tone="primary"
                 label={review.label}
-                accessibilityHint={`Opens ${review.section === "issues" ? "Issues" : "Briefs"} for the review project. Back to Work returns here.`}
+                accessibilityHint={
+                  review.section === "issues"
+                    ? gt("Opens Issues for the review project. Back to Work returns here.")
+                    : gt("Opens Briefs for the review project. Back to Work returns here.")
+                }
                 onPress={() => {
                   openFactoryWorkReview({
                     environmentId: reference.environmentId,
@@ -345,14 +396,14 @@ function WorkDetail(props: {
           )}
           {sourceUrl ? (
             <Button
-              label="Open live source separately"
+              label={gt("Open live source separately")}
               icon="arrow.up.right"
               onPress={() => void Linking.openURL(sourceUrl)}
             />
           ) : null}
           {data.projectCoordinatorThreadId !== null ? (
             <Button
-              label="Project coordinator context"
+              label={gt("Project coordinator context")}
               onPress={() => {
                 if (data.projectCoordinatorThreadId)
                   openThread(reference.environmentId, data.projectCoordinatorThreadId);
@@ -361,8 +412,8 @@ function WorkDetail(props: {
           ) : null}
           {data.supersedes !== null ? (
             <Button
-              label="Previous concrete brief"
-              accessibilityLabel={`Previous concrete brief ${data.supersedes}`}
+              label={gt("Previous concrete brief")}
+              accessibilityLabel={gt("Previous concrete brief {id}", { id: data.supersedes })}
               onPress={() => {
                 if (data.supersedes) openRelated(data.supersedes);
               }}
@@ -370,16 +421,18 @@ function WorkDetail(props: {
           ) : null}
           {data.item.supersededBy !== null ? (
             <Button
-              label="Replacement brief"
-              accessibilityLabel={`Replacement brief ${data.item.supersededBy}`}
+              label={gt("Replacement brief")}
+              accessibilityLabel={gt("Replacement brief {id}", { id: data.item.supersededBy })}
               onPress={() => {
                 if (data.item.supersededBy) openRelated(data.item.supersededBy);
               }}
             />
           ) : null}
           <Text className="text-xs text-foreground-muted">
-            The project coordinator is project context, not this item's provenance. Inspecting Work
-            doesn't launch, reconcile, accept or publish.
+            <T>
+              The project coordinator is project context, not this item's provenance. Inspecting
+              Work doesn't launch, reconcile, accept or publish.
+            </T>
           </Text>
         </View>
       </SettingsSection>
@@ -406,6 +459,8 @@ function WorkDetail(props: {
 }
 
 export function FactoryWorkDetailRouteScreen() {
+  const gt = useGT();
+  const messages = useMessages();
   const registry = use(RegistryContext);
   const view = useFactoryWorkView();
   const route = useRoute<RouteProp<FactoryWorkRoutes, "SettingsFactoryWork">>();
@@ -440,7 +495,12 @@ export function FactoryWorkDetailRouteScreen() {
     reference !== null && access === "current"
       ? factoryEnvironment.readWork({
           environmentId: reference.environmentId,
-          input: { ref: reference },
+          input: {
+            ref: reference,
+            ...factoryIssueKeysInput(
+              environment?.serverConfig?.environment.capabilities.factoryIssueKeys === true,
+            ),
+          },
         })
       : null,
   );
@@ -457,27 +517,31 @@ export function FactoryWorkDetailRouteScreen() {
     body = (
       <EmptyState
         variant="plain"
-        title="Work unavailable"
-        detail="This work reference can't be read. Go back and choose an item again."
+        title={gt("Work unavailable")}
+        detail={gt("This work reference can't be read. Go back and choose an item again.")}
       />
     );
   } else if (status !== "current") {
     body = (
       <EmptyState
         variant="plain"
-        title={status === "loading" ? "Loading work" : "Can't inspect"}
-        detail={FACTORY_WORK_OWNER_MESSAGES[status]}
+        title={status === "loading" ? gt("Loading work") : gt("Can't inspect")}
+        detail={messages(FACTORY_WORK_OWNER_MESSAGES[status])}
       />
     );
   } else if (query.error) {
     body = (
       <View className="items-start gap-3">
         <Text className="text-sm text-danger-foreground">{query.error}</Text>
-        <Button tone="primary" label="Try again" onPress={query.refresh} />
+        <Button tone="primary" label={gt("Try again")} onPress={query.refresh} />
       </View>
     );
   } else if (data === null) {
-    body = <Text className="text-sm text-foreground-muted">Loading work…</Text>;
+    body = (
+      <Text className="text-sm text-foreground-muted">
+        <T>Loading work…</T>
+      </Text>
+    );
   } else {
     body = (
       <WorkDetail
@@ -492,7 +556,7 @@ export function FactoryWorkDetailRouteScreen() {
   }
 
   return (
-    <SettingsScreen title="Work">
+    <SettingsScreen title={gt("Work")}>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
@@ -503,8 +567,10 @@ export function FactoryWorkDetailRouteScreen() {
         {route.params?.returnTo ? (
           <View className="items-start">
             <Button
-              label="Return to previous selection"
-              accessibilityHint="Restores the Work detail you inspected this prerequisite from"
+              label={gt("Return to previous selection")}
+              accessibilityHint={gt(
+                "Restores the Work detail you inspected this prerequisite from",
+              )}
               onPress={() => {
                 const target = route.params.returnTo;
                 if (target) navigationReturn(target);
@@ -519,9 +585,9 @@ export function FactoryWorkDetailRouteScreen() {
             </Text>
             <Button
               tone="text"
-              label="Refresh"
+              label={gt("Refresh")}
               icon="arrow.clockwise"
-              accessibilityLabel="Refresh work details"
+              accessibilityLabel={gt("Refresh work details")}
               disabled={status !== "current" || query.isPending}
               onPress={() => {
                 query.refresh();

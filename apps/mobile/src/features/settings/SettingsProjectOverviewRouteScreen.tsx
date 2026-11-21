@@ -441,11 +441,11 @@ function ProjectOverviewContent(props: {
           );
         })}
       </SettingsSection>
-      <SettingsSection title="Factory">
+      <SettingsSection title={gt("Factory")}>
         <SettingsActionRow
           icon="list.number"
-          label="Issues"
-          description="Browse this project's GitHub issues and start an isolated task."
+          label={gt("Issues")}
+          description={gt("Browse this project's GitHub issues and start an isolated task.")}
           onPress={() => {
             openFactoryIssues(representative.environmentId, representative.id);
             navigation.navigate("SettingsFactoryIssues");

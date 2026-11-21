@@ -19,6 +19,7 @@ import {
   type ProjectId,
 } from "@t3tools/contracts";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { msg, T, useGT, Var } from "gt-react";
 import { ChevronDownIcon, FactoryIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -31,6 +32,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { useEnvironmentScope, useEnvironmentsWithScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { buildThreadRouteParams } from "../../threadRoutes";
+import { m } from "~/i18n/messages";
 import { RelativeTime } from "../RelativeTime";
 import { useSettingsScope } from "../settings/SettingsScopeContext";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
@@ -85,6 +87,7 @@ import { useFactoryClaims, type FactoryClaimsView } from "./useFactoryClaims";
 
 export function FactorySourcesPage() {
   const search = useSearch({ from: "/_chat/factory" });
+  const gt = useGT();
   const { scope, groups, selectScope } = useSettingsScope();
   const { isReady, environments } = useEnvironments();
   const allProjects = useProjects();
@@ -112,11 +115,13 @@ export function FactorySourcesPage() {
     <section className="min-w-0 space-y-5" aria-labelledby="factory-sources-title">
       <div className="space-y-1">
         <h2 id="factory-sources-title" className="font-medium text-lg">
-          Sources
+          <T>Sources</T>
         </h2>
         <p className="text-muted-foreground text-sm">
-          Bind public RSS or Atom feeds to one checkout and review what they publish. Nothing starts
-          on its own: an item becomes a task only when you review and admit it.
+          <T>
+            Bind public RSS or Atom feeds to one checkout and review what they publish. Nothing
+            starts on its own: an item becomes a task only when you review and admit it.
+          </T>
         </p>
       </div>
       {member === null ? (
@@ -124,52 +129,62 @@ export function FactorySourcesPage() {
           scope={scope}
           groups={groups}
           environments={environments}
-          intro="Choose a checkout to manage its feed sources. Feeds belong to one checkout; they are not combined into a global queue."
-          emptyDescription="Connect an environment and add a repository checkout to bind feed sources."
+          intro={gt(
+            "Choose a checkout to manage its feed sources. Feeds belong to one checkout; they are not combined into a global queue.",
+          )}
+          emptyDescription={gt(
+            "Connect an environment and add a repository checkout to bind feed sources.",
+          )}
           statusFor={(owner) =>
             !owner
-              ? "Environment unavailable"
+              ? gt("Environment unavailable")
               : owner.connection.phase !== "connected"
-                ? "Offline. Reconnect to read feed sources"
+                ? gt("Offline. Reconnect to read feed sources")
                 : owner.serverConfig === null
-                  ? "Server capabilities unknown"
+                  ? gt("Server capabilities unknown")
                   : owner.serverConfig.environment.capabilities.factoryFeeds !== true
-                    ? "Feed sources unsupported. Update this server"
+                    ? gt("Feed sources unsupported. Update this server")
                     : !readableIds.has(owner.environmentId)
-                      ? "Read access unavailable"
-                      : "Connected · feed sources available"
+                      ? gt("Read access unavailable")
+                      : gt("Connected · feed sources available")
           }
           onChoose={selectScope}
         />
       ) : !environment || !project ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Checkout unavailable"
-          description="This checkout is no longer available. Choose another scope."
+          title={gt("Checkout unavailable")}
+          description={gt("This checkout is no longer available. Choose another scope.")}
         />
       ) : environment.connection.phase !== "connected" ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Environment offline"
-          description={`Reconnect ${environment.label} to read this checkout's feed sources.`}
+          title={gt("Environment offline")}
+          description={gt("Reconnect {label} to read this checkout's feed sources.", {
+            label: environment.label,
+          })}
         />
       ) : environment.serverConfig === null ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Server capabilities unknown"
-          description="Wait for this environment to finish connecting before opening its sources."
+          title={gt("Server capabilities unknown")}
+          description={gt(
+            "Wait for this environment to finish connecting before opening its sources.",
+          )}
         />
       ) : environment.serverConfig.environment.capabilities.factoryFeeds !== true ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Feed sources unsupported"
-          description={`Update the server on ${environment.label} to bind feed sources.`}
+          title={gt("Feed sources unsupported")}
+          description={gt("Update the server on {label} to bind feed sources.", {
+            label: environment.label,
+          })}
         />
       ) : !canRead ? (
         <FactoryEmptyState
           icon={<FactoryIcon />}
-          title="Read access unavailable"
-          description="This connection needs orchestration read access to list feed sources."
+          title={gt("Read access unavailable")}
+          description={gt("This connection needs orchestration read access to list feed sources.")}
         />
       ) : (
         <FactorySourcesWorkspace
@@ -212,6 +227,7 @@ function FactorySourcesWorkspace(props: {
   readonly issuesSearch: FactorySearch;
 }) {
   const { environmentId, project } = props;
+  const gt = useGT();
   const navigate = useNavigate();
   const reviewFeed = parseFactoryFeedReview(props.issuesSearch.reviewFeed);
   const sourcePage = useEnvironmentQuery(
@@ -402,20 +418,26 @@ function FactorySourcesWorkspace(props: {
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <ToggleGroup
-          aria-label="Item visibility"
+          aria-label={gt("Item visibility")}
           value={[showDismissed ? "all" : "open"]}
           onValueChange={(values) => {
             const next = values[0];
             if (next === "open" || next === "all") setShowDismissed(next === "all");
           }}
         >
-          <Toggle value="open">Open</Toggle>
-          <Toggle value="all">Include dismissed</Toggle>
+          <Toggle value="open">
+            <T>Open</T>
+          </Toggle>
+          <Toggle value="all">
+            <T>Include dismissed</T>
+          </Toggle>
         </ToggleGroup>
         <div className="flex flex-wrap items-center gap-2">
           {candidateList ? (
             <span className="text-muted-foreground text-xs">
-              Updated <RelativeTime timestamp={candidateList.fetchedAt} />
+              <T>
+                Updated <RelativeTime timestamp={candidateList.fetchedAt} />
+              </T>
             </span>
           ) : null}
           <Button
@@ -426,7 +448,7 @@ function FactorySourcesWorkspace(props: {
             aria-busy={refreshing}
           >
             <RefreshIcon size="sm" refreshing={refreshing} />
-            Refresh
+            <T>Refresh</T>
           </Button>
         </div>
       </div>
@@ -434,24 +456,30 @@ function FactorySourcesWorkspace(props: {
       {!canBind ? (
         <Alert variant="warning">
           <AlertDescription>
-            This connection cannot bind or unbind feeds. Binding makes {props.environmentLabel}{" "}
-            fetch the address, so it needs settings write access; items can still be reviewed.
+            {gt(
+              "This connection cannot bind or unbind feeds. Binding makes {label} fetch the address, so it needs settings write access; items can still be reviewed.",
+              { label: props.environmentLabel },
+            )}
           </AlertDescription>
         </Alert>
       ) : null}
       {!canAdmit ? (
         <Alert variant="warning">
           <AlertDescription>
-            This connection cannot admit items. Admitting needs orchestration and source control
-            write access; existing tasks can still be opened.
+            <T>
+              This connection cannot admit items. Admitting needs orchestration and source control
+              write access; existing tasks can still be opened.
+            </T>
           </AlertDescription>
         </Alert>
       ) : null}
       {candidateList !== null && repository === null ? (
         <Alert variant="info">
           <AlertDescription>
-            This project has no usable GitHub repository remote. Items can be reviewed, but
-            admitting one needs a GitHub origin.
+            <T>
+              This project has no usable GitHub repository remote. Items can be reviewed, but
+              admitting one needs a GitHub origin.
+            </T>
           </AlertDescription>
         </Alert>
       ) : null}
@@ -488,7 +516,7 @@ function FactorySourcesWorkspace(props: {
               aria-busy={refreshing}
             >
               <RefreshIcon size="sm" refreshing={refreshing} />
-              Retry
+              <T>Retry</T>
             </Button>
           }
         />
@@ -499,11 +527,13 @@ function FactorySourcesWorkspace(props: {
         </div>
       ) : sourceList.sources.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          No feeds are bound to this project. Bind one above; its items appear here after the first
-          check.
+          <T>
+            No feeds are bound to this project. Bind one above; its items appear here after the
+            first check.
+          </T>
         </p>
       ) : (
-        <ul className="space-y-4" aria-label="Bound feeds">
+        <ul className="space-y-4" aria-label={gt("Bound feeds")}>
           {sourceList.sources.map((source) => (
             <FeedSourceCard
               key={source.id}
@@ -604,6 +634,7 @@ function FeedBindForm(props: {
   readonly onChanged: () => void;
 }) {
   const { environmentId, projectId } = props;
+  const gt = useGT();
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Moves DOM input focus when the sidebar requests source binding.
@@ -628,7 +659,7 @@ function FeedBindForm(props: {
       setBound(null);
       setFailure({
         kind: "other",
-        title: "Feed address rejected",
+        title: m(msg("Feed address rejected")),
         message: check.message,
         reason: null,
       });
@@ -661,7 +692,9 @@ function FeedBindForm(props: {
         void submit();
       }}
     >
-      <Label htmlFor={inputId}>Feed address</Label>
+      <Label htmlFor={inputId}>
+        <T>Feed address</T>
+      </Label>
       <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-64 flex-1">
           <Input
@@ -683,13 +716,14 @@ function FeedBindForm(props: {
           disabled={!props.canBind || pending || props.url.trim().length === 0}
           aria-busy={pending}
         >
-          {pending ? "Binding…" : "Bind feed"}
+          {pending ? <T>Binding…</T> : <T>Bind feed</T>}
         </Button>
       </div>
       <p id={`${inputId}-help`} className="text-muted-foreground text-xs">
-        {props.environmentLabel} will fetch this address itself, now and whenever you press Check
-        now. Only public https:// RSS 2.0 or Atom 1.0 feeds are supported. The address is shown
-        below exactly as the server stored it.
+        {gt(
+          "{label} will fetch this address itself, now and whenever you press Check now. Only public https:// RSS 2.0 or Atom 1.0 feeds are supported. The address is shown below exactly as the server stored it.",
+          { label: props.environmentLabel },
+        )}
       </p>
       {failure !== null ? (
         <Alert variant="error">
@@ -701,8 +735,15 @@ function FeedBindForm(props: {
         <Alert variant="success">
           <AlertDescription>
             <span role="status" className="[overflow-wrap:anywhere]">
-              Bound {factoryIssueReviewText(bound.locator)}. {bound.observed}{" "}
-              {bound.observed === 1 ? "item" : "items"} observed.
+              {bound.observed === 1
+                ? gt("Bound {locator}. {observed} item observed.", {
+                    locator: factoryIssueReviewText(bound.locator),
+                    observed: String(bound.observed),
+                  })
+                : gt("Bound {locator}. {observed} items observed.", {
+                    locator: factoryIssueReviewText(bound.locator),
+                    observed: String(bound.observed),
+                  })}
             </span>
           </AlertDescription>
         </Alert>
@@ -733,6 +774,7 @@ function FeedSourceCard(props: {
   readonly onOpenTask: (task: FactoryIssueTask) => void;
 }) {
   const { environmentId, projectId, source } = props;
+  const gt = useGT();
   const runRefresh = useAtomCommand(factoryEnvironment.refreshFeedSource, {
     label: "factory feed refresh",
     reportFailure: false,
@@ -759,8 +801,10 @@ function FeedSourceCard(props: {
     if (result._tag === "Success") {
       setNote(
         result.value.notModified
-          ? "Not modified since the last check."
-          : `Checked. ${result.value.observed} ${result.value.observed === 1 ? "item" : "items"} observed.`,
+          ? m(msg("Not modified since the last check."))
+          : result.value.observed === 1
+            ? m(msg("Checked. {count} item observed.", { count: String(result.value.observed) }))
+            : m(msg("Checked. {count} items observed.", { count: String(result.value.observed) })),
       );
       return;
     }
@@ -799,11 +843,11 @@ function FeedSourceCard(props: {
           </p>
           <p className="text-muted-foreground text-xs">
             {source.lastCheckedAt === null ? (
-              "Not checked yet."
+              <T>Not checked yet.</T>
             ) : (
-              <>
+              <T>
                 Checked <RelativeTime timestamp={source.lastCheckedAt} />
-              </>
+              </T>
             )}
           </p>
           {description.detail !== null ? (
@@ -811,7 +855,7 @@ function FeedSourceCard(props: {
           ) : null}
           {source.lastError !== null ? (
             <p className="text-destructive text-xs [overflow-wrap:anywhere]">
-              Last error: {source.lastError}
+              {gt("Last error: {error}", { error: source.lastError })}
             </p>
           ) : null}
         </div>
@@ -830,7 +874,7 @@ function FeedSourceCard(props: {
               aria-busy={busy === "unbind"}
               onClick={() => void unbind()}
             >
-              {busy === "unbind" ? "Unbinding…" : "Unbind"}
+              {busy === "unbind" ? <T>Unbinding…</T> : <T>Unbind</T>}
             </Button>
           ) : (
             <Button
@@ -839,7 +883,7 @@ function FeedSourceCard(props: {
               disabled={!props.canBind}
               onClick={() => props.onRebind(source.locator)}
             >
-              Bind again
+              <T>Bind again</T>
             </Button>
           )}
         </div>
@@ -858,15 +902,22 @@ function FeedSourceCard(props: {
       {props.candidates.length === 0 ? (
         <p className="text-muted-foreground text-sm">
           {source.lastCheckedAt === null
-            ? "No items yet. Check the feed to observe its items."
-            : "No items to show."}
+            ? gt("No items yet. Check the feed to observe its items.")
+            : gt("No items to show.")}
           {props.dismissedHidden > 0
-            ? ` ${props.dismissedHidden} dismissed ${props.dismissedHidden === 1 ? "item is" : "items are"} hidden.`
+            ? props.dismissedHidden === 1
+              ? gt(" {count} dismissed item is hidden.", { count: String(props.dismissedHidden) })
+              : gt(" {count} dismissed items are hidden.", {
+                  count: String(props.dismissedHidden),
+                })
             : null}
         </p>
       ) : (
         <>
-          <ul className="space-y-2" aria-label={`Items from ${factoryIssueReviewText(title)}`}>
+          <ul
+            className="space-y-2"
+            aria-label={gt("Items from {title}", { title: factoryIssueReviewText(title) })}
+          >
             {props.candidates.map((candidate) => (
               <FeedCandidateRow
                 key={candidate.itemKey}
@@ -889,8 +940,11 @@ function FeedSourceCard(props: {
           </ul>
           {props.dismissedHidden > 0 ? (
             <p className="text-muted-foreground text-xs">
-              {props.dismissedHidden} dismissed{" "}
-              {props.dismissedHidden === 1 ? "item is" : "items are"} hidden.
+              {props.dismissedHidden === 1
+                ? gt("{count} dismissed item is hidden.", { count: String(props.dismissedHidden) })
+                : gt("{count} dismissed items are hidden.", {
+                    count: String(props.dismissedHidden),
+                  })}
             </p>
           ) : null}
         </>
@@ -905,6 +959,7 @@ function CheckNowButton(props: {
   readonly pending: boolean;
   readonly onCheck: () => void;
 }) {
+  const gt = useGT();
   // Only this button re-renders each second, and only to open when the server's floor passes.
   const nowMs = useNowSecond();
   const availability = factoryFeedRefreshAvailability(props.source, nowMs);
@@ -917,11 +972,13 @@ function CheckNowButton(props: {
       onClick={props.onCheck}
     >
       <RefreshIcon size="sm" refreshing={props.pending} />
-      {props.pending
-        ? "Checking…"
-        : availability.kind === "waiting"
-          ? `Check again in ${availability.label}`
-          : "Check now"}
+      {props.pending ? (
+        <T>Checking…</T>
+      ) : availability.kind === "waiting" ? (
+        gt("Check again in {duration}", { duration: availability.label })
+      ) : (
+        <T>Check now</T>
+      )}
     </Button>
   );
 }
@@ -943,6 +1000,7 @@ function FeedCandidateRow(props: {
   readonly onOpenTask: (task: FactoryIssueTask) => void;
 }) {
   const { environmentId, projectId, source, candidate } = props;
+  const gt = useGT();
   const detailsId = useId();
   const runDismiss = useAtomCommand(factoryEnvironment.setFeedCandidateDismissed, {
     label: "factory feed dismissal",
@@ -1019,7 +1077,9 @@ function FeedCandidateRow(props: {
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1 basis-48 space-y-1.5">
           {title === null ? (
-            <p className="text-muted-foreground text-sm">Untitled item</p>
+            <p className="text-muted-foreground text-sm">
+              <T>Untitled item</T>
+            </p>
           ) : (
             <p className="font-medium text-sm [overflow-wrap:anywhere]">{title}</p>
           )}
@@ -1041,13 +1101,17 @@ function FeedCandidateRow(props: {
             ))}
             {candidate.publishedAt !== null ? (
               <span className="text-muted-foreground text-xs">
-                published <RelativeTime timestamp={candidate.publishedAt} />
+                <T>
+                  published <RelativeTime timestamp={candidate.publishedAt} />
+                </T>
               </span>
             ) : null}
           </div>
           {candidate.disposition === "dismissed" && candidate.dismissalNote !== null ? (
             <p className="text-muted-foreground text-xs [overflow-wrap:anywhere]">
-              Dismissal note: {factoryIssueReviewText(candidate.dismissalNote)}
+              {gt("Dismissal note: {note}", {
+                note: factoryIssueReviewText(candidate.dismissalNote),
+              })}
             </p>
           ) : null}
           {presentation ? (
@@ -1056,7 +1120,7 @@ function FeedCandidateRow(props: {
               <span className="text-muted-foreground text-xs">{presentation.detail}</span>
               {ownerTitle !== null ? (
                 <span className="text-muted-foreground text-xs [overflow-wrap:anywhere]">
-                  Claimed by {ownerTitle}.
+                  {gt("Claimed by {owner}.", { owner: ownerTitle })}
                 </span>
               ) : null}
             </div>
@@ -1072,11 +1136,11 @@ function FeedCandidateRow(props: {
               variant="ghost"
               aria-expanded={expanded}
               aria-controls={expanded ? detailsId : undefined}
-              aria-label={`${expanded ? "Hide" : "Show"} full item`}
+              aria-label={expanded ? gt("Hide full item") : gt("Show full item")}
               onClick={() => setExpanded(!expanded)}
             >
               <ChevronDownIcon className={expanded ? "rotate-180" : undefined} />
-              Details
+              <T>Details</T>
             </Button>
             {action.kind === "admit" ? (
               <Button
@@ -1084,7 +1148,7 @@ function FeedCandidateRow(props: {
                 disabled={!props.canAdmit || admitBusy}
                 onClick={() => props.onAdmit(candidate, "admit")}
               >
-                Review and admit
+                <T>Review and admit</T>
               </Button>
             ) : action.kind === "resume" ? (
               <Button
@@ -1093,7 +1157,7 @@ function FeedCandidateRow(props: {
                 aria-busy={admitting}
                 onClick={() => props.onAdmit(candidate, "resume")}
               >
-                {admitting ? "Resuming…" : "Resume launch"}
+                {admitting ? <T>Resuming…</T> : <T>Resume launch</T>}
               </Button>
             ) : action.kind === "restart" ? (
               <Button
@@ -1102,11 +1166,11 @@ function FeedCandidateRow(props: {
                 disabled={!props.canAdmit || admitBusy}
                 onClick={() => props.onAdmit(candidate, "restart")}
               >
-                New attempt…
+                <T>New attempt…</T>
               </Button>
             ) : action.kind === "open" ? (
               <Button size="sm" variant="outline" onClick={() => props.onOpenTask(action.task)}>
-                Open thread
+                <T>Open thread</T>
               </Button>
             ) : null}
             {dismissal === "dismiss" ? (
@@ -1116,7 +1180,7 @@ function FeedCandidateRow(props: {
                 disabled={!props.canDismiss || pending !== null}
                 onClick={() => setDismissing(candidate)}
               >
-                Dismiss…
+                <T>Dismiss…</T>
               </Button>
             ) : dismissal === "restore" ? (
               <Button
@@ -1126,7 +1190,7 @@ function FeedCandidateRow(props: {
                 aria-busy={pending === "restore"}
                 onClick={() => void setDismissed(candidate, false)}
               >
-                {pending === "restore" ? "Restoring…" : "Restore"}
+                {pending === "restore" ? <T>Restoring…</T> : <T>Restore</T>}
               </Button>
             ) : null}
           </div>
@@ -1137,28 +1201,39 @@ function FeedCandidateRow(props: {
       </div>
       {action.kind === "project-issue" ? (
         <p className="text-muted-foreground text-xs">
-          Points at a project issue
-          {candidate.forgeReference !== null ? ` (#${candidate.forgeReference.issueNumber})` : ""},
-          start it from{" "}
-          <Link
-            to="/factory/issues"
-            search={props.issuesSearch}
-            className="underline underline-offset-4"
-          >
-            Issues
-          </Link>
-          .
+          <T>
+            Points at a project issue
+            <Var>
+              {candidate.forgeReference === null
+                ? ""
+                : ` (#${candidate.forgeReference.issueNumber})`}
+            </Var>
+            , start it from{" "}
+            <Link
+              to="/factory/issues"
+              search={props.issuesSearch}
+              className="underline underline-offset-4"
+            >
+              Issues
+            </Link>
+            .
+          </T>
         </p>
       ) : candidate.forgeReference !== null ? (
         <p className="text-muted-foreground text-xs [overflow-wrap:anywhere]">
-          References {candidate.forgeReference.host}/{candidate.forgeReference.repository}#
-          {candidate.forgeReference.issueNumber}.
+          {gt("References {host}/{repository}#{issueNumber}.", {
+            host: candidate.forgeReference.host,
+            repository: candidate.forgeReference.repository,
+            issueNumber: String(candidate.forgeReference.issueNumber),
+          })}
         </p>
       ) : null}
       {!candidate.inWindow ? (
         <p className="text-muted-foreground text-xs">
-          The feed no longer lists this item. Absence never removes it; only the publisher can
-          retract it.
+          <T>
+            The feed no longer lists this item. Absence never removes it; only the publisher can
+            retract it.
+          </T>
         </p>
       ) : null}
       {failure !== null && dismissing === null ? (
@@ -1170,31 +1245,31 @@ function FeedCandidateRow(props: {
       {expanded ? (
         <div id={detailsId} className="min-w-0 border-border/60 border-t pt-3">
           <FactoryReviewSnapshot
-            heading="Full item"
-            intro="This is everything the feed published for this item."
+            heading={gt("Full item")}
+            intro={gt("This is everything the feed published for this item.")}
             fields={[
               {
-                label: "Title",
+                label: gt("Title"),
                 text: candidate.title,
-                emptyNote: "The feed title is an empty string.",
-                missingNote: "The feed published no title. The source title is null.",
+                emptyNote: gt("The feed title is an empty string."),
+                missingNote: gt("The feed published no title. The source title is null."),
               },
               {
-                label: "Content",
+                label: gt("Content"),
                 text: candidate.content,
-                emptyNote: "The feed content is an empty string.",
-                missingNote: "The feed published no content. The source content is null.",
+                emptyNote: gt("The feed content is an empty string."),
+                missingNote: gt("The feed published no content. The source content is null."),
               },
               {
-                label: "Link",
+                label: gt("Link"),
                 text: candidate.link,
-                emptyNote: "The feed link is an empty string.",
-                missingNote: "The feed published no link. The source link is null.",
+                emptyNote: gt("The feed link is an empty string."),
+                missingNote: gt("The feed published no link. The source link is null."),
               },
               {
-                label: "Item key",
+                label: gt("Item key"),
                 text: candidate.itemKey,
-                emptyNote: "The item key is an empty string.",
+                emptyNote: gt("The item key is an empty string."),
               },
             ]}
           />
@@ -1224,6 +1299,7 @@ function FeedDismissDialog(props: {
   readonly onConfirm: (note: string) => void;
 }) {
   const noteId = useId();
+  const gt = useGT();
   const [note, setNote] = useState("");
   const changed = props.failure?.kind === "changed";
   const count = countFactoryFeedText(note, FACTORY_FEED_DISMISSAL_NOTE_MAX_CHARS);
@@ -1238,28 +1314,38 @@ function FeedDismissDialog(props: {
     >
       <DialogPopup className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Dismiss item</DialogTitle>
+          <DialogTitle>
+            <T>Dismiss item</T>
+          </DialogTitle>
           <DialogDescription>
-            Hides this item from the default list. The dismissal covers the revision you reviewed:
-            if the publisher edits the item, it returns for review.
+            <T>
+              Hides this item from the default list. The dismissal covers the revision you reviewed:
+              if the publisher edits the item, it returns for review.
+            </T>
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
           <fieldset disabled={props.pending || changed} className="min-w-0 space-y-3">
             <p className="font-medium text-sm [overflow-wrap:anywhere]">
-              {props.candidate.title === null || props.candidate.title.length === 0
-                ? "Untitled item"
-                : factoryIssueReviewText(props.candidate.title)}
+              {props.candidate.title === null || props.candidate.title.length === 0 ? (
+                <T>Untitled item</T>
+              ) : (
+                factoryIssueReviewText(props.candidate.title)
+              )}
             </p>
             <div className="space-y-1.5">
               <Label htmlFor={noteId}>
-                Note <span className="font-normal text-muted-foreground">optional</span>
+                <T>
+                  Note <span className="font-normal text-muted-foreground">optional</span>
+                </T>
               </Label>
               <Textarea
                 id={noteId}
                 value={note}
                 aria-invalid={count.overLimit}
-                placeholder="Why this item is not being admitted, for example a duplicate of work already tracked"
+                placeholder={gt(
+                  "Why this item is not being admitted, for example a duplicate of work already tracked",
+                )}
                 onChange={(event) => setNote(event.target.value)}
               />
               <div className="flex justify-end">
@@ -1278,12 +1364,14 @@ function FeedDismissDialog(props: {
           <FactoryReviewFailure
             failure={props.failure}
             changed={changed}
-            staleHint="This item was edited after you reviewed it, so it is open for review again. Close this dialog and review the current item."
+            staleHint={gt(
+              "This item was edited after you reviewed it, so it is open for review again. Close this dialog and review the current item.",
+            )}
           />
         ) : null}
         <DialogFooter>
           <DialogClose render={<Button variant="outline" size="sm" disabled={props.pending} />}>
-            Cancel
+            <T>Cancel</T>
           </DialogClose>
           <Button
             size="sm"
@@ -1293,7 +1381,7 @@ function FeedDismissDialog(props: {
               if (enabled) props.onConfirm(note);
             }}
           >
-            {props.pending ? "Dismissing…" : "Dismiss"}
+            {props.pending ? <T>Dismissing…</T> : <T>Dismiss</T>}
           </Button>
         </DialogFooter>
       </DialogPopup>

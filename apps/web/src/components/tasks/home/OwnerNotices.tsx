@@ -1,7 +1,9 @@
 import type { FactoryTaskOwnerStatus } from "@t3tools/client-runtime/state/factory-task-list";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages } from "gt-react";
 
 import { useEnvironmentPresentation } from "../../../state/presentation";
+import { m, type MessageResolver } from "../../../i18n/messages";
 import { Button } from "../../ui/button";
 
 interface OwnerState {
@@ -50,25 +52,35 @@ export function OwnerNotices({
 }
 
 function useMachineLabel(environmentId: EnvironmentId) {
+  const gt = useGT();
   return (
-    useEnvironmentPresentation(environmentId).presentation?.entry.target.label ?? "This machine"
+    useEnvironmentPresentation(environmentId).presentation?.entry.target.label ?? gt("This machine")
   );
 }
 
-function ownerSentence(status: FactoryTaskOwnerStatus, machine: string, hasTasks: boolean) {
+function ownerSentence(
+  status: FactoryTaskOwnerStatus,
+  machine: string,
+  hasTasks: boolean,
+  resolve: MessageResolver = m,
+) {
   switch (status) {
     case "loading":
-      return `Loading tasks from ${machine}…`;
+      return resolve(msg("Loading tasks from {machine}…", { machine }));
     case "offline":
       return hasTasks
-        ? `${machine} is offline. Its tasks are shown as they were last seen.`
-        : `${machine} is offline.`;
+        ? resolve(
+            msg("{machine} is offline. Its tasks are shown as they were last seen.", {
+              machine,
+            }),
+          )
+        : resolve(msg("{machine} is offline.", { machine }));
     case "forbidden":
-      return `Ask the owner of ${machine} for access to its tasks.`;
+      return resolve(msg("Ask the owner of {machine} for access to its tasks.", { machine }));
     case "unsupported":
-      return `Update the server on ${machine} to use tasks.`;
+      return resolve(msg("Update the server on {machine} to use tasks.", { machine }));
     case "failed":
-      return `Tasks from ${machine} failed to load.`;
+      return resolve(msg("Tasks from {machine} failed to load.", { machine }));
     case "current":
       return "";
   }
@@ -76,15 +88,16 @@ function ownerSentence(status: FactoryTaskOwnerStatus, machine: string, hasTasks
 
 function OwnerNotice({ owner, onRetry }: { owner: OwnerState; onRetry: () => void }) {
   const machine = useMachineLabel(owner.environmentId);
+  const messages = useMessages();
   return (
     <p
       role={owner.status === "failed" ? "alert" : "status"}
       className="flex min-h-7 items-center gap-2 text-muted-foreground text-xs"
     >
-      <span>{ownerSentence(owner.status, machine, owner.hasTasks)}</span>
+      <span>{ownerSentence(owner.status, machine, owner.hasTasks, messages)}</span>
       {owner.status === "failed" ? (
         <Button variant="ghost" size="xs" onClick={onRetry}>
-          Try again
+          <T>Try again</T>
         </Button>
       ) : null}
     </p>
@@ -101,10 +114,15 @@ function MoreNotice({
   onLoadMore: (environmentId: EnvironmentId) => void;
 }) {
   const machine = useMachineLabel(entry.environmentId);
+  const gt = useGT();
   if (entry.capped)
     return (
       <p className="min-h-7 text-muted-foreground text-xs">
-        {`Showing the newest tasks${several ? ` from ${machine}` : ""}. Filter to find older ones.`}
+        {several
+          ? gt("Showing the newest tasks from {machine}. Filter to find older ones.", {
+              machine,
+            })
+          : gt("Showing the newest tasks. Filter to find older ones.")}
       </p>
     );
   return (
@@ -115,7 +133,7 @@ function MoreNotice({
         disabled={!entry.available}
         onClick={() => onLoadMore(entry.environmentId)}
       >
-        {several ? `Load more from ${machine}` : "Load more"}
+        {several ? gt("Load more from {machine}", { machine }) : gt("Load more")}
       </Button>
     </div>
   );

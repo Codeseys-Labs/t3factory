@@ -21,10 +21,12 @@ import {
   type ProviderInteractionMode,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg, T, useGT } from "gt-react-native";
 import { useLayoutEffect, useRef, useState } from "react";
 import { View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
+import { m } from "../../i18n/messages";
 import { Button } from "../../components/ui/Button";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { uuidv4 } from "../../lib/uuid";
@@ -45,6 +47,7 @@ export function FactoryOrchestratorPanel({
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
 }) {
+  const gt = useGT();
   const navigation =
     useNavigation<NativeStackNavigationProp<{ SettingsFactoryModel: undefined }>>();
   const isFocused = useIsFocused();
@@ -133,7 +136,11 @@ export function FactoryOrchestratorPanel({
     if (result._tag === "Failure") {
       if (!isAtomCommandInterrupted(result)) {
         setFailure(
-          "Could not start the orchestrator. Check the connection, provider and launch permissions, then refresh. Retry keeps this exact request and reviewed binding.",
+          m(
+            msg(
+              "Could not start the orchestrator. Check the connection, provider and launch permissions, then refresh. Retry keeps this exact request and reviewed binding.",
+            ),
+          ),
         );
       }
       return;
@@ -141,7 +148,11 @@ export function FactoryOrchestratorPanel({
     setReview(null);
     if (!result.value.coordinator.current) {
       setFailure(
-        "This request refers to a superseded orchestrator. Refresh to inspect the current binding; no new orientation was sent.",
+        m(
+          msg(
+            "This request refers to a superseded orchestrator. Refresh to inspect the current binding; no new orientation was sent.",
+          ),
+        ),
       );
       return;
     }
@@ -151,25 +162,33 @@ export function FactoryOrchestratorPanel({
   return (
     <View className="gap-4">
       <Text className="text-sm text-foreground-muted">
-        One ordinary project thread for orientation, delegation and scheduled prompts. Opening this
-        panel does not send a message or start work.
+        <T>
+          One ordinary project thread for orientation, delegation and scheduled prompts. Opening
+          this panel does not send a message or start work.
+        </T>
       </Text>
       {!canRead ? (
-        <Text className="text-danger-foreground">This connection cannot read orchestrators.</Text>
+        <Text className="text-danger-foreground">
+          <T>This connection cannot read orchestrators.</T>
+        </Text>
       ) : query.error && review === null ? (
         <Text className="text-danger-foreground">
-          Could not load the orchestrator. Refresh to retry.
+          <T>Could not load the orchestrator. Refresh to retry.</T>
         </Text>
       ) : !query.isSuccess && review === null ? (
-        <Text className="text-foreground-muted">Loading orchestrator…</Text>
+        <Text className="text-foreground-muted">
+          <T>Loading orchestrator…</T>
+        </Text>
       ) : (
-        <SettingsSection title={launch.project?.title ?? "Project orchestrator"}>
+        <SettingsSection title={launch.project?.title ?? gt("Project orchestrator")}>
           <View className="gap-3 p-4">
             <Text className="text-sm text-foreground-muted" selectable>
               {launch.project?.workspaceRoot}
             </Text>
             <Text className="text-base text-foreground">
-              {coordinator ? `Orchestrator: ${coordinator.status}` : "No orchestrator created"}
+              {coordinator
+                ? gt("Orchestrator: {status}", { status: coordinator.status })
+                : gt("No orchestrator created")}
             </Text>
             {review === null &&
             coordinator &&
@@ -181,48 +200,56 @@ export function FactoryOrchestratorPanel({
                   {coordinator.interactionMode}
                 </Text>
                 <Button
-                  label="Open orchestrator"
+                  label={gt("Open orchestrator")}
                   onPress={() => openThread(environmentId, coordinator.threadId)}
                 />
                 {coordinator.status === "archived" || coordinator.status === "failed" ? (
                   <Text className="text-sm text-foreground-muted">
-                    Inspect and manage this existing thread using its normal controls. It is not
-                    replaced automatically.
+                    <T>
+                      Inspect and manage this existing thread using its normal controls. It is not
+                      replaced automatically.
+                    </T>
                   </Text>
                 ) : null}
               </>
             ) : review === null ? (
               <>
                 <Button
-                  label={`Model and permissions: ${launch.label ?? "Choose model"}`}
+                  label={gt("Model and permissions: {model}", {
+                    model: launch.label ?? gt("Choose model"),
+                  })}
                   disabled={pending || !canOperate}
                   onPress={() => navigation.navigate("SettingsFactoryModel")}
                 />
                 <Text className="text-sm text-foreground-muted">
-                  Runtime: {selection.runtimeMode}. New Factory launches start supervised; the
-                  picker shows the actual provider and permission settings.
+                  {gt(
+                    "Runtime: {mode}. New Factory launches start supervised; the picker shows the actual provider and permission settings.",
+                    { mode: selection.runtimeMode },
+                  )}
                 </Text>
                 <SegmentedControl<ProviderInteractionMode>
                   selected={interactionMode}
                   onSelect={setInteractionMode}
                   options={[
-                    { value: "default", label: "Default" },
-                    { value: "plan", label: "Plan" },
+                    { value: "default", label: gt("Default") },
+                    { value: "plan", label: gt("Plan") },
                   ]}
                 />
                 {!modelAvailable ? (
                   <Text className="text-sm text-danger-foreground">
-                    Choose an available provider/model and supported runtime before creating an
-                    orchestrator.
+                    <T>
+                      Choose an available provider/model and supported runtime before creating an
+                      orchestrator.
+                    </T>
                   </Text>
                 ) : null}
                 <Button
                   label={
                     coordinator?.status === "missing"
-                      ? "Review replacement"
+                      ? gt("Review replacement")
                       : coordinator?.status === "launching"
-                        ? "Review resume"
-                        : "Create and start"
+                        ? gt("Review resume")
+                        : gt("Create and start")
                   }
                   disabled={!canLaunch}
                   onPress={prepare}
@@ -232,8 +259,8 @@ export function FactoryOrchestratorPanel({
               <>
                 <Text className="text-base font-t3-medium text-foreground">
                   {review.replaceRetired
-                    ? "Replace unavailable orchestrator?"
-                    : "Start project orientation?"}
+                    ? gt("Replace unavailable orchestrator?")
+                    : gt("Start project orientation?")}
                 </Text>
                 <Text className="text-sm text-foreground-muted" selectable>
                   {environmentId} · {projectId}
@@ -242,14 +269,18 @@ export function FactoryOrchestratorPanel({
                   {review.modelSelection.model} · {review.runtimeMode} · {review.interactionMode}
                 </Text>
                 <Text className="text-sm text-foreground-muted">
-                  This explicitly starts one read-only orientation run in this checkout, then waits.
-                  It does not authorize edits, workers, enabling schedules, publishing, merging or
-                  spending. Subsequent work requires your requests and the existing permission
-                  controls.
+                  <T>
+                    This explicitly starts one read-only orientation run in this checkout, then
+                    waits. It does not authorize edits, workers, enabling schedules, publishing,
+                    merging or spending. Subsequent work requires your requests and the existing
+                    permission controls.
+                  </T>
                 </Text>
                 <Text className="text-sm text-foreground-muted">
-                  Deleting the orchestrator thread also removes its bound workflows. Replacement
-                  does not move existing workflow bindings or restore deleted workflows.
+                  <T>
+                    Deleting the orchestrator thread also removes its bound workflows. Replacement
+                    does not move existing workflow bindings or restore deleted workflows.
+                  </T>
                 </Text>
                 {failure ? (
                   <Text accessibilityRole="alert" className="text-sm text-danger-foreground">
@@ -257,13 +288,13 @@ export function FactoryOrchestratorPanel({
                   </Text>
                 ) : null}
                 <Button
-                  label={review.replaceRetired ? "Replace and start" : "Confirm and start"}
+                  label={review.replaceRetired ? gt("Replace and start") : gt("Confirm and start")}
                   loading={pending}
                   disabled={pending || !canOperate}
                   onPress={() => void submit()}
                 />
                 <Button
-                  label="Cancel"
+                  label={gt("Cancel")}
                   disabled={pending}
                   onPress={() => {
                     setReview(null);
@@ -274,7 +305,7 @@ export function FactoryOrchestratorPanel({
             )}
             {!canOperate ? (
               <Text className="text-sm text-foreground-muted">
-                Read only: this connection cannot start an orchestrator.
+                <T>Read only: this connection cannot start an orchestrator.</T>
               </Text>
             ) : null}
           </View>
@@ -294,7 +325,11 @@ export function FactoryOrchestratorPanel({
           onReview={query.refresh}
         />
       ) : null}
-      <Button label="Refresh orchestrator" disabled={pending || !canRead} onPress={query.refresh} />
+      <Button
+        label={gt("Refresh orchestrator")}
+        disabled={pending || !canRead}
+        onPress={query.refresh}
+      />
     </View>
   );
 }
@@ -305,14 +340,17 @@ const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 function assignmentFailure(error: unknown): { message: string; requiresReview: boolean } {
   if (isAuthorizationError(error))
     return {
-      message: "This connection does not have permission to assign a coordinator.",
+      message: m(msg("This connection does not have permission to assign a coordinator.")),
       requiresReview: true,
     };
   if (isCoordinatorError(error) && error.reason !== "persistence-failure")
     return { message: error.message, requiresReview: true };
   return {
-    message:
-      "Could not assign this thread. Check the connection, then retry; retry preserves this exact request.",
+    message: m(
+      msg(
+        "Could not assign this thread. Check the connection, then retry; retry preserves this exact request.",
+      ),
+    ),
     requiresReview: false,
   };
 }
@@ -346,6 +384,7 @@ function AssignCoordinator({
   const [threadId, setThreadId] = useState<ThreadId | null>(null);
   const [visibleCandidates, setVisibleCandidates] = useState(20);
   const [request, setRequest] = useState<ProjectCoordinatorAssignInput | null>(null);
+  const gt = useGT();
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<{ message: string; requiresReview: boolean } | null>(null);
   const inFlight = useRef(false);
@@ -374,8 +413,9 @@ function AssignCoordinator({
       setRequest(null);
       if (!result.value.coordinator.current)
         setFailure({
-          message:
-            "This request refers to an earlier assignment. Review the refreshed coordinator.",
+          message: m(
+            msg("This request refers to an earlier assignment. Review the refreshed coordinator."),
+          ),
           requiresReview: true,
         });
     } else if (!isAtomCommandInterrupted(result)) {
@@ -390,22 +430,29 @@ function AssignCoordinator({
   return (
     <View className="gap-3">
       <Text className="text-sm text-foreground-muted">
-        Set an existing ordinary thread as coordinator. This sends no message and starts no new
-        work. It does not stop existing or pending work; schedules and active tasks stay on their
-        threads.
+        <T>
+          Set an existing ordinary thread as coordinator. This sends no message and starts no new
+          work. It does not stop existing or pending work; schedules and active tasks stay on their
+          threads.
+        </T>
       </Text>
       {coordinator?.status === "launching" ? (
         <Text className="text-sm text-foreground-muted">
-          A start is pending for the current coordinator. Reassigning removes its resume option but
-          does not cancel a launch that already began.
+          <T>
+            A start is pending for the current coordinator. Reassigning removes its resume option
+            but does not cancel a launch that already began.
+          </T>
         </Text>
       ) : null}
       <Text className="text-sm text-foreground">
         {selected
-          ? `Selected: ${selected.title} (${selected.id.slice(-8)})`
+          ? gt("Selected: {title} ({id})", {
+              title: selected.title,
+              id: selected.id.slice(-8),
+            })
           : candidates.length === 0
-            ? "No eligible threads in this project."
-            : "Choose a thread:"}
+            ? gt("No eligible threads in this project.")
+            : gt("Choose a thread:")}
       </Text>
       {candidates.slice(0, visibleCandidates).map((thread) => (
         <Button
@@ -422,18 +469,18 @@ function AssignCoordinator({
       ))}
       {candidates.length > visibleCandidates ? (
         <Button
-          label="Show more threads"
+          label={gt("Show more threads")}
           onPress={() => setVisibleCandidates((count) => count + 20)}
         />
       ) : null}
       <Button
-        label={request ? "Retry assignment" : "Set project coordinator"}
+        label={request ? gt("Retry assignment") : gt("Set project coordinator")}
         loading={pending}
         disabled={blocked || (request === null && selected === null)}
         onPress={() => void submit()}
       />
       {request !== null || failure?.requiresReview === true ? (
-        <Button label="Review refreshed binding" disabled={pending} onPress={review} />
+        <Button label={gt("Review refreshed binding")} disabled={pending} onPress={review} />
       ) : null}
       {failure ? (
         <Text accessibilityRole="alert" className="text-sm text-danger-foreground">

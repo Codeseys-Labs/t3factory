@@ -1734,7 +1734,7 @@ function OpenCommandPaletteDialog(props: {
     kind: "action",
     value: "action:factory",
     searchTerms: ["factory", "overview", "projects", "workspaces", "automation"],
-    title: "Open Factory",
+    title: gt("Open Factory"),
     icon: <FactoryIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
       await navigate({ to: "/factory", search: { state: "open", view: "list" } });
@@ -1745,19 +1745,19 @@ function OpenCommandPaletteDialog(props: {
     {
       to: "/factory/issues",
       value: "action:factory-issues",
-      title: "Open Factory issues",
+      title: gt("Open Factory issues"),
       searchTerms: ["factory", "issues", "github", "tasks", "inbox", "backlog"],
     },
     {
       to: "/factory/workflows",
       value: "action:factory-workflows",
-      title: "Open Factory workflows",
+      title: gt("Open Factory workflows"),
       searchTerms: ["factory", "workflows", "scheduled", "tasks", "automation", "prompts"],
     },
     {
       to: "/factory/orchestrator",
       value: "action:factory-orchestrator",
-      title: "Open Factory orchestrator",
+      title: gt("Open Factory orchestrator"),
       searchTerms: ["factory", "orchestrator", "coordinator", "delegation", "project"],
     },
   ] as const) {
@@ -1778,7 +1778,7 @@ function OpenCommandPaletteDialog(props: {
       kind: "action",
       value: "action:factory-sources",
       searchTerms: ["factory", "sources", "feeds", "rss", "atom", "candidates", "tasks"],
-      title: "Open Factory sources",
+      title: gt("Open Factory sources"),
       icon: <FactoryIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         await navigate({ to: "/factory/sources", search: { state: "open", view: "list" } });
@@ -1791,7 +1791,7 @@ function OpenCommandPaletteDialog(props: {
       kind: "action",
       value: "action:factory-research",
       searchTerms: ["factory", "research", "protocol", "experiment", "hypothesis", "evidence"],
-      title: "Open Factory research",
+      title: gt("Open Factory research"),
       icon: <FactoryIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         await navigate({ to: "/factory/research", search: { state: "open", view: "list" } });

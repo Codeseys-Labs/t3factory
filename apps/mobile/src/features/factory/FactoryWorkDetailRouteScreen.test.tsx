@@ -125,6 +125,7 @@ vi.mock("../../state/factory", () => ({
     start: { permissionAtom: () => null },
     startKnowledgeTask: { permissionAtom: () => null },
   },
+  factoryIssueKeysInput: (supported: boolean) => (supported ? { issueKeys: true } : {}),
 }));
 vi.mock("../../state/query", () => ({
   useEnvironmentQuery: (query: { type: string; input?: { ref: { id: string } } } | null) => ({

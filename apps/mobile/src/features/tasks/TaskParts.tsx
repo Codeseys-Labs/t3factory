@@ -1,3 +1,4 @@
+import { useGT, useMessages } from "gt-react-native";
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -13,11 +14,16 @@ const PILL_ICONS: Record<Exclude<TaskPill["icon"], "dot">, AppSymbolName> = {
 
 export function TaskStatePill(props: { readonly pill: TaskPill }) {
   const { pill } = props;
+  const gt = useGT();
+  const m = useMessages();
   const tone = TONE_CLASSES[pill.tone];
+  const label = m(pill.label);
   return (
     <View
       className={cn("flex-row items-center gap-1.5 rounded-full px-2.5 py-1", tone.container)}
-      accessibilityLabel={pill.elapsed ? `${pill.label}, ${pill.elapsed}` : pill.label}
+      accessibilityLabel={
+        pill.elapsed ? gt("{label}, {elapsed}", { label, elapsed: pill.elapsed }) : label
+      }
     >
       {pill.icon === "dot" ? (
         <View className={cn("size-1.5 rounded-full", tone.dot)} />
@@ -29,7 +35,7 @@ export function TaskStatePill(props: { readonly pill: TaskPill }) {
         />
       )}
       <Text textRole="caption" className={cn("font-t3-medium", tone.text)} numberOfLines={1}>
-        {pill.label}
+        {label}
       </Text>
       {pill.elapsed ? (
         <Text textRole="caption" className="text-foreground-muted">
@@ -71,12 +77,20 @@ export interface TaskRowProps {
 
 /** Two lines: the id and title, then the project, the assignee and the state. */
 export function TaskRow(props: TaskRowProps) {
+  const gt = useGT();
+  const m = useMessages();
   const title = props.title ?? props.displayId;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${props.displayId} ${title}. ${props.pill.label}. ${props.projectLabel}. ${props.assigneeLabel}.`}
-      accessibilityHint="Opens the task"
+      accessibilityLabel={gt("{id} {title}. {pill}. {project}. {assignee}.", {
+        id: props.displayId,
+        title,
+        pill: m(props.pill.label),
+        project: props.projectLabel,
+        assignee: props.assigneeLabel,
+      })}
+      accessibilityHint={gt("Opens the task")}
       onPress={props.onPress}
       className="mb-2 gap-2.5 rounded-xl bg-card px-4 py-3 active:opacity-70"
     >

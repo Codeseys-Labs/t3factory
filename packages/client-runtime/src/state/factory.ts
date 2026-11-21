@@ -549,7 +549,7 @@ export function createFactoryEnvironmentAtoms<R, E>(
             environmentId,
             input.projectId,
             input.expectedRepositoryKey,
-            input.issueNumber,
+            input.key ?? input.issueNumber,
             input.expectedIssueRevision,
           ]),
       },

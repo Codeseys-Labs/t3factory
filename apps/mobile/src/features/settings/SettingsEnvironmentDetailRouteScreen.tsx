@@ -254,6 +254,7 @@ function EnvironmentDetail({ environmentId }: { readonly environmentId: Environm
             {notice ? <Text className="px-2 text-sm text-foreground-muted">{notice}</Text> : null}
             {config && !outdated ? (
               <>
+                {/* oxlint-disable-next-line t3code/no-untranslated-copy -- product name */}
                 <SettingsSection title="T3 Code Factory">
                   <View className="gap-1 p-4">
                     <Text className="text-base text-foreground">

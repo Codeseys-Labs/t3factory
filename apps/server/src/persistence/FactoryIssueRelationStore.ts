@@ -6,6 +6,7 @@ import {
   IsoDateTime,
   NonNegativeInt,
   PositiveInt,
+  TrimmedNonEmptyString,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -14,7 +15,11 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
-const Subject = Schema.Struct({ canonicalKey: Schema.String, issueNumber: PositiveInt });
+// The legacy SQL column keeps integers for git issues and native strings for standalone trackers.
+const Subject = Schema.Struct({
+  canonicalKey: Schema.String,
+  issueNumber: Schema.Union([PositiveInt, TrimmedNonEmptyString]),
+});
 type Subject = typeof Subject.Type;
 const Edge = Schema.Struct({
   ...Subject.fields,
@@ -63,7 +68,7 @@ export class FactoryIssueRelationStore extends Context.Service<
     ) => Effect.Effect<Option.Option<Observation>, FactoryIssueError>;
     readonly listEdges: (subject: {
       readonly canonicalKey: string;
-      readonly issueNumber?: number;
+      readonly issueNumber?: number | string;
     }) => Effect.Effect<readonly StoredEdge[], FactoryIssueError>;
     readonly recordComplete: (input: {
       readonly subject: Subject;
@@ -101,6 +106,8 @@ const decodeEdges = Schema.decodeUnknownEffect(Schema.Array(Edge));
 const decodeOverrides = Schema.decodeUnknownEffect(Schema.Array(Override));
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  const sqlKey = (key: number | string) =>
+    typeof key === "number" ? sql`CAST(${key} AS INTEGER)` : sql`${key}`;
   const overrideColumns = sql.literal(`override_id AS id, canonical_key AS canonicalKey,
     issue_number AS issueNumber, target_host AS targetHost, target_id AS targetId, kind,
     bound_fingerprint AS boundFingerprint, reason, request_command_id AS requestCommandId,
@@ -143,7 +150,7 @@ const make = Effect.gen(function* () {
         yield* sql`INSERT INTO factory_issue_readiness_overrides
           (override_id, canonical_key, issue_number, target_host, target_id, kind,
           bound_fingerprint, reason, request_command_id, created_at, revoked_at)
-          VALUES (${row.id}, ${row.canonicalKey}, ${row.issueNumber}, ${row.targetHost},
+          VALUES (${row.id}, ${row.canonicalKey}, ${sqlKey(row.issueNumber)}, ${row.targetHost},
           ${row.targetId}, ${row.kind}, ${row.boundFingerprint}, ${row.reason},
           ${row.requestCommandId}, ${row.createdAt}, NULL)`;
         return row;
@@ -193,7 +200,7 @@ const make = Effect.gen(function* () {
           yield* sql`INSERT INTO factory_issue_relation_edges
           (canonical_key, issue_number, target_host, target_id, target_repository, target_number,
           first_observed_at, last_observed_at, status, tombstoned_at)
-          VALUES (${subject.canonicalKey}, ${subject.issueNumber}, ${edge.targetHost}, ${edge.targetId},
+          VALUES (${subject.canonicalKey}, ${sqlKey(subject.issueNumber)}, ${edge.targetHost}, ${edge.targetId},
           ${edge.targetRepository}, ${edge.targetNumber}, ${observedAt}, ${observedAt}, 'present', NULL)
           ON CONFLICT (canonical_key, issue_number, target_host, target_id) DO UPDATE SET
           target_repository = excluded.target_repository, target_number = excluded.target_number,
@@ -206,7 +213,7 @@ const make = Effect.gen(function* () {
         }
         yield* sql`INSERT INTO factory_issue_relation_observations
         (canonical_key, issue_number, observed_at, complete, listed_count, summary_total, failure, last_attempt_at)
-        VALUES (${subject.canonicalKey}, ${subject.issueNumber}, ${observedAt}, 1, ${input.listedCount}, ${input.summaryTotal}, NULL, ${observedAt})
+        VALUES (${subject.canonicalKey}, ${sqlKey(subject.issueNumber)}, ${observedAt}, 1, ${input.listedCount}, ${input.summaryTotal}, NULL, ${observedAt})
         ON CONFLICT (canonical_key, issue_number) DO UPDATE SET observed_at = excluded.observed_at,
         complete = 1, listed_count = excluded.listed_count, summary_total = excluded.summary_total,
         failure = NULL, last_attempt_at = excluded.last_attempt_at`;
@@ -220,7 +227,7 @@ const make = Effect.gen(function* () {
     // attempt has its own timestamp, including when no complete baseline exists yet.
     yield* sql`INSERT INTO factory_issue_relation_observations
       (canonical_key, issue_number, observed_at, complete, listed_count, summary_total, failure, last_attempt_at)
-      VALUES (${input.subject.canonicalKey}, ${input.subject.issueNumber}, NULL, 0, 0, NULL, ${input.failure}, ${input.observedAt})
+      VALUES (${input.subject.canonicalKey}, ${sqlKey(input.subject.issueNumber)}, NULL, 0, 0, NULL, ${input.failure}, ${input.observedAt})
       ON CONFLICT (canonical_key, issue_number) DO UPDATE SET failure = excluded.failure, last_attempt_at = excluded.last_attempt_at`;
   }, Effect.mapError(persistenceError));
   return FactoryIssueRelationStore.of({

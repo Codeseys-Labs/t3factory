@@ -22,6 +22,9 @@ import {
   type FactoryDeliveryReconcileInput,
   type FactoryOriginKey,
   type FactoryRepository,
+  type IssueComment,
+  type IssueError,
+  type IssueRef,
   type ProjectId,
   type PullRequestDetail,
   type PullRequestMergeMethod,
@@ -41,8 +44,10 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Result from "effect/Result";
 import { ServerEnvironmentIdentity } from "../environment/ServerEnvironment.ts";
 import * as GitManager from "../git/GitManager.ts";
+import * as IssueService from "../issue/IssueService.ts";
 import * as EffectOutbox from "../orchestration-v2/EffectOutbox.ts";
 import * as Threads from "../orchestration-v2/ThreadManagementService.ts";
 import * as AcceptanceStore from "../persistence/FactoryAcceptanceStore.ts";
@@ -56,8 +61,8 @@ import * as Acceptance from "./FactoryAcceptanceService.ts";
 import * as Knowledge from "./FactoryKnowledgeService.ts";
 import { carriesDeliveryMarker, renderArtifactComment } from "./FactoryArtifactDeliveryBody.ts";
 import { issueOriginKey, knowledgeBriefOriginKey } from "./FactoryOriginKey.ts";
-import { makeRepositoryResolver } from "./FactoryTaskLaunch.ts";
-import { IssueTrackerProviderRegistry } from "./IssueTrackerProviderRegistry.ts";
+import * as FactoryIssueHosts from "./FactoryIssueHosts.ts";
+import { factoryIssueScope, makeRepositoryResolver } from "./FactoryTaskLaunch.ts";
 
 const FAILURE_MAX_CHARS = 1000;
 const PUBLICATION_LOOKUP_LIMIT = 100;
@@ -250,7 +255,7 @@ export interface FactoryCommitGrant {
     readonly closes: {
       readonly provider: string;
       readonly canonicalKey: string;
-      readonly number: number;
+      readonly number: number | null;
     } | null;
   };
   readonly recheck: Effect.Effect<void, FactoryDeliveryError>;
@@ -323,7 +328,8 @@ const makeService = Effect.gen(function* () {
   const git = yield* Git.GitVcsDriver;
   const gitManager = yield* GitManager.GitManager;
   const providers = yield* SourceControlProviderRegistry.SourceControlProviderRegistry;
-  const trackers = yield* IssueTrackerProviderRegistry;
+  const hosts = yield* FactoryIssueHosts.FactoryIssueHosts;
+  const issueService = yield* IssueService.IssueService;
   const pullRequests = yield* PullRequests.PullRequestService;
   const outbox = yield* EffectOutbox.EffectOutboxV2;
   const random = yield* SecureRandom.SecureRandom;
@@ -349,9 +355,9 @@ const makeService = Effect.gen(function* () {
     if (Option.isNone(origin))
       return yield* new FactoryDeliveryError({ reason: "not-a-factory-task" });
     // The provider frozen into the claim at admission, not whatever the checkout points at now.
-    const capabilities = trackers.get(origin.value.repository.provider)?.capabilities;
+    const capabilities = hosts.capabilities(origin.value.repository.provider);
     if (
-      capabilities === undefined ||
+      capabilities === null ||
       !capabilities.publish ||
       (input.kind === "merge-pr" && !capabilities.headPinnedMerge)
     )
@@ -477,35 +483,33 @@ const makeService = Effect.gen(function* () {
           }),
       ),
     );
-    const { tracker, repository, project } = resolved;
-    if (
-      !tracker.capabilities.issueComment ||
-      tracker.commentOnIssue === undefined ||
-      tracker.listIssueComments === undefined
-    )
+    const { capabilities, issues, repository } = resolved;
+    if (!capabilities.issueComment)
       return yield* new FactoryDeliveryError({ reason: "capability-unsupported" });
-    const issue = yield* tracker
-      .getIssue({
-        cwd: project.workspaceRoot,
-        host: repository.host,
-        repository: repository.repository,
-        number: issueNumber,
-      })
-      .pipe(
-        Effect.mapError(
-          (cause) =>
-            new FactoryDeliveryError({
-              reason:
-                cause.reason === "not-found" || cause.reason === "not-an-issue"
-                  ? "destination-not-found"
-                  : "persistence-failure",
-              cause,
-            }),
-        ),
-      );
+    const issue = yield* issueService.detail({ ...issues, key: String(issueNumber) }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new FactoryDeliveryError({
+            reason:
+              cause._tag === "IssueOperationError" && cause.reason === "not-found"
+                ? "destination-not-found"
+                : "persistence-failure",
+            cause,
+          }),
+      ),
+    );
+    // The issue service posts only to the project's own issues; another scope's grant could
+    // never be sent.
+    if (!issue.writable)
+      return yield* new FactoryDeliveryError({ reason: "capability-unsupported" });
     return {
       repository,
-      destination: { number: issue.number, title: issue.title, state: issue.state, url: issue.url },
+      destination: {
+        number: issueNumber,
+        title: issue.title,
+        state: issue.state.category,
+        url: issue.url,
+      },
       destinationKey: `comment:${issueOriginKey(repository.provider, repository.canonicalKey, issueNumber)}`,
     };
   });
@@ -839,7 +843,7 @@ const makeService = Effect.gen(function* () {
           }),
       ),
     );
-    const { capabilities } = resolved.tracker;
+    const { capabilities } = resolved;
     if (!capabilities.publish || (kind === "merge-pr" && !capabilities.headPinnedMerge))
       return yield* new FactoryDeliveryError({ reason: "capability-unsupported" });
     return resolved;
@@ -921,6 +925,7 @@ const makeService = Effect.gen(function* () {
         );
         const closing =
           issue === null ||
+          issue.number === null ||
           issue.provider !== repository.provider ||
           (repository.provider !== "github" && repository.provider !== "gitlab") ||
           !issue.canonicalKey.toLowerCase().startsWith(hostPrefix.toLowerCase())
@@ -1486,11 +1491,17 @@ const makeService = Effect.gen(function* () {
     return Option.getOrElse(settled, () => intent);
   });
 
+  // Where an artifact's comment goes, from the frozen grant alone.
+  const artifactIssue = (intent: FactoryArtifactDeliveryIntent): IssueRef | null => {
+    const scope = factoryIssueScope(intent.projectId, intent.repository);
+    return scope === null ? null : { ...scope, key: String(intent.payload.issueNumber) };
+  };
+
   const sendArtifact = Effect.fn("FactoryDeliveryService.sendArtifact")(function* (
     intent: FactoryArtifactDeliveryIntent,
   ) {
-    const tracker = trackers.get(intent.repository.provider);
-    if (!tracker?.capabilities.issueComment || tracker.commentOnIssue === undefined)
+    const ref = artifactIssue(intent);
+    if (ref === null || hosts.capabilities(intent.repository.provider)?.issueComment !== true)
       return yield* settle(intent, "failed", "capability-unsupported");
     const project = yield* projects
       .getById(intent.projectId)
@@ -1498,29 +1509,31 @@ const makeService = Effect.gen(function* () {
     if (Option.isNone(project)) return yield* settle(intent, "failed", "project-unavailable");
     // The grant froze the bytes and destination. Neither a changed file nor a changed origin
     // may redirect an already-authorized send.
-    const sent = yield* Effect.result(
-      tracker.commentOnIssue({
-        cwd: project.value.workspaceRoot,
-        host: intent.repository.host,
-        repository: intent.repository.repository,
-        number: intent.payload.issueNumber,
-        body: intent.body,
-      }),
-    );
+    const sent = yield* Effect.result(issueService.comment({ ...ref, body: intent.body }));
     if (sent._tag === "Failure")
       return yield* settle(
         intent,
-        isDefiniteRejection(sent.failure) ? "failed" : "unknown",
+        // The issue service refuses with no cause before anything reaches the tracker.
+        sent.failure.cause === undefined || isDefiniteRejection(sent.failure)
+          ? "failed"
+          : "unknown",
         describe("comment response", sent.failure),
       );
-    yield* confirmArtifact(intent, { commentId: sent.success.id, url: sent.success.url });
+    // A tracker that names no comment URL (GitLab) leaves the issue's own as the delivery's link.
+    const url =
+      sent.success.url ??
+      (yield* issueService.detail(ref).pipe(
+        Effect.map((issue) => issue.url),
+        Effect.orElseSucceed(() => intent.repository.url),
+      ));
+    yield* confirmArtifact(intent, { commentId: sent.success.id, url });
   });
 
   const reconcileArtifact = Effect.fn("FactoryDeliveryService.reconcileArtifact")(function* (
     intent: FactoryArtifactDeliveryIntent,
   ) {
-    const tracker = trackers.get(intent.repository.provider);
-    if (!tracker?.capabilities.issueComment || tracker.listIssueComments === undefined)
+    const ref = artifactIssue(intent);
+    if (ref === null || hosts.capabilities(intent.repository.provider)?.issueComment !== true)
       return intent;
     const project = yield* projects
       .getById(intent.projectId)
@@ -1536,72 +1549,79 @@ const makeService = Effect.gen(function* () {
         return Option.getOrElse(settled, () => intent);
       },
     );
-    const firstPassIds: { page: number; ids: readonly number[] }[] = [];
-    let lastCommentId = 0;
-    let page = 1;
+    interface CommentPage {
+      readonly comments: ReadonlyArray<IssueComment>;
+      readonly next: string | null;
+      readonly issueUrl: string | null;
+    }
+    // No cursor reads the issue itself with its newest comments; a cursor reads older ones.
+    const readComments = (cursor: string | null): Effect.Effect<CommentPage, IssueError> =>
+      cursor === null
+        ? issueService.detail(ref).pipe(
+            Effect.map((issue) => ({
+              comments: issue.comments,
+              next: issue.commentsCursor,
+              issueUrl: issue.url,
+            })),
+          )
+        : issueService.comments({ ...ref, cursor }).pipe(
+            Effect.map((page) => ({
+              comments: page.comments,
+              next: page.nextCursor,
+              issueUrl: null,
+            })),
+          );
+    // A tracker that names no comment URL (GitLab) leaves the issue's own as the delivery's link.
+    let issueUrl = intent.repository.url;
+    const firstPass: { cursor: string | null; ids: readonly string[]; next: string | null }[] = [];
+    const seenIds = new Set<string>();
+    const seenCursors = new Set<string>();
+    let cursor: string | null = null;
     while (true) {
-      const listed = yield* Effect.result(
-        tracker.listIssueComments({
-          cwd: project.value.workspaceRoot,
-          host: intent.repository.host,
-          repository: intent.repository.repository,
-          number: intent.payload.issueNumber,
-          page,
-        }),
+      const listed: Result.Result<CommentPage, IssueError> = yield* Effect.result(
+        readComments(cursor),
       );
       if (listed._tag === "Failure")
         return yield* settleReconciliation(intent.status, listed.failure.message);
-      const match = listed.success.comments.find((comment) =>
-        carriesDeliveryMarker(comment.body, intent.body),
-      );
+      const comments: ReadonlyArray<IssueComment> = listed.success.comments;
+      const next: string | null = listed.success.next;
+      issueUrl = listed.success.issueUrl ?? issueUrl;
+      const match = comments.find((comment) => carriesDeliveryMarker(comment.body, intent.body));
       if (match !== undefined)
-        return yield* confirmArtifact(intent, { commentId: match.id, url: match.url });
+        return yield* confirmArtifact(intent, { commentId: match.id, url: match.url ?? issueUrl });
+      const ids = comments.map((comment) => comment.id);
+      // A comment seen twice or a cursor the walk already followed means the listing moved under
+      // it. A page can hold no comments and still lead on: a tracker drops its own notes from it.
       if (
-        (listed.success.comments.length === 0 && (page > 1 || listed.success.nextPage !== null)) ||
-        (listed.success.nextPage !== null && listed.success.nextPage !== page + 1)
+        new Set(ids).size !== ids.length ||
+        ids.some((id) => seenIds.has(id)) ||
+        (next !== null && seenCursors.has(next))
       )
         return yield* settleReconciliation(
           intent.status,
           "Comment listing did not advance cleanly; reconcile again.",
         );
-      const ids = listed.success.comments.map((comment) => comment.id);
-      // The offset walk assumes ascending creation order, including across page boundaries.
-      for (const id of ids) {
-        if (id <= lastCommentId)
-          return yield* settleReconciliation(
-            intent.status,
-            "Comment listing did not advance cleanly; reconcile again.",
-          );
-        lastCommentId = id;
-      }
-      firstPassIds.push({ page, ids });
-      if (listed.success.nextPage === null) break;
-      page = listed.success.nextPage;
+      for (const id of ids) seenIds.add(id);
+      firstPass.push({ cursor, ids, next });
+      if (next === null) break;
+      seenCursors.add(next);
+      cursor = next;
     }
-    // Deletions can shift a comment into a page already read. A single response needs no
-    // verification; a multi-page absence is conclusive only while its prefix stays stable.
-    for (const previous of firstPassIds.slice(0, -1)) {
-      const reread = yield* Effect.result(
-        tracker.listIssueComments({
-          cwd: project.value.workspaceRoot,
-          host: intent.repository.host,
-          repository: intent.repository.repository,
-          number: intent.payload.issueNumber,
-          page: previous.page,
-        }),
-      );
+    // Where a tracker pages by offset, deletions can shift a comment into a page already read. A
+    // single response needs no verification; a multi-page absence is conclusive only while its
+    // earlier pages stay as they were.
+    for (const previous of firstPass.slice(0, -1)) {
+      const reread = yield* Effect.result(readComments(previous.cursor));
       if (reread._tag === "Failure")
         return yield* settleReconciliation(intent.status, reread.failure.message);
-      const match = reread.success.comments.find((comment) =>
-        carriesDeliveryMarker(comment.body, intent.body),
-      );
+      const { comments, next } = reread.success;
+      const match = comments.find((comment) => carriesDeliveryMarker(comment.body, intent.body));
       if (match !== undefined)
-        return yield* confirmArtifact(intent, { commentId: match.id, url: match.url });
-      const ids = reread.success.comments.map((comment) => comment.id);
+        return yield* confirmArtifact(intent, { commentId: match.id, url: match.url ?? issueUrl });
       if (
-        reread.success.nextPage !== previous.page + 1 ||
-        ids.length !== previous.ids.length ||
-        ids.some((id, index) => id !== previous.ids[index])
+        next !== previous.next ||
+        comments.length !== previous.ids.length ||
+        comments.some((comment, index) => comment.id !== previous.ids[index])
       )
         return yield* settleReconciliation(
           intent.status,

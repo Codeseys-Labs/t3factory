@@ -8,11 +8,13 @@ import {
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { msg, T, useGT, Var } from "gt-react";
 import { useState } from "react";
 import { useThreadShellsForProjectRefs } from "../../state/entities";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { SETTINGS_PICKER_TRIGGER_CLASSNAME } from "../settings/settingsLayout";
 
+import { m } from "../../i18n/messages";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
@@ -33,8 +35,9 @@ type EdgeDraft = { edgeId: string; slot: string; rule: "sealed-draft" | "verifie
 
 const decodePolicy = Schema.decodeUnknownOption(FactoryExecutionPolicy);
 
-const INVALID_POLICY_MESSAGE =
-  "Choose a model for each task, a future expiry, valid limits, and an exact commit for each isolated workspace. Verified code also needs an isolated workspace and a verification executable.";
+const INVALID_POLICY_MESSAGE = msg(
+  "Choose a model for each task, a future expiry, valid limits, and an exact commit for each isolated workspace. Verified code also needs an isolated workspace and a verification executable.",
+);
 
 export function FactoryExecutionPolicyEditor(props: {
   readonly plan: FactoryPlanSnapshot;
@@ -43,6 +46,7 @@ export function FactoryExecutionPolicyEditor(props: {
   readonly onGrant: (policy: FactoryExecutionPolicy) => void;
 }) {
   const { plan } = props;
+  const gt = useGT();
   const settings = useFactoryLaunchModelSettings(plan.ref.environmentId, props.project);
   const threads = useThreadShellsForProjectRefs([
     scopeProjectRef(plan.ref.environmentId, plan.ref.projectId),
@@ -85,7 +89,7 @@ export function FactoryExecutionPolicyEditor(props: {
   const build = () => {
     const time = new Date(expiry);
     if (Number.isNaN(time.getTime())) {
-      setError(INVALID_POLICY_MESSAGE);
+      setError(m(INVALID_POLICY_MESSAGE));
       return;
     }
     const decoded = decodePolicy({
@@ -117,7 +121,7 @@ export function FactoryExecutionPolicyEditor(props: {
       requiredCapabilities: ownedWriters ? ["owned-writers"] : [],
     });
     if (Option.isNone(decoded)) {
-      setError(INVALID_POLICY_MESSAGE);
+      setError(m(INVALID_POLICY_MESSAGE));
       return;
     }
     const policy = decoded.value;
@@ -131,7 +135,7 @@ export function FactoryExecutionPolicyEditor(props: {
       policy.maxConcurrent < 1 ||
       tasks.some((task) => task.kind === "verified-code" && task.workspace !== "worktree")
     ) {
-      setError(INVALID_POLICY_MESSAGE);
+      setError(m(INVALID_POLICY_MESSAGE));
       return;
     }
     setError(null);
@@ -139,11 +143,17 @@ export function FactoryExecutionPolicyEditor(props: {
   };
   return (
     <fieldset className="space-y-4" disabled={props.disabled}>
-      <legend className="font-medium">Grant revision {plan.revision}</legend>
+      <legend className="font-medium">
+        <T>
+          Grant revision <Var>{plan.revision}</Var>
+        </T>
+      </legend>
       <p className="text-sm">
-        This authorizes local preparation only. It does not authorize publication or guarantee a
-        shell or network sandbox. Setup is denied; tasks use supervised approval-required mode.
-        Unsupported requested capabilities are refused.
+        <T>
+          This authorizes local preparation only. It does not authorize publication or guarantee a
+          shell or network sandbox. Setup is denied; tasks use supervised approval-required mode.
+          Unsupported requested capabilities are refused.
+        </T>
       </p>
       {tasks.map((task) => {
         const source = plan.tasks.find((entry) => entry.id === task.taskId);
@@ -154,7 +164,9 @@ export function FactoryExecutionPolicyEditor(props: {
             <h5 className="font-medium">
               {source?.title} · {task.taskId}
             </h5>
-            <span className="text-sm">Provider and model</span>
+            <span className="text-sm">
+              <T>Provider and model</T>
+            </span>
             {activeInstanceId ? (
               <ProviderModelPicker
                 environmentId={plan.ref.environmentId}
@@ -173,30 +185,36 @@ export function FactoryExecutionPolicyEditor(props: {
                 }
               />
             ) : (
-              <p>No provider configured.</p>
+              <p>
+                <T>No provider configured.</T>
+              </p>
             )}
             <div className="text-sm">
-              Workspace
+              <T>Workspace</T>
               <Select
                 value={task.workspace}
                 onValueChange={(value) =>
                   updateTask(task.taskId, { workspace: value === "worktree" ? "worktree" : "root" })
                 }
               >
-                <SelectTrigger aria-label={`Workspace for ${source?.title}`}>
+                <SelectTrigger aria-label={gt("Workspace for {title}", { title: source?.title })}>
                   <SelectValue>
-                    {task.workspace === "root" ? "Project root" : "Isolated worktree"}
+                    {task.workspace === "root" ? gt("Project root") : gt("Isolated worktree")}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
-                  <SelectItem value="root">Project root</SelectItem>
-                  <SelectItem value="worktree">Isolated worktree</SelectItem>
+                  <SelectItem value="root">
+                    <T>Project root</T>
+                  </SelectItem>
+                  <SelectItem value="worktree">
+                    <T>Isolated worktree</T>
+                  </SelectItem>
                 </SelectPopup>
               </Select>
             </div>
             {task.workspace === "worktree" ? (
               <label className="block text-sm">
-                Exact base commit
+                <T>Exact base commit</T>
                 <Input
                   value={task.base}
                   onChange={(event) => updateTask(task.taskId, { base: event.target.value })}
@@ -204,14 +222,14 @@ export function FactoryExecutionPolicyEditor(props: {
               </label>
             ) : null}
             <label className="block text-sm">
-              Output slot
+              <T>Output slot</T>
               <Input
                 value={task.slot}
                 onChange={(event) => updateTask(task.taskId, { slot: event.target.value })}
               />
             </label>
             <div className="text-sm">
-              Output kind
+              <T>Output kind</T>
               <Select
                 value={task.kind}
                 onValueChange={(value) =>
@@ -220,26 +238,32 @@ export function FactoryExecutionPolicyEditor(props: {
                   })
                 }
               >
-                <SelectTrigger aria-label={`Output kind for ${source?.title}`}>
+                <SelectTrigger aria-label={gt("Output kind for {title}", { title: source?.title })}>
                   <SelectValue>
-                    {task.kind === "verified-code" ? "Verified code" : "Sealed draft"}
+                    {task.kind === "verified-code" ? gt("Verified code") : gt("Sealed draft")}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
-                  <SelectItem value="sealed-draft">Sealed draft</SelectItem>
-                  <SelectItem value="verified-code">Verified code</SelectItem>
+                  <SelectItem value="sealed-draft">
+                    <T>Sealed draft</T>
+                  </SelectItem>
+                  <SelectItem value="verified-code">
+                    <T>Verified code</T>
+                  </SelectItem>
                 </SelectPopup>
               </Select>
             </div>
             {task.kind === "verified-code" ? (
               <>
                 <p className="text-sm">
-                  Verified code requires an isolated worktree with an exact base and one focused
-                  verification command. Arguments are passed as separate tokens; no shell parsing is
-                  applied.
+                  <T>
+                    Verified code requires an isolated worktree with an exact base and one focused
+                    verification command. Arguments are passed as separate tokens; no shell parsing
+                    is applied.
+                  </T>
                 </p>
                 <label className="block text-sm">
-                  Verification executable
+                  <T>Verification executable</T>
                   <Input
                     value={task.verificationCommand}
                     onChange={(event) =>
@@ -248,7 +272,7 @@ export function FactoryExecutionPolicyEditor(props: {
                   />
                 </label>
                 <label className="block text-sm">
-                  Arguments, one per line
+                  <T>Arguments, one per line</T>
                   <Textarea
                     value={task.verificationArgs}
                     onChange={(event) =>
@@ -266,12 +290,14 @@ export function FactoryExecutionPolicyEditor(props: {
         return (
           <div key={edge.edgeId} className="space-y-1 rounded border p-2">
             <p className="text-sm">
-              {plan.tasks.find((task) => task.id === source?.fromTaskId)?.title} requires{" "}
-              {plan.tasks.find((task) => task.id === source?.toTaskId)?.title}
+              <T>
+                <Var>{plan.tasks.find((task) => task.id === source?.fromTaskId)?.title}</Var>{" "}
+                requires <Var>{plan.tasks.find((task) => task.id === source?.toTaskId)?.title}</Var>
+              </T>
             </p>
             <p className="whitespace-pre-wrap text-sm">{source?.requirement}</p>
             <label className="block text-sm">
-              Required output slot
+              <T>Required output slot</T>
               <Input
                 value={edge.slot}
                 onChange={(event) =>
@@ -284,7 +310,7 @@ export function FactoryExecutionPolicyEditor(props: {
               />
             </label>
             <div className="text-sm">
-              Evidence rule
+              <T>Evidence rule</T>
               <Select
                 value={edge.rule}
                 onValueChange={(value) =>
@@ -300,14 +326,18 @@ export function FactoryExecutionPolicyEditor(props: {
                   )
                 }
               >
-                <SelectTrigger aria-label={`Evidence rule for ${edge.edgeId}`}>
+                <SelectTrigger aria-label={gt("Evidence rule for {id}", { id: edge.edgeId })}>
                   <SelectValue>
-                    {edge.rule === "verified-code" ? "Verified code" : "Sealed draft"}
+                    {edge.rule === "verified-code" ? gt("Verified code") : gt("Sealed draft")}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
-                  <SelectItem value="sealed-draft">Sealed draft</SelectItem>
-                  <SelectItem value="verified-code">Verified code</SelectItem>
+                  <SelectItem value="sealed-draft">
+                    <T>Sealed draft</T>
+                  </SelectItem>
+                  <SelectItem value="verified-code">
+                    <T>Verified code</T>
+                  </SelectItem>
                 </SelectPopup>
               </Select>
             </div>
@@ -315,9 +345,13 @@ export function FactoryExecutionPolicyEditor(props: {
         );
       })}
       <div>
-        <p className="text-sm">Threads allowed to request work under this grant</p>
+        <p className="text-sm">
+          <T>Threads allowed to request work under this grant</T>
+        </p>
         {threads.length === 0 ? (
-          <p className="text-xs">No eligible project threads. Human start remains separate.</p>
+          <p className="text-xs">
+            <T>No eligible project threads. Human start remains separate.</T>
+          </p>
         ) : (
           threads.map((thread) => (
             <label className="block text-sm" key={thread.id}>
@@ -338,7 +372,7 @@ export function FactoryExecutionPolicyEditor(props: {
         )}
       </div>
       <label className="block text-sm">
-        Maximum attempts
+        <T>Maximum attempts</T>
         <Input
           type="number"
           min={1}
@@ -348,7 +382,7 @@ export function FactoryExecutionPolicyEditor(props: {
         />
       </label>
       <label className="block text-sm">
-        Retries per task
+        <T>Retries per task</T>
         <Input
           type="number"
           min={0}
@@ -358,7 +392,7 @@ export function FactoryExecutionPolicyEditor(props: {
         />
       </label>
       <label className="block text-sm">
-        Maximum concurrent attempts
+        <T>Maximum concurrent attempts</T>
         <Input
           type="number"
           min={1}
@@ -368,7 +402,7 @@ export function FactoryExecutionPolicyEditor(props: {
         />
       </label>
       <label className="block text-sm">
-        Grant expiry (local time)
+        <T>Grant expiry (local time)</T>
         <Input
           type="datetime-local"
           value={expiry}
@@ -381,11 +415,13 @@ export function FactoryExecutionPolicyEditor(props: {
           checked={ownedWriters}
           onChange={(event) => setOwnedWriters(event.target.checked)}
         />{" "}
-        Require owned-writer observation
+        <T>Require owned-writer observation</T>
       </label>
       {error ? <p role="alert">{error}</p> : null}
       <Button size="sm" onClick={build}>
-        Grant exact revision {plan.revision}
+        <T>
+          Grant exact revision <Var>{plan.revision}</Var>
+        </T>
       </Button>
     </fieldset>
   );

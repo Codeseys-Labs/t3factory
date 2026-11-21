@@ -7,6 +7,7 @@ import {
 } from "@t3tools/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowUpIcon, BanIcon, FolderIcon, LockIcon, type LucideIcon } from "lucide-react";
+import { msg, T, useGT, useMessages } from "gt-react";
 
 import { useNowMinute } from "../../../hooks/useNowMinute";
 import { useProject } from "../../../state/entities";
@@ -35,28 +36,41 @@ export function TaskRail({ detail }: { detail: FactoryTaskDetail }) {
   const project = useProject(scopeProjectRef(environmentId, task.ref.projectId));
   const SourceIcon = SOURCE_ICONS[task.source.kind];
   const parent = detail.ancestors.at(-1);
+  const gt = useGT();
   const related = [
-    ...(parent ? [{ kind: "Parent", Icon: ArrowUpIcon, task: parent }] : []),
-    ...detail.blockedBy.map((blocker) => ({ kind: "Blocked by", Icon: LockIcon, task: blocker })),
-    ...detail.blocks.map((blocked) => ({ kind: "Blocks", Icon: BanIcon, task: blocked })),
+    ...(parent
+      ? [{ kind: msg("Parent", { $context: "task lineage" }), Icon: ArrowUpIcon, task: parent }]
+      : []),
+    ...detail.blockedBy.map((blocker) => ({
+      kind: msg("Blocked by", { $context: "task lineage" }),
+      Icon: LockIcon,
+      task: blocker,
+    })),
+    ...detail.blocks.map((blocked) => ({
+      kind: msg("Blocks", { $context: "task lineage" }),
+      Icon: BanIcon,
+      task: blocked,
+    })),
   ];
   return (
-    <aside aria-label="Properties" className="flex min-w-0 flex-col gap-6">
+    <aside aria-label={gt("Properties")} className="flex min-w-0 flex-col gap-6">
       <PropertyList>
-        <PropertyRow label="Status">
+        <PropertyRow label={gt("Status")}>
           <TaskStatusLabel status={task.status} />
         </PropertyRow>
-        <PropertyRow label="Assignee">
+        <PropertyRow label={gt("Assignee")}>
           <TaskAssigneeEditor task={task} />
         </PropertyRow>
-        <PropertyRow label="Owner">You</PropertyRow>
-        <PropertyRow label="Project">
+        <PropertyRow label={gt("Owner")}>
+          <T>You</T>
+        </PropertyRow>
+        <PropertyRow label={gt("Project")}>
           <span className="inline-flex min-w-0 items-center gap-1.5">
             <FolderIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate">{project?.title ?? task.ref.projectId}</span>
           </span>
         </PropertyRow>
-        <PropertyRow label="Source">
+        <PropertyRow label={gt("Source")}>
           <span className="inline-flex min-w-0 items-center gap-1.5">
             <SourceIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
             {task.source.url ? (
@@ -73,17 +87,17 @@ export function TaskRail({ detail }: { detail: FactoryTaskDetail }) {
             )}
           </span>
         </PropertyRow>
-        <PropertyRow label="Type">
+        <PropertyRow label={gt("Type")}>
           <TaskTypeSelect task={task} />
         </PropertyRow>
       </PropertyList>
-      <section aria-label="Runs" className="flex flex-col gap-2">
-        <SectionHeader title="Runs" />
+      <section aria-label={gt("Runs")} className="flex flex-col gap-2">
+        <SectionHeader title={gt("Runs")} />
         <TaskRuns detail={detail} />
       </section>
       {related.length > 0 ? (
-        <section aria-label="Related" className="flex flex-col gap-2">
-          <SectionHeader title="Related" />
+        <section aria-label={gt("Related")} className="flex flex-col gap-2">
+          <SectionHeader title={gt("Related")} />
           <ul className="flex flex-col gap-2">
             {related.map((entry) => (
               <li key={`${entry.kind}:${entry.task.taskId}`}>
@@ -105,6 +119,8 @@ export function TaskRail({ detail }: { detail: FactoryTaskDetail }) {
 function TaskTypeSelect({ task }: { task: FactoryTaskSummary }) {
   const { update: canUpdate } = useTaskPermissions(task.ref.environmentId);
   const actions = useTaskActions();
+  const gt = useGT();
+  const messages = useMessages();
   return (
     <Select
       value={task.type}
@@ -113,13 +129,13 @@ function TaskTypeSelect({ task }: { task: FactoryTaskSummary }) {
         if (next !== null && next !== task.type) void actions.update(task, { type: next });
       }}
     >
-      <SelectTrigger size="xs" variant="ghost" aria-label="Type">
-        <SelectValue>{TASK_TYPE_LABELS[task.type]}</SelectValue>
+      <SelectTrigger size="xs" variant="ghost" aria-label={gt("Type")}>
+        <SelectValue>{messages(TASK_TYPE_LABELS[task.type])}</SelectValue>
       </SelectTrigger>
       <SelectPopup>
         {FactoryTaskType.literals.map((type) => (
           <SelectItem key={type} value={type}>
-            {TASK_TYPE_LABELS[type]}
+            {messages(TASK_TYPE_LABELS[type])}
           </SelectItem>
         ))}
       </SelectPopup>
@@ -136,18 +152,29 @@ function TaskRuns({ detail }: { detail: FactoryTaskDetail }) {
   const machine = useEnvironmentPresentation(environmentId).presentation?.entry.target.label;
   const navigate = useNavigate();
   const nowMinute = useNowMinute();
+  const messages = useMessages();
   const now = Date.parse(`${nowMinute}:00Z`);
-  if (detail.runs.length === 0) return <p className="text-muted-foreground text-sm">No runs yet</p>;
+  if (detail.runs.length === 0)
+    return (
+      <p className="text-muted-foreground text-sm">
+        <T>No runs yet</T>
+      </p>
+    );
   return (
     <ul className="flex flex-col gap-2">
       {detail.runs.map((run) => {
         const pill = live.liveRuns.find((entry) => entry.threadId === run.threadId)?.pill ?? null;
-        const state = runStateWord(run, pill?.label ?? null);
+        const state = runStateWord(run, pill?.label ?? null, messages);
         return (
           <li key={run.runId}>
             <RunRow
-              label={`Run ${run.ordinal} · ${presentTaskSetup(run.setup, catalog).label}`}
-              detail={runDetailLine(run, now, machine)}
+              label={messages(
+                msg("Run {ordinal} · {label}", {
+                  ordinal: String(run.ordinal),
+                  label: presentTaskSetup(run.setup, catalog).label,
+                }),
+              )}
+              detail={runDetailLine(run, now, machine, messages)}
               stateLabel={state.label}
               tone={state.tone}
               onOpen={() =>
@@ -176,6 +203,7 @@ function LineageRow({
   Icon: LucideIcon;
   task: { displayId: string; title: string; status: FactoryTaskStatus };
 }) {
+  const messages = useMessages();
   return (
     <Link
       to="/tasks/$environmentId/$displayId"
@@ -184,8 +212,8 @@ function LineageRow({
     >
       <span className="flex items-center gap-1.5 text-muted-foreground text-xs">
         <Icon aria-hidden className="size-3.5 shrink-0" />
-        <span className="flex-1">{kind}</span>
-        <span>{TASK_STATUS_VISUALS[task.status].label}</span>
+        <span className="flex-1">{messages(kind)}</span>
+        <span>{messages(TASK_STATUS_VISUALS[task.status].label)}</span>
       </span>
       <span className="flex min-w-0 items-baseline gap-2 text-sm">
         <span className="shrink-0 text-muted-foreground text-xs tabular-nums">

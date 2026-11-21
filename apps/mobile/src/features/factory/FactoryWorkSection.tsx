@@ -13,6 +13,7 @@ import {
   type FactoryWorkKind,
   type ProjectId,
 } from "@t3tools/contracts";
+import { T, useGT, useMessages } from "gt-react-native";
 import { useEffect, useRef } from "react";
 import { Platform, Pressable, useWindowDimensions, View } from "react-native";
 import { RefreshControl } from "../../components/ui/RefreshControl";
@@ -61,6 +62,8 @@ export const FACTORY_LARGE_TEXT_SCALE = 1.3;
 
 function OwnerHeader(props: { readonly owner: FactoryWorkOwnerView; readonly label: string }) {
   const { owner } = props;
+  const gt = useGT();
+  const messages = useMessages();
   return (
     <View className="mt-4 gap-1 border-b border-border-subtle px-1 pb-2" accessibilityRole="header">
       <Text className="text-base font-t3-medium text-foreground">{props.label}</Text>
@@ -71,8 +74,10 @@ function OwnerHeader(props: { readonly owner: FactoryWorkOwnerView; readonly lab
             : "text-sm text-danger-foreground"
         }
       >
-        {FACTORY_WORK_OWNER_MESSAGES[owner.status]}
-        {owner.page ? ` Observed ${new Date(owner.page.fetchedAt).toLocaleString()}.` : ""}
+        {messages(FACTORY_WORK_OWNER_MESSAGES[owner.status])}
+        {owner.page
+          ? ` ${gt("Observed {time}.", { time: new Date(owner.page.fetchedAt).toLocaleString() })}`
+          : ""}
       </Text>
     </View>
   );
@@ -85,12 +90,13 @@ function OwnerFooter(props: {
   readonly onLoadMore: () => void;
 }) {
   const { owner } = props;
+  const gt = useGT();
   if (owner.status === "failed")
     return (
       <View className="items-start px-1 py-2">
         <Button
-          label="Try again"
-          accessibilityLabel={`Try reading ${props.label} again`}
+          label={gt("Try again")}
+          accessibilityLabel={gt("Try reading {label} again", { label: props.label })}
           onPress={props.onRetry}
         />
       </View>
@@ -102,35 +108,37 @@ function OwnerFooter(props: {
       {empty ? (
         <Text className="text-sm text-foreground-muted">
           {owner.page?.nextCursor
-            ? "No retained work on the loaded pages. Load more to keep looking."
-            : "No retained work in this scope."}
+            ? gt("No retained work on the loaded pages. Load more to keep looking.")
+            : gt("No retained work in this scope.")}
         </Text>
       ) : null}
       {owner.more === "loading" ? (
         <AppActivityIndicator
           colorClassName="accent-icon"
-          accessibilityLabel={`Loading more work from ${props.label}`}
+          accessibilityLabel={gt("Loading more work from {label}", { label: props.label })}
         />
       ) : owner.more === "failed" ? (
         <>
           <Text className="text-sm text-danger-foreground">
-            Couldn't load the next page. Loaded work is still shown.
+            <T>Couldn't load the next page. Loaded work is still shown.</T>
           </Text>
           <Button
-            label="Try again"
-            accessibilityLabel={`Try loading more work from ${props.label} again`}
+            label={gt("Try again")}
+            accessibilityLabel={gt("Try loading more work from {label} again", {
+              label: props.label,
+            })}
             onPress={props.onRetry}
           />
         </>
       ) : owner.canLoadMore ? (
         <Button
-          label="Load more"
-          accessibilityLabel={`Load more work from ${props.label}`}
+          label={gt("Load more")}
+          accessibilityLabel={gt("Load more work from {label}", { label: props.label })}
           onPress={props.onLoadMore}
         />
       ) : owner.page?.nextCursor ? (
         <Text className="text-xs text-foreground-muted">
-          Page limit reached. Pull to refresh, or narrow the scope or kind to see more.
+          <T>Page limit reached. Pull to refresh, or narrow the scope or kind to see more.</T>
         </Text>
       ) : null}
     </View>
@@ -144,24 +152,35 @@ function WorkRow(props: {
   readonly onPress: () => void;
 }) {
   const { item, stale } = props.row.entry;
+  const gt = useGT();
+  const messages = useMessages();
   const conditions = [
-    stale ? "Stale; refresh to inspect" : null,
-    item.sourceState !== null ? `Source snapshot at admission: ${item.sourceState}` : null,
-    item.supersededBy !== null ? "Superseded brief" : null,
+    stale ? gt("Stale; refresh to inspect") : null,
+    item.sourceState !== null
+      ? gt("Source snapshot at admission: {state}", { state: item.sourceState })
+      : null,
+    item.supersededBy !== null ? gt("Superseded brief") : null,
     item.originConflict || props.row.conflict
-      ? "Comparable source conflict; owners stay separate"
+      ? gt("Comparable source conflict; owners stay separate")
       : null,
   ].filter((entry): entry is string => entry !== null);
-  const kind = FACTORY_WORK_KIND_LABELS[item.ref.kind];
+  const kind = messages(FACTORY_WORK_KIND_LABELS[item.ref.kind]);
   const projectRole =
     item.ref.kind === "brief" || item.ref.kind === "protocol"
-      ? "Authoring project"
-      : "Admission project";
+      ? gt("Authoring project")
+      : gt("Admission project");
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${item.title}. ${kind}. ${projectRole} ${props.projectLabel}.`}
-      accessibilityHint={stale ? "Refresh this environment to inspect" : "Opens work details"}
+      accessibilityLabel={gt("{title}. {kind}. {role} {project}.", {
+        title: item.title,
+        kind,
+        role: projectRole,
+        project: props.projectLabel,
+      })}
+      accessibilityHint={
+        stale ? gt("Refresh this environment to inspect") : gt("Opens work details")
+      }
       accessibilityState={{ selected: props.selected, disabled: stale }}
       disabled={stale}
       onPress={props.onPress}
@@ -173,8 +192,12 @@ function WorkRow(props: {
     >
       <Text className="text-base text-foreground">{item.title}</Text>
       <Text className="text-xs text-foreground-muted">
-        {kind} · {projectRole} {props.projectLabel} ·{" "}
-        {new Date(item.createdAt).toLocaleDateString()}
+        {gt("{kind} · {role} {project} · {date}", {
+          kind,
+          role: projectRole,
+          project: props.projectLabel,
+          date: new Date(item.createdAt).toLocaleDateString(),
+        })}
       </Text>
       {conditions.map((condition) => (
         <Text key={condition} className="text-xs text-foreground-muted">
@@ -189,6 +212,8 @@ export function FactoryWorkKindPicker(props: {
   readonly kind: FactoryWorkKind | null;
   readonly onSelect: (kind: FactoryWorkKind | null) => void;
 }) {
+  const gt = useGT();
+  const messages = useMessages();
   const { fontScale } = useWindowDimensions();
   const selected = props.kind ?? "all";
   const choose = (value: string) => {
@@ -198,26 +223,30 @@ export function FactoryWorkKindPicker(props: {
   if (fontScale < FACTORY_LARGE_TEXT_SCALE)
     return (
       <SegmentedControl<FactoryWorkKind | "all">
-        options={FACTORY_WORK_KINDS}
+        options={FACTORY_WORK_KINDS.map((option) => ({
+          ...option,
+          label: messages(option.label),
+        }))}
         selected={selected}
         onSelect={choose}
       />
     );
   const actions: MenuAction[] = FACTORY_WORK_KINDS.map((option) => ({
     id: option.value,
-    title: option.accessibilityLabel,
+    title: messages(option.accessibilityLabel),
     state: option.value === selected ? "on" : undefined,
   }));
-  const label =
-    FACTORY_WORK_KINDS.find((option) => option.value === selected)?.accessibilityLabel ?? "";
+  const label = messages(
+    FACTORY_WORK_KINDS.find((option) => option.value === selected)?.accessibilityLabel ?? "",
+  );
   return (
     <Menu actions={actions} onPressAction={({ nativeEvent }) => choose(nativeEvent.event)}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Work kind, ${label}`}
+        accessibilityLabel={gt("Work kind, {kind}", { kind: label })}
         className="min-h-12 justify-center rounded-2xl border border-border-subtle px-4 py-3 active:opacity-70"
       >
-        <Text className="text-base text-foreground">Kind: {label} ▾</Text>
+        <Text className="text-base text-foreground">{gt("Kind: {kind} ▾", { kind: label })}</Text>
       </Pressable>
     </Menu>
   );
@@ -229,6 +258,7 @@ export function FactoryWorkSection(props: {
   readonly environments: readonly EnvironmentPresentation[];
 }) {
   const { environmentId, projectId, environments } = props;
+  const gt = useGT();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<FactoryWorkRoutes>>();
   const view = useFactoryWorkView();
@@ -263,7 +293,7 @@ export function FactoryWorkSection(props: {
     environments.find((environment) => environment.environmentId === id)?.label ?? id;
   const projectLabel = (id: EnvironmentId, project: ProjectId) =>
     projects.find((entry) => entry.environmentId === id && entry.id === project)?.title ??
-    `${project} (project unavailable)`;
+    gt("{project} (project unavailable)", { project });
   const targetsOf = (id: EnvironmentId) => targets.filter((target) => target.environmentId === id);
   const refreshAll = () => {
     resetFactoryWorkPages(pagesKey);
@@ -322,23 +352,27 @@ export function FactoryWorkSection(props: {
           ) : null}
           <FactoryWorkKindPicker kind={view.kind} onSelect={selectFactoryWorkKind} />
           <Text className="text-xs text-foreground-muted">
-            Retained issue and feed admissions, authored briefs and sealed protocols. Each
-            environment pages and observes on its own. Planning stage is unavailable; open an item
-            for executions and outputs. Idle, a closed source and a retained output are not
-            acceptance.
+            <T>
+              Retained issue and feed admissions, authored briefs and sealed protocols. Each
+              environment pages and observes on its own. Planning stage is unavailable; open an item
+              for executions and outputs. Idle, a closed source and a retained output are not
+              acceptance.
+            </T>
           </Text>
           {owners.length > 0 ? (
             <Text className="text-xs text-foreground-muted">
               {aggregate.incomplete
-                ? "Showing loaded pages only. More work may be on later pages or in unavailable environments."
-                : "All retained work in this scope is shown."}
+                ? gt(
+                    "Showing loaded pages only. More work may be on later pages or in unavailable environments.",
+                  )
+                : gt("All retained work in this scope is shown.")}
             </Text>
           ) : null}
           {loading ? (
             <View className="items-center py-6">
               <AppActivityIndicator
                 colorClassName="accent-icon"
-                accessibilityLabel="Loading work"
+                accessibilityLabel={gt("Loading work")}
               />
             </View>
           ) : null}
@@ -347,8 +381,8 @@ export function FactoryWorkSection(props: {
       ListEmptyComponent={
         <EmptyState
           variant="plain"
-          title="No environments in this scope"
-          detail="Connect an environment or widen the scope to see its work."
+          title={gt("No environments in this scope")}
+          detail={gt("Connect an environment or widen the scope to see its work.")}
         />
       }
       renderItem={({ item: row }) =>

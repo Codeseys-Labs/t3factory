@@ -1,9 +1,14 @@
-import { SourceControlSignInError, type SourceControlProviderKind } from "@t3tools/contracts";
+import {
+  IssueTrackerKind,
+  SourceControlSignInError,
+  type SourceControlProviderKind,
+} from "@t3tools/contracts";
 import {
   defineSourceControlDriver,
   withOwnServices,
   type SourceControlSignIn,
 } from "@t3tools/source-control-core/server/driver";
+import { IssueTrackerError } from "@t3tools/source-control-core/server/IssueTracker";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { HttpClient } from "effect/http";
@@ -14,7 +19,6 @@ import * as GitHubAppAccess from "./GitHubAppAccess.ts";
 import * as GitHubAppSignIn from "./GitHubAppSignIn.ts";
 import * as GitHubMediaFetch from "./gitHubMediaFetch.ts";
 import * as GitHubPullRequestApi from "./GitHubPullRequestApi.ts";
-import * as GitHubIssueTrackerProvider from "./GitHubIssueTrackerProvider.ts";
 import * as GitHubPullRequestProvider from "./GitHubPullRequestProvider.ts";
 import * as GitHubRest from "./GitHubRest.ts";
 import * as GitHubHttpClient from "./GitHubHttpClient.ts";
@@ -99,6 +103,33 @@ export const makeStarRepository = Effect.gen(function* () {
   );
 });
 
+export const makeReadApiResource = Effect.gen(function* () {
+  const api = yield* GitHubRest.GitHubRest;
+  const tracker = IssueTrackerKind.make(definition.kind);
+  return (input: { readonly host: string; readonly path: string }) =>
+    api.rest({ host: input.host, operation: "readApiResource", path: input.path }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new IssueTrackerError({
+            tracker,
+            operation: "readApiResource",
+            reason:
+              cause._tag === "GitHubApiRateLimitError" ||
+              cause._tag === "SourceControlRateLimitPausedError"
+                ? "rate-limited"
+                : cause._tag === "GitHubApiNotFoundError"
+                  ? "not-found"
+                  : cause._tag === "GitHubApiRequestError" ||
+                      cause._tag === "GitHubApiResponseError"
+                    ? "failed"
+                    : "unauthenticated",
+            detail: "The GitHub API request failed.",
+            cause,
+          }),
+      ),
+    );
+});
+
 const makeInstance = Effect.gen(function* () {
   const mediaHttpClient = yield* HttpClient.HttpClient;
   return yield* withOwnServices(
@@ -107,7 +138,7 @@ const makeInstance = Effect.gen(function* () {
       discovery: GitHubSourceControlProvider.makeDiscovery,
       pullRequests: GitHubPullRequestProvider.make,
       issues: GitHubIssueTracker.make,
-      factoryIssues: GitHubIssueTrackerProvider.make,
+      readApiResource: makeReadApiResource,
       fetchMedia: GitHubMediaFetch.make.pipe(
         Effect.provideService(HttpClient.HttpClient, mediaHttpClient),
       ),

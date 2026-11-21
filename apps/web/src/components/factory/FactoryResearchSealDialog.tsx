@@ -6,6 +6,7 @@ import {
   type FactoryRepository,
   type FactoryResearchProtocol,
 } from "@t3tools/contracts";
+import { T, useGT, Var } from "gt-react";
 import { useId, useState, type ReactNode } from "react";
 
 import { Button } from "../ui/button";
@@ -99,6 +100,7 @@ export function FactoryResearchSealDialog(props: {
   readonly onOpenProtocol: (protocol: FactoryResearchProtocol) => void;
 }) {
   const { pending, sealed } = props;
+  const gt = useGT();
   const baseId = useId();
   const [draft, setDraft] = useState<FactoryResearchSealDraft>(EMPTY_FACTORY_RESEARCH_SEAL_DRAFT);
   const [errors, setErrors] = useState<FactoryResearchSealErrors>({});
@@ -146,12 +148,16 @@ export function FactoryResearchSealDialog(props: {
       <DialogPopup className="max-w-xl">
         <DialogHeader>
           <DialogTitle>
-            {sealed === null ? "Seal research protocol" : "Protocol sealed"}
+            {sealed === null ? gt("Seal research protocol") : gt("Protocol sealed")}
           </DialogTitle>
           <DialogDescription>
             {sealed === null
-              ? "A protocol fixes the hypothesis, the command a run executes, the files that must not change, the metric and the budget. It cannot be edited afterwards; a change is a new protocol."
-              : "The server resolved the base commit and hashed each evaluator itself. These are the values every run is checked against."}
+              ? gt(
+                  "A protocol fixes the hypothesis, the command a run executes, the files that must not change, the metric and the budget. It cannot be edited afterwards; a change is a new protocol.",
+                )
+              : gt(
+                  "The server resolved the base commit and hashed each evaluator itself. These are the values every run is checked against.",
+                )}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
@@ -167,13 +173,15 @@ export function FactoryResearchSealDialog(props: {
             >
               <fieldset disabled={pending} className="min-w-0 space-y-4">
                 <p className="text-muted-foreground text-xs [overflow-wrap:anywhere]">
-                  {`${props.repository.host}/${props.repository.repository}`} · project{" "}
-                  {props.projectTitle}
+                  <T>
+                    <Var>{`${props.repository.host}/${props.repository.repository}`}</Var> · project{" "}
+                    <Var>{props.projectTitle}</Var>
+                  </T>
                 </p>
                 <Field
                   id={idFor("hypothesis")}
-                  label="Hypothesis"
-                  hint="One falsifiable sentence."
+                  label={<T>Hypothesis</T>}
+                  hint={<T>One falsifiable sentence.</T>}
                   error={errors.hypothesis}
                   trailing={
                     <Counter value={draft.hypothesis} max={FACTORY_RESEARCH_HYPOTHESIS_MAX_CHARS} />
@@ -184,14 +192,21 @@ export function FactoryResearchSealDialog(props: {
                     value={draft.hypothesis}
                     aria-invalid={errors.hypothesis !== undefined}
                     aria-describedby={describedBy("hypothesis", true)}
-                    placeholder="Halving the batch size lowers validation loss by at least 0.01"
+                    placeholder={gt(
+                      "Halving the batch size lowers validation loss by at least 0.01",
+                    )}
                     onChange={(event) => update("hypothesis", event.target.value)}
                   />
                 </Field>
                 <Field
                   id={idFor("runCommand")}
-                  label="Run command"
-                  hint="What a run executes. T3 Code does not run it; the agent does, in its own worktree."
+                  label={<T>Run command</T>}
+                  hint={
+                    <T>
+                      What a run executes. T3 Code does not run it; the agent does, in its own
+                      worktree.
+                    </T>
+                  }
                   error={errors.runCommand}
                   trailing={
                     <Counter
@@ -208,14 +223,20 @@ export function FactoryResearchSealDialog(props: {
                     value={draft.runCommand}
                     aria-invalid={errors.runCommand !== undefined}
                     aria-describedby={describedBy("runCommand", true)}
-                    placeholder="uv run train.py"
+                    placeholder={gt("uv run train.py")}
                     onChange={(event) => update("runCommand", event.target.value)}
                   />
                 </Field>
                 <Field
                   id={idFor("evaluatorPaths")}
-                  label="Evaluator paths"
-                  hint={`One repository path per line, up to ${FACTORY_RESEARCH_EVALUATOR_MAX_PATHS}. The server hashes each at the base commit; a run that changes one is not acceptable evidence.`}
+                  label={<T>Evaluator paths</T>}
+                  hint={
+                    <T>
+                      One repository path per line, up to{" "}
+                      <Var>{FACTORY_RESEARCH_EVALUATOR_MAX_PATHS}</Var>. The server hashes each at
+                      the base commit; a run that changes one is not acceptable evidence.
+                    </T>
+                  }
                   error={errors.evaluatorPaths}
                 >
                   <Textarea
@@ -224,12 +245,16 @@ export function FactoryResearchSealDialog(props: {
                     value={draft.evaluatorPaths}
                     aria-invalid={errors.evaluatorPaths !== undefined}
                     aria-describedby={describedBy("evaluatorPaths", true)}
-                    placeholder={"prepare.py\nscripts/score.py"}
+                    placeholder={gt("prepare.py\nscripts/score.py")}
                     onChange={(event) => update("evaluatorPaths", event.target.value)}
                   />
                 </Field>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field id={idFor("metricName")} label="Metric name" error={errors.metricName}>
+                  <Field
+                    id={idFor("metricName")}
+                    label={<T>Metric name</T>}
+                    error={errors.metricName}
+                  >
                     <Input
                       id={idFor("metricName")}
                       autoComplete="off"
@@ -243,8 +268,10 @@ export function FactoryResearchSealDialog(props: {
                   </Field>
                   <Field
                     id={idFor("linePrefix")}
-                    label="Line prefix"
-                    hint="The server reads the number after this text on the line the run cites."
+                    label={<T>Line prefix</T>}
+                    hint={
+                      <T>The server reads the number after this text on the line the run cites.</T>
+                    }
                     error={errors.linePrefix}
                   >
                     <Input
@@ -262,7 +289,9 @@ export function FactoryResearchSealDialog(props: {
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label id={`${idFor("direction")}-label`}>Direction</Label>
+                    <Label id={`${idFor("direction")}-label`}>
+                      <T>Direction</T>
+                    </Label>
                     <ToggleGroup
                       aria-labelledby={`${idFor("direction")}-label`}
                       value={[draft.direction]}
@@ -271,19 +300,30 @@ export function FactoryResearchSealDialog(props: {
                         if (next === "lower" || next === "higher") update("direction", next);
                       }}
                     >
-                      <Toggle value="lower">Lower is better</Toggle>
-                      <Toggle value="higher">Higher is better</Toggle>
+                      <Toggle value="lower">
+                        <T>Lower is better</T>
+                      </Toggle>
+                      <Toggle value="higher">
+                        <T>Higher is better</T>
+                      </Toggle>
                     </ToggleGroup>
                   </div>
                   <Field
                     id={idFor("minimumEffect")}
                     label={
                       <>
-                        Minimum effect{" "}
-                        <span className="font-normal text-muted-foreground">optional</span>
+                        <T>Minimum effect</T>{" "}
+                        <span className="font-normal text-muted-foreground">
+                          <T>optional</T>
+                        </span>
                       </>
                     }
-                    hint="How far a result must beat the baseline. Left empty, no result can be judged and the finding stays unknown."
+                    hint={
+                      <T>
+                        How far a result must beat the baseline. Left empty, no result can be judged
+                        and the finding stays unknown.
+                      </T>
+                    }
                     error={errors.minimumEffect}
                   >
                     <Input
@@ -299,7 +339,7 @@ export function FactoryResearchSealDialog(props: {
                   </Field>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field id={idFor("maxRuns")} label="Maximum runs" error={errors.maxRuns}>
+                  <Field id={idFor("maxRuns")} label={<T>Maximum runs</T>} error={errors.maxRuns}>
                     <Input
                       id={idFor("maxRuns")}
                       inputMode="numeric"
@@ -312,7 +352,7 @@ export function FactoryResearchSealDialog(props: {
                   </Field>
                   <Field
                     id={idFor("maxRunMinutes")}
-                    label="Maximum minutes per run"
+                    label={<T>Maximum minutes per run</T>}
                     error={errors.maxRunMinutes}
                   >
                     <Input
@@ -328,8 +368,13 @@ export function FactoryResearchSealDialog(props: {
                 </div>
                 <Field
                   id={idFor("expiresAt")}
-                  label="Budget window closes"
-                  hint="Your local time. New runs are refused after this; a running thread is only stopped by you."
+                  label={<T>Budget window closes</T>}
+                  hint={
+                    <T>
+                      Your local time. New runs are refused after this; a running thread is only
+                      stopped by you.
+                    </T>
+                  }
                   error={errors.expiresAt}
                 >
                   <Input
@@ -345,10 +390,18 @@ export function FactoryResearchSealDialog(props: {
                   id={idFor("baseRef")}
                   label={
                     <>
-                      Base ref <span className="font-normal text-muted-foreground">optional</span>
+                      <T>Base ref</T>{" "}
+                      <span className="font-normal text-muted-foreground">
+                        <T>optional</T>
+                      </span>
                     </>
                   }
-                  hint="A local branch, tag or commit, fixed to one commit when sealed. Empty uses the current HEAD of the checkout; nothing is fetched or changed."
+                  hint={
+                    <T>
+                      A local branch, tag or commit, fixed to one commit when sealed. Empty uses the
+                      current HEAD of the checkout; nothing is fetched or changed.
+                    </T>
+                  }
                 >
                   <Input
                     id={idFor("baseRef")}
@@ -356,7 +409,7 @@ export function FactoryResearchSealDialog(props: {
                     spellCheck={false}
                     value={draft.baseRef}
                     aria-describedby={describedBy("baseRef", true)}
-                    placeholder="Current HEAD of the project checkout"
+                    placeholder={gt("Current HEAD of the project checkout")}
                     onChange={(event) => update("baseRef", event.target.value)}
                   />
                 </Field>
@@ -370,15 +423,17 @@ export function FactoryResearchSealDialog(props: {
         <DialogFooter>
           {sealed !== null ? (
             <>
-              <DialogClose render={<Button variant="outline" size="sm" />}>Close</DialogClose>
+              <DialogClose render={<Button variant="outline" size="sm" />}>
+                <T>Close</T>
+              </DialogClose>
               <Button size="sm" onClick={() => props.onOpenProtocol(sealed)}>
-                Open protocol
+                <T>Open protocol</T>
               </Button>
             </>
           ) : (
             <>
               <DialogClose render={<Button variant="outline" size="sm" disabled={pending} />}>
-                Cancel
+                <T>Cancel</T>
               </DialogClose>
               <Button
                 size="sm"
@@ -387,7 +442,7 @@ export function FactoryResearchSealDialog(props: {
                 disabled={!props.canSeal || pending}
                 aria-busy={pending}
               >
-                {pending ? "Sealing…" : "Seal protocol"}
+                {pending ? gt("Sealing…") : gt("Seal protocol")}
               </Button>
             </>
           )}
@@ -400,35 +455,47 @@ export function FactoryResearchSealDialog(props: {
 /** Everything shown comes from the server's record, never from what was typed. */
 function SealedProtocolSummary(props: { readonly protocol: FactoryResearchProtocol }) {
   const { protocol } = props;
+  const gt = useGT();
   return (
     <div className="min-w-0 space-y-4">
       <dl className="space-y-3 text-sm">
         <div className="space-y-0.5">
-          <dt className="font-medium text-xs">Base commit</dt>
+          <dt className="font-medium text-xs">
+            <T>Base commit</T>
+          </dt>
           <dd className="font-mono text-xs [overflow-wrap:anywhere]">{protocol.baseCommit}</dd>
         </div>
         <div className="space-y-0.5">
-          <dt className="font-medium text-xs">Revision</dt>
+          <dt className="font-medium text-xs">
+            <T>Revision</T>
+          </dt>
           <dd className="font-mono text-xs [overflow-wrap:anywhere]">{protocol.revision}</dd>
         </div>
       </dl>
       <div className="space-y-1.5">
-        <h3 className="font-medium text-xs">Evaluators the server hashed</h3>
-        <ul className="space-y-1.5" aria-label="Sealed evaluators">
+        <h3 className="font-medium text-xs">
+          <T>Evaluators the server hashed</T>
+        </h3>
+        <ul className="space-y-1.5" aria-label={gt("Sealed evaluators")}>
           {protocol.evaluators.map((evaluator) => (
             <li key={evaluator.path} className="rounded-lg border border-border/60 p-2">
               <p className="font-mono text-xs [overflow-wrap:anywhere]">
                 {factoryIssueReviewText(evaluator.path)}
               </p>
               <p className="font-mono text-muted-foreground text-xs [overflow-wrap:anywhere]">
-                blob {evaluator.blobOid}
+                <T>
+                  blob <Var>{evaluator.blobOid}</Var>
+                </T>
               </p>
             </li>
           ))}
         </ul>
       </div>
       <p className="text-muted-foreground text-xs">
-        Base commit {shortFactoryCommit(protocol.baseCommit)}. Open the protocol to launch a run.
+        <T>
+          Base commit <Var>{shortFactoryCommit(protocol.baseCommit)}</Var>. Open the protocol to
+          launch a run.
+        </T>
       </p>
     </div>
   );

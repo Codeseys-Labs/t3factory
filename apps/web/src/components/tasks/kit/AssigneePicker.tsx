@@ -1,4 +1,5 @@
 import { CheckIcon, PinIcon } from "lucide-react";
+import { T, useGT, Var } from "gt-react";
 import { type ReactElement, useRef, useState } from "react";
 
 import {
@@ -85,6 +86,7 @@ export function AssigneePicker({
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const open = controlledOpen ?? uncontrolledOpen;
+  const gt = useGT();
   const setOpen = (next: boolean) => {
     if (!next) setQuery("");
     setUncontrolledOpen(next);
@@ -97,7 +99,7 @@ export function AssigneePicker({
           {
             key: "auto",
             value: { kind: "auto" },
-            label: "Auto",
+            label: gt("Auto", { $context: "task assignee" }),
             detail: auto.detail,
             mono: "Au",
             auto: true,
@@ -110,7 +112,7 @@ export function AssigneePicker({
             key: "pinned",
             value: { kind: "pinned" },
             label: pinned.label,
-            detail: "Pinned",
+            detail: gt("Pinned", { $context: "task assignee" }),
             mono: pinned.mono,
           } satisfies Option,
         ]
@@ -140,8 +142,8 @@ export function AssigneePicker({
           {
             key: "unassigned",
             value: { kind: "unassigned" },
-            label: "Unassigned",
-            detail: "Nobody yet",
+            label: gt("Unassigned", { $context: "task assignee" }),
+            detail: gt("Nobody yet"),
             mono: "–",
           } satisfies Option,
         ]
@@ -165,7 +167,7 @@ export function AssigneePicker({
         <span className="truncate text-muted-foreground text-xs">{option.detail}</span>
       </span>
       {option.key === selectedKey ? (
-        <CheckIcon aria-label="Selected" className="size-4 shrink-0 text-primary" />
+        <CheckIcon aria-label={gt("Selected")} className="size-4 shrink-0 text-primary" />
       ) : null}
     </CommandItem>
   );
@@ -174,18 +176,27 @@ export function AssigneePicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger render={trigger} />
       <PopoverPopup align="start" padding="none" width="md" initialFocus={inputRef}>
-        <Command mode="none" value={query} onValueChange={setQuery} aria-label="Choose an assignee">
-          <CommandInput ref={inputRef} placeholder="Search assignee…" />
+        <Command
+          mode="none"
+          value={query}
+          onValueChange={setQuery}
+          aria-label={gt("Choose an assignee")}
+        >
+          <CommandInput ref={inputRef} placeholder={gt("Search assignee…")} />
           <CommandList className="max-h-[min(30rem,var(--available-height))] overflow-y-auto">
             {visibleAgents.length === 0 && visiblePeople.length === 0 ? (
               <p className="px-3 py-4 text-center text-muted-foreground text-sm">
-                No assignee matches “{query.trim()}”.
+                <T>
+                  No assignee matches “<Var>{query.trim()}</Var>”.
+                </T>
               </p>
             ) : null}
             {visibleAgents.map(renderOption)}
             {visiblePeople.length > 0 ? (
               <CommandGroup>
-                <CommandGroupLabel>You</CommandGroupLabel>
+                <CommandGroupLabel>
+                  <T>You</T>
+                </CommandGroupLabel>
                 {visiblePeople.map(renderOption)}
               </CommandGroup>
             ) : null}
@@ -199,7 +210,7 @@ export function AssigneePicker({
             >
               <PinIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 truncate text-muted-foreground text-sm">
-                Pin a harness and model…
+                <T>Pin a harness and model…</T>
               </span>
             </CommandItem>
           </CommandList>

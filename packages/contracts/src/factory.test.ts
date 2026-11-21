@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
 import { CommandId, ProjectId, ThreadId } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
-import { FactoryIssueListInput, FactoryIssueStartInput } from "./factory.ts";
+import { FactoryIssue, FactoryIssueListInput, FactoryIssueStartInput } from "./factory.ts";
 import { FactoryArtifactDeliveryGrantInput } from "./factoryDelivery.ts";
 
 const input = {
@@ -17,6 +17,7 @@ const input = {
 } satisfies FactoryIssueStartInput;
 const decodeStartInput = Schema.decodeUnknownSync(FactoryIssueStartInput);
 const decodeListInput = Schema.decodeUnknownSync(FactoryIssueListInput);
+const decodeIssue = Schema.decodeUnknownSync(FactoryIssue);
 
 describe("factory wire contract", () => {
   it("rejects invalid issue numbers and pages at the boundary", () => {
@@ -32,6 +33,34 @@ describe("factory wire contract", () => {
     for (const value of [null, "", "   "]) {
       expect(() => decodeStartInput({ ...input, expectedIssueRevision: value })).toThrow();
     }
+  });
+
+  it("accepts native keys and legacy numbers without ambiguous addressing", () => {
+    expect(decodeStartInput(input).issueNumber).toBe(1);
+    const { issueNumber: _number, ...withoutNumber } = input;
+    expect(decodeStartInput({ ...withoutNumber, key: "ENG-123" }).key).toBe("ENG-123");
+    expect(() => decodeStartInput(withoutNumber)).toThrow();
+    expect(() => decodeStartInput({ ...input, key: "ENG-123" })).toThrow();
+    const oldReply = {
+      number: 12,
+      title: "Task",
+      body: null,
+      state: "open",
+      url: "https://example.test/12",
+      labels: [],
+      updatedAt: "2026-10-23T00:00:00.000Z",
+      revision: "reviewed",
+      task: null,
+    };
+    expect(decodeIssue(oldReply)).toEqual(oldReply);
+    expect(
+      decodeIssue({
+        ...oldReply,
+        number: null,
+        key: "ENG-123",
+        displayKey: "ENG-123",
+      }).key,
+    ).toBe("ENG-123");
   });
 
   it("requires a UUID v4 artifact attempt rather than caller-injected marker lines", () => {

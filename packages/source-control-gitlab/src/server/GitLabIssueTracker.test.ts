@@ -30,6 +30,7 @@ function answer(path: string): string {
     return encode([
       {
         ...ISSUE,
+        issue_type: "incident",
         labels: [
           { name: "bug", color: "#E24329", description: "Something is broken" },
           { name: " ", color: "#000000" },
@@ -177,6 +178,7 @@ describe("GitLabIssueTracker", () => {
       expect([...hosts]).toEqual(["gitlab.example.com"]);
       expect(issue).toMatchObject({
         key: "42",
+        kind: "incident",
         displayKey: "#42",
         state: { category: "closed", name: "Closed" },
         states: [
@@ -336,7 +338,11 @@ describe("GitLabIssueTracker", () => {
       const paths: string[] = [];
       const api = yield* tracker((args) => {
         paths.push(args[1]!);
-        return encode([ISSUE]);
+        return encode([
+          ISSUE,
+          { ...ISSUE, iid: 43, issue_type: "INCIDENT" },
+          { ...ISSUE, iid: 44, issue_type: "issue" },
+        ]);
       });
       const page = yield* api.listIssues({
         cwd: "/w",
@@ -370,6 +376,8 @@ describe("GitLabIssueTracker", () => {
       );
       expect(both.items).toEqual([]);
       expect(page.items[0]?.key).toBe("42");
+      // Every work item type stays listed, carrying its type.
+      expect(page.items.map((item) => item.kind)).toEqual([undefined, "incident", "issue"]);
       // A host that ignores with_labels_details still sends names, which keep their chips.
       expect(page.items[0]?.labels).toEqual([{ name: "bug", color: null }]);
       expect(page.nextCursor).toBe("4");

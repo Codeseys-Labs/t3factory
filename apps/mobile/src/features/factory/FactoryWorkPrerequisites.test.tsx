@@ -81,6 +81,7 @@ vi.mock("../../state/environments", () => ({
 vi.mock("../../state/session", () => ({ useEnvironmentScope: () => harness.readable }));
 vi.mock("../../state/factory", () => ({
   factoryEnvironment: { readWorkPrerequisites: harness.read },
+  factoryIssueKeysInput: (supported: boolean) => (supported ? { issueKeys: true } : {}),
 }));
 vi.mock("../../state/query", () => ({
   useEnvironmentQuery: () => ({

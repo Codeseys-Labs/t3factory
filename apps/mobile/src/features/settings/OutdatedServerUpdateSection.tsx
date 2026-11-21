@@ -80,6 +80,7 @@ export function OutdatedServerUpdateSection({
   }
 
   return (
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- product name
     <SettingsSection title="T3 Code Factory">
       <View className="gap-1 p-4">
         <Text className="text-base text-foreground">

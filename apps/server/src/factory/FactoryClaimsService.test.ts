@@ -8,6 +8,7 @@ import {
   ProjectId,
   ProviderInstanceId,
   SourceControlProviderKind,
+  IssueTrackerKind,
   ThreadId,
   type FactoryRepository,
   type FactoryResearchProtocol,
@@ -36,7 +37,7 @@ import {
   researchRunOriginKey,
 } from "./FactoryOriginKey.ts";
 import { type FactoryLaunchCore } from "./FactoryTaskLaunch.ts";
-import { issueTrackersLayer } from "./IssueTrackerProviderRegistry.testkit.ts";
+import { issueTrackersLayer } from "./FactoryIssueHosts.testkit.ts";
 
 const at = "2026-10-25T00:00:00.000Z";
 const owner = ProjectId.make("owner");
@@ -351,12 +352,28 @@ it.effect(
       for (const [provider, number] of [
         ["gitlab", 12],
         ["forgejo", 13],
+        ["linear", "ENG-123"],
       ] as const) {
         const intent: FactoryLaunchIntent = {
           ...core(provider),
-          repository: { ...gitlab, provider: SourceControlProviderKind.make(provider) },
+          repository: {
+            ...gitlab,
+            provider:
+              provider === "linear" ? gitlab.provider : SourceControlProviderKind.make(provider),
+            ...(provider === "linear"
+              ? {
+                  issueScope: {
+                    tracker: IssueTrackerKind.make("linear"),
+                    host: "linear.app",
+                    scope: "ENG",
+                    canonicalKey: 'issue:["linear","linear.app","eng"]',
+                  },
+                }
+              : {}),
+          },
           issue: {
-            number,
+            number: typeof number === "number" ? number : null,
+            ...(typeof number === "string" ? { key: number } : {}),
             title: "Task",
             body: null,
             state: "open",
@@ -367,13 +384,24 @@ it.effect(
           },
         };
         yield* sql`INSERT INTO factory_issue_launches (thread_id, canonical_key, issue_number, request_command_id, intent_json, origin_key)
-        VALUES (${intent.threadId}, ${gitlab.canonicalKey}, ${number}, ${intent.requestCommandId}, ${JSON.stringify(intent)}, ${issueOriginKey(intent.repository.provider, gitlab.canonicalKey, number)})`;
+        VALUES (${intent.threadId}, ${intent.repository.issueScope?.canonicalKey ?? gitlab.canonicalKey},
+          ${typeof number === "number" ? sql`CAST(${number} AS INTEGER)` : number},
+          ${intent.requestCommandId}, ${JSON.stringify(intent)},
+          ${issueOriginKey(IssueTrackerKind.make(provider), intent.repository.issueScope?.canonicalKey ?? gitlab.canonicalKey, number)})`;
       }
       const result = yield* (yield* Claims.FactoryClaimsService).list({ projectId: caller });
       assert.deepEqual(result.repository, gitlab);
       assert.deepEqual(
         result.claims.map((claim) => [claim.origin, claim.originKey, claim.threadId]),
         [["gitlab-issue", "gitlab:gitlab.com/group/sub/repo#12", "gitlab"]],
+      );
+      const native = yield* (yield* Claims.FactoryClaimsService).list({
+        projectId: caller,
+        issueKeys: true,
+      });
+      assert.deepEqual(
+        native.claims.map((claim) => claim.origin),
+        ["gitlab-issue", "linear-issue"],
       );
     }).pipe(Effect.provide(layerFor("https://gitlab.com/group/sub/repo.git"))),
 );

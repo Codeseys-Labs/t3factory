@@ -7,6 +7,7 @@ import type {
 import { Link, useCanGoBack, useRouter } from "@tanstack/react-router";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useState } from "react";
+import { T, useGT } from "gt-react";
 
 import { factoryTasks } from "../../../state/factoryTasks";
 import {
@@ -67,6 +68,7 @@ export function TaskDetail({
   const { environmentId } = task.ref;
   const router = useRouter();
   const canGoBack = useCanGoBack();
+  const gt = useGT();
   const proposal = useWaitingPlan(detail);
   const canEditPlan = useAtomValue(
     factoryTasks.updateTaskPlanProposal.permissionAtom(environmentId),
@@ -75,7 +77,7 @@ export function TaskDetail({
   const editing = proposal !== null && editingPlan === proposal.id;
 
   const breadcrumb: PageHeaderCrumb[] = [
-    { label: "Tasks", render: <Link to="/tasks" /> },
+    { label: gt("Tasks", { $context: "the Tasks page breadcrumb" }), render: <Link to="/tasks" /> },
     ...detail.ancestors.map((ancestor) => ({
       label: ancestor.displayId,
       render: (
@@ -129,9 +131,15 @@ export function TaskDetail({
             )}
             <Tabs value={tab} onValueChange={(value) => onTabChange(value as TaskDetailTab)}>
               <TabsList>
-                <TabsTab value="activity">Activity</TabsTab>
-                <TabsTab value="thread">Thread</TabsTab>
-                <TabsTab value="result">Result</TabsTab>
+                <TabsTab value="activity">
+                  <T>Activity</T>
+                </TabsTab>
+                <TabsTab value="thread">
+                  <T>Thread</T>
+                </TabsTab>
+                <TabsTab value="result">
+                  <T>Result</T>
+                </TabsTab>
               </TabsList>
               <TabsPanel value="activity" className="mt-3">
                 <TaskActivity detail={detail} />

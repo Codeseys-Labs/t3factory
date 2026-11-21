@@ -11,7 +11,13 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
-import { feedItemOriginKey, issueOriginKey } from "../factory/FactoryOriginKey.ts";
+import {
+  feedItemOriginKey,
+  issueOriginKey,
+  issueKeyOf,
+  issueScopeKey,
+  issueTrackerOf,
+} from "../factory/FactoryOriginKey.ts";
 import { FactoryFeedLaunchIntent } from "./FactoryFeedStore.ts";
 import { FactoryLaunchIntent } from "./FactoryIssueLaunches.ts";
 
@@ -96,9 +102,9 @@ const make = Effect.gen(function* () {
       row.originKey ??
       (row.origin === "issue"
         ? issueOriginKey(
-            row.intent.repository.provider,
-            row.intent.repository.canonicalKey,
-            row.intent.issue.number,
+            issueTrackerOf(row.intent.repository),
+            issueScopeKey(row.intent.repository),
+            issueKeyOf(row.intent.issue),
           )
         : feedItemOriginKey(
             row.intent.repository.canonicalKey,

@@ -4,6 +4,7 @@ import {
   sessionGrantsScope,
   FactoryIntakeArrivalResolveInput,
   FactoryIntakeError,
+  FactoryIssueError,
   FactoryIntakeRuleDeleteInput,
   FactoryIntakeRuleSaveInput,
   FactoryIntakeSourceConfig,
@@ -11,7 +12,6 @@ import {
   FactoryIntakeSourceSaveInput,
   FactoryTaskSummary,
   type FactoryIntakeArrival,
-  type FactoryIssue,
   type FactoryIntakeArrivalListInput,
   type FactoryIntakeArrivalListResult,
   type FactoryIntakeArrivalResolveResult,
@@ -56,12 +56,19 @@ import { forkParked } from "../serverActivation.ts";
 import * as Feeds from "./FactoryFeedService.ts";
 import { latestSlotAtOrBefore, nextSlotAfter } from "./FactoryIntakeSchedule.ts";
 import * as Issues from "./FactoryIssueService.ts";
-import { feedItemOriginKey, issueOriginKey } from "./FactoryOriginKey.ts";
+import {
+  feedItemOriginKey,
+  issueOriginKey,
+  issueKeyOf,
+  issueScopeKey,
+  issueTrackerOf,
+} from "./FactoryOriginKey.ts";
 import type { FactoryPlanActor } from "./FactoryPlanReducer.ts";
 import * as Tasks from "./FactoryTaskService.ts";
 import * as FeedFetch from "./FeedFetch.ts";
 
 const ISSUE_CHECK_INTERVAL_MS = 5 * 60_000;
+const ISSUE_READ_CONCURRENCY = 4;
 const FEED_CHECK_INTERVAL_MS = 15 * 60_000;
 const FAILED_CHECK_RETRY_MS = 15 * 60_000;
 const SCHEDULE_RETRY_MS = 5 * 60_000;
@@ -327,21 +334,21 @@ const make = Effect.gen(function* () {
     nowMs: number,
   ) {
     return yield* Effect.gen(function* () {
-      const first = yield* issues.list({ projectId: source.projectId, state: "open" });
+      const first = yield* issues.scan({ projectId: source.projectId });
       const { repository, capabilities } = first;
-      const keyOf = (issue: FactoryIssue) =>
-        issueOriginKey(repository.provider, repository.canonicalKey, issue.number);
+      const keyOf = (issue: Issues.FactoryIssueScan["issues"][number]) =>
+        issueOriginKey(issueTrackerOf(repository), issueScopeKey(repository), issueKeyOf(issue));
       // Trackers list by last update, newest first. Below a recorded page that predates the last
       // good check, every open issue was open then too, so it is recorded. Slack covers clock skew.
       const settledBefore =
         source.status === "ok" && source.lastCheckedAt !== null
           ? millisOf(source.lastCheckedAt) - ISSUE_CHECK_INTERVAL_MS
           : null;
-      const listed: FactoryIssue[] = [];
+      const listed: Issues.FactoryIssueScan["issues"][number][] = [];
       let page = first;
       while (true) {
         listed.push(...page.issues);
-        if (page.nextPage === null) break;
+        if (page.nextCursor === null) break;
         const oldest = page.issues.at(-1);
         if (
           settledBefore !== null &&
@@ -352,33 +359,48 @@ const make = Effect.gen(function* () {
           const seen = yield* store.existingItemKeys(source.id, keys);
           if (keys.every((key) => seen.has(key))) break;
         }
-        page = yield* issues.list({
-          projectId: source.projectId,
-          state: "open",
-          page: page.nextPage,
-        });
+        page = yield* issues.scan({ projectId: source.projectId, cursor: page.nextCursor });
       }
+      const open = listed.filter((issue) => issue.state === "open");
+      // A listing carries no body, and only a new arrival keeps one, so only unrecorded issues
+      // are read whole.
+      const recorded = yield* store.existingItemKeys(source.id, open.map(keyOf));
+      const fresh = new Map(
+        yield* Effect.forEach(
+          open.filter((issue) => !recorded.has(keyOf(issue))),
+          (issue) =>
+            issues
+              .read({ projectId: source.projectId, key: issueKeyOf(issue) })
+              .pipe(
+                Effect.flatMap((read) =>
+                  issueScopeKey(read.repository) === issueScopeKey(repository)
+                    ? Effect.succeed([issueKeyOf(issue), read.issue] as const)
+                    : Effect.fail(new FactoryIssueError({ reason: "repository-changed" })),
+                ),
+              ),
+          { concurrency: ISSUE_READ_CONCURRENCY },
+        ),
+      );
       const name = capabilities.displayName;
       return {
         kind: "observed",
         label: `${name} issues`,
         detail: repository.repository,
         feedSourceId: null,
-        items: listed
-          .filter((issue) => issue.state === "open")
-          .toReversed()
-          .map((issue) => {
-            const key = keyOf(issue);
-            return {
-              itemKey: key,
-              originKey: key,
-              label: `${name} #${issue.number}`,
-              title: issue.title,
-              body: issue.body ?? "",
-              url: issue.url,
-              labels: issue.labels,
-            };
-          }),
+        items: open.toReversed().map((listedIssue) => {
+          const key = keyOf(listedIssue);
+          const read = fresh.get(issueKeyOf(listedIssue));
+          const issue = read ?? listedIssue;
+          return {
+            itemKey: key,
+            originKey: key,
+            label: `${name} ${listedIssue.displayKey ?? `#${listedIssue.number}`}`,
+            title: issue.title,
+            body: read?.body ?? "",
+            url: issue.url,
+            labels: issue.labels,
+          };
+        }),
         nextCheckAt: nowMs + ISSUE_CHECK_INTERVAL_MS,
       } satisfies CheckOutcome;
     }).pipe(

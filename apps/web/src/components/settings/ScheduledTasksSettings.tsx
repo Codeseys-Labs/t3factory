@@ -397,7 +397,6 @@ function deliveryOutcomeVariant(outcome: string) {
   return "outline";
 }
 
-
 function statusVariant(status: ScheduledTask["lastRunStatus"]) {
   if (status === "failed") return "error";
   if (status === "succeeded") return "success";
@@ -534,8 +533,10 @@ export function ScheduledTasksManager(target: {
       >
         {target.factory ? (
           <p className="px-3 pb-3 text-sm text-muted-foreground sm:px-4">
-            Scheduled agent prompts; latest dispatch only, not a DAG or historical run timeline. New
-            workflows start paused and supervised until you explicitly enable them.
+            <T>
+              Scheduled agent prompts; latest dispatch only, not a DAG or historical run timeline.
+              New workflows start paused and supervised until you explicitly enable them.
+            </T>
           </p>
         ) : null}
         {scope.kind === "unavailable" ? (
@@ -546,8 +547,8 @@ export function ScheduledTasksManager(target: {
           (!target.environmentId ||
             !environments.some((entry) => entry.environmentId === target.environmentId)) ? (
           <SettingsRow
-            title="Task unavailable"
-            description="This task's owning environment is outside the selected scope."
+            title={gt("Task unavailable")}
+            description={gt("This task's owning environment is outside the selected scope.")}
             role="status"
           />
         ) : environments.length === 0 ? (
@@ -888,7 +889,7 @@ function ScheduledTaskRow({
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: "Dispatch failed",
+              title: gt("Dispatch failed"),
               description: String(squashAtomCommandFailure(result)),
             }),
           );
@@ -900,10 +901,11 @@ function ScheduledTaskRow({
       toastManager.add(
         stackedThreadToast({
           type: failed ? "error" : "success",
-          title: failed ? "Dispatch failed" : "Dispatch accepted",
+          title: failed ? gt("Dispatch failed") : gt("Dispatch accepted"),
           description: failed
-            ? (result.value.task.lastRunError ?? "The scheduler could not dispatch this prompt.")
-            : "The prompt was dispatched or queued. This does not mean the agent has finished.",
+            ? (result.value.task.lastRunError ??
+              gt("The scheduler could not dispatch this prompt."))
+            : gt("The prompt was dispatched or queued. This does not mean the agent has finished."),
         }),
       );
       return;
@@ -948,7 +950,7 @@ function ScheduledTaskRow({
           </span>
           {task.lastRunStatus !== "never" ? (
             <Badge variant={statusVariant(task.lastRunStatus)}>
-              {scheduledTaskDispatchLabel(task.lastRunStatus)}
+              {scheduledTaskDispatchLabel(task.lastRunStatus, messages)}
             </Badge>
           ) : null}
           <span>
@@ -956,17 +958,19 @@ function ScheduledTaskRow({
           </span>
           {task.lastRunAt ? (
             <span>
-              Latest dispatch <ScheduledRelativeLabel value={task.lastRunAt} />
+              <T>
+                Latest dispatch <ScheduledRelativeLabel value={task.lastRunAt} />
+              </T>
             </span>
           ) : null}
-          <span>{THREAD_MODE_LABELS[scheduledTaskThreadMode(task)]}</span>
+          <span>{messages(THREAD_MODE_LABELS[scheduledTaskThreadMode(task)])}</span>
           {dispatchedThreadId && dispatchedThreadId !== boundThreadId ? (
             <Link
               to="/$environmentId/$threadId"
               params={{ environmentId, threadId: dispatchedThreadId }}
               className="underline underline-offset-2"
             >
-              Open dispatched thread
+              <T>Open dispatched thread</T>
             </Link>
           ) : null}
           {boundThreadId !== null ? (
@@ -2055,7 +2059,7 @@ function ScheduledTaskEditorForm({
                   );
                 }}
               >
-                Deliver to project orchestrator
+                <T>Deliver to project orchestrator</T>
               </Button>
             ) : null}
             {coordinatorReason ? (
@@ -2070,20 +2074,25 @@ function ScheduledTaskEditorForm({
                 disabled={coordinatorQuery.isPending}
                 onClick={coordinatorQuery.refresh}
               >
-                Refresh orchestrator
+                <T>Refresh orchestrator</T>
               </Button>
             ) : null}
             {boundThread ? (
               <p className="text-xs text-muted-foreground">
-                Current provider: {boundThread.providerInstanceId}, model:{" "}
-                {boundThread.modelSelection.model}.{" "}
-                <Link
-                  to="/$environmentId/$threadId"
-                  params={{ environmentId: bindingTarget.environmentId, threadId: boundThread.id }}
-                  className="underline underline-offset-2"
-                >
-                  Open bound thread
-                </Link>
+                <T>
+                  Current provider: <Var>{boundThread.providerInstanceId}</Var>, model:{" "}
+                  <Var>{boundThread.modelSelection.model}</Var>.{" "}
+                  <Link
+                    to="/$environmentId/$threadId"
+                    params={{
+                      environmentId: bindingTarget.environmentId,
+                      threadId: boundThread.id,
+                    }}
+                    className="underline underline-offset-2"
+                  >
+                    Open bound thread
+                  </Link>
+                </T>
               </p>
             ) : null}
             {bindingError ? (
@@ -2221,7 +2230,7 @@ function ScheduledTaskEditorForm({
           </Field>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Permissions" htmlFor="scheduled-task-runtime-mode">
+            <Field label={gt("Permissions")} htmlFor="scheduled-task-runtime-mode">
               <Select
                 value={draft.runtimeMode}
                 disabled={draft.threadId !== ""}
@@ -2240,14 +2249,22 @@ function ScheduledTaskEditorForm({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectPopup>
-                  <SelectItem value="approval-required">Supervised (require approvals)</SelectItem>
-                  <SelectItem value="auto-accept-edits">Auto-accept edits</SelectItem>
-                  <SelectItem value="auto">Auto</SelectItem>
-                  <SelectItem value="full-access">Full access</SelectItem>
+                  <SelectItem value="approval-required">
+                    <T>Supervised (require approvals)</T>
+                  </SelectItem>
+                  <SelectItem value="auto-accept-edits">
+                    <T>Auto-accept edits</T>
+                  </SelectItem>
+                  <SelectItem value="auto">
+                    <T>Auto</T>
+                  </SelectItem>
+                  <SelectItem value="full-access">
+                    <T>Full access</T>
+                  </SelectItem>
                 </SelectPopup>
               </Select>
             </Field>
-            <Field label="Interaction" htmlFor="scheduled-task-interaction-mode">
+            <Field label={gt("Interaction")} htmlFor="scheduled-task-interaction-mode">
               <Select
                 value={draft.interactionMode}
                 disabled={draft.threadId !== ""}
@@ -2261,16 +2278,22 @@ function ScheduledTaskEditorForm({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectPopup>
-                  <SelectItem value="default">Default</SelectItem>
-                  <SelectItem value="plan">Plan</SelectItem>
+                  <SelectItem value="default">
+                    <T>Default</T>
+                  </SelectItem>
+                  <SelectItem value="plan">
+                    <T>Plan</T>
+                  </SelectItem>
                 </SelectPopup>
               </Select>
             </Field>
           </div>
           {draft.threadId && boundThread ? (
             <p className="text-xs text-muted-foreground">
-              Bound thread permissions: {boundThread.runtimeMode}; interaction:{" "}
-              {boundThread.interactionMode}.
+              <T>
+                Bound thread permissions: <Var>{boundThread.runtimeMode}</Var>; interaction:{" "}
+                <Var>{boundThread.interactionMode}</Var>.
+              </T>
             </p>
           ) : null}
 

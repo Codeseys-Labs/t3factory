@@ -20,7 +20,9 @@ import {
   type ProjectId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg } from "gt-react";
 
+import { m, type MessageResolver } from "../../i18n/messages";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 
 export type FactoryIssueStateFilter = NonNullable<FactoryIssueListInput["state"]>;
@@ -29,13 +31,84 @@ export const FACTORY_STATE_FILTERS: ReadonlyArray<{
   readonly value: FactoryIssueStateFilter;
   readonly label: string;
 }> = [
-  { value: "open", label: "Open" },
-  { value: "closed", label: "Closed" },
-  { value: "all", label: "All" },
+  { value: "open", label: msg("Open", { $context: "issue state filter" }) },
+  { value: "closed", label: msg("Closed", { $context: "issue state filter" }) },
+  { value: "all", label: msg("All", { $context: "issue state filter" }) },
 ];
 
 export function parseFactoryStateFilter(value: unknown): FactoryIssueStateFilter {
   return value === "closed" || value === "all" ? value : "open";
+}
+
+/**
+ * A git host keys its issues by a decimal number. A server without `factoryIssueKeys` can address
+ * nothing else, so any other key is a tracker it cannot reach.
+ */
+export function factoryIssueNumberFromKey(key: string): number | null {
+  if (!/^[1-9]\d*$/u.test(key)) return null;
+  const value = Number(key);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+/** How a Factory request names one issue: its native key, or the legacy number older servers read. */
+export type FactoryIssueTarget = { readonly key: string } | { readonly issueNumber: number };
+
+/**
+ * The address a Factory section may act on, or null when the server or the issue cannot take part.
+ * A server that advertises `factoryIssueKeys` takes any key; one that does not takes decimal
+ * numbers only.
+ */
+export function resolveFactoryIssueSection(options: {
+  readonly factoryIssues: boolean;
+  readonly factoryIssueKeys: boolean;
+  readonly key: string;
+}): FactoryIssueTarget | null {
+  if (!options.factoryIssues) return null;
+  if (options.factoryIssueKeys) return options.key.length > 0 ? { key: options.key } : null;
+  const issueNumber = factoryIssueNumberFromKey(options.key);
+  return issueNumber === null ? null : { issueNumber };
+}
+
+/** The address of an issue already read, in the form the server in use accepts. */
+export function factoryIssueTargetOf(
+  issue: Pick<FactoryIssue, "number" | "key">,
+  factoryIssueKeys: boolean,
+): FactoryIssueTarget | null {
+  if (factoryIssueKeys) {
+    const key = factoryIssueKeyOf(issue);
+    return key === null ? null : { key };
+  }
+  return issue.number === null ? null : { issueNumber: issue.number };
+}
+
+export type FactoryIssueOpenRoute = "panel" | "inline-start" | "external";
+
+/**
+ * Where a queue row's review/start goes. The Issues panel is the home of reading and starting; a
+ * server that runs the Factory without the upstream issue layer has no panel, so the row opens the
+ * Factory section inline instead of leaving the app. A panel that cannot resolve this one issue
+ * still falls back to its tracker page.
+ */
+export function resolveFactoryIssueOpenRoute(options: {
+  readonly panelAvailable: boolean;
+  readonly panelResolves: boolean;
+  readonly startable: boolean;
+}): FactoryIssueOpenRoute {
+  if (options.panelAvailable && options.panelResolves) return "panel";
+  if (!options.panelAvailable && options.startable) return "inline-start";
+  return "external";
+}
+
+/** The tracker's key for an issue; older servers send only the number. */
+export function factoryIssueKeyOf(issue: Pick<FactoryIssue, "number" | "key">): string | null {
+  return issue.key ?? (issue.number === null ? null : String(issue.number));
+}
+
+/** The label a person reads for an issue: `#12` on a git host, `ENG-12` on Linear. */
+export function factoryIssueDisplayKey(
+  issue: Pick<FactoryIssue, "number" | "key" | "displayKey">,
+): string {
+  return issue.displayKey ?? (issue.number === null ? (issue.key ?? "") : `#${issue.number}`);
 }
 
 type TaskBadgeVariant = "info" | "success" | "warning" | "error" | "secondary" | "outline";
@@ -51,42 +124,58 @@ export interface FactoryTaskPresentation {
  */
 export function factoryTaskPresentation(
   status: FactoryIssueTask["status"],
+  resolve: MessageResolver = m,
 ): FactoryTaskPresentation {
   switch (status) {
     case "launching":
       return {
-        label: "Launch pending",
+        label: resolve(msg("Launch pending")),
         variant: "warning",
-        detail:
-          "A launch was reserved but did not finish. Resume completes the same task with its original settings.",
+        detail: resolve(
+          msg(
+            "A launch was reserved but did not finish. Resume completes the same task with its original settings.",
+          ),
+        ),
       };
     case "preparing":
       return {
-        label: "Preparing",
+        label: resolve(msg("Preparing")),
         variant: "info",
-        detail: "The isolated worktree is being prepared.",
+        detail: resolve(msg("The isolated worktree is being prepared.")),
       };
     case "running":
-      return { label: "Running", variant: "success", detail: "An agent is working on this task." };
+      return {
+        label: resolve(msg("Running")),
+        variant: "success",
+        detail: resolve(msg("An agent is working on this task.")),
+      };
     case "idle":
-      return { label: "Idle", variant: "secondary", detail: "The task thread is waiting for you." };
+      return {
+        label: resolve(msg("Idle")),
+        variant: "secondary",
+        detail: resolve(msg("The task thread is waiting for you.")),
+      };
     case "failed":
       return {
-        label: "Failed",
+        label: resolve(msg("Failed")),
         variant: "error",
-        detail: "Setup or the last run failed. Open the thread to retry or inspect it.",
+        detail: resolve(
+          msg("Setup or the last run failed. Open the thread to retry or inspect it."),
+        ),
       };
     case "archived":
       return {
-        label: "Archived",
+        label: resolve(msg("Archived")),
         variant: "outline",
-        detail: "The task thread is archived. Opening it does not start new work.",
+        detail: resolve(msg("The task thread is archived. Opening it does not start new work.")),
       };
     case "missing":
       return {
-        label: "Thread deleted",
+        label: resolve(msg("Thread deleted")),
         variant: "warning",
-        detail: "The linked thread was deleted. A new attempt needs explicit confirmation.",
+        detail: resolve(
+          msg("The linked thread was deleted. A new attempt needs explicit confirmation."),
+        ),
       };
   }
 }
@@ -99,12 +188,15 @@ export type FactoryIssueAction =
   | { readonly kind: "unavailable"; readonly reason: string };
 
 /** A closed issue never begins new work, but a task that already exists stays reachable. */
-export function resolveFactoryIssueAction(issue: FactoryIssue): FactoryIssueAction {
+export function resolveFactoryIssueAction(
+  issue: FactoryIssue,
+  resolve: MessageResolver = m,
+): FactoryIssueAction {
   const { task } = issue;
   if (task === null) {
     return issue.state === "open"
       ? { kind: "start" }
-      : { kind: "unavailable", reason: "Closed issues cannot start new tasks." };
+      : { kind: "unavailable", reason: resolve(msg("Closed issues cannot start new tasks.")) };
   }
   switch (task.status) {
     case "launching":
@@ -112,7 +204,10 @@ export function resolveFactoryIssueAction(issue: FactoryIssue): FactoryIssueActi
     case "missing":
       return issue.state === "open"
         ? { kind: "restart" }
-        : { kind: "unavailable", reason: "Closed issues cannot start a new attempt." };
+        : {
+            kind: "unavailable",
+            reason: resolve(msg("Closed issues cannot start a new attempt.")),
+          };
     default:
       return { kind: "open", task };
   }
@@ -130,8 +225,6 @@ export interface FactoryFailure {
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 const isFactoryIssueError = Schema.is(FactoryIssueError);
 
-const GENERIC_FAILURE_MESSAGE = "The environment request failed.";
-
 /**
  * `displayName` names the issue host in titles that blame it. A failure raised before any issue
  * read has answered carries none, so those titles stay host-neutral instead of guessing one.
@@ -140,12 +233,15 @@ export function describeFactoryFailure(
   error: unknown,
   fallbackMessage?: string,
   displayName?: string,
+  resolve: MessageResolver = m,
 ): FactoryFailure {
   if (isAuthorizationError(error)) {
     return {
       kind: "permission",
-      title: "Permission required",
-      message: error.message.trim() || "This connection lacks permission for factory issues.",
+      title: resolve(msg("Permission required")),
+      message:
+        error.message.trim() ||
+        resolve(msg("This connection lacks permission for factory issues.")),
       reason: null,
     };
   }
@@ -154,28 +250,28 @@ export function describeFactoryFailure(
       case "issue-changed":
         return {
           kind: "changed",
-          title: "Issue changed",
+          title: resolve(msg("Issue changed")),
           message: error.message,
           reason: error.reason,
         };
       case "readiness-changed":
         return {
           kind: "changed",
-          title: "Blocker changed",
+          title: resolve(msg("Blocker changed")),
           message: error.message,
           reason: error.reason,
         };
       case "override-not-allowed":
         return {
           kind: "other",
-          title: "Override not allowed",
+          title: resolve(msg("Override not allowed")),
           message: error.message,
           reason: error.reason,
         };
       case "unsupported-provider":
         return {
           kind: "unsupported",
-          title: "Repository not supported",
+          title: resolve(msg("Repository not supported")),
           message: error.message,
           reason: error.reason,
         };
@@ -184,14 +280,17 @@ export function describeFactoryFailure(
       case "repository-changed":
         return {
           kind: "repository",
-          title: "Repository unavailable",
+          title: resolve(msg("Repository unavailable")),
           message: error.message,
           reason: error.reason,
         };
       case "authentication":
         return {
           kind: "other",
-          title: displayName === undefined ? "Sign-in required" : `${displayName} sign-in required`,
+          title:
+            displayName === undefined
+              ? resolve(msg("Sign-in required"))
+              : resolve(msg("{displayName} sign-in required", { displayName })),
           message: error.message,
           reason: error.reason,
         };
@@ -199,14 +298,16 @@ export function describeFactoryFailure(
         return {
           kind: "other",
           title:
-            displayName === undefined ? "Rate limit reached" : `${displayName} rate limit reached`,
+            displayName === undefined
+              ? resolve(msg("Rate limit reached"))
+              : resolve(msg("{displayName} rate limit reached", { displayName })),
           message: error.message,
           reason: error.reason,
         };
       default:
         return {
           kind: "other",
-          title: "Could not complete the request",
+          title: resolve(msg("Could not complete the request")),
           message: error.message,
           reason: error.reason,
         };
@@ -216,8 +317,13 @@ export function describeFactoryFailure(
     fallbackMessage ??
     (error instanceof Error && error.message.trim().length > 0
       ? error.message
-      : GENERIC_FAILURE_MESSAGE);
-  return { kind: "other", title: "Could not complete the request", message, reason: null };
+      : resolve(msg("The environment request failed.")));
+  return {
+    kind: "other",
+    title: resolve(msg("Could not complete the request")),
+    message,
+    reason: null,
+  };
 }
 
 /** An empty base ref means "current HEAD", which the server resolves; the client never guesses it. */
@@ -236,15 +342,6 @@ export function safeExternalUrl(value: string): string | null {
   }
 }
 
-export const FACTORY_ISSUE_BODY_PREVIEW_LIMIT = 8_000;
-
-export function boundedIssueBody(body: string | null): { text: string; truncated: boolean } {
-  const text = body?.trim() ?? "";
-  return text.length > FACTORY_ISSUE_BODY_PREVIEW_LIMIT
-    ? { text: text.slice(0, FACTORY_ISSUE_BODY_PREVIEW_LIMIT), truncated: true }
-    : { text, truncated: false };
-}
-
 /** Visited page numbers, last is current. Previous returns to the page that led here, not page-1. */
 export function pushFactoryPage(
   pages: ReadonlyArray<number>,
@@ -261,7 +358,7 @@ export function currentFactoryPage(pages: ReadonlyArray<number>): number {
   return pages.at(-1) ?? 1;
 }
 
-/** Every piece of inbox state is keyed by this, so changing scope can never show another scope's rows. */
+/** Every piece of queue state is keyed by this, so changing scope can never show another scope's rows. */
 export function factoryScopeKey(
   environmentId: EnvironmentId,
   projectId: ProjectId,
@@ -298,8 +395,8 @@ export interface FactoryReadinessEdgeRow {
 export interface FactoryReadinessInactiveOverrideRow {
   readonly key: string;
   readonly locator: string;
-  readonly kindLabel: "Dispute" | "Waiver";
-  readonly statusLabel: "No longer applies" | "Revoked";
+  readonly kindLabel: string;
+  readonly statusLabel: string;
   readonly reason: string;
   readonly createdAt: string;
   readonly revokedAt: string | null;
@@ -318,98 +415,115 @@ export interface FactoryReadinessPresentation {
 
 // A switch over the contract's reason union, so a new server reason fails to compile here instead
 // of reaching the screen as a raw token.
-function readinessReasonLabel(reason: FactoryReadinessReason, displayName: string): string {
+function readinessReasonLabel(
+  reason: FactoryReadinessReason,
+  displayName: string,
+  resolve: MessageResolver,
+): string {
   switch (reason) {
     case "closed-subject":
-      return "the issue is closed";
+      return resolve(msg("the issue is closed"));
     case "open-blocker":
-      return "a blocker is still open";
+      return resolve(msg("a blocker is still open"));
     case "unaccepted-blocker":
-      return "a blocker was closed without completion";
+      return resolve(msg("a blocker was closed without completion"));
     case "deleted-blocker":
-      return "a blocker was deleted";
+      return resolve(msg("a blocker was deleted"));
     case "inaccessible-blocker":
-      return "a blocker is not accessible";
+      return resolve(msg("a blocker is not accessible"));
     case "moved-blocker":
-      return "a blocker moved";
+      return resolve(msg("a blocker moved"));
     case "unverified-blocker":
-      return "a blocker could not be verified";
+      return resolve(msg("a blocker could not be verified"));
     case "partial-listing":
-      return `${displayName} returned only part of the blocker list`;
+      return resolve(msg("{displayName} returned only part of the blocker list", { displayName }));
     case "summary-missing":
-      return `${displayName} did not report how many blockers exist`;
+      return resolve(msg("{displayName} did not report how many blockers exist", { displayName }));
     case "truncated-response":
-      return "the blocker list was truncated";
+      return resolve(msg("the blocker list was truncated"));
     case "invalid-response":
-      return `${displayName} returned a response that could not be read`;
+      return resolve(
+        msg("{displayName} returned a response that could not be read", { displayName }),
+      );
     case "authentication":
-      return `${displayName} sign-in is required`;
+      return resolve(msg("{displayName} sign-in is required", { displayName }));
     case "rate-limited":
-      return `the ${displayName} rate limit was reached`;
+      return resolve(msg("the {displayName} rate limit was reached", { displayName }));
     case "remote-failure":
-      return `${displayName} could not be reached`;
+      return resolve(msg("{displayName} could not be reached", { displayName }));
     case "capability-unsupported":
-      return `${displayName} does not expose blocking relationships`;
+      return resolve(msg("{displayName} does not expose blocking relationships", { displayName }));
     case "cycle":
-      return "the blockers form a cycle";
+      return resolve(msg("the blockers form a cycle"));
     case "overridden-not-ready":
-      return "a blocker is disputed";
+      return resolve(msg("a blocker is disputed"));
   }
 }
 
 /** The whole blockers panel for a host whose API cannot express blocking relationships. */
-export function factoryBlockersUnsupportedMessage(displayName: string): string {
-  return `${displayName} does not expose blocking relationships; readiness stays unknown.`;
+export function factoryBlockersUnsupportedMessage(
+  displayName: string,
+  resolve: MessageResolver = m,
+): string {
+  return resolve(
+    msg("{displayName} does not expose blocking relationships; readiness stays unknown.", {
+      displayName,
+    }),
+  );
 }
 
-function edgeStateLabel(edge: FactoryReadinessEdge): string {
-  if (edge.state === "open") return "Open";
+function edgeStateLabel(edge: FactoryReadinessEdge, resolve: MessageResolver): string {
+  if (edge.state === "open") return resolve(msg("Open", { $context: "blocker state" }));
   if (edge.state === "closed") {
     // Reasons arrive as tracker tokens such as `not_planned`; show them as words.
     return edge.stateReason === null
-      ? "Closed"
-      : `Closed · ${edge.stateReason.replaceAll("_", " ")}`;
+      ? resolve(msg("Closed", { $context: "blocker state" }))
+      : resolve(msg("Closed · {reason}", { reason: edge.stateReason.replaceAll("_", " ") }));
   }
-  return "State unknown";
+  return resolve(msg("State unknown"));
 }
 
-function edgeResolutionLabel(edge: FactoryReadinessEdge): string {
+function edgeResolutionLabel(edge: FactoryReadinessEdge, resolve: MessageResolver): string {
   // The tracker removed this dependency; that is its call and the server does not count it.
-  if (edge.status === "removed-at-source") return "Not counted, removed at source";
+  if (edge.status === "removed-at-source") return resolve(msg("Not counted, removed at source"));
   switch (edge.resolution) {
     case "accepted":
-      return "Accepted";
+      return resolve(msg("Accepted", { $context: "blocker resolution" }));
     case "open":
-      return "Open, unresolved";
+      return resolve(msg("Open, unresolved"));
     case "closed-unaccepted":
       return edge.stateReason === null
-        ? "Closed, not accepted (no reason recorded)"
-        : `Closed, not accepted (${edge.stateReason.replaceAll("_", " ")})`;
+        ? resolve(msg("Closed, not accepted (no reason recorded)"))
+        : resolve(
+            msg("Closed, not accepted ({reason})", {
+              reason: edge.stateReason.replaceAll("_", " "),
+            }),
+          );
     case "deleted":
-      return "Deleted, counts as unresolved";
+      return resolve(msg("Deleted, counts as unresolved"));
     case "inaccessible":
-      return "Inaccessible, cannot verify";
+      return resolve(msg("Inaccessible, cannot verify"));
     case "moved":
-      return "Moved, cannot verify";
+      return resolve(msg("Moved, cannot verify"));
     case "unverified":
-      return "Could not be verified";
+      return resolve(msg("Could not be verified"));
   }
 }
 
-function edgeStatusLabel(status: FactoryReadinessEdge["status"]): string {
+function edgeStatusLabel(status: FactoryReadinessEdge["status"], resolve: MessageResolver): string {
   switch (status) {
     case "present":
-      return "Listed";
+      return resolve(msg("Listed"));
     case "removed-at-source":
-      return "No longer listed";
+      return resolve(msg("No longer listed"));
     case "deleted":
-      return "Deleted at source";
+      return resolve(msg("Deleted at source"));
     case "inaccessible":
-      return "Inaccessible";
+      return resolve(msg("Inaccessible", { $context: "blocker status" }));
     case "moved":
-      return "Moved";
+      return resolve(msg("Moved", { $context: "blocker status" }));
     case "unverified":
-      return "Unverified";
+      return resolve(msg("Unverified"));
   }
 }
 
@@ -433,9 +547,11 @@ function edgeOverrideAction(edge: FactoryReadinessEdge): FactoryReadinessOverrid
   }
 }
 
-function overrideLabel(override: FactoryReadinessOverride | null): string {
-  if (override === null) return "Override in effect";
-  return `${override.kind === "waive" ? "Waived" : "Disputed"}: ${override.reason}`;
+function overrideLabel(override: FactoryReadinessOverride | null, resolve: MessageResolver) {
+  if (override === null) return resolve(msg("Override in effect"));
+  return override.kind === "waive"
+    ? resolve(msg("Waived: {reason}", { reason: override.reason }))
+    : resolve(msg("Disputed: {reason}", { reason: override.reason }));
 }
 
 function activeOverridesById(
@@ -452,6 +568,7 @@ function edgeRow(
   edge: FactoryReadinessEdge,
   override: FactoryReadinessOverride | null,
   overridable: boolean,
+  resolve: MessageResolver,
 ): FactoryReadinessEdgeRow {
   const title = edge.title?.trim() ?? "";
   return {
@@ -460,15 +577,15 @@ function edgeRow(
     targetId: edge.targetId,
     locator: `${edge.targetRepository}#${edge.targetNumber}`,
     url: safeExternalUrl(edge.targetUrl),
-    title: title.length > 0 ? title : "Title unavailable",
-    stateLabel: edgeStateLabel(edge),
+    title: title.length > 0 ? title : resolve(msg("Title unavailable")),
+    stateLabel: edgeStateLabel(edge, resolve),
     closedAt: edge.closedAt,
-    resolutionLabel: edgeResolutionLabel(edge),
-    statusLabel: edgeStatusLabel(edge.status),
+    resolutionLabel: edgeResolutionLabel(edge, resolve),
+    statusLabel: edgeStatusLabel(edge.status, resolve),
     fingerprint: edge.fingerprint,
     overrideAction: overridable ? edgeOverrideAction(edge) : null,
     overrideId: edge.override,
-    overrideLabel: edge.override === null ? null : overrideLabel(override),
+    overrideLabel: edge.override === null ? null : overrideLabel(override, resolve),
   };
 }
 
@@ -488,6 +605,7 @@ function activeOverrideOf(
 
 function inactiveOverrideRows(
   readiness: FactoryReadiness,
+  resolve: MessageResolver,
 ): ReadonlyArray<FactoryReadinessInactiveOverrideRow> {
   const locators = new Map(
     readiness.edges.map((edge) => [
@@ -502,8 +620,14 @@ function inactiveOverrideRows(
       return {
         key: override.id,
         locator: locators.get(identity) ?? identity,
-        kindLabel: override.kind === "waive" ? "Waiver" : "Dispute",
-        statusLabel: override.status === "revoked" ? "Revoked" : "No longer applies",
+        kindLabel:
+          override.kind === "waive"
+            ? resolve(msg("Waiver", { $context: "recorded decision" }))
+            : resolve(msg("Dispute", { $context: "recorded decision" })),
+        statusLabel:
+          override.status === "revoked"
+            ? resolve(msg("Revoked", { $context: "recorded decision" }))
+            : resolve(msg("No longer applies")),
         reason: override.reason,
         createdAt: override.createdAt,
         revokedAt: override.revokedAt,
@@ -516,21 +640,29 @@ function readinessVerdict(
   active: ReadonlyMap<FactoryReadinessOverrideId, FactoryReadinessOverride>,
   now: number,
   displayName: string,
+  resolve: MessageResolver,
 ): ReadinessVerdict {
   const stale = !(now - Date.parse(readiness.observedAt) <= FACTORY_READINESS_TTL_MS);
   let label: string;
   let tone: FactoryReadinessTone;
   switch (readiness.status) {
     case "ready": {
-      const observed = formatRelativeTimeLabel(readiness.observedAt, now);
+      const observed = formatRelativeTimeLabel(readiness.observedAt, now, resolve);
       const waived = readiness.edges.filter(
         (edge) => activeOverrideOf(edge, active)?.kind === "waive",
       ).length;
       // A verdict that leans on a waiver says so, so it cannot read as the tracker's own signal.
       label =
         readiness.basis === "override"
-          ? `No unresolved blockers observed ${observed} · basis: override (${waived} waived)`
-          : `No unresolved blockers observed ${observed} · basis: source`;
+          ? resolve(
+              msg(
+                "No unresolved blockers observed {observed} · basis: override ({waived} waived)",
+                { observed, waived },
+              ),
+            )
+          : resolve(
+              msg("No unresolved blockers observed {observed} · basis: source", { observed }),
+            );
       tone = stale ? "info" : "success";
       break;
     }
@@ -549,23 +681,42 @@ function readinessVerdict(
           unresolved += 1;
         }
       }
-      label = `Blocked: ${unresolved} unresolved ${unresolved === 1 ? "blocker" : "blockers"}`;
-      if (disputed > 0) label += ` (${disputed} disputed)`;
+      label =
+        disputed > 0
+          ? resolve(
+              msg(
+                "Blocked: {unresolved, plural, one {{unresolved} unresolved blocker} other {{unresolved} unresolved blockers}} ({disputed} disputed)",
+                { unresolved, disputed },
+              ),
+            )
+          : resolve(
+              msg(
+                "Blocked: {unresolved, plural, one {{unresolved} unresolved blocker} other {{unresolved} unresolved blockers}}",
+                { unresolved },
+              ),
+            );
       tone = "warning";
       break;
     }
     case "unknown": {
       const reason = readiness.reasons[0];
-      label = `Readiness unknown: ${reason === undefined ? "no reason reported" : readinessReasonLabel(reason, displayName)}`;
+      label = resolve(
+        msg("Readiness unknown: {reason}", {
+          reason:
+            reason === undefined
+              ? resolve(msg("no reason reported"))
+              : readinessReasonLabel(reason, displayName, resolve),
+        }),
+      );
       tone = "info";
       break;
     }
     case "not-applicable":
-      label = "Not applicable (closed)";
+      label = resolve(msg("Not applicable (closed)"));
       tone = "neutral";
       break;
   }
-  return { label: stale ? `${label} · stale` : label, tone, stale };
+  return { label: stale ? resolve(msg("{label} · stale", { label })) : label, tone, stale };
 }
 
 /** Wording for observed blocker evidence. It never says "Ready": the line reports what was seen and when, and nothing here gates starting work. A stale observation (or one whose time cannot be read) is marked rather than hidden, and no longer reads as a positive signal.  Overrides are the reviewer's own recorded decisions about single edges. Setting one needs current, complete evidence, so a stale or partial observation locks new decisions until it is observed again; revoking never needs fresh evidence. */
@@ -573,23 +724,24 @@ export function factoryReadinessPresentation(
   readiness: FactoryReadiness,
   now: number,
   displayName: string,
+  resolve: MessageResolver = m,
 ): FactoryReadinessPresentation {
   const active = activeOverridesById(readiness);
-  const verdict = readinessVerdict(readiness, active, now, displayName);
+  const verdict = readinessVerdict(readiness, active, now, displayName, resolve);
   const overridable = readiness.status !== "not-applicable";
   return {
     label: verdict.label,
     tone: verdict.tone,
     stale: verdict.stale,
     edgeRows: readiness.edges.map((edge) =>
-      edgeRow(edge, activeOverrideOf(edge, active), overridable),
+      edgeRow(edge, activeOverrideOf(edge, active), overridable, resolve),
     ),
-    inactiveOverrides: inactiveOverrideRows(readiness),
+    inactiveOverrides: inactiveOverrideRows(readiness, resolve),
     overridesLockedReason: verdict.stale
-      ? "This observation is stale. Refresh before changing overrides."
+      ? resolve(msg("This observation is stale. Refresh before changing overrides."))
       : readiness.complete
         ? null
-        : "The blocker list is incomplete. Refresh before changing overrides.",
+        : resolve(msg("The blocker list is incomplete. Refresh before changing overrides.")),
   };
 }
 
@@ -621,29 +773,37 @@ export function factoryFrontierPresentation(
   result: FactoryIssueFrontierReadResult,
   now: number,
   displayName: string,
+  resolve: MessageResolver = m,
 ): FactoryFrontierPresentation {
   const rows = result.children.map((child): FactoryFrontierRow => {
     const title = child.title.trim();
     let verdictLabel: string;
     let tone: FactoryReadinessTone;
     if (child.state === "closed") {
-      verdictLabel = "Closed";
+      verdictLabel = resolve(msg("Closed", { $context: "sub-issue verdict" }));
       tone = "neutral";
     } else if (child.readiness === null) {
-      verdictLabel = "Not observed";
+      verdictLabel = resolve(msg("Not observed"));
       tone = "info";
     } else {
       const active = activeOverridesById(child.readiness);
-      ({ label: verdictLabel, tone } = readinessVerdict(child.readiness, active, now, displayName));
+      ({ label: verdictLabel, tone } = readinessVerdict(
+        child.readiness,
+        active,
+        now,
+        displayName,
+        resolve,
+      ));
     }
     return {
       key: String(child.number),
       number: child.number,
-      title: title.length > 0 ? title : "Title unavailable",
+      title: title.length > 0 ? title : resolve(msg("Title unavailable")),
       url: safeExternalUrl(child.url),
       state: child.state,
       assignees: child.assignees,
-      assigneesLabel: child.assignees.length === 0 ? "Unassigned" : child.assignees.join(", "),
+      assigneesLabel:
+        child.assignees.length === 0 ? resolve(msg("Unassigned")) : child.assignees.join(", "),
       verdictLabel,
       tone,
     };
@@ -652,8 +812,18 @@ export function factoryFrontierPresentation(
   if (!result.complete) {
     note =
       result.summaryTotal === null
-        ? `Incomplete: ${displayName} did not report how many sub-issues exist, so this list may be missing some.`
-        : `Incomplete: ${displayName} reports ${result.summaryTotal} ${result.summaryTotal === 1 ? "sub-issue" : "sub-issues"}, ${rows.length} listed here. This list may be missing some.`;
+        ? resolve(
+            msg(
+              "Incomplete: {displayName} did not report how many sub-issues exist, so this list may be missing some.",
+              { displayName },
+            ),
+          )
+        : resolve(
+            msg(
+              "Incomplete: {displayName} reports {total, plural, one {{total} sub-issue} other {{total} sub-issues}}, {listed} listed here. This list may be missing some.",
+              { displayName, total: result.summaryTotal, listed: rows.length },
+            ),
+          );
   }
   return {
     rows,
@@ -662,34 +832,48 @@ export function factoryFrontierPresentation(
   };
 }
 
+/**
+ * The fields are `msg()` strings: the dialog and buttons that show them resolve them with
+ * `useMessages()`, and `description` resolves itself so it never reaches a caller encoded.
+ */
 export const FACTORY_OVERRIDE_ACTIONS: Record<
   FactoryReadinessOverrideAction,
   {
     readonly kind: FactoryReadinessOverrideKind;
     readonly buttonLabel: string;
     readonly title: string;
-    readonly description: (displayName: string) => string;
+    readonly description: (displayName: string, resolve?: MessageResolver) => string;
     readonly confirmLabel: string;
     readonly pendingLabel: string;
   }
 > = {
   dispute: {
     kind: "force-not-ready",
-    buttonLabel: "Dispute",
-    title: "Dispute blocker",
-    description: (displayName) =>
-      `${displayName} reports this blocker as completed. Recording a dispute keeps the issue reading as blocked until you revoke it or the blocker changes. It is your recorded decision and never allows or prevents starting work.`,
-    confirmLabel: "Record dispute",
-    pendingLabel: "Recording…",
+    buttonLabel: msg("Dispute", { $context: "button, disputes a blocker" }),
+    title: msg("Dispute blocker"),
+    description: (displayName, resolve = m) =>
+      resolve(
+        msg(
+          "{displayName} reports this blocker as completed. Recording a dispute keeps the issue reading as blocked until you revoke it or the blocker changes. It is your recorded decision and never allows or prevents starting work.",
+          { displayName },
+        ),
+      ),
+    confirmLabel: msg("Record dispute"),
+    pendingLabel: msg("Recording…"),
   },
   waive: {
     kind: "waive",
-    buttonLabel: "Waive",
-    title: "Waive blocker",
-    description: (displayName) =>
-      `This blocker can no longer be resolved or verified on ${displayName}. Waiving it stops counting it, so the issue can read as having no unresolved blockers with the basis shown as override. It lapses if the blocker changes, and never allows or prevents starting work.`,
-    confirmLabel: "Record waiver",
-    pendingLabel: "Recording…",
+    buttonLabel: msg("Waive", { $context: "button, waives a blocker" }),
+    title: msg("Waive blocker"),
+    description: (displayName, resolve = m) =>
+      resolve(
+        msg(
+          "This blocker can no longer be resolved or verified on {displayName}. Waiving it stops counting it, so the issue can read as having no unresolved blockers with the basis shown as override. It lapses if the blocker changes, and never allows or prevents starting work.",
+          { displayName },
+        ),
+      ),
+    confirmLabel: msg("Record waiver"),
+    pendingLabel: msg("Recording…"),
   },
 };
 

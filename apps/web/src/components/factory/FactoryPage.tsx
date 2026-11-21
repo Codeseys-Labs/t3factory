@@ -1,4 +1,5 @@
 import { Outlet, useLocation, useNavigate, useSearch } from "@tanstack/react-router";
+import { T } from "gt-react";
 import { FactoryIcon } from "lucide-react";
 
 import { isElectron } from "../../env";
@@ -45,7 +46,9 @@ export function FactoryPage() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
           <WorkspacePageHeader electron={isElectron}>
             <FactoryIcon aria-hidden className="size-4 text-muted-foreground" />
-            <h1 className="truncate font-medium text-sm">Factory</h1>
+            <h1 className="truncate font-medium text-sm">
+              <T>Factory</T>
+            </h1>
           </WorkspacePageHeader>
           <ScrollArea className="min-h-0 flex-1">
             <WorkspacePageContainer width="wide">
@@ -61,7 +64,7 @@ export function FactoryPage() {
                     });
                   }}
                 >
-                  Return to selected Work and scope
+                  <T>Return to selected Work and scope</T>
                 </Button>
               ) : null}
               <FactoryScopedContent />
@@ -78,11 +81,13 @@ function FactoryScopedContent() {
   if (scope.kind === "unavailable") {
     return (
       <Alert variant="error">
-        <AlertTitle>Scope unavailable</AlertTitle>
+        <AlertTitle>
+          <T>Scope unavailable</T>
+        </AlertTitle>
         <AlertDescription>
           <p>{scope.message}</p>
           <Button size="sm" variant="outline" onClick={() => selectScope({})}>
-            Show all projects
+            <T>Show all projects</T>
           </Button>
         </AlertDescription>
       </Alert>

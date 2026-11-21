@@ -17,14 +17,20 @@ import {
   type ProjectId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import { useId, useRef, useState } from "react";
 import { randomUUID } from "../../lib/utils";
 import { useProjects, useThreadShellsForProjectRefs } from "../../state/entities";
 import { useEnvironments, type EnvironmentPresentation } from "../../state/environments";
-import { factoryEnvironment } from "../../state/factory";
+import {
+  factoryEnvironment,
+  factoryIssueKeysInput,
+  useFactoryIssueKeysSupported,
+} from "../../state/factory";
 import { useEnvironmentQuery } from "../../state/query";
 import { useEnvironmentScope, useEnvironmentSessionState } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { m, type MessageResolver } from "~/i18n/messages";
 import { useSettingsScope } from "../settings/SettingsScopeContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -39,6 +45,7 @@ const isPlanError = Schema.is(FactoryPlanError);
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 
 export function FactoryPlanEditor() {
+  const gt = useGT();
   const { scope, groups, selectScope } = useSettingsScope();
   const { environments } = useEnvironments();
   const projects = useProjects();
@@ -54,10 +61,10 @@ export function FactoryPlanEditor() {
         scope={scope}
         groups={groups}
         environments={environments}
-        intro="Choose one checkout to edit its local plans."
-        emptyDescription="Add a project to start planning."
+        intro={gt("Choose one checkout to edit its local plans.")}
+        emptyDescription={gt("Add a project to start planning.")}
         statusFor={(environment) =>
-          environment?.connection.phase === "connected" ? "Connected" : "Offline"
+          environment?.connection.phase === "connected" ? gt("Connected") : gt("Offline")
         }
         onChoose={selectScope}
       />
@@ -70,7 +77,9 @@ export function FactoryPlanEditor() {
       projectTitle={project.title}
     />
   ) : (
-    <p role="status">Checkout unavailable. Choose another checkout.</p>
+    <p role="status">
+      <T>Checkout unavailable. Choose another checkout.</T>
+    </p>
   );
 }
 
@@ -80,6 +89,7 @@ function CheckoutPlanEditor(props: {
   readonly projectTitle: string;
 }) {
   const { owner } = props;
+  const gt = useGT();
   const canRead = useEnvironmentScope(owner.environmentId, AuthOrchestrationReadScope);
   const session = useEnvironmentSessionState(owner.environmentId);
   const connected = owner.connection.phase === "connected";
@@ -88,15 +98,15 @@ function CheckoutPlanEditor(props: {
   const supported = owner.serverConfig?.environment.capabilities.factoryPlans === true;
   const active = connected && supported && canRead;
   const unavailable = !connected
-    ? "Reconnect this environment to read plans."
+    ? gt("Reconnect this environment to read plans.")
     : owner.serverConfig === null
-      ? "Waiting for server capabilities…"
+      ? gt("Waiting for server capabilities…")
       : owner.serverConfig.environment.capabilities.factoryPlans !== true
-        ? "This server does not support local plans. Update it to continue."
+        ? gt("This server does not support local plans. Update it to continue.")
         : !canRead
           ? retainedReadGrant
-            ? "Waiting for read access to be verified…"
-            : "Read access is required to view plans."
+            ? gt("Waiting for read access to be verified…")
+            : gt("Read access is required to view plans.")
           : null;
   return (
     <>
@@ -129,6 +139,7 @@ function PlanWorkspace(props: {
   readonly active: boolean;
 }) {
   const { environmentId, projectId } = props;
+  const gt = useGT();
   const [pages, setPages] = useState<readonly (string | undefined)[]>([undefined]);
   const [selected, setSelected] = useState<FactoryPlanRef | null>(null);
   const [creating, setCreating] = useState(false);
@@ -142,20 +153,26 @@ function PlanWorkspace(props: {
   );
   const canCreate = useAtomValue(factoryEnvironment.createPlan.permissionAtom(environmentId));
   return (
-    <section className="space-y-4 rounded-lg border p-4" aria-label="Local plans">
+    <section className="space-y-4 rounded-lg border p-4" aria-label={gt("Local plans")}>
       <div className="space-y-1">
-        <h3 className="font-medium">Local plans · {props.projectTitle}</h3>
+        <h3 className="font-medium">
+          <T>
+            Local plans · <Var>{props.projectTitle}</Var>
+          </T>
+        </h3>
         <p className="text-sm text-muted-foreground">
-          Organize tasks and requirements. Work references retain the context observed when
-          attached.
+          <T>
+            Organize tasks and requirements. Work references retain the context observed when
+            attached.
+          </T>
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" disabled={!canCreate || creating} onClick={() => setCreating(true)}>
-          New plan
+          <T>New plan</T>
         </Button>
         <Button size="sm" variant="outline" disabled={query.isPending} onClick={query.refresh}>
-          Refresh plans
+          <T>Refresh plans</T>
         </Button>
       </div>
       {query.error !== null ? <p role="alert">{query.error}</p> : null}
@@ -173,9 +190,17 @@ function PlanWorkspace(props: {
               onClose={() => setCreating(false)}
             />
           ) : null}
-          {query.isPending ? <p role="status">Loading plans…</p> : null}
-          {query.data?.items.length === 0 ? <p>No plans on this page.</p> : null}
-          <ul className="space-y-2" aria-label="Plans">
+          {query.isPending ? (
+            <p role="status">
+              <T>Loading plans…</T>
+            </p>
+          ) : null}
+          {query.data?.items.length === 0 ? (
+            <p>
+              <T>No plans on this page.</T>
+            </p>
+          ) : null}
+          <ul className="space-y-2" aria-label={gt("Plans")}>
             {query.data?.items.map((item) => (
               <li key={item.ref.rootId}>
                 <Button
@@ -184,8 +209,11 @@ function PlanWorkspace(props: {
                   aria-pressed={selected?.rootId === item.ref.rootId}
                   onClick={() => setSelected(item.ref)}
                 >
-                  {item.title} · revision {item.revision}
-                  {item.retired ? " · retired" : ""}
+                  {gt("{title} · revision {revision}{retired}", {
+                    title: item.title,
+                    revision: String(item.revision),
+                    retired: item.retired ? " · retired" : "",
+                  })}
                 </Button>
               </li>
             ))}
@@ -202,7 +230,7 @@ function PlanWorkspace(props: {
           />
           {pages.length >= 20 ? (
             <p className="text-xs text-muted-foreground">
-              Page limit reached. Go back to inspect earlier plans.
+              <T>Page limit reached. Go back to inspect earlier plans.</T>
             </p>
           ) : null}
           {selected ? (
@@ -219,7 +247,7 @@ function PlanWorkspace(props: {
       ) : null}
       {!canCreate ? (
         <p className="text-xs text-muted-foreground">
-          Creating and editing plans requires operate permission.
+          <T>Creating and editing plans requires operate permission.</T>
         </p>
       ) : null}
     </section>
@@ -275,8 +303,12 @@ function CreatePlan(props: {
       }}
     >
       <fieldset className="space-y-3" disabled={pending || request !== null || !canCreate}>
-        <legend className="font-medium text-sm">New root task</legend>
-        <Label htmlFor={`${id}-title`}>Title</Label>
+        <legend className="font-medium text-sm">
+          <T>New root task</T>
+        </legend>
+        <Label htmlFor={`${id}-title`}>
+          <T>Title</T>
+        </Label>
         <Input
           id={`${id}-title`}
           value={title}
@@ -284,7 +316,9 @@ function CreatePlan(props: {
           required
           onChange={(event) => setTitle(event.target.value)}
         />
-        <Label htmlFor={`${id}-context`}>Context</Label>
+        <Label htmlFor={`${id}-context`}>
+          <T>Context</T>
+        </Label>
         <Textarea
           id={`${id}-context`}
           value={context}
@@ -294,13 +328,17 @@ function CreatePlan(props: {
       </fieldset>
       {failure ? (
         <p role="alert">
-          {failure}
-          {request ? " Retry uses the same request." : " Review the draft before trying again."}
+          {failure}{" "}
+          {request ? (
+            <T>Retry uses the same request.</T>
+          ) : (
+            <T>Review the draft before trying again.</T>
+          )}
         </p>
       ) : null}
       <div className="flex gap-2">
         <Button size="sm" type="submit" disabled={pending || !canCreate || !title.trim()}>
-          {pending ? "Creating…" : request ? "Retry creation" : "Create plan"}
+          {pending ? <T>Creating…</T> : request ? <T>Retry creation</T> : <T>Create plan</T>}
         </Button>
         <Button
           size="sm"
@@ -309,7 +347,7 @@ function CreatePlan(props: {
           disabled={pending || request !== null}
           onClick={props.onClose}
         >
-          Cancel
+          <T>Cancel</T>
         </Button>
       </div>
     </form>
@@ -351,7 +389,9 @@ function SelectedPlan(props: {
           onChanged={props.onChanged}
         />
       ) : !denied ? (
-        <p role="status">Loading plan…</p>
+        <p role="status">
+          <T>Loading plan…</T>
+        </p>
       ) : null}
       {props.active && query.error === null ? <PlanHistory reference={reference} /> : null}
       {props.active && query.isSuccess && query.data && props.executionSupported ? (
@@ -383,6 +423,8 @@ function PlanDraft(props: {
   const [failure, setFailure] = useState<string | null>(null);
   const inFlight = useRef(false);
   const environmentId = base.ref.environmentId;
+  const gt = useGT();
+  const messages = useMessages();
   const canApply = useAtomValue(factoryEnvironment.applyPlan.permissionAtom(environmentId));
   const apply = useAtomCommand(factoryEnvironment.applyPlan, {
     label: "apply local plan edits",
@@ -427,7 +469,11 @@ function PlanDraft(props: {
       setReview(!result.value.current);
       if (!result.value.current)
         setFailure(
-          "This request was already saved at an older revision. Reload the current plan before editing.",
+          m(
+            msg(
+              "This request was already saved at an older revision. Reload the current plan before editing.",
+            ),
+          ),
         );
       props.refresh();
       props.onChanged();
@@ -456,9 +502,18 @@ function PlanDraft(props: {
     setFailure(null);
   };
   return (
-    <section className="space-y-4 rounded border p-3" aria-label="Plan editor" aria-busy={pending}>
+    <section
+      className="space-y-4 rounded border p-3"
+      aria-label={gt("Plan editor")}
+      aria-busy={pending}
+    >
       <p className="text-sm">
-        Editing revision {base.revision} · root <code>{base.ref.rootId}</code>
+        <T>
+          Editing revision <Var>{base.revision}</Var> · root{" "}
+          <code>
+            <Var>{base.ref.rootId}</Var>
+          </code>
+        </T>
       </p>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -467,7 +522,7 @@ function PlanDraft(props: {
           disabled={pending || props.refreshing}
           onClick={props.refresh}
         >
-          Read current revision
+          <T>Read current revision</T>
         </Button>
         <Button
           size="sm"
@@ -475,7 +530,7 @@ function PlanDraft(props: {
           disabled={pending || props.readUnavailable || request !== null || props.refreshing}
           onClick={() => reload(false)}
         >
-          Reload and discard queued edits
+          <T>Reload and discard queued edits</T>
         </Button>
         {operations.length > 0 ? (
           <Button
@@ -484,29 +539,39 @@ function PlanDraft(props: {
             disabled={pending || props.readUnavailable || request !== null || props.refreshing}
             onClick={() => reload(true)}
           >
-            Rebase queued edits onto revision {props.observed.revision}
+            <T>
+              Rebase queued edits onto revision <Var>{props.observed.revision}</Var>
+            </T>
           </Button>
         ) : null}
       </div>
       {props.observed.revision !== base.revision ? (
         <p role="status">
-          Current revision is {props.observed.revision}. Your draft still targets revision{" "}
-          {base.revision}. Review it and explicitly reload or rebase.
+          <T>
+            Current revision is <Var>{props.observed.revision}</Var>. Your draft still targets
+            revision <Var>{base.revision}</Var>. Review it and explicitly reload or rebase.
+          </T>
         </p>
       ) : null}
       {failure ? (
         <p role="alert">
           {failure}{" "}
-          {request
-            ? "The outcome may be uncertain. Retry preserves the exact request."
-            : "Your queued edits are retained. Review the current plan before rebasing."}
+          {request ? (
+            <T>The outcome may be uncertain. Retry preserves the exact request.</T>
+          ) : (
+            <T>Your queued edits are retained. Review the current plan before rebasing.</T>
+          )}
         </p>
       ) : null}
       {!canApply ? (
-        <p role="status">Editing requires operate permission on this environment.</p>
+        <p role="status">
+          <T>Editing requires operate permission on this environment.</T>
+        </p>
       ) : null}
       <fieldset className="min-w-0 space-y-4" disabled={blocked}>
-        <legend className="font-medium">Tasks</legend>
+        <legend className="font-medium">
+          <T>Tasks</T>
+        </legend>
         <ul className="space-y-3">
           {base.tasks
             .toSorted((a, b) => a.order - b.order)
@@ -528,12 +593,16 @@ function PlanDraft(props: {
       </fieldset>
       {operations.length > 0 ? (
         <div className="space-y-2">
-          <h4 className="font-medium text-sm">Queued edits ({operations.length}/128)</h4>
+          <h4 className="font-medium text-sm">
+            <T>
+              Queued edits (<Var>{operations.length}</Var>/128)
+            </T>
+          </h4>
           <ol className="list-inside list-decimal space-y-1">
             {operations.map(({ queueId, operation }, index) => (
               <li key={queueId} className="text-sm">
                 <span className="whitespace-pre-wrap break-words">
-                  {operationDescription(operation, base.tasks)}
+                  {operationDescription(operation, base.tasks, messages)}
                 </span>{" "}
                 <Button
                   size="xs"
@@ -543,7 +612,9 @@ function PlanDraft(props: {
                     setOperations((old) => old.filter((_, position) => position !== index))
                   }
                 >
-                  Remove edit {index + 1}
+                  <T>
+                    Remove edit <Var>{index + 1}</Var>
+                  </T>
                 </Button>
               </li>
             ))}
@@ -561,7 +632,7 @@ function PlanDraft(props: {
         }
         onClick={() => void submit()}
       >
-        {pending ? "Saving…" : request ? "Retry same save" : "Apply queued edits"}
+        {pending ? <T>Saving…</T> : request ? <T>Retry same save</T> : <T>Apply queued edits</T>}
       </Button>
     </section>
   );
@@ -571,9 +642,10 @@ function TaskChoice(props: {
   readonly label: string;
   readonly tasks: readonly FactoryPlanTask[];
   readonly value: string | null;
-  readonly onChange: (value: string) => void;
+  readonly onChange: (value: string | null) => void;
 }) {
   const id = useId();
+  const gt = useGT();
   return (
     <div className="space-y-1">
       <Label htmlFor={id}>{props.label}</Label>
@@ -585,13 +657,17 @@ function TaskChoice(props: {
       >
         <SelectTrigger id={id}>
           <SelectValue>
-            {props.tasks.find((task) => task.id === props.value)?.title ?? "Choose a task"}
+            {props.tasks.find((task) => task.id === props.value)?.title ?? <T>Choose a task</T>}
           </SelectValue>
         </SelectTrigger>
         <SelectPopup>
           {props.tasks.map((task) => (
             <SelectItem key={task.id} value={task.id}>
-              {task.title} ({task.id.slice(-8)}){task.retired ? " · retired" : ""}
+              {gt("{title} ({id}){retired}", {
+                title: task.title,
+                id: task.id.slice(-8),
+                retired: task.retired ? " · retired" : "",
+              })}
             </SelectItem>
           ))}
         </SelectPopup>
@@ -606,6 +682,7 @@ function TaskEditor(props: {
   readonly queue: (operation: FactoryPlanOperation) => void;
 }) {
   const id = useId();
+  const gt = useGT();
   const [title, setTitle] = useState(props.task?.title ?? "");
   const [context, setContext] = useState(props.task?.context ?? "");
   const [order, setOrder] = useState(String(props.task?.order ?? props.tasks.length));
@@ -617,31 +694,48 @@ function TaskEditor(props: {
   return (
     <details className="space-y-3 rounded border p-3" open={task === null}>
       <summary className="cursor-pointer font-medium text-sm">
-        {task ? `${task.title}${task.retired ? " · retired" : ""}` : "Add a task"}
+        {task ? (
+          <T>
+            <Var>{task.title}</Var>
+            <Var>{task.retired ? " · retired" : ""}</Var>
+          </T>
+        ) : (
+          <T>Add a task</T>
+        )}
       </summary>
       {task ? (
         <p className="text-xs text-muted-foreground">
           {task.parentId === null
-            ? "Root task"
-            : `Parent: ${props.tasks.find((candidate) => candidate.id === task.parentId)?.title ?? task.parentId}`}{" "}
+            ? gt("Root task")
+            : gt("Parent: {title}", {
+                title:
+                  props.tasks.find((candidate) => candidate.id === task.parentId)?.title ??
+                  task.parentId,
+              })}{" "}
           · <code>{task.id}</code>
         </p>
       ) : null}
-      <Label htmlFor={`${id}-title`}>Title</Label>
+      <Label htmlFor={`${id}-title`}>
+        <T>Title</T>
+      </Label>
       <Input
         id={`${id}-title`}
         value={title}
         maxLength={512}
         onChange={(event) => setTitle(event.target.value)}
       />
-      <Label htmlFor={`${id}-context`}>Context</Label>
+      <Label htmlFor={`${id}-context`}>
+        <T>Context</T>
+      </Label>
       <Textarea
         id={`${id}-context`}
         value={context}
         maxLength={8000}
         onChange={(event) => setContext(event.target.value)}
       />
-      <Label htmlFor={`${id}-order`}>Order</Label>
+      <Label htmlFor={`${id}-order`}>
+        <T>Order</T>
+      </Label>
       <Input
         id={`${id}-order`}
         type="number"
@@ -651,7 +745,7 @@ function TaskEditor(props: {
       />
       {task?.parentId !== null ? (
         <TaskChoice
-          label="Parent task"
+          label={gt("Parent task")}
           tasks={props.tasks.filter((candidate) => !candidate.retired && candidate.id !== task?.id)}
           value={parentId}
           onChange={setParentId}
@@ -685,7 +779,7 @@ function TaskEditor(props: {
             }
           }}
         >
-          {task ? "Queue task edit" : "Queue new task"}
+          {task ? <T>Queue task edit</T> : <T>Queue new task</T>}
         </Button>
         {task?.parentId !== null && task && parentId ? (
           <Button
@@ -694,7 +788,7 @@ function TaskEditor(props: {
             disabled={parentId === task.parentId || task.retired}
             onClick={() => props.queue({ type: "task.move", id: task.id, parentId })}
           >
-            Queue move
+            <T>Queue move</T>
           </Button>
         ) : null}
         {task ? (
@@ -705,7 +799,7 @@ function TaskEditor(props: {
               props.queue({ type: task.retired ? "task.restore" : "task.retire", id: task.id })
             }
           >
-            {task.retired ? "Queue restore task" : "Queue retire task"}
+            {task.retired ? <T>Queue restore task</T> : <T>Queue retire task</T>}
           </Button>
         ) : null}
       </div>
@@ -718,6 +812,7 @@ function RequirementEditor(props: {
   readonly queue: (operation: FactoryPlanOperation) => void;
 }) {
   const id = useId();
+  const gt = useGT();
   const [dependent, setDependent] = useState<string | null>(null);
   const [prerequisite, setPrerequisite] = useState<string | null>(null);
   const [requirement, setRequirement] = useState("");
@@ -725,15 +820,19 @@ function RequirementEditor(props: {
   return (
     <details className="space-y-3">
       <summary className="cursor-pointer font-medium text-sm">
-        Requirements ({props.plan.edges.length})
+        <T>
+          Requirements (<Var>{props.plan.edges.length}</Var>)
+        </T>
       </summary>
       <ul className="space-y-2">
         {props.plan.edges.map((edge) => (
           <li key={edge.id} className="rounded border p-3 text-sm">
             <p>
-              {props.plan.tasks.find((task) => task.id === edge.fromTaskId)?.title} requires{" "}
-              {props.plan.tasks.find((task) => task.id === edge.toTaskId)?.title}
-              {edge.retired ? " · retired" : ""}
+              {gt("{from} requires {to}{retired}", {
+                from: props.plan.tasks.find((task) => task.id === edge.fromTaskId)?.title ?? "",
+                to: props.plan.tasks.find((task) => task.id === edge.toTaskId)?.title ?? "",
+                retired: edge.retired ? " · retired" : "",
+              })}
             </p>
             <p className="whitespace-pre-wrap">{edge.requirement}</p>
             <Button
@@ -743,19 +842,26 @@ function RequirementEditor(props: {
                 props.queue({ type: edge.retired ? "edge.restore" : "edge.retire", id: edge.id })
               }
             >
-              {edge.retired ? "Queue restore requirement" : "Queue retire requirement"}
+              {edge.retired ? <T>Queue restore requirement</T> : <T>Queue retire requirement</T>}
             </Button>
           </li>
         ))}
       </ul>
-      <TaskChoice label="Dependent task" tasks={tasks} value={dependent} onChange={setDependent} />
       <TaskChoice
-        label="Prerequisite task"
+        label={gt("Dependent task")}
+        tasks={tasks}
+        value={dependent}
+        onChange={setDependent}
+      />
+      <TaskChoice
+        label={gt("Prerequisite task")}
         tasks={tasks.filter((task) => task.id !== dependent)}
         value={prerequisite}
         onChange={setPrerequisite}
       />
-      <Label htmlFor={id}>Requirement</Label>
+      <Label htmlFor={id}>
+        <T>Requirement</T>
+      </Label>
       <Textarea
         id={id}
         value={requirement}
@@ -777,7 +883,7 @@ function RequirementEditor(props: {
             });
         }}
       >
-        Queue requirement
+        <T>Queue requirement</T>
       </Button>
     </details>
   );
@@ -788,24 +894,35 @@ function WorkContexts(props: {
   readonly workSupported: boolean;
   readonly queue: (operation: FactoryPlanOperation) => void;
 }) {
+  const gt = useGT();
   const [taskId, setTaskId] = useState<string | null>(props.plan.ref.rootId);
   const [pages, setPages] = useState<readonly (string | undefined)[]>([undefined]);
+  const issueKeysSupported = useFactoryIssueKeysSupported(props.plan.ref.environmentId);
   const query = useEnvironmentQuery(
     props.workSupported
       ? factoryEnvironment.listWork({
           environmentId: props.plan.ref.environmentId,
-          input: { projectIds: [props.plan.ref.projectId], limit: 25, cursor: pages.at(-1) },
+          input: {
+            projectIds: [props.plan.ref.projectId],
+            limit: 25,
+            cursor: pages.at(-1),
+            ...factoryIssueKeysInput(issueKeysSupported),
+          },
         })
       : null,
   );
   return (
     <details className="space-y-3">
       <summary className="cursor-pointer font-medium text-sm">
-        Work context ({props.plan.workContexts.length})
+        <T>
+          Work context (<Var>{props.plan.workContexts.length}</Var>)
+        </T>
       </summary>
       <p className="text-xs text-muted-foreground">
-        Captured from retained Work. Attached text is an immutable reference snapshot. Review source
-        readiness in Work separately.
+        <T>
+          Captured from retained Work. Attached text is an immutable reference snapshot. Review
+          source readiness in Work separately.
+        </T>
       </p>
       <ul className="space-y-2">
         {props.plan.workContexts.map((context) => (
@@ -821,7 +938,7 @@ function WorkContexts(props: {
                 })
               }
             >
-              {context.retired ? "Queue restore context" : "Queue retire context"}
+              {context.retired ? <T>Queue restore context</T> : <T>Queue retire context</T>}
             </Button>
           </li>
         ))}
@@ -829,7 +946,7 @@ function WorkContexts(props: {
       {props.workSupported ? (
         <>
           <TaskChoice
-            label="Attach to task"
+            label={gt("Attach to task")}
             tasks={props.plan.tasks.filter((task) => !task.retired)}
             value={taskId}
             onChange={setTaskId}
@@ -837,7 +954,7 @@ function WorkContexts(props: {
           {query.error ? (
             <p role="alert">{query.error}</p>
           ) : (
-            <ul className="space-y-1" aria-label="Available Work context">
+            <ul className="space-y-1" aria-label={gt("Available Work context")}>
               {query.data?.items.map((item) => (
                 <li key={JSON.stringify(item.ref)}>
                   <Button
@@ -854,7 +971,7 @@ function WorkContexts(props: {
                         });
                     }}
                   >
-                    Queue attachment: {item.title}
+                    {gt("Queue attachment: {title}", { title: item.title })}
                   </Button>
                 </li>
               ))}
@@ -872,7 +989,9 @@ function WorkContexts(props: {
           />
         </>
       ) : (
-        <p>Work context browsing is unavailable on this server.</p>
+        <p>
+          <T>Work context browsing is unavailable on this server.</T>
+        </p>
       )}
     </details>
   );
@@ -895,14 +1014,19 @@ function EditorGrants(props: {
   );
   const [selected, setSelected] = useState<string | null>(null);
   const id = useId();
+  const gt = useGT();
   return (
     <details className="space-y-3">
       <summary className="cursor-pointer font-medium text-sm">
-        Agent editors ({props.plan.editorThreadIds.length})
+        <T>
+          Agent editors (<Var>{props.plan.editorThreadIds.length}</Var>)
+        </T>
       </summary>
       <p className="text-xs text-muted-foreground">
-        Grant an ordinary thread in this project permission to edit this plan. Granting sends no
-        message.
+        <T>
+          Grant an ordinary thread in this project permission to edit this plan. Granting sends no
+          message.
+        </T>
       </p>
       <ul className="space-y-1">
         {props.plan.editorThreadIds.map((threadId) => (
@@ -913,12 +1037,14 @@ function EditorGrants(props: {
               variant="outline"
               onClick={() => props.queue({ type: "editor.revoke", threadId })}
             >
-              Queue revoke
+              <T>Queue revoke</T>
             </Button>
           </li>
         ))}
       </ul>
-      <Label htmlFor={id}>Project thread</Label>
+      <Label htmlFor={id}>
+        <T>Project thread</T>
+      </Label>
       <Select
         value={selected}
         onValueChange={(value) => {
@@ -927,8 +1053,9 @@ function EditorGrants(props: {
       >
         <SelectTrigger id={id}>
           <SelectValue>
-            {candidates.find((thread) => thread.id === selected)?.title ??
-              "Choose an existing thread"}
+            {candidates.find((thread) => thread.id === selected)?.title ?? (
+              <T>Choose an existing thread</T>
+            )}
           </SelectValue>
         </SelectTrigger>
         <SelectPopup>
@@ -936,7 +1063,7 @@ function EditorGrants(props: {
             .filter((thread) => !props.plan.editorThreadIds.includes(thread.id))
             .map((thread) => (
               <SelectItem key={thread.id} value={thread.id}>
-                {thread.title} ({thread.id.slice(-8)})
+                {gt("{title} ({id})", { title: thread.title, id: thread.id.slice(-8) })}
               </SelectItem>
             ))}
         </SelectPopup>
@@ -954,13 +1081,14 @@ function EditorGrants(props: {
           if (thread) props.queue({ type: "editor.grant", threadId: thread.id });
         }}
       >
-        Queue editor grant
+        <T>Queue editor grant</T>
       </Button>
     </details>
   );
 }
 
 function PlanHistory(props: { readonly reference: FactoryPlanRef }) {
+  const gt = useGT();
   const [pages, setPages] = useState<readonly (number | undefined)[]>([undefined]);
   const [revision, setRevision] = useState<number | null>(null);
   const history = useEnvironmentQuery(
@@ -979,9 +1107,11 @@ function PlanHistory(props: { readonly reference: FactoryPlanRef }) {
   );
   return (
     <details className="space-y-3">
-      <summary className="cursor-pointer font-medium text-sm">Revision history · read only</summary>
+      <summary className="cursor-pointer font-medium text-sm">
+        <T>Revision history · read only</T>
+      </summary>
       <Button size="xs" variant="outline" disabled={history.isPending} onClick={history.refresh}>
-        Refresh history
+        <T>Refresh history</T>
       </Button>
       {history.error ? (
         <p role="alert">{history.error}</p>
@@ -995,7 +1125,11 @@ function PlanHistory(props: { readonly reference: FactoryPlanRef }) {
                 aria-pressed={revision === item.revision}
                 onClick={() => setRevision(item.revision)}
               >
-                {item.title} · revision {item.revision} · {item.updatedAt}
+                {gt("{title} · revision {revision} · {updatedAt}", {
+                  title: item.title,
+                  revision: String(item.revision),
+                  updatedAt: item.updatedAt,
+                })}
               </Button>
             </li>
           ))}
@@ -1017,7 +1151,9 @@ function PlanHistory(props: { readonly reference: FactoryPlanRef }) {
         ) : snapshot.data ? (
           <HistoricalSnapshot plan={snapshot.data} />
         ) : (
-          <p role="status">Loading revision…</p>
+          <p role="status">
+            <T>Loading revision…</T>
+          </p>
         )
       ) : null}
     </details>
@@ -1039,7 +1175,7 @@ function PageButtons(props: {
         disabled={props.disabled || !props.previous}
         onClick={props.onPrevious}
       >
-        Previous page
+        <T>Previous page</T>
       </Button>
       <Button
         size="xs"
@@ -1047,7 +1183,7 @@ function PageButtons(props: {
         disabled={props.disabled || !props.next}
         onClick={props.onNext}
       >
-        Next page
+        <T>Next page</T>
       </Button>
     </div>
   );
@@ -1055,10 +1191,12 @@ function PageButtons(props: {
 
 function failureMessage(error: unknown): string {
   return isPlanError(error) && error.reason === "revision-conflict"
-    ? `Plan changed${error.currentRevision ? ` to revision ${error.currentRevision}` : ""}.`
+    ? error.currentRevision
+      ? m(msg("Plan changed to revision {revision}.", { revision: String(error.currentRevision) }))
+      : m(msg("Plan changed."))
     : error instanceof Error
       ? error.message
-      : "The plan request failed.";
+      : m(msg("The plan request failed."));
 }
 
 function isReadDenied(error: unknown): boolean {
@@ -1070,68 +1208,99 @@ function ContextSnapshot(props: {
   readonly tasks: readonly FactoryPlanTask[];
 }) {
   const { context } = props;
+  const gt = useGT();
   return (
     <>
       <p>
-        {context.title}
-        {context.retired ? " · retired" : ""} · task{" "}
-        {props.tasks.find((task) => task.id === context.taskId)?.title}
+        {gt("{title}{retired} · task {task}", {
+          title: context.title,
+          retired: context.retired ? " · retired" : "",
+          task: props.tasks.find((task) => task.id === context.taskId)?.title ?? "",
+        })}
       </p>
       <p className="break-all text-xs">
-        Captured from retained Work {context.observedAt} · {context.ref.kind} ·{" "}
-        {context.ref.environmentId} · project {context.projectId} · snapshot revision{" "}
-        {context.revision ?? "unavailable"} · SHA-256 {context.sha256}
+        {gt(
+          "Captured from retained Work {observedAt} · {kind} · {environmentId} · project {projectId} · snapshot revision {revision} · SHA-256 {sha256}",
+          {
+            observedAt: context.observedAt,
+            kind: context.ref.kind,
+            environmentId: context.ref.environmentId,
+            projectId: context.projectId,
+            revision: context.revision == null ? gt("unavailable") : String(context.revision),
+            sha256: context.sha256,
+          },
+        )}
       </p>
       <pre
         className="max-h-64 overflow-auto whitespace-pre-wrap break-words"
         tabIndex={0}
-        aria-label={`Attached snapshot: ${context.title}`}
+        aria-label={gt("Attached snapshot: {title}", { title: context.title })}
       >
         {context.snapshot}
       </pre>
-      {context.snapshotTruncated ? <p>Snapshot truncated.</p> : null}
+      {context.snapshotTruncated ? (
+        <p>
+          <T>Snapshot truncated.</T>
+        </p>
+      ) : null}
     </>
   );
 }
 
 function HistoricalSnapshot(props: { readonly plan: FactoryPlanSnapshot }) {
   const { plan } = props;
+  const gt = useGT();
   const title = (id: string) => plan.tasks.find((task) => task.id === id)?.title ?? id;
   return (
     <section
       className="space-y-3 rounded border p-3"
-      aria-label={`Read-only revision ${plan.revision}`}
+      aria-label={gt("Read-only revision {revision}", { revision: String(plan.revision) })}
     >
-      <h4 className="font-medium text-sm">Read-only revision {plan.revision}</h4>
-      <ul className="space-y-2" aria-label="Historical tasks">
+      <h4 className="font-medium text-sm">
+        {gt("Read-only revision {revision}", { revision: String(plan.revision) })}
+      </h4>
+      <ul className="space-y-2" aria-label={gt("Historical tasks")}>
         {plan.tasks
           .toSorted((a, b) => a.order - b.order)
           .map((task) => (
             <li key={task.id} className="text-sm">
               <p className="font-medium">
-                {task.title}
-                {task.retired ? " · retired" : ""}
+                {gt("{title}{retired}", {
+                  title: task.title,
+                  retired: task.retired ? " · retired" : "",
+                })}
               </p>
               <p className="text-xs text-muted-foreground">
-                {task.parentId === null ? "Root task" : `Parent: ${title(task.parentId)}`} · order{" "}
-                {task.order} · {task.id}
+                {task.parentId === null
+                  ? gt("Root task · order {order} · {id}", {
+                      order: String(task.order),
+                      id: task.id,
+                    })
+                  : gt("Parent: {title} · order {order} · {id}", {
+                      title: title(task.parentId),
+                      order: String(task.order),
+                      id: task.id,
+                    })}
               </p>
               <p className="whitespace-pre-wrap break-words">{task.context}</p>
             </li>
           ))}
       </ul>
-      <ul className="space-y-2" aria-label="Historical requirements">
+      <ul className="space-y-2" aria-label={gt("Historical requirements")}>
         {plan.edges.map((edge) => (
           <li key={edge.id} className="text-sm">
             <p>
-              {title(edge.fromTaskId)} requires {title(edge.toTaskId)}
-              {edge.retired ? " · retired" : ""}
+              {gt("{from} requires {to}{retired}", {
+                from: title(edge.fromTaskId),
+                to: title(edge.toTaskId),
+                retired: edge.retired ? " · retired" : "",
+              })}
             </p>
             <p className="whitespace-pre-wrap break-words">{edge.requirement}</p>
           </li>
         ))}
       </ul>
-      <ul className="space-y-2" aria-label="Historical Work context">
+      <ul className="space-y-2" aria-label={gt("Historical Work context")}>
         {plan.workContexts.map((context) => (
           <li key={context.id} className="space-y-2 text-sm">
             <ContextSnapshot context={context} tasks={plan.tasks} />
@@ -1139,7 +1308,11 @@ function HistoricalSnapshot(props: { readonly plan: FactoryPlanSnapshot }) {
         ))}
       </ul>
       <p className="break-words text-xs text-muted-foreground">
-        Agent editor thread IDs: {plan.editorThreadIds.join(", ") || "None"}
+        {plan.editorThreadIds.length === 0
+          ? gt("Agent editor thread IDs: None")
+          : gt("Agent editor thread IDs: {ids}", {
+              ids: plan.editorThreadIds.join(", "),
+            })}
       </p>
     </section>
   );
@@ -1148,34 +1321,68 @@ function HistoricalSnapshot(props: { readonly plan: FactoryPlanSnapshot }) {
 function operationDescription(
   operation: FactoryPlanOperation,
   tasks: readonly FactoryPlanTask[],
+  resolve: MessageResolver = m,
 ): string {
   const title = (id: string) => tasks.find((task) => task.id === id)?.title ?? id;
   switch (operation.type) {
     case "task.add":
-      return `Add ${operation.title} under ${title(operation.parentId)} (order ${operation.order ?? 0}). ${operation.context ?? ""}`;
+      return resolve(
+        msg("Add {task} under {parent} (order {order}). {context}", {
+          task: operation.title,
+          parent: title(operation.parentId),
+          order: String(operation.order ?? 0),
+          context: operation.context ?? "",
+        }),
+      );
     case "task.update":
-      return `Edit ${title(operation.id)}: ${operation.title ?? title(operation.id)} (order ${operation.order ?? "unchanged"}). ${operation.context ?? ""}`;
+      return resolve(
+        msg("Edit {task}: {title} (order {order}). {context}", {
+          task: title(operation.id),
+          title: operation.title ?? title(operation.id),
+          order: operation.order == null ? resolve(msg("unchanged")) : String(operation.order),
+          context: operation.context ?? "",
+        }),
+      );
     case "task.move":
-      return `Move ${title(operation.id)} under ${title(operation.parentId)}.`;
+      return resolve(
+        msg("Move {task} under {parent}.", {
+          task: title(operation.id),
+          parent: title(operation.parentId),
+        }),
+      );
     case "task.retire":
-      return `Retire task ${title(operation.id)}.`;
+      return resolve(msg("Retire task {task}.", { task: title(operation.id) }));
     case "task.restore":
-      return `Restore task ${title(operation.id)}.`;
+      return resolve(msg("Restore task {task}.", { task: title(operation.id) }));
     case "edge.add":
-      return `${title(operation.fromTaskId)} requires ${title(operation.toTaskId)}. ${operation.requirement}`;
+      return resolve(
+        msg("{from} requires {to}. {requirement}", {
+          from: title(operation.fromTaskId),
+          to: title(operation.toTaskId),
+          requirement: operation.requirement,
+        }),
+      );
     case "edge.retire":
-      return `Retire requirement ${operation.id}.`;
+      return resolve(msg("Retire requirement {id}.", { id: operation.id }));
     case "edge.restore":
-      return `Restore requirement ${operation.id}.`;
+      return resolve(msg("Restore requirement {id}.", { id: operation.id }));
     case "editor.grant":
-      return `Grant agent editor access to thread ${operation.threadId}.`;
+      return resolve(msg("Grant agent editor access to thread {id}.", { id: operation.threadId }));
     case "editor.revoke":
-      return `Revoke agent editor access from thread ${operation.threadId}.`;
+      return resolve(
+        msg("Revoke agent editor access from thread {id}.", { id: operation.threadId }),
+      );
     case "context.attachWork":
-      return `Attach retained ${operation.ref.kind} Work ${operation.ref.id} to ${title(operation.taskId)}.`;
+      return resolve(
+        msg("Attach retained {kind} Work {id} to {task}.", {
+          kind: operation.ref.kind,
+          id: operation.ref.id,
+          task: title(operation.taskId),
+        }),
+      );
     case "context.retire":
-      return `Retire context ${operation.id}.`;
+      return resolve(msg("Retire context {id}.", { id: operation.id }));
     case "context.restore":
-      return `Restore context ${operation.id}.`;
+      return resolve(msg("Restore context {id}.", { id: operation.id }));
   }
 }

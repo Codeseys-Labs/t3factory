@@ -10,7 +10,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { T, useGT, Var } from "gt-react";
+import { T, useGT, useMessages, Var } from "gt-react";
 import { ChevronDownIcon } from "lucide-react";
 import {
   memo,
@@ -56,14 +56,16 @@ function ThreadTaskChip({
   environmentId: EnvironmentId;
   threadId: ThreadId;
 }) {
+  const messages = useMessages();
   const result = useAtomValue(
     factoryTasks.findTaskByThread({ environmentId, input: { threadId } }),
   );
   if (!AsyncResult.isSuccess(result) || !result.value.task) return null;
   const task = result.value.task;
+  const label = `${task.displayId} · ${messages(TASK_STATUS_VISUALS[task.status].label)}`;
   return (
     <Badge
-      aria-label={`${task.displayId} · ${TASK_STATUS_VISUALS[task.status].label}`}
+      aria-label={label}
       variant="muted-outline"
       size="lg"
       render={
@@ -74,7 +76,7 @@ function ThreadTaskChip({
       }
     >
       <TaskStatusIcon status={task.status} />
-      {task.displayId} · {TASK_STATUS_VISUALS[task.status].label}
+      {label}
     </Badge>
   );
 }

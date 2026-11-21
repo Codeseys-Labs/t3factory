@@ -40,7 +40,7 @@ const RawCreatedComment = Schema.Struct({
   html_url: Schema.optional(Schema.NullOr(Schema.String)),
   user: Schema.optional(Schema.NullOr(RestActor)),
 });
-type Label = NonNullable<NonNullable<NonNullable<Issues.NodesIssue["labels"]>["nodes"]>[number]>;
+type Label = NonNullable<NonNullable<NonNullable<Issues.IssueListItem["labels"]>["nodes"]>[number]>;
 type TimelineItem = NonNullable<NonNullable<DetailIssue["timelineItems"]["nodes"]>[number]>;
 type Comments = Omit<DetailIssue["comments"], "totalCount">;
 type Reference = NonNullable<
@@ -135,7 +135,7 @@ function toIssueState(
   return reason === "DUPLICATE" ? DUPLICATE : { category: "closed", name: "Closed" };
 }
 
-function toSummary(raw: Omit<Issues.NodesIssue, "__typename">): TrackerIssueSummary {
+function toSummary(raw: Issues.IssueListItem): TrackerIssueSummary {
   return {
     key: String(raw.number),
     displayKey: `#${raw.number}`,
@@ -342,6 +342,13 @@ export function toIssueSearch({ search }: Issues.IssueSearch.Result) {
       node !== null && node.__typename === "Issue" ? [toSummary(node)] : [],
     ),
     nextCursor: search.pageInfo.hasNextPage ? search.pageInfo.endCursor : null,
+  };
+}
+
+export function toIssueList(issues: NonNullable<Issues.IssueList.Result["repository"]>["issues"]) {
+  return {
+    items: (issues.nodes ?? []).flatMap((node) => (node === null ? [] : [toSummary(node)])),
+    nextCursor: issues.pageInfo.hasNextPage ? issues.pageInfo.endCursor : null,
   };
 }
 

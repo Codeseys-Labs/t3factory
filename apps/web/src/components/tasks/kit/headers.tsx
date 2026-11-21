@@ -1,4 +1,5 @@
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { useGT } from "gt-react";
 import type { ReactElement, ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
@@ -33,15 +34,16 @@ export function PageHeader({
   view?: ReactNode;
   actions?: ReactNode;
 }) {
+  const gt = useGT();
   return (
     <WorkspacePageHeader electron={isElectron} className="min-w-0 border-b border-border">
       {onBack ? (
-        <Button variant="ghost-muted" size="icon-xs" aria-label="Back" onClick={onBack}>
+        <Button variant="ghost-muted" size="icon-xs" aria-label={gt("Back")} onClick={onBack}>
           <ChevronLeftIcon aria-hidden />
         </Button>
       ) : null}
       {breadcrumb && breadcrumb.length > 0 ? (
-        <nav aria-label="Breadcrumb" className="min-w-0 flex-1">
+        <nav aria-label={gt("Breadcrumb")} className="min-w-0 flex-1">
           <ol className="flex min-w-0 items-center gap-1.5 text-sm">
             {breadcrumb.map((crumb, index) => {
               const current = index === breadcrumb.length - 1;

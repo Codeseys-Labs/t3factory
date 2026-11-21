@@ -7,8 +7,10 @@ import type {
   FactoryTaskType,
 } from "@t3tools/contracts";
 import { BotIcon, CircleDashedIcon, FolderIcon, LockIcon, UserIcon } from "lucide-react";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 
 import { cn } from "~/lib/utils";
+import { m, type MessageResolver } from "~/i18n/messages";
 import { Badge } from "../../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import {
@@ -39,22 +41,24 @@ export function TaskStatusIcon({
   status: FactoryTaskStatus;
   className?: string;
 }) {
+  const messages = useMessages();
   const visual = TASK_STATUS_VISUALS[status];
   return (
     <visual.Icon
       role="img"
-      aria-label={visual.label}
+      aria-label={messages(visual.label)}
       className={cn("size-3.5 shrink-0", visual.iconClass, className)}
     />
   );
 }
 
 export function TaskStatusLabel({ status }: { status: FactoryTaskStatus }) {
+  const messages = useMessages();
   const visual = TASK_STATUS_VISUALS[status];
   return (
     <span className={cn("inline-flex min-w-0 items-center gap-1.5 text-sm", visual.labelClass)}>
       <visual.Icon aria-hidden className={cn("size-3.5 shrink-0", visual.iconClass)} />
-      <span className="truncate">{visual.label}</span>
+      <span className="truncate">{messages(visual.label)}</span>
     </span>
   );
 }
@@ -75,6 +79,7 @@ export function LivePill({
   /** Defaults to on for `working`. */
   pulse?: boolean;
 }) {
+  const messages = useMessages();
   const classes = LIVE_TONE_CLASSES[tone];
   const pulsing = pulse ?? tone === "working";
   return (
@@ -93,18 +98,19 @@ export function LivePill({
           pulsing && "motion-safe:animate-status-pulse",
         )}
       />
-      {label}
+      {messages(label)}
       {duration ? <span className="font-normal tabular-nums opacity-70">{duration}</span> : null}
     </span>
   );
 }
 
 export function NeedsYouBadge({ reason }: { reason: FactoryTaskAttentionReason }) {
+  const messages = useMessages();
   const visual = ATTENTION_VISUALS[reason];
   return (
     <Badge variant={visual.variant}>
       <visual.Icon aria-hidden />
-      {visual.label}
+      {messages(visual.label)}
     </Badge>
   );
 }
@@ -113,7 +119,9 @@ export function BlockedBadge({ blockerId }: { blockerId: string }) {
   return (
     <Badge variant="muted">
       <LockIcon aria-hidden />
-      Blocked by {blockerId}
+      <T>
+        Blocked by <Var>{blockerId}</Var>
+      </T>
     </Badge>
   );
 }
@@ -148,15 +156,18 @@ export type AssigneeChipProps =
   | { kind: "unassigned" }
   | { kind: "person"; label: string };
 
-export function assigneeText(assignee: AssigneeChipProps): string {
+export function assigneeText(assignee: AssigneeChipProps, resolve: MessageResolver = m): string {
   switch (assignee.kind) {
     case "agent":
-    case "person":
       return assignee.label;
+    case "person":
+      return resolve(assignee.label);
     case "auto":
-      return assignee.label ? `Auto → ${assignee.label}` : "Auto";
+      return assignee.label
+        ? resolve(msg("Auto → {label}", { label: assignee.label }))
+        : resolve(msg("Auto", { $context: "task assignee" }));
     case "unassigned":
-      return "Unassigned";
+      return resolve(msg("Unassigned", { $context: "task assignee" }));
   }
 }
 
@@ -169,7 +180,8 @@ export function AssigneeChip({
   render,
   ...props
 }: { assignee: AssigneeChipProps } & useRender.ComponentProps<"span">) {
-  const text = assigneeText(assignee);
+  const messages = useMessages();
+  const text = assigneeText(assignee, messages);
   const leading =
     assignee.kind === "agent" ? (
       <Monogram text={assignee.mono} />
@@ -228,7 +240,8 @@ export function SourceChip({ kind, label }: { kind: FactoryTaskSourceKind; label
 }
 
 export function TypeTag({ type }: { type: FactoryTaskType }) {
-  return <Badge variant="muted">{TASK_TYPE_LABELS[type]}</Badge>;
+  const messages = useMessages();
+  return <Badge variant="muted">{messages(TASK_TYPE_LABELS[type])}</Badge>;
 }
 
 export function TaskIdText({ id }: { id: string }) {
@@ -241,12 +254,13 @@ export function TaskIdText({ id }: { id: string }) {
 
 /** Sub-task progress on a parent: `2 of 4` with its bar. */
 export function TaskProgress({ done, total }: { done: number; total: number }) {
+  const gt = useGT();
   const fraction = total > 0 ? Math.min(done, total) / total : 0;
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5 text-muted-foreground text-xs tabular-nums">
       <span
         role="progressbar"
-        aria-label="Sub-tasks done"
+        aria-label={gt("Sub-tasks done")}
         aria-valuemin={0}
         aria-valuemax={total}
         aria-valuenow={Math.min(done, total)}

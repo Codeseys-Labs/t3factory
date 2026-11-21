@@ -5,6 +5,7 @@ import type {
   FactoryWorkRef,
   FactoryWorkSummary,
 } from "@t3tools/contracts";
+import { T, useGT, useMessages, Var } from "gt-react";
 import type { KeyboardEvent } from "react";
 
 import { Badge } from "../ui/badge";
@@ -37,13 +38,27 @@ export function FactoryWorkItemConditions(props: {
   if (!stale && item.sourceState === null && item.supersededBy === null && !conflict) return null;
   return (
     <div className="flex flex-wrap gap-2">
-      {stale ? <Badge variant="outline">Stale, actions disabled</Badge> : null}
-      {item.sourceState !== null ? (
-        <Badge variant="secondary">Source snapshot: {item.sourceState}</Badge>
+      {stale ? (
+        <Badge variant="outline">
+          <T>Stale, actions disabled</T>
+        </Badge>
       ) : null}
-      {item.supersededBy !== null ? <Badge variant="outline">Superseded brief</Badge> : null}
+      {item.sourceState !== null ? (
+        <Badge variant="secondary">
+          <T>
+            Source snapshot: <Var>{item.sourceState}</Var>
+          </T>
+        </Badge>
+      ) : null}
+      {item.supersededBy !== null ? (
+        <Badge variant="outline">
+          <T>Superseded brief</T>
+        </Badge>
+      ) : null}
       {conflict ? (
-        <Badge variant="warning">Comparable source conflict, owners remain separate</Badge>
+        <Badge variant="warning">
+          <T>Comparable source conflict, owners remain separate</T>
+        </Badge>
       ) : null}
     </div>
   );
@@ -89,28 +104,46 @@ function SelectWorkButton(props: {
 }
 
 export function FactoryWorkTable(props: FactoryWorkCollectionProps) {
+  const gt = useGT();
+  const m = useMessages();
   return (
     <div
       className="max-w-full overflow-x-auto rounded-lg border border-border/60 focus-visible:outline-2 focus-visible:outline-ring"
       role="region"
-      aria-label="Work table, loaded pages only"
+      aria-label={gt("Work table, loaded pages only")}
       tabIndex={0}
       onKeyDown={moveFocus}
     >
       <Table className="min-w-4xl">
         <caption className="sr-only">
-          Work on loaded owner pages. Use the arrow keys to move between items.
+          <T>Work on loaded owner pages. Use the arrow keys to move between items.</T>
         </caption>
         <TableHeader>
           <TableRow>
-            <TableHead scope="col">Work</TableHead>
-            <TableHead scope="col">Origin</TableHead>
-            <TableHead scope="col">Owner</TableHead>
-            <TableHead scope="col">Admission project</TableHead>
-            <TableHead scope="col">Source snapshot</TableHead>
-            <TableHead scope="col">Revision</TableHead>
-            <TableHead scope="col">Planning stage</TableHead>
-            <TableHead scope="col">Created</TableHead>
+            <TableHead scope="col">
+              <T>Work</T>
+            </TableHead>
+            <TableHead scope="col">
+              <T>Origin</T>
+            </TableHead>
+            <TableHead scope="col">
+              <T>Owner</T>
+            </TableHead>
+            <TableHead scope="col">
+              <T>Admission project</T>
+            </TableHead>
+            <TableHead scope="col">
+              <T>Source snapshot</T>
+            </TableHead>
+            <TableHead scope="col">
+              <T>Revision</T>
+            </TableHead>
+            <TableHead scope="col">
+              <T>Planning stage</T>
+            </TableHead>
+            <TableHead scope="col">
+              <T>Created</T>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody data-work-column>
@@ -124,24 +157,24 @@ export function FactoryWorkTable(props: FactoryWorkCollectionProps) {
                   <FactoryWorkItemConditions entry={entry} conflicts={props.conflicts} />
                 </TableCell>
                 <TableCell className="align-top">
-                  {FACTORY_WORK_ORIGIN_LABELS[entry.item.ref.kind]}
+                  {m(FACTORY_WORK_ORIGIN_LABELS[entry.item.ref.kind])}
                 </TableCell>
                 <TableCell className="align-top">
                   {props.ownerLabel(entry.item.ref.environmentId)}
                 </TableCell>
                 <TableCell className="align-top">{props.projectLabel(entry.item)}</TableCell>
                 <TableCell className="align-top">
-                  {entry.item.sourceState ?? <Muted>None (authored)</Muted>}
+                  {entry.item.sourceState ?? <Muted>{gt("None (authored)")}</Muted>}
                 </TableCell>
                 <TableCell className="max-w-40 align-top">
                   {entry.item.revision === null ? (
-                    <Muted>Not stored</Muted>
+                    <Muted>{gt("Not stored")}</Muted>
                   ) : (
                     <span className="break-all">{entry.item.revision}</span>
                   )}
                 </TableCell>
                 <TableCell className="align-top">
-                  <Muted>Unavailable</Muted>
+                  <Muted>{gt("Unavailable")}</Muted>
                 </TableCell>
                 <TableCell className="align-top">{entry.item.createdAt}</TableCell>
               </TableRow>
@@ -167,33 +200,51 @@ export function FactoryWorkBoard(
     };
   },
 ) {
+  const gt = useGT();
+  const m = useMessages();
   const columns = groupFactoryWorkForBoard(props.entries, props.grouping, {
     kind: props.kind,
     projectOf: props.projectOf,
+    resolve: m,
   });
   return (
     <div
       className="flex max-w-full flex-col gap-3 pb-2 focus-visible:outline-2 focus-visible:outline-ring md:flex-row md:items-start md:overflow-x-auto"
       role="region"
-      aria-label={`Work board by ${props.grouping === "origin" ? "origin" : "admission project"}, loaded pages only`}
+      aria-label={
+        props.grouping === "origin"
+          ? gt("Work board by origin, loaded pages only")
+          : gt("Work board by admission project, loaded pages only")
+      }
       tabIndex={0}
       onKeyDown={moveFocus}
     >
-      {columns.length === 0 ? <p>No loaded work to group.</p> : null}
+      {columns.length === 0 ? (
+        <p>
+          <T>No loaded work to group.</T>
+        </p>
+      ) : null}
       {columns.map((column) => (
         <section
           key={column.key}
           className="min-w-0 space-y-2 rounded-lg bg-muted/40 p-2 md:w-72 md:shrink-0"
-          aria-label={`${column.label}, ${column.entries.length} loaded`}
+          aria-label={gt("{label}, {count} loaded", {
+            label: column.label,
+            count: column.entries.length,
+          })}
         >
           <h3 className="flex items-baseline justify-between gap-2 px-1 text-sm font-medium">
             <span className="min-w-0 break-words">{column.label}</span>
             <span className="shrink-0 text-xs font-normal text-muted-foreground">
-              {column.entries.length} loaded
+              <T>
+                <Var>{column.entries.length}</Var> loaded
+              </T>
             </span>
           </h3>
           {column.entries.length === 0 ? (
-            <p className="px-1 text-xs text-muted-foreground">None on loaded pages.</p>
+            <p className="px-1 text-xs text-muted-foreground">
+              <T>None on loaded pages.</T>
+            </p>
           ) : null}
           <ul className="flex flex-col gap-2" data-work-column>
             {column.entries.map((entry) => {
@@ -209,7 +260,7 @@ export function FactoryWorkBoard(
                   <p className="px-2 text-xs text-muted-foreground">
                     {props.grouping === "origin"
                       ? props.projectLabel(entry.item)
-                      : FACTORY_WORK_ORIGIN_LABELS[entry.item.ref.kind]}{" "}
+                      : m(FACTORY_WORK_ORIGIN_LABELS[entry.item.ref.kind])}{" "}
                     · {props.ownerLabel(entry.item.ref.environmentId)}
                   </p>
                   <div className="px-2">

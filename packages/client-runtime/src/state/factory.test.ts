@@ -294,12 +294,10 @@ describe("Factory coordinator commands", () => {
             },
           },
         ];
-        const pending = yield* Effect.forEach(
-          targets,
-          (value) =>
-            Effect.forkChild(Effect.exit(h.atoms.coordinatorsEnsure.run(h.registry, value)), {
-              startImmediately: true,
-            }).pipe(Effect.tap(() => Effect.yieldNow)),
+        const pending = yield* Effect.forEach(targets, (value) =>
+          Effect.forkChild(Effect.exit(h.atoms.coordinatorsEnsure.run(h.registry, value)), {
+            startImmediately: true,
+          }).pipe(Effect.tap(() => Effect.yieldNow)),
         );
         const dispatched = [];
         for (let index = 0; index < 4; index++) dispatched.push(yield* Queue.take(h.entered));
@@ -383,19 +381,16 @@ describe("Factory coordinator commands", () => {
           input: ensureInput("after-revocation"),
         }),
       );
+      expect(Exit.isFailure(revoked)).toBe(true);
       expect(h.calls).toHaveLength(1);
       const assignment = { environmentId, input: assignmentInput("assign") };
       expect(
-        Exit.isFailure(
-          yield* Effect.exit(h.atoms.coordinatorsAssign.run(h.registry, assignment)),
-        ),
+        Exit.isFailure(yield* Effect.exit(h.atoms.coordinatorsAssign.run(h.registry, assignment))),
       ).toBe(true);
       h.registry.set(sessions(environmentId), AsyncResult.failure(Cause.die("offline")));
       expect(h.registry.get(h.atoms.coordinatorsAssign.permissionAtom(environmentId))).toBe(false);
       expect(
-        Exit.isFailure(
-          yield* Effect.exit(h.atoms.coordinatorsAssign.run(h.registry, assignment)),
-        ),
+        Exit.isFailure(yield* Effect.exit(h.atoms.coordinatorsAssign.run(h.registry, assignment))),
       ).toBe(true);
       expect(h.calls).toHaveLength(1);
       h.registry.set(
@@ -403,9 +398,7 @@ describe("Factory coordinator commands", () => {
         AsyncResult.success(sessionWith([AuthOrchestrationOperateScope])),
       );
       expect(
-        Exit.isSuccess(
-          yield* Effect.exit(h.atoms.coordinatorsAssign.run(h.registry, assignment)),
-        ),
+        Exit.isSuccess(yield* Effect.exit(h.atoms.coordinatorsAssign.run(h.registry, assignment))),
       ).toBe(true);
       expect(h.calls).toHaveLength(2);
     }).pipe(Effect.scoped),
@@ -650,11 +643,11 @@ const readinessRepository = {
 } as const;
 
 const readinessResult = (
-  issueNumber: number,
+  issueNumber: number | undefined,
   observedAt: string,
 ): FactoryIssueReadinessReadResult => ({
   repository: readinessRepository,
-  issueNumber,
+  issueNumber: issueNumber ?? null,
   readiness: {
     status: "ready",
     reasons: [],
@@ -1045,13 +1038,10 @@ describe("Factory readiness override commands", () => {
           overrideSetTarget("other-issue", { issueNumber: 13 }),
           overrideSetTarget("other-environment", {}, otherEnvironmentId),
         ];
-        const pending = yield* Effect.forEach(
-          targets,
-          (value) =>
-            Effect.forkChild(
-              Effect.exit(h.atoms.setIssueReadinessOverride.run(h.registry, value)),
-              { startImmediately: true },
-            ).pipe(Effect.tap(() => Effect.yieldNow)),
+        const pending = yield* Effect.forEach(targets, (value) =>
+          Effect.forkChild(Effect.exit(h.atoms.setIssueReadinessOverride.run(h.registry, value)), {
+            startImmediately: true,
+          }).pipe(Effect.tap(() => Effect.yieldNow)),
         );
         const dispatched: FeedCall[] = [];
         for (let index = 0; index < 6; index++) dispatched.push(yield* Queue.take(h.entered));
@@ -1101,13 +1091,10 @@ describe("Factory readiness override commands", () => {
         overrideRevokeTarget("other-issue", { issueNumber: 13 }),
         overrideRevokeTarget("other-environment", {}, otherEnvironmentId),
       ];
-      const pending = yield* Effect.forEach(
-        targets,
-        (value) =>
-          Effect.forkChild(
-            Effect.exit(h.atoms.revokeIssueReadinessOverride.run(h.registry, value)),
-            { startImmediately: true },
-          ).pipe(Effect.tap(() => Effect.yieldNow)),
+      const pending = yield* Effect.forEach(targets, (value) =>
+        Effect.forkChild(Effect.exit(h.atoms.revokeIssueReadinessOverride.run(h.registry, value)), {
+          startImmediately: true,
+        }).pipe(Effect.tap(() => Effect.yieldNow)),
       );
       for (let index = 0; index < 4; index++) yield* Queue.take(h.entered);
       yield* Deferred.succeed(h.release, undefined);
@@ -1171,9 +1158,7 @@ describe("Factory readiness override commands", () => {
         expect([reads(12), reads(13)]).toEqual([1, 1]);
 
         const pending = yield* Effect.forkChild(
-          Effect.exit(
-            h.atoms.setIssueReadinessOverride.run(h.registry, overrideSetTarget("set")),
-          ),
+          Effect.exit(h.atoms.setIssueReadinessOverride.run(h.registry, overrideSetTarget("set"))),
           { startImmediately: true },
         );
         yield* Queue.take(h.entered);
@@ -1262,12 +1247,10 @@ describe("Factory feed admission", () => {
           { environmentId, input: admitInput("other-item", { itemKey: "guid:item-2" }) },
           { environmentId: otherEnvironmentId, input: admitInput("other-environment") },
         ];
-        const pending = yield* Effect.forEach(
-          targets,
-          (value) =>
-            Effect.forkChild(Effect.exit(h.atoms.admitFeedCandidate.run(h.registry, value)), {
-              startImmediately: true,
-            }).pipe(Effect.tap(() => Effect.yieldNow)),
+        const pending = yield* Effect.forEach(targets, (value) =>
+          Effect.forkChild(Effect.exit(h.atoms.admitFeedCandidate.run(h.registry, value)), {
+            startImmediately: true,
+          }).pipe(Effect.tap(() => Effect.yieldNow)),
         );
         const dispatched: FeedCall[] = [];
         for (let index = 0; index < 4; index++) dispatched.push(yield* Queue.take(h.entered));
@@ -1314,10 +1297,9 @@ describe("Factory feed admission", () => {
           dismissal("dismiss-edited", { expectedRevision: "revision-2" }),
         ],
         (value) =>
-          Effect.forkChild(
-            Effect.exit(h.atoms.setFeedCandidateDismissed.run(h.registry, value)),
-            { startImmediately: true },
-          ).pipe(Effect.tap(() => Effect.yieldNow)),
+          Effect.forkChild(Effect.exit(h.atoms.setFeedCandidateDismissed.run(h.registry, value)), {
+            startImmediately: true,
+          }).pipe(Effect.tap(() => Effect.yieldNow)),
       );
       for (let index = 0; index < 3; index++) yield* Queue.take(h.entered);
       yield* Deferred.succeed(h.release, undefined);
@@ -1803,12 +1785,10 @@ describe("Factory research commands", () => {
         },
         { environmentId: otherEnvironmentId, input: sealInput("seal") },
       ];
-      const pending = yield* Effect.forEach(
-        targets,
-        (value) =>
-          Effect.forkChild(Effect.exit(h.atoms.sealResearchProtocol.run(h.registry, value)), {
-            startImmediately: true,
-          }).pipe(Effect.tap(() => Effect.yieldNow)),
+      const pending = yield* Effect.forEach(targets, (value) =>
+        Effect.forkChild(Effect.exit(h.atoms.sealResearchProtocol.run(h.registry, value)), {
+          startImmediately: true,
+        }).pipe(Effect.tap(() => Effect.yieldNow)),
       );
       const dispatched: FeedCall[] = [];
       for (let index = 0; index < 4; index++) dispatched.push(yield* Queue.take(h.entered));
@@ -1847,12 +1827,10 @@ describe("Factory research commands", () => {
           },
           { environmentId: otherEnvironmentId, input: launchInput("other-environment") },
         ];
-        const pending = yield* Effect.forEach(
-          targets,
-          (value) =>
-            Effect.forkChild(Effect.exit(h.atoms.launchResearchRun.run(h.registry, value)), {
-              startImmediately: true,
-            }).pipe(Effect.tap(() => Effect.yieldNow)),
+        const pending = yield* Effect.forEach(targets, (value) =>
+          Effect.forkChild(Effect.exit(h.atoms.launchResearchRun.run(h.registry, value)), {
+            startImmediately: true,
+          }).pipe(Effect.tap(() => Effect.yieldNow)),
         );
         const dispatched: FeedCall[] = [];
         for (let index = 0; index < 5; index++) dispatched.push(yield* Queue.take(h.entered));
@@ -1897,13 +1875,11 @@ describe("Factory research commands", () => {
           },
           { environmentId: otherEnvironmentId, input: researchAdmitInput("other-environment") },
         ];
-        const pending = yield* Effect.forEach(
-          targets,
-          (value) =>
-            Effect.forkChild(
-              Effect.exit(h.atoms.admitResearchImplementation.run(h.registry, value)),
-              { startImmediately: true },
-            ).pipe(Effect.tap(() => Effect.yieldNow)),
+        const pending = yield* Effect.forEach(targets, (value) =>
+          Effect.forkChild(
+            Effect.exit(h.atoms.admitResearchImplementation.run(h.registry, value)),
+            { startImmediately: true },
+          ).pipe(Effect.tap(() => Effect.yieldNow)),
         );
         const dispatched: FeedCall[] = [];
         for (let index = 0; index < 4; index++) dispatched.push(yield* Queue.take(h.entered));

@@ -125,7 +125,9 @@ export const FactoryCommitDeliveryIntent = Schema.Struct({
 export type FactoryCommitDeliveryIntent = typeof FactoryCommitDeliveryIntent.Type;
 
 export const FactoryArtifactDeliveryRemote = Schema.Struct({
-  commentId: Schema.Int,
+  // The tracker's own comment id: GitHub's GraphQL node id now; rows and servers from before the
+  // issue layer recorded GitHub's numeric REST id.
+  commentId: Schema.Union([Schema.Int, TrimmedNonEmptyString]),
   url: Schema.String,
 });
 export type FactoryArtifactDeliveryRemote = typeof FactoryArtifactDeliveryRemote.Type;

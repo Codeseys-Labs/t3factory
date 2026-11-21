@@ -1,11 +1,15 @@
 import { assert, it } from "@effect/vitest";
 import { SourceControlProviderKind } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import { FactoryLaunchIntent } from "../persistence/FactoryIssueLaunches.ts";
 import {
   feedItemOriginKey,
   issueOriginKey,
+  issueKeyOf,
   knowledgeBriefOriginKey,
   parseTaskResultOriginKey,
+  parseIssueOriginKey,
   researchRunOriginKey,
   taskResultOriginKey,
 } from "./FactoryOriginKey.ts";
@@ -55,6 +59,32 @@ it.effect("origin keys escape delimiters and percent sequences without component
       taskId: "t%:2",
       revision: 3,
     });
+    for (const key of ["12", "ENG-123", "ENG:%23#|"]) {
+      assert.deepStrictEqual(parseIssueOriginKey(issueOriginKey(github, "host/scope:%#|", key)), {
+        provider: "github",
+        canonicalKey: "host/scope:%#|",
+        key,
+        number: key === "12" ? 12 : null,
+      });
+    }
+    assert.isNull(parseIssueOriginKey("linear:scope#%XX"));
     assert.isNull(parseTaskResultOriginKey(issueOriginKey(github, "repo", 3)));
   }),
 );
+
+it("rejects a frozen issue snapshot without a native key or legacy number", () => {
+  const decode = Schema.decodeUnknownSync(FactoryLaunchIntent.fields.issue);
+  const snapshot = {
+    number: null,
+    title: "Task",
+    body: null,
+    state: "open",
+    url: "https://linear.app/acme/issue/ENG-123",
+    labels: [],
+    updatedAt: "2026-10-23T00:00:00.000Z",
+    task: null,
+  };
+  assert.throws(() => decode(snapshot));
+  assert.equal(issueKeyOf(decode({ ...snapshot, number: 12 })), "12");
+  assert.equal(issueKeyOf(decode({ ...snapshot, key: "ENG-123" })), "ENG-123");
+});

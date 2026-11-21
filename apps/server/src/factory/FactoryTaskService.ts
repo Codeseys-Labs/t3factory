@@ -2052,6 +2052,10 @@ const make = Effect.gen(function* () {
               Effect.orElseSucceed((): ReadonlyArray<string> => []),
             );
     const report = content?.body ?? (yield* resultReport(row, result));
+    const issue =
+      row.source.kind === "issue" && row.source.key !== null
+        ? parseIssueOriginKey(row.source.key)
+        : null;
     return {
       title:
         content?.title.trim().slice(0, FACTORY_DELIVERY_TITLE_MAX_CHARS) ??
@@ -2067,10 +2071,11 @@ const make = Effect.gen(function* () {
       ]
         .filter((part) => part !== "")
         .join("\n\n"),
+      // The grant names the issue by its number; the tracker's own key stays with the source.
       closes:
-        row.source.kind === "issue" && row.source.key !== null
-          ? parseIssueOriginKey(row.source.key)
-          : null,
+        issue === null
+          ? null
+          : { provider: issue.provider, canonicalKey: issue.canonicalKey, number: issue.number },
     };
   });
 

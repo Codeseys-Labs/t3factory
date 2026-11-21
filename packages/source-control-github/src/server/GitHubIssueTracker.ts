@@ -30,6 +30,7 @@ import {
   toIssueCandidates,
   toIssueComments,
   toIssueDetail,
+  toIssueList,
   toIssueSearch,
 } from "./gitHubIssueJson.ts";
 const KIND = IssueTrackerKind.make("github");
@@ -211,18 +212,38 @@ export const make = Effect.gen(function* () {
         Effect.map(({ viewer }) => viewer.login),
       ),
 
-    listIssues: (input) =>
-      repository(input.scope, "listIssues").pipe(
-        Effect.flatMap(() =>
-          client
-            .IssueSearch({
-              q: searchQuery(input),
-              cursor: input.cursor,
-              rows: Math.min(Math.max(Math.trunc(input.limit), 1), 100),
-            })
-            .pipe(graphql(input.host, "listIssues"), Effect.map(toIssueSearch)),
-        ),
-      ),
+    listIssues: Effect.fn("GitHubIssueTracker.listIssues")(function* (input) {
+      const { owner, name } = yield* repository(input.scope, "listIssues");
+      const rows = Math.min(Math.max(Math.trunc(input.limit), 1), 100);
+      const narrowed =
+        input.involvement !== "all" ||
+        searchTerms(input.query ?? "").length > 0 ||
+        (input.labels?.length ?? 0) > 0 ||
+        input.assignee !== undefined;
+      if (narrowed) {
+        return yield* client
+          .IssueSearch({ q: searchQuery(input), cursor: input.cursor, rows })
+          .pipe(graphql(input.host, "listIssues"), Effect.map(toIssueSearch));
+      }
+      const result = yield* client
+        .IssueList({
+          owner,
+          name,
+          ...(input.state === "all"
+            ? {}
+            : { states: [input.state === "open" ? "OPEN" : "CLOSED"] as const }),
+          orderBy: {
+            field: input.sort === "created" ? "CREATED_AT" : "UPDATED_AT",
+            direction: "DESC",
+          },
+          cursor: input.cursor,
+          rows,
+        })
+        .pipe(graphql(input.host, "listIssues"));
+      if (result.repository === null)
+        return yield* invalid("listIssues", "GitHub could not find the repository.", "not-found");
+      return toIssueList(result.repository.issues);
+    }),
 
     getIssue: Effect.fn("GitHubIssueTracker.getIssue")(function* (input) {
       const { owner, name, number } = yield* issue(input, "getIssue");

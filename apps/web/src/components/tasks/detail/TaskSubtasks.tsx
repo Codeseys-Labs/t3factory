@@ -7,6 +7,7 @@ import type {
 } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { CircleIcon, ListTreeIcon, LockIcon } from "lucide-react";
+import { msg, useGT, useMessages } from "gt-react";
 
 import { cn } from "~/lib/utils";
 import { factoryTasks, useFactoryAgentProfiles } from "../../../state/factoryTasks";
@@ -33,19 +34,20 @@ const ROW =
 /** Add sub-task and Ask an agent to propose sub-tasks, each unavailable without its permission. */
 function useSubtaskEntries(task: FactoryTaskSummary) {
   const { environmentId } = task.ref;
+  const messages = useMessages();
   const canCreate = useAtomValue(factoryTasks.createTask.permissionAtom(environmentId));
   const canBreakDown = useAtomValue(
     factoryTasks.requestTaskBreakdown.permissionAtom(environmentId),
   );
   return {
     add: {
-      label: "Add sub-task",
+      label: messages(msg("Add sub-task", { $context: "verb, adds a sub-task" })),
       onClick: () =>
         openNewTask({ environmentId, projectId: task.ref.projectId, parent: task.ref }),
       disabled: !canCreate,
     },
     breakDown: {
-      label: "Ask an agent to propose sub-tasks…",
+      label: messages(msg("Ask an agent to propose sub-tasks…")),
       onClick: () => openTaskSetup(task.ref, "break-down"),
       disabled: !canBreakDown,
     },
@@ -55,11 +57,12 @@ function useSubtaskEntries(task: FactoryTaskSummary) {
 /** The task's sub-tasks, or one quiet line with the two ways to make some. */
 export function TaskSubtasks({ detail }: { detail: FactoryTaskDetail }) {
   const { task, subtasks } = detail;
+  const gt = useGT();
   const entries = useSubtaskEntries(task);
   if (subtasks.length === 0)
     return (
-      <section aria-label="Sub-tasks" className="flex flex-col gap-1">
-        <SectionHeader title="Sub-tasks" />
+      <section aria-label={gt("Sub-tasks")} className="flex flex-col gap-1">
+        <SectionHeader title={gt("Sub-tasks")} />
         <p className="flex flex-wrap items-center gap-2 text-muted-foreground text-sm">
           <InlineButton tone="muted" onClick={entries.add.onClick} disabled={entries.add.disabled}>
             {entries.add.label}
@@ -77,10 +80,17 @@ export function TaskSubtasks({ detail }: { detail: FactoryTaskDetail }) {
       </section>
     );
   return (
-    <section aria-label="Sub-tasks" className="flex flex-col">
+    <section aria-label={gt("Sub-tasks")} className="flex flex-col">
       <SectionHeader
-        title="Sub-tasks"
-        {...(task.progress ? { meta: `${task.progress.done} of ${task.progress.total} done` } : {})}
+        title={gt("Sub-tasks")}
+        {...(task.progress
+          ? {
+              meta: gt("{done} of {total} done", {
+                done: task.progress.done,
+                total: task.progress.total,
+              }),
+            }
+          : {})}
         action={entries.add}
       />
       <ul className="flex flex-col">
@@ -100,10 +110,11 @@ export function TaskSubtasks({ detail }: { detail: FactoryTaskDetail }) {
  */
 function SubtaskRow({ task }: { task: FactoryTaskSummary }) {
   const { pill, needs } = useTaskLive(task);
+  const gt = useGT();
   const own = needs.filter((need) => need.ref.taskId === task.ref.taskId);
   const ask = own.find((need) => need.reason === "question" || need.reason === "approve");
   const blocker = task.status === "ready" || task.status === "backlog" ? task.blockedBy[0] : null;
-  const note = ask?.detail ?? (blocker ? `Blocked by ${blocker.displayId}` : null);
+  const note = ask?.detail ?? (blocker ? gt("Blocked by {id}", { id: blocker.displayId }) : null);
   // The blocker is the note here, so the mark speaks only for runs and asks.
   const mark = resolveTaskStateMark({ pill, needs: own, blockedBy: [] });
   return (
@@ -116,7 +127,11 @@ function SubtaskRow({ task }: { task: FactoryTaskSummary }) {
       )}
     >
       {blocker ? (
-        <LockIcon role="img" aria-label="Blocked" className="size-3.5 text-muted-foreground" />
+        <LockIcon
+          role="img"
+          aria-label={gt("Blocked", { $context: "task blocked by another" })}
+          className="size-3.5 text-muted-foreground"
+        />
       ) : (
         <TaskStatusIcon status={task.status} />
       )}
@@ -157,9 +172,14 @@ export function ProposedSubtasks({
   proposal: FactoryTaskPlanProposal;
 }) {
   const chipFor = useProposalChips(task);
+  const gt = useGT();
+  const messages = useMessages();
   return (
-    <section aria-label="Sub-tasks" className="flex flex-col">
-      <SectionHeader title="Sub-tasks" meta="Proposed" />
+    <section aria-label={gt("Sub-tasks")} className="flex flex-col">
+      <SectionHeader
+        title={gt("Sub-tasks")}
+        meta={gt("Proposed", { $context: "plan proposal state" })}
+      />
       <ol className="flex flex-col">
         {proposal.items.map((item, index) => (
           <li key={item.key} className={ROW}>
@@ -168,7 +188,7 @@ export function ProposedSubtasks({
             <span className="flex min-w-0 flex-col">
               <TruncatedText text={item.title} className="text-sm" />
               <span className="truncate text-muted-foreground text-xs">
-                {planOrderNote(item, proposal.items)}
+                {planOrderNote(item, proposal.items, messages)}
               </span>
             </span>
             <span className="flex min-w-0">

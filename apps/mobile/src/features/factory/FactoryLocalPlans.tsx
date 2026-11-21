@@ -7,6 +7,7 @@ import {
   type ProjectId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { T, useGT } from "gt-react-native";
 import { useState } from "react";
 import { View } from "react-native";
 
@@ -24,6 +25,7 @@ export function FactoryLocalPlans(props: {
   readonly environment: EnvironmentPresentation | undefined;
   readonly canRead: boolean;
 }) {
+  const gt = useGT();
   const [open, setOpen] = useState(false);
   const available =
     props.canRead &&
@@ -31,10 +33,13 @@ export function FactoryLocalPlans(props: {
     props.environment.serverConfig?.environment.capabilities.factoryPlans === true;
   return (
     <View className="items-start gap-2">
-      <Button label={open ? "Hide local tasks" : "Local tasks"} onPress={() => setOpen(!open)} />
+      <Button
+        label={open ? gt("Hide local tasks") : gt("Local tasks")}
+        onPress={() => setOpen(!open)}
+      />
       {open && !available ? (
         <Text className="text-sm text-foreground-muted">
-          Connect to a server with local plans and read permission to inspect tasks.
+          <T>Connect to a server with local plans and read permission to inspect tasks.</T>
         </Text>
       ) : null}
       {open && available ? (
@@ -55,6 +60,7 @@ function LocalPlans(props: {
   readonly projectId: ProjectId;
   readonly executionSupported: boolean;
 }) {
+  const gt = useGT();
   const [afterRootId, setAfterRootId] = useState<string | undefined>();
   const [selection, setSelection] = useState<{
     readonly ref: FactoryPlanRef;
@@ -68,9 +74,11 @@ function LocalPlans(props: {
   );
   return (
     <View className="self-stretch gap-2 rounded-2xl border border-border-subtle p-3">
-      <Text className="text-base font-t3-medium text-foreground">Local tasks</Text>
+      <Text className="text-base font-t3-medium text-foreground">
+        <T>Local tasks</T>
+      </Text>
       <Text className="text-sm text-foreground-muted">
-        Read-only on mobile. Authoring and execution grants are available on web or desktop.
+        <T>Read-only on mobile. Authoring and execution grants are available on web or desktop.</T>
       </Text>
       {selection ? (
         <PlanReader
@@ -82,35 +90,42 @@ function LocalPlans(props: {
       ) : query.error ? (
         <View className="items-start gap-2">
           <Text className="text-sm text-danger-foreground">{query.error}</Text>
-          <Button label="Try again" onPress={query.refresh} />
+          <Button label={gt("Try again")} onPress={query.refresh} />
         </View>
       ) : query.data ? (
         <>
           {query.data.items.length === 0 ? (
-            <Text className="text-sm text-foreground-muted">No local tasks on this page.</Text>
+            <Text className="text-sm text-foreground-muted">
+              <T>No local tasks on this page.</T>
+            </Text>
           ) : null}
           {query.data.items.map((item) => (
             <Button
               key={item.ref.rootId}
-              label={`${item.title} · revision ${item.revision}`}
+              label={gt("{title} · revision {revision}", {
+                title: item.title,
+                revision: String(item.revision),
+              })}
               onPress={() => setSelection({ ref: item.ref, revision: item.revision })}
             />
           ))}
           <View className="flex-row flex-wrap gap-2">
             {afterRootId ? (
-              <Button label="First page" onPress={() => setAfterRootId(undefined)} />
+              <Button label={gt("First page")} onPress={() => setAfterRootId(undefined)} />
             ) : null}
             {query.data.nextRootId ? (
               <Button
-                label="Next page"
+                label={gt("Next page")}
                 onPress={() => setAfterRootId(query.data?.nextRootId ?? undefined)}
               />
             ) : null}
-            <Button label="Refresh tasks" onPress={query.refresh} />
+            <Button label={gt("Refresh tasks")} onPress={query.refresh} />
           </View>
         </>
       ) : (
-        <Text className="text-sm text-foreground-muted">Loading tasks…</Text>
+        <Text className="text-sm text-foreground-muted">
+          <T>Loading tasks…</T>
+        </Text>
       )}
     </View>
   );
@@ -121,6 +136,7 @@ function PlanReader(props: {
   readonly executionSupported: boolean;
   readonly onClose: () => void;
 }) {
+  const gt = useGT();
   const [taskId, setTaskId] = useState(props.selection.ref.rootId);
   const query = useEnvironmentQuery(
     factoryEnvironment.readPlan({
@@ -132,7 +148,7 @@ function PlanReader(props: {
   const task = plan?.tasks.find((entry) => entry.id === taskId);
   return (
     <View className="items-start gap-2 self-stretch">
-      <Button label="Back to local tasks" onPress={props.onClose} />
+      <Button label={gt("Back to local tasks")} onPress={props.onClose} />
       {query.error ? <Text className="text-sm text-danger-foreground">{query.error}</Text> : null}
       {plan && task ? (
         <>
@@ -140,14 +156,17 @@ function PlanReader(props: {
             {task.title}
           </Text>
           <Text className="text-xs text-foreground-muted" selectable>
-            Revision {plan.revision} · task {task.id}
+            {gt("Revision {revision} · task {id}", {
+              revision: String(plan.revision),
+              id: task.id,
+            })}
           </Text>
           <Text className="text-sm text-foreground" selectable>
             {task.context}
           </Text>
           {task.parentId ? (
             <Button
-              label="Return to parent task"
+              label={gt("Return to parent task")}
               onPress={() => setTaskId(task.parentId ?? plan.ref.rootId)}
             />
           ) : null}
@@ -156,7 +175,7 @@ function PlanReader(props: {
             .map((child) => (
               <Button
                 key={child.id}
-                label={`Read ${child.title}`}
+                label={gt("Read {title}", { title: child.title })}
                 onPress={() => setTaskId(child.id)}
               />
             ))}
@@ -164,18 +183,21 @@ function PlanReader(props: {
             <TaskResults key={task.id} selection={{ ...props.selection, taskId: task.id }} />
           ) : (
             <Text className="text-sm text-foreground-muted">
-              This server does not support local execution results.
+              <T>This server does not support local execution results.</T>
             </Text>
           )}
         </>
       ) : query.error === null ? (
-        <Text className="text-sm text-foreground-muted">Loading task…</Text>
+        <Text className="text-sm text-foreground-muted">
+          <T>Loading task…</T>
+        </Text>
       ) : null}
     </View>
   );
 }
 
 function TaskResults({ selection }: { readonly selection: FactoryExecutionSelection }) {
+  const gt = useGT();
   const [resultId, setResultId] = useState<string | null>(null);
   const [beforeResultId, setBeforeResultId] = useState<string | undefined>();
   const execution = useEnvironmentQuery(
@@ -212,7 +234,7 @@ function TaskResults({ selection }: { readonly selection: FactoryExecutionSelect
   if (denied)
     return (
       <Text className="text-sm text-danger-foreground">
-        Read access to execution results is unavailable.
+        <T>Read access to execution results is unavailable.</T>
       </Text>
     );
   const state =
@@ -221,51 +243,68 @@ function TaskResults({ selection }: { readonly selection: FactoryExecutionSelect
       : null;
   return (
     <View className="items-start gap-2 self-stretch border-t border-border-subtle pt-3">
-      <Text className="text-base font-t3-medium text-foreground">Execution and results</Text>
+      <Text className="text-base font-t3-medium text-foreground">
+        <T>Execution and results</T>
+      </Text>
       {execution.error ? (
         <Text className="text-sm text-danger-foreground">{execution.error}</Text>
       ) : state ? (
         <Text className="text-sm text-foreground" selectable>
           {state.status}
           {state.hold ? ` · ${state.hold}` : ""}
-          {state.binding?.stopRequested ? " · stop requested" : ""}
-          {state.binding && !state.binding.quiescent ? " · quiescence not established" : ""}
+          {state.binding?.stopRequested ? gt(" · stop requested") : ""}
+          {state.binding && !state.binding.quiescent ? gt(" · quiescence not established") : ""}
         </Text>
       ) : (
-        <Text className="text-sm text-foreground-muted">Loading execution…</Text>
+        <Text className="text-sm text-foreground-muted">
+          <T>Loading execution…</T>
+        </Text>
       )}
       {execution.error === null &&
       execution.data?.currentRevision !== undefined &&
       execution.data.currentRevision !== selection.revision ? (
         <Text className="text-sm text-foreground-muted">
-          Historical revision; current revision is {execution.data.currentRevision}.
+          {gt("Historical revision; current revision is {revision}.", {
+            revision: String(execution.data.currentRevision),
+          })}
         </Text>
       ) : null}
       {resultId ? (
         <View className="items-start gap-2 self-stretch">
-          <Button label="Back to results" onPress={() => setResultId(null)} />
+          <Button label={gt("Back to results")} onPress={() => setResultId(null)} />
           {output.error ? (
             <Text className="text-sm text-danger-foreground">{output.error}</Text>
           ) : output.data ? (
             <>
               <Text className="text-sm text-foreground-muted" selectable>
-                {output.data.output.kind} · {output.data.output.status} · digest{" "}
-                {output.data.output.digest}
+                {gt("{kind} · {status} · digest {digest}", {
+                  kind: output.data.output.kind,
+                  status: output.data.output.status,
+                  digest: output.data.output.digest,
+                })}
               </Text>
               <Text className="text-sm text-foreground-muted" selectable>
-                Model {output.data.binding.spec.modelSelection.model} · harness{" "}
-                {output.data.binding.driver} · provider instance{" "}
-                {output.data.binding.spec.modelSelection.instanceId} · environment{" "}
-                {output.data.binding.selection.ref.environmentId} · thread{" "}
-                {output.data.binding.threadId} · run {output.data.binding.runId} · attempt{" "}
-                {output.data.binding.runAttemptId}
+                {gt(
+                  "Model {model} · harness {driver} · provider instance {instance} · environment {environment} · thread {thread} · run {run} · attempt {attempt}",
+                  {
+                    model: output.data.binding.spec.modelSelection.model,
+                    driver: output.data.binding.driver,
+                    instance: output.data.binding.spec.modelSelection.instanceId,
+                    environment: output.data.binding.selection.ref.environmentId,
+                    thread: output.data.binding.threadId,
+                    run: output.data.binding.runId,
+                    attempt: output.data.binding.runAttemptId,
+                  },
+                )}
               </Text>
               <Text className="text-base text-foreground" selectable>
                 {output.data.text}
               </Text>
             </>
           ) : (
-            <Text className="text-sm text-foreground-muted">Loading retained result…</Text>
+            <Text className="text-sm text-foreground-muted">
+              <T>Loading retained result…</T>
+            </Text>
           )}
         </View>
       ) : outputs.error ? (
@@ -273,27 +312,32 @@ function TaskResults({ selection }: { readonly selection: FactoryExecutionSelect
       ) : outputs.data ? (
         <>
           {outputs.data.items.length === 0 ? (
-            <Text className="text-sm text-foreground-muted">No retained results on this page.</Text>
+            <Text className="text-sm text-foreground-muted">
+              <T>No retained results on this page.</T>
+            </Text>
           ) : null}
           {outputs.data.items.map((output) => (
             <Button
               key={output.resultId}
-              label={`Read ${output.slot} · ${output.status}`}
+              label={gt("Read {slot} · {status}", {
+                slot: output.slot,
+                status: output.status,
+              })}
               onPress={() => setResultId(output.resultId)}
             />
           ))}
           <View className="flex-row flex-wrap gap-2">
             {beforeResultId ? (
-              <Button label="First results" onPress={() => setBeforeResultId(undefined)} />
+              <Button label={gt("First results")} onPress={() => setBeforeResultId(undefined)} />
             ) : null}
             {outputs.data.nextBeforeResultId ? (
               <Button
-                label="More results"
+                label={gt("More results")}
                 onPress={() => setBeforeResultId(outputs.data?.nextBeforeResultId ?? undefined)}
               />
             ) : null}
             <Button
-              label="Refresh results"
+              label={gt("Refresh results")}
               onPress={() => {
                 execution.refresh();
                 outputs.refresh();
@@ -302,7 +346,9 @@ function TaskResults({ selection }: { readonly selection: FactoryExecutionSelect
           </View>
         </>
       ) : (
-        <Text className="text-sm text-foreground-muted">Loading results…</Text>
+        <Text className="text-sm text-foreground-muted">
+          <T>Loading results…</T>
+        </Text>
       )}
     </View>
   );

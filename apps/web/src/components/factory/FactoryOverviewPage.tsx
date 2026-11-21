@@ -6,7 +6,9 @@ import {
   type ScheduledTask,
 } from "@t3tools/contracts";
 import { Link, useSearch } from "@tanstack/react-router";
+import { msg, T, useGT, useMessages } from "gt-react";
 
+import { m, type MessageResolver } from "../../i18n/messages";
 import type {
   SidebarProjectGroupMember,
   SidebarProjectSnapshot,
@@ -51,20 +53,22 @@ export function FactoryOverviewPage() {
     <section className="min-w-0 space-y-6" aria-labelledby="factory-overview-title">
       <div className="space-y-1">
         <h2 id="factory-overview-title" className="font-medium text-lg">
-          Overview
+          <T>Overview</T>
         </h2>
         <p className="text-muted-foreground text-sm">
-          Projects, sessions and scheduled agent prompts in this scope. Workflow status is the
-          latest dispatch, not a completion signal or run history.
+          <T>
+            Projects, sessions and scheduled agent prompts in this scope. Workflow status is the
+            latest dispatch, not a completion signal or run history.
+          </T>
         </p>
       </div>
       {!isReady ? (
         <p role="status" className="text-muted-foreground text-sm">
-          Loading environments…
+          <T>Loading environments…</T>
         </p>
       ) : relevantEnvironments.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          Connect an environment to see your projects and work.
+          <T>Connect an environment to see your projects and work.</T>
         </p>
       ) : (
         relevantEnvironments.map((environment) => (
@@ -88,6 +92,8 @@ function FactoryOverviewEnvironment({
   readonly environment: EnvironmentPresentation;
   readonly checkouts: ReadonlyArray<Checkout>;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const search = useSearch({ from: "/_chat/factory" });
   const session = useEnvironmentSessionState(environment.environmentId);
   const shellStatus = useEnvironmentShellStatus(environment.environmentId);
@@ -114,36 +120,36 @@ function FactoryOverviewEnvironment({
       : null,
   );
   const accessMessage = !connected
-    ? "Offline. Reconnect to load current work."
+    ? gt("Offline. Reconnect to load current work.")
     : environment.serverConfig === null
-      ? "Server capabilities unknown."
+      ? gt("Server capabilities unknown.")
       : session.hasError
-        ? "Connection permissions unavailable."
+        ? gt("Connection permissions unavailable.")
         : session.data === null
-          ? "Loading connection permissions…"
+          ? gt("Loading connection permissions…")
           : !canRead
-            ? "Read access denied for this connection."
+            ? gt("Read access denied for this connection.")
             : null;
   const inventoryLive = readable && shellStatus === "live";
   const workflowMessage =
     accessMessage ??
     (workflows.error !== null
-      ? `Workflows unavailable: ${workflows.error}`
+      ? gt("Workflows unavailable: {error}", { error: workflows.error })
       : workflows.data === null
-        ? "Loading workflows…"
+        ? gt("Loading workflows…")
         : null);
   const coordinatorMessage =
     accessMessage ??
     (!coordinatorSupported
-      ? "Project orchestrators unsupported by this server."
+      ? gt("Project orchestrators unsupported by this server.")
       : coordinators.error !== null
-        ? `Orchestrators unavailable: ${coordinators.error}`
+        ? gt("Orchestrators unavailable: {error}", { error: coordinators.error })
         : coordinators.data === null
-          ? "Loading orchestrators…"
+          ? gt("Loading orchestrators…")
           : null);
 
   return (
-    <section className="space-y-3" aria-label={`${environment.label} work`}>
+    <section className="space-y-3" aria-label={gt("{label} work", { label: environment.label })}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-medium text-sm">{environment.label}</h3>
         {readable ? (
@@ -156,7 +162,7 @@ function FactoryOverviewEnvironment({
               if (coordinatorSupported) coordinators.refresh();
             }}
           >
-            Refresh
+            <T>Refresh</T>
           </Button>
         ) : null}
       </div>
@@ -168,8 +174,10 @@ function FactoryOverviewEnvironment({
       {checkouts.length === 0 ? (
         <p className="text-muted-foreground text-sm">
           {inventoryLive
-            ? "No project checkouts in this scope."
-            : "Project inventory unavailable until this environment is connected and synchronized."}
+            ? gt("No project checkouts in this scope.")
+            : gt(
+                "Project inventory unavailable until this environment is connected and synchronized.",
+              )}
         </p>
       ) : (
         checkouts.map(({ member, group }) => {
@@ -210,17 +218,29 @@ function FactoryOverviewEnvironment({
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <h4 className="font-medium text-xs">Sessions</h4>
+                  <h4 className="font-medium text-xs">
+                    <T>Sessions</T>
+                  </h4>
                   <p className="text-muted-foreground text-sm">
                     {inventoryLive
-                      ? `${projectThreads.length} ${projectThreads.length === 1 ? "thread" : "threads"} · ${projectThreads.filter((thread) => threadRuntimeIsActive(thread.runtime)).length} running`
-                      : "Current thread and running counts unavailable."}
+                      ? gt(
+                          "{count, plural, one {{count} thread} other {{count} threads}} · {running} running",
+                          {
+                            count: projectThreads.length,
+                            running: projectThreads.filter((thread) =>
+                              threadRuntimeIsActive(thread.runtime),
+                            ).length,
+                          },
+                        )
+                      : gt("Current thread and running counts unavailable.")}
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <h4 className="font-medium text-xs">Project orchestrator</h4>
+                  <h4 className="font-medium text-xs">
+                    <T>Project orchestrator</T>
+                  </h4>
                   <p className="text-muted-foreground text-sm">
-                    {coordinatorMessage ?? (coordinator ? coordinator.status : "Not created")}
+                    {coordinatorMessage ?? (coordinator ? coordinator.status : gt("Not created"))}
                   </p>
                   {coordinatorMessage === null ? (
                     coordinator &&
@@ -233,7 +253,7 @@ function FactoryOverviewEnvironment({
                         )}
                         className="text-sm underline underline-offset-4"
                       >
-                        Open orchestrator
+                        <T>Open orchestrator</T>
                       </Link>
                     ) : (
                       <Link
@@ -242,10 +262,10 @@ function FactoryOverviewEnvironment({
                         className="text-sm underline underline-offset-4"
                       >
                         {coordinator?.status === "launching"
-                          ? "Review orchestrator startup"
+                          ? gt("Review orchestrator startup")
                           : coordinator
-                            ? "Review missing orchestrator"
-                            : "Set up orchestrator"}
+                            ? gt("Review missing orchestrator")
+                            : gt("Set up orchestrator")}
                       </Link>
                     )
                   ) : null}
@@ -257,14 +277,17 @@ function FactoryOverviewEnvironment({
                   search={exactSearch}
                   className="font-medium text-sm underline-offset-4 hover:underline"
                 >
-                  Workflows{tasks !== undefined ? ` · ${tasks.length}` : ""}
+                  <T>Workflows</T>
+                  {tasks !== undefined ? ` · ${tasks.length}` : ""}
                 </Link>
                 {workflowMessage !== null ? (
                   <p role="status" className="text-muted-foreground text-sm">
                     {workflowMessage}
                   </p>
                 ) : tasks?.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No scheduled workflows.</p>
+                  <p className="text-muted-foreground text-sm">
+                    <T>No scheduled workflows.</T>
+                  </p>
                 ) : (
                   <ul className="space-y-2">
                     {tasks?.map((task) => (
@@ -280,7 +303,8 @@ function FactoryOverviewEnvironment({
                           {task.title}
                         </Link>
                         <span className="text-muted-foreground text-xs">
-                          {task.enabled ? "Enabled" : "Paused"} · {latestDispatchLabel(task)}
+                          {task.enabled ? gt("Enabled") : gt("Paused")} ·{" "}
+                          {latestDispatchLabel(task, m)}
                           {task.lastRunAt !== null ? (
                             <>
                               {" "}
@@ -299,7 +323,7 @@ function FactoryOverviewEnvironment({
                   search={exactSearch}
                   className="inline-block text-sm underline underline-offset-4"
                 >
-                  Open issue inbox
+                  <T>Open issue inbox</T>
                 </Link>
                 {environment.serverConfig?.environment.capabilities.factoryFeeds === true ? (
                   <Link
@@ -307,7 +331,7 @@ function FactoryOverviewEnvironment({
                     search={exactSearch}
                     className="inline-block text-sm underline underline-offset-4"
                   >
-                    Open feed sources
+                    <T>Open feed sources</T>
                   </Link>
                 ) : null}
                 {environment.serverConfig?.environment.capabilities.factoryResearch === true ? (
@@ -316,7 +340,7 @@ function FactoryOverviewEnvironment({
                     search={exactSearch}
                     className="inline-block text-sm underline underline-offset-4"
                   >
-                    Open research protocols
+                    <T>Open research protocols</T>
                   </Link>
                 ) : null}
               </div>
@@ -328,15 +352,15 @@ function FactoryOverviewEnvironment({
   );
 }
 
-function latestDispatchLabel(task: ScheduledTask): string {
+function latestDispatchLabel(task: ScheduledTask, resolve: MessageResolver = m): string {
   switch (task.lastRunStatus) {
     case "never":
-      return "Never dispatched";
+      return resolve(msg("Never dispatched"));
     case "running":
-      return "Dispatching";
+      return resolve(msg("Dispatching"));
     case "succeeded":
-      return "Dispatch accepted";
+      return resolve(msg("Dispatch accepted"));
     case "failed":
-      return "Dispatch failed";
+      return resolve(msg("Dispatch failed"));
   }
 }

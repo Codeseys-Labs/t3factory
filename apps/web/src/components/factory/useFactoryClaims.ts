@@ -7,6 +7,7 @@ import {
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
+import { useMessages } from "gt-react";
 
 import { useProjects } from "../../state/entities";
 import { useEnvironments } from "../../state/environments";
@@ -41,6 +42,7 @@ export function useFactoryClaims(input: {
   readonly project: EnvironmentProject;
 }): FactoryClaimsView | null {
   const { environmentId, project } = input;
+  const m = useMessages();
   const supported = useFactoryClaimsSupported(environmentId);
   const { environments } = useEnvironments();
   const allProjects = useProjects();
@@ -86,7 +88,7 @@ export function useFactoryClaims(input: {
   return {
     claimsByEnvironment,
     conflicts: claimConflicts(claimsByEnvironment),
-    unavailableNote: describeUnavailableClaims([...plan.unavailable, ...failed], labelOf),
+    unavailableNote: describeUnavailableClaims([...plan.unavailable, ...failed], labelOf, m),
     labelOf,
     refresh,
   };

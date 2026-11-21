@@ -3,6 +3,7 @@ import {
   EnvironmentId,
   FactoryIssueError,
   FactoryRepository,
+  IssueTrackerKind,
   IsoDateTime,
   MessageId,
   ModelSelection,
@@ -12,13 +13,18 @@ import {
   ProviderInteractionMode,
   RuntimeMode,
   ThreadId,
-  SourceControlProviderKind,
+  type FactoryIssueCapabilities,
   type FactoryIssueTask,
+  type IssueScopeRef,
+  type Project,
   type RepositoryIdentity,
 } from "@t3tools/contracts";
+import type { IssueTrackerApi } from "@t3tools/source-control-core/server/IssueTracker";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as IssueTrackerRegistry from "../issue/IssueTrackerRegistry.ts";
+import * as IssueService from "../issue/IssueService.ts";
 import * as Projects from "../project/ProjectService.ts";
 import * as Identities from "../project/RepositoryIdentityResolver.ts";
 import * as Threads from "../orchestration-v2/ThreadManagementService.ts";
@@ -31,8 +37,10 @@ import {
 import * as Git from "../vcs/GitVcsDriver.ts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Settings from "../serverSettings.ts";
+import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
+import * as FactoryIssueHosts from "./FactoryIssueHosts.ts";
 import { makeWorktreeBaseResolver } from "./FactoryWorktreeBase.ts";
-import * as IssueTrackers from "./IssueTrackerProviderRegistry.ts";
+import { issueNumberOf } from "./FactoryOriginKey.ts";
 
 export const FactoryLaunchCore = Schema.Struct({
   projectId: ProjectId,
@@ -128,32 +136,81 @@ export const makeBaseResolver = Effect.gen(function* () {
   });
 });
 
+/** The scope of a Factory repository's issues, as the issue layer addresses it. */
+export type FactoryIssueScope = IssueScopeRef & { readonly host: string };
+
+/** A project's intake repository, as its live origin names it, and where its issues are read. */
+export interface ResolvedFactoryRepository {
+  readonly project: Project;
+  readonly repository: FactoryRepository;
+  readonly capabilities: FactoryIssueCapabilities;
+  readonly issues: FactoryIssueScope;
+  readonly tracker: IssueTrackerApi;
+}
+
+// A path segment the issue and relation readers can address: no traversal, no URL syntax.
+const ADDRESSABLE_SEGMENT = /^[a-z0-9_.-]+$/i;
+
+/**
+ * Where the issue layer reads a Factory repository's issues, derived from the repository alone
+ * so a frozen intent addresses the issues it was admitted from. Null where no tracker has a scope.
+ */
+export function factoryIssueScope(
+  projectId: ProjectId,
+  repository: FactoryRepository,
+): FactoryIssueScope | null {
+  if (repository.issueScope !== undefined) {
+    const { tracker, host, scope } = repository.issueScope;
+    return { projectId, tracker, host, scope };
+  }
+  const identity = {
+    provider: repository.provider,
+    canonicalKey: repository.canonicalKey,
+    displayName: repository.repository,
+    webUrl: repository.url,
+  };
+  const scope = sourceControlDefinitions.issueScope(identity);
+  return scope === null
+    ? null
+    : {
+        projectId,
+        tracker: IssueTrackerKind.make(repository.provider),
+        host: sourceControlDefinitions.changeRequestHost(identity, repository.provider),
+        scope,
+      };
+}
+
 function repositoryTarget(
   identity: RepositoryIdentity,
-  trackers: IssueTrackers.IssueTrackerProviderRegistry["Service"],
+  hosts: FactoryIssueHosts.FactoryIssueHosts["Service"],
 ) {
   const { canonicalKey, provider } = identity;
-  const tracker =
-    provider === undefined ? null : trackers.get(SourceControlProviderKind.make(provider));
-  if (tracker === null) return null;
+  const capabilities = provider === undefined ? null : hosts.capabilities(provider);
+  if (capabilities === null) return null;
   const match = /^([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)\/(.+)$/.exec(canonicalKey);
   if (match === null) return null;
   const [, hostname, path] = match;
   if (!hostname || !path) return null;
+  const segments = path.split("/");
+  if (
+    segments.length < 2 ||
+    segments.some(
+      (segment) => !ADDRESSABLE_SEGMENT.test(segment) || segment === "." || segment === "..",
+    )
+  )
+    return null;
   const remoteUrl = URL.parse(identity.locator.remoteUrl);
   // SSH transport ports do not identify the forge's HTTPS endpoint.
   const host =
     remoteUrl?.protocol === "https:" || remoteUrl?.protocol === "http:" ? remoteUrl.host : hostname;
-  const repository = tracker.repositoryPath(path);
-  if (repository === null) return null;
   return {
-    tracker,
+    capabilities,
     repository: {
-      provider: tracker.kind,
+      provider: capabilities.provider,
       host,
-      repository,
+      repository: path,
       canonicalKey,
-      url: `https://${host}/${repository}`,
+      url: `https://${host}/${path}`,
     } satisfies FactoryRepository,
   };
 }
@@ -162,11 +219,12 @@ export const makeRepositoryResolver = Effect.gen(function* () {
   const projects = yield* Projects.ProjectService;
   const identities = yield* Identities.RepositoryIdentityResolver;
   const git = yield* Git.GitVcsDriver;
-  const trackers = yield* IssueTrackers.IssueTrackerProviderRegistry;
+  const hosts = yield* FactoryIssueHosts.FactoryIssueHosts;
+  const trackers = yield* IssueTrackerRegistry.IssueTrackerRegistry;
   return Effect.fn("FactoryIssueService.resolve")(function* (
     projectId: ProjectId,
     workspaceRoot?: string,
-  ) {
+  ): Effect.fn.Return<ResolvedFactoryRepository, FactoryIssueError> {
     const project = yield* projects
       .getById(projectId)
       .pipe(
@@ -200,9 +258,66 @@ export const makeRepositoryResolver = Effect.gen(function* () {
       remoteName: "origin",
       remoteUrl: origin.stdout.trim(),
     });
-    const target = originIdentity === null ? null : repositoryTarget(originIdentity, trackers);
-    if (target === null) return yield* new FactoryIssueError({ reason: "unsupported-provider" });
-    return { project: project.value, ...target };
+    const target = originIdentity === null ? null : repositoryTarget(originIdentity, hosts);
+    const issues = target === null ? null : factoryIssueScope(projectId, target.repository);
+    const tracker = issues === null ? null : trackers.get(issues.tracker);
+    if (target === null || issues === null || tracker === null)
+      return yield* new FactoryIssueError({ reason: "unsupported-provider" });
+    return { project: project.value, ...target, issues, tracker };
+  });
+});
+
+const encodeScopeKey = Schema.encodeSync(
+  Schema.fromJsonString(Schema.Tuple([Schema.String, Schema.String, Schema.String])),
+);
+
+export const makeIssueRepositoryResolver = Effect.gen(function* () {
+  const resolveRepository = yield* makeRepositoryResolver;
+  const issues = yield* IssueService.IssueService;
+  const trackers = yield* IssueTrackerRegistry.IssueTrackerRegistry;
+  return Effect.fn("FactoryIssueService.resolveIssue")(function* (
+    projectId: ProjectId,
+    key?: string,
+  ): Effect.fn.Return<ResolvedFactoryRepository, FactoryIssueError> {
+    const resolved = yield* resolveRepository(projectId);
+    if (key !== undefined && issueNumberOf(key) !== null) return resolved;
+    const scope = yield* issues
+      .projectScope(projectId, key)
+      .pipe(
+        Effect.mapError(
+          (cause) => new FactoryIssueError({ reason: "unsupported-provider", cause }),
+        ),
+      );
+    const tracker = trackers.get(scope.tracker);
+    if (tracker === null) return yield* new FactoryIssueError({ reason: "unsupported-provider" });
+    const standalone = trackers.standalone.find((entry) => entry.kind === scope.tracker);
+    if (standalone === undefined) {
+      if (key === undefined) return resolved;
+      return yield* new FactoryIssueError({ reason: "unsupported-provider" });
+    }
+    return {
+      ...resolved,
+      repository: {
+        ...resolved.repository,
+        issueScope: {
+          tracker: scope.tracker,
+          host: scope.host,
+          scope: scope.scope,
+          canonicalKey: `issue:${encodeScopeKey([scope.tracker, scope.host.toLowerCase(), scope.scope.toLowerCase()])}`,
+        },
+      },
+      issues: scope,
+      tracker,
+      capabilities: {
+        ...resolved.capabilities,
+        tracker: scope.tracker,
+        displayName: standalone.standalone.displayName,
+        blockedBy: "none",
+        subIssues: false,
+        closeAcceptance: "none",
+        issueComment: tracker.capabilities.comment && tracker.comment !== undefined,
+      },
+    };
   });
 });
 
@@ -274,6 +389,8 @@ export const make = Effect.fn("FactoryTaskLaunch.make")(function* <I extends Cor
   readonly accept: (threadId: ThreadId) => Effect.Effect<void, E>;
   readonly title: (intent: I) => string;
   readonly precondition: (intent: I) => Effect.Effect<void, E>;
+  /** Runs once the thread exists, before the launch is recorded, and again on every resume. */
+  readonly launched?: (intent: I) => Effect.Effect<void>;
 }) {
   const launcher = yield* ThreadLaunch.ThreadLaunchService;
   const inspect = yield* makeInspector(options);
@@ -315,9 +432,10 @@ export const make = Effect.fn("FactoryTaskLaunch.make")(function* <I extends Cor
             ),
           ),
         );
+      if (options.launched !== undefined) yield* options.launched(intent);
       yield* options.accept(intent.threadId);
       inspected = yield* inspect({ ...binding, accepted: 1 });
-    }
+    } else if (options.launched !== undefined) yield* options.launched(intent);
     return inspected.task;
   });
   return { inspect, resume };

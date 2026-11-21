@@ -41,11 +41,12 @@ vi.mock(import("../../../state/factoryTasks"), async () => {
   const { AsyncResult, Atom } = await import("effect/reactivity");
   const { FACTORY_TASK_FIXTURES } =
     await import("@t3tools/client-runtime/state/factory-task-fixtures");
+  const { commandEffect } = await import("../../../../test/commandEffect");
   const command = (name: string) => ({
     label: name,
     run: (_registry: unknown, target: { input: Record<string, unknown> }) => {
       state.calls.push({ name, input: target.input });
-      return Promise.resolve(state.replies[name]?.shift());
+      return commandEffect(Promise.resolve(state.replies[name]?.shift()));
     },
     permissionAtom: () => Atom.make(true),
   });

@@ -526,5 +526,53 @@
     "name": "launches from upstream/release with the fetched commit and remote PR base",
     "issue": 128,
     "why": "upstream createWorktree path.resolve()s the worktree path, so the test's mixed-separator expected path never matches on Windows; unmodified upstream test"
+  },
+  {
+    "file": "packages/provider-pi/src/server/adapter.test.ts",
+    "name": "PiAdapterV2 > recovers a historical Pi fork recorded before turns stored the session file",
+    "issue": 128,
+    "why": "expects the mixed-separator `${dir}/original.jsonl` while the adapter passes the normalized path on Windows; the fork does not touch that path code"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "orphan worktree reports > measures new orphans first and rotates cached refreshes when the budget runs out, not counting discovery",
+    "issue": 128,
+    "why": "builds expected paths with '/' while the service joins them with path.join, so they never match on Windows; unmodified upstream test"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "orphan worktree reports > retains the last orphan size on a failed refresh and can refresh it later",
+    "issue": 128,
+    "why": "builds expected paths with '/' while the service joins them with path.join, so they never match on Windows; unmodified upstream test"
+  },
+  {
+    "file": "apps/server/src/storageCleanup.test.ts",
+    "name": "storage cleanup reports and local file policies > fetches a failing default branch once per sweep and names the broken local ref",
+    "issue": 128,
+    "why": "Git for Windows runs the upload-pack script path through sh -c, which drops its backslashes; unmodified upstream test"
+  },
+  {
+    "file": "apps/server/src/provider/ProviderRegistry.test.ts",
+    "name": "ProviderRegistry > ProviderRegistry.layer > Pi model inventories > persists Pi inventory removals across failed refreshes and registry restarts",
+    "issue": 128,
+    "why": "on Windows refreshInstance first merges the registry PATH and, when the test PATH lacks an entry, rebuilds through the test's empty mutator mock; unmodified upstream code"
+  },
+  {
+    "file": "apps/server/src/terminal/Manager.test.ts",
+    "name": "TerminalManager > starts an existing $SHELL whose path contains spaces before a dash",
+    "issue": 128,
+    "why": "simulates a POSIX host but the shell path goes through Windows path.resolve, which adds a drive and backslashes; unmodified upstream code"
+  },
+  {
+    "file": "apps/server/src/terminal/Manager.test.ts",
+    "name": "TerminalManager > keeps missing or quoted $SHELL paths that contain spaces",
+    "issue": 128,
+    "why": "simulates a POSIX host but the shell path goes through Windows path.resolve, which adds a drive and backslashes; unmodified upstream code"
+  },
+  {
+    "file": "apps/server/src/terminal/Manager.test.ts",
+    "name": "TerminalManager > prefers the configured terminal shell on linux: /opt/custom shell/bin/bash",
+    "issue": 128,
+    "why": "simulates a POSIX host but the shell path goes through Windows path.resolve, which adds a drive and backslashes; unmodified upstream code"
   }
 ]

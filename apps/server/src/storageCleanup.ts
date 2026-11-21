@@ -2135,7 +2135,12 @@ const make = Effect.gen(function* () {
               (yield* git.resolveCommit({ cwd: worktreePath, revision: "HEAD" })).commitSha !==
               head.commitSha
             )
-              return keep("commit changed since check");
+              // HEAD was the adopted result, so a later commit is outside it.
+              return keep(
+                taskResultAdopted
+                  ? "the folder has commits that are not in the saved result"
+                  : "commit changed since check",
+              );
             const finalChanges = yield* localChangesReason(worktreePath, settings);
             if (finalChanges !== null) return keep(finalChanges);
             if (yield* settingsChangedSinceCheck) return keep("settings changed since check");

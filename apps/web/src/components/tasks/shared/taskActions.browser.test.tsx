@@ -18,11 +18,12 @@ const state = vi.hoisted(() => ({
 
 vi.mock(import("../../../state/factoryTasks"), async () => {
   const { Atom } = await import("effect/reactivity");
+  const { commandEffect } = await import("../../../../test/commandEffect");
   const command = (calls: unknown[], replies: unknown[]) => ({
     label: "test",
     run: (_registry: unknown, target: unknown) => {
       calls.push(target);
-      return Promise.resolve(replies.shift());
+      return commandEffect(Promise.resolve(replies.shift()));
     },
     permissionAtom: () => Atom.make(true),
   });

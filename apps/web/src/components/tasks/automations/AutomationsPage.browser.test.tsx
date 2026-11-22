@@ -267,7 +267,7 @@ it("switching a source off saves it disabled", async () => {
   });
 });
 
-it("saves a schedule's time, weekdays and task", async () => {
+it("saves a schedule's project, time and weekdays", async () => {
   setup();
   await using screen = await render(<AutomationsPage />, { router: "/automations" });
   await userEvent.click(screen.getByRole("button", { name: "Add source" }));
@@ -278,28 +278,38 @@ it("saves a schedule's time, weekdays and task", async () => {
   await userEvent.click(page.getByRole("button", { name: "Fridays" }));
   await userEvent.click(page.getByRole("button", { name: "Wednesdays" }));
   await userEvent.fill(page.getByLabelText("Title"), "Weekly triage");
+  await userEvent.click(page.getByRole("dialog").getByRole("button", { name: "Add source" }));
+  expect(state.calls[0]).toMatchObject({
+    command: "saveIntakeSource",
+    input: {
+      commandId: expect.any(String),
+      projectId: "website",
+      config: { kind: "schedule", schedule: { timeOfDay: "07:30", weekdays: [3, 5] } },
+      enabled: true,
+    },
+  });
+});
+
+it("saves a schedule's task", async () => {
+  setup();
+  await using screen = await render(<AutomationsPage />, { router: "/automations" });
+  await userEvent.click(screen.getByRole("button", { name: "Add source" }));
+  await choose("Kind", "Schedule");
+  await userEvent.fill(page.getByLabelText("Title"), "Weekly triage");
   await userEvent.fill(page.getByLabelText("Description"), "Sort the new issues.");
   await choose("Type", "Research");
   await choose("Assignee", "Scout · Codex · Luna");
   await choose("Status", "Ready");
   await userEvent.click(page.getByRole("dialog").getByRole("button", { name: "Add source" }));
-  expect(state.calls[0]).toEqual({
-    command: "saveIntakeSource",
-    input: {
-      commandId: expect.any(String),
-      projectId: "website",
-      config: {
-        kind: "schedule",
-        schedule: { timeOfDay: "07:30", weekdays: [3, 5] },
-        task: {
-          title: "Weekly triage",
-          description: "Sort the new issues.",
-          type: "research",
-          assignment: { mode: "profile", profileId: "scout" },
-          lane: "ready",
-        },
-      },
-      enabled: true,
+  expect(state.calls[0]?.input.config).toEqual({
+    kind: "schedule",
+    schedule: { timeOfDay: "09:00", weekdays: [1] },
+    task: {
+      title: "Weekly triage",
+      description: "Sort the new issues.",
+      type: "research",
+      assignment: { mode: "profile", profileId: "scout" },
+      lane: "ready",
     },
   });
 });

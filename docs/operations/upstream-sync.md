@@ -106,7 +106,9 @@ specific to a sync:
 - The base for `check:changed` and for the receipt is the upstream commit you merged. That checks
   the fork's changes on top of upstream. Against the old default branch it would re-check all of
   upstream's files.
-- On Windows, pass `--timeout 5400` to `check:changed`: its test step takes about 50 minutes.
+- On Windows, pass `--timeout 7200` to `check:changed`. When the fork's unowned files (workflows,
+  the root `vite.config.ts`, the lockfile) make it run everything, its test step took 109 minutes
+  for 1,513 files (20 Nov sync). Record it on its own, after the quicker commands.
 - Before recording, package once on Windows into an empty folder:
   `vp run dist:desktop:artifact --distribution factory-preview --output-dir <folder>`. It takes
   three minutes. The receipt's desktop build does not package, so a payload problem would
@@ -122,10 +124,10 @@ specific to a sync:
 Upstream does not run its tests on Windows, so some of its tests fail only there. They go in
 `packages/shared/src/testing/windowsQuarantine.json`, which a test setup file applies on Windows
 only. That setup file is loaded by the root test configuration (server and the packages that
-borrow it) and by desktop's unit project. Desktop's DOM project, web, mobile and client-runtime
-have their own setup lists; add the file there before listing one of their tests. It is a Node
-module: it cannot go into a project that runs in a browser, such as web's browser tests. Each
-entry names an issue and a reason. Never list a test the fork added, and do not edit upstream's
+borrow it), by desktop's unit project and by mobile's unit and react projects. Desktop's DOM
+project, web's unit project and client-runtime have their own setup lists; add the file there
+before listing one of their tests. It is a Node module; web's browser projects load its twin,
+`windowsQuarantineBrowser.ts`, which reads the same list. Each entry names an issue and a reason. Never list a test the fork added, and do not edit upstream's
 test files to make them pass on Windows. Linux runs every case, so a hang or failure on the hosted
 lanes is real and blocks the merge.
 

@@ -125,6 +125,7 @@ export default defineConfig({
           setupFiles: [
             "../../packages/shared/src/testing/longTempDir.ts",
             "../../packages/shared/src/testing/providerEnv.ts",
+            "../../packages/shared/src/testing/windowsQuarantine.ts",
             "../../packages/shared/src/testing/gitEnv.ts",
           ],
         },
@@ -176,6 +177,7 @@ export default defineConfig({
           environment: "jsdom",
           setupFiles: [
             "../../packages/shared/src/testing/providerEnv.ts",
+            "../../packages/shared/src/testing/windowsQuarantine.ts",
             "../../packages/shared/src/testing/gitEnv.ts",
           ],
         },

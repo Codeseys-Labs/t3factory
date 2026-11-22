@@ -751,13 +751,14 @@ export const layer = Layer.effect(
       Effect.flatMap((changed) =>
         changed
           ? Ref.get(providersRef).pipe(
-              Effect.flatMap((providers) =>
-                instanceRegistryMutator.rebuild(
-                  providers
-                    .filter((provider) => provider.enabled && !provider.installed)
-                    .map((provider) => provider.instanceId),
-                ),
-              ),
+              Effect.flatMap((providers) => {
+                const missingInstanceIds = providers
+                  .filter((provider) => provider.enabled && !provider.installed)
+                  .map((provider) => provider.instanceId);
+                return missingInstanceIds.length === 0
+                  ? Effect.void
+                  : instanceRegistryMutator.rebuild(missingInstanceIds);
+              }),
             )
           : Effect.void,
       ),

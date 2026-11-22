@@ -552,12 +552,6 @@
     "why": "Git for Windows runs the upload-pack script path through sh -c, which drops its backslashes; unmodified upstream test"
   },
   {
-    "file": "apps/server/src/provider/ProviderRegistry.test.ts",
-    "name": "ProviderRegistry > ProviderRegistry.layer > Pi model inventories > persists Pi inventory removals across failed refreshes and registry restarts",
-    "issue": 128,
-    "why": "on Windows refreshInstance first merges the registry PATH and, when the test PATH lacks an entry, rebuilds through the test's empty mutator mock; unmodified upstream code"
-  },
-  {
     "file": "apps/server/src/terminal/Manager.test.ts",
     "name": "TerminalManager > starts an existing $SHELL whose path contains spaces before a dash",
     "issue": 128,
@@ -574,5 +568,1217 @@
     "name": "TerminalManager > prefers the configured terminal shell on linux: /opt/custom shell/bin/bash",
     "issue": 128,
     "why": "simulates a POSIX host but the shell path goes through Windows path.resolve, which adds a drive and backslashes; unmodified upstream code"
+  },
+  {
+    "file": "apps/desktop/src/preview/BrowserSession.test.ts",
+    "name": "BrowserSession > clearing cookies deletes a saved approval even when none are loaded",
+    "issue": 205,
+    "why": "a persist: browser partition is not found under the temporary Electron profile on Windows (makeDirectory NotFound); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/preview/BrowserSession.test.ts",
+    "name": "BrowserSession > remembers approvals across restarts, but not incognito ones",
+    "issue": 205,
+    "why": "a persist: browser partition is not found under the temporary Electron profile on Windows (makeDirectory NotFound); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/preview/LoopbackTunnel.test.ts",
+    "name": "fails the SOCKS request for a TCP row whose client address differs without dialling locally",
+    "issue": 205,
+    "why": "the SOCKS checks for a mismatched client or listener address do not refuse the request on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/preview/LoopbackTunnel.test.ts",
+    "name": "fails the SOCKS request for a TCP row whose listener address differs without dialling locally",
+    "issue": 205,
+    "why": "the SOCKS checks for a mismatched client or listener address do not refuse the request on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/settings/DesktopClientSettings.test.ts",
+    "name": "DesktopClientSettings > saves through a symlinked client settings file without replacing the link",
+    "issue": 205,
+    "why": "writing through a symlinked settings file resolves to a different path on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > cancels background discovery when the application scope closes",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > captures the login-shell PATH when startup writes more than a pipe buffer to stderr",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > does not mix login-shell locale categories into an inherited locale",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > does not wait for discovery when the cache is missing: {\"platform\":\"darwin\",\"env\":{\"PATH\":\"/usr/bin\"},\"expectedPath\":\"/usr/bin\"}",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > does not wait for discovery when the cache is missing: {\"platform\":\"linux\",\"env\":{\"APPDIR\":\"/tmp/.mount_T3-Codnew123\",\"PATH\":\"/tmp/.mount_T3-Codnew123/bin\"}}",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > does not wait for discovery when the cache is missing: {\"platform\":\"linux\",\"env\":{\"APPDIR\":\"/tmp/.mount_T3-Codnew123\",\"PATH\":\":/tmp/.mount_T3-Codold123/bin::/usr/bin:\"},\"expectedPath\":\"::/usr/bin:\"}",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > falls back to a UTF-8 LC_CTYPE when no locale is available on macOS",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > falls back to launchctl PATH on macOS when shell probing does not return one",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > gives background retries time for a locked or slow shell, then publishes",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > gives up on a Windows shell that survives the kill",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > hydrates PATH and missing SSH_AUTH_SOCK from the login shell on macOS",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > hydrates both Android SDK names when ne…",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > hydrates missing CA trust variables from the login shell",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > keeps an inherited ANDROID_SDK_ROOT sel…",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > keeps mise's PATH record with the login shell PATH",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > leaves Windows preparation incomplete when loadProfile=false fails",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > leaves Windows preparation incomplete when loadProfile=true fails",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > leaves macOS preparation incomplete when no login shell returns a PATH",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > loads PowerShell profile environment on Windows",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > prefers login-shell desktop session hints over inherited values on linux",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > recovers the login-shell PATH when the first probe outlasts the timeout",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > rejects PATH output from a failed shell and tries the next candidate",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > replaces a Path-spelled Windows PATH instead of adding a second key",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/desktop/src/shell/DesktopShellEnvironment.test.ts",
+    "name": "DesktopShellEnvironment > retries the user's shell when only the fallback shell answered",
+    "issue": 205,
+    "why": "simulates macOS and Linux login shells; on Windows the simulated environment has no TEMP, so the temp directory resolves to `undefined\\temp`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/mobile/src/features/projects/AddProjectScreen.test.ts",
+    "name": "clone project permissions > leaves a folder holding another repository to the clone",
+    "issue": 205,
+    "why": "the clone-permission check does not leave the other repository's folder in place on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/mobile/src/features/threads/checkout-new-task-branch.test.ts",
+    "name": "new-task branch checkout > rejects historical worktree reuse when project root is unsafe (nested: true)",
+    "issue": 205,
+    "why": "Git for Windows prints CRLF line endings that the assertions compare against LF, and the branch and worktree steps that follow fail; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/mobile/src/features/threads/checkout-new-task-branch.test.ts",
+    "name": "new-task branch checkout > rejects picker worktree reuse when project root is unsafe (nested: false)",
+    "issue": 205,
+    "why": "Git for Windows prints CRLF line endings that the assertions compare against LF, and the branch and worktree steps that follow fail; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/mobile/src/features/threads/checkout-new-task-branch.test.ts",
+    "name": "new-task branch checkout > resolves a non-origin remote to the right worktree when the remote name contains slashes",
+    "issue": 205,
+    "why": "Git for Windows prints CRLF line endings that the assertions compare against LF, and the branch and worktree steps that follow fail; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/mobile/src/features/threads/checkout-new-task-branch.test.ts",
+    "name": "new-task branch checkout > resolves historical branch metadata to its worktree beyond a long query's first page",
+    "issue": 205,
+    "why": "Git for Windows prints CRLF line endings that the assertions compare against LF, and the branch and worktree steps that follow fail; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/mobile/src/features/threads/checkout-new-task-branch.test.ts",
+    "name": "new-task branch checkout > reuses an existing worktree without switching the project checkout",
+    "issue": 205,
+    "why": "Git for Windows prints CRLF line endings that the assertions compare against LF, and the branch and worktree steps that follow fail; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/mobile/src/features/threads/checkout-new-task-branch.test.ts",
+    "name": "new-task branch checkout > reuses an occupied picker worktree when the project root is a symlink",
+    "issue": 205,
+    "why": "Git for Windows prints CRLF line endings that the assertions compare against LF, and the branch and worktree steps that follow fail; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/mobile/src/features/threads/checkout-new-task-branch.test.ts",
+    "name": "new-task branch checkout > switches to a free branch despite stale current and worktree metadata",
+    "issue": 205,
+    "why": "Git for Windows prints CRLF line endings that the assertions compare against LF, and the branch and worktree steps that follow fail; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/mobile/src/features/threads/checkout-new-task-branch.test.ts",
+    "name": "new-task branch checkout > switches to the selected remote instead of reusing a worktree tracking another remote",
+    "issue": 205,
+    "why": "Git for Windows prints CRLF line endings that the assertions compare against LF, and the branch and worktree steps that follow fail; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/mobile/src/features/threads/messageTimestamp.test.ts",
+    "name": "createMessageTimeFormatter > follows the system clock preference over the locale's hour cycle",
+    "issue": 205,
+    "why": "formats the time with a date on this host: depends on the host's time zone; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/assets/AssetAccess.test.ts",
+    "name": "AssetAccess > moves an HTML preview's revision only for the page and the files it requested",
+    "issue": 205,
+    "why": "the HTML preview's revision does not move after the page changes on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cli/install.test.ts",
+    "name": "t3 install > installs the running runtime, records it, and never replaces another t3",
+    "issue": 205,
+    "why": "asserts on an install value that is undefined on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cli/pair.test.ts",
+    "name": "t3 pair > rejects a server on another protocol before opening its database",
+    "issue": 205,
+    "why": "the printed pairing command does not include the Windows base directory the test expects; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cli/theme.test.ts",
+    "name": "t3 theme > refuses to publish over a directory created just before backup",
+    "issue": 205,
+    "why": "publishing over a directory created just before backup does not fail on Windows as the test expects; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cli/uninstall.test.ts",
+    "name": "t3 uninstall launcher > claims only a launcher that points into this home's runtime tree",
+    "issue": 205,
+    "why": "the uninstall plan has no path where the test expects the Windows base directory; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > allows an explicit downgrade",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > detects a partial install and preserves the running service when repair lacks permission",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > does not enable lingering for root under sudo",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > does not reach a running root user manager under sudo",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > enables lingering before installing and repairs stopped or disabled services",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > enables lingering to bring up an unreachable user manager when logind does not know the user",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > enables lingering to bring up an unreachable user manager when logind has lingering disabled",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > fails before installing files or validating a runtime when lingering needs an administrator",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > hands the whole install to systemd without changing the running service",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > install with start=false keeps the marker when a later write fails",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > install with start=false refuses while a remote update is pending",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > install with start=false rewrites files, preserves service.env, and marks a restart pending on darwin",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > install with start=false rewrites files, preserves service.env, and marks a restart pending on linux",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > installs into the unit directory of the user manager that lingering starts",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > installs, discovers, restarts, and uninstalls with $XDG_CONFIG_HOME empty",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > installs, discovers, restarts, and uninstalls with $XDG_CONFIG_HOME manager-only",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > installs, discovers, restarts, and uninstalls with $XDG_CONFIG_HOME manager-unavailable",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > installs, discovers, restarts, and uninstalls with $XDG_CONFIG_HOME relative",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > installs, discovers, restarts, and uninstalls with $XDG_CONFIG_HOME relocated",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > installs, discovers, restarts, and uninstalls with $XDG_CONFIG_HOME shell-only",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > installs, discovers, restarts, and uninstalls with $XDG_CONFIG_HOME unset",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > marks immediate and deferred service restarts without blocking on a marker error",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > pauses only this home's running service for maintenance, even when it fails",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > points systemd user commands at the user's runtime directory when none is set",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > preserves a newer version that finishes updating during stop on linux",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > preserves the custom install bin directory in the installed service on linux",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > puts the runtime an update installs on the launch agent PATH",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > queues an in-service restart without stopping the caller, even on handoff failure",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > repairs versions with equal SemVer precedence without an override",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > reports an unknown version for invalid service state",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > reports failed prerequisite probes without installing: loginctl show-user 501 --property=Linge…",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > reports failed prerequisite probes without installing: systemctl --user show-environment",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > reports the installed version across launcher protocols on linux",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > restart and install leave a service that serves another T3 home alone",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > restarts an installed service when repair fails",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > restarts without overwriting a pending remote update",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > serializes a local install with another process reconciling an older unit snapshot",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > starts a service whose systemd start limit tripped after repairing it",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > waits a bounded time for the user manager lingering starts when it never starts",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/cloud/bootService.test.ts",
+    "name": "boot service install > waits a bounded time for the user manager lingering starts when it starts after three probes",
+    "issue": 205,
+    "why": "systemd boot-service fixtures refuse a Windows base directory (backslashes); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/device/LocalDeviceHost.test.ts",
+    "name": "AgentDevice startup > uses the SDK a later shell environment selects",
+    "issue": 205,
+    "why": "expects POSIX SDK paths (`/sdk/emulator/emulator`); Windows joins them with backslashes; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/device/LocalDeviceHost.test.ts",
+    "name": "configures supported emulator cameras for different camera capabilities",
+    "issue": 205,
+    "why": "expects POSIX SDK paths (`/sdk/emulator/emulator`); Windows joins them with backslashes; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/device/LocalDeviceHost.test.ts",
+    "name": "configures supported emulator cameras for failed help probe",
+    "issue": 205,
+    "why": "expects POSIX SDK paths (`/sdk/emulator/emulator`); Windows joins them with backslashes; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/device/LocalDeviceHost.test.ts",
+    "name": "configures supported emulator cameras for imagefile-capable SDK",
+    "issue": 205,
+    "why": "expects POSIX SDK paths (`/sdk/emulator/emulator`); Windows joins them with backslashes; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/device/LocalDeviceHost.test.ts",
+    "name": "configures supported emulator cameras for old SDK",
+    "issue": 205,
+    "why": "expects POSIX SDK paths (`/sdk/emulator/emulator`); Windows joins them with backslashes; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/device/LocalDeviceHost.test.ts",
+    "name": "configures supported emulator cameras for user overrides",
+    "issue": 205,
+    "why": "expects POSIX SDK paths (`/sdk/emulator/emulator`); Windows joins them with backslashes; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/environmentTheme.test.ts",
+    "name": "environment theme > publishes edits after the target of a symlinked themes directory is restored",
+    "issue": 205,
+    "why": "renaming over a symlinked themes directory is refused on Windows (PermissionDenied); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/orchestration-v2/Adapters/OpenCode2AdapterV2.test.ts",
+    "name": "OpenCode2 adapter > keeps turn and steer attachment paths w…",
+    "issue": 205,
+    "why": "the attached image's path in the prompt text differs on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/orchestration-v2/Adapters/OpenCode2AdapterV2.test.ts",
+    "name": "OpenCode2 adapter > sends only existing supported images as…",
+    "issue": 205,
+    "why": "the attached image's path in the prompt text differs on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/orchestration-v2/testkit/ClaudeReplayFixtures.integration.test.ts",
+    "name": "Claude Agent SDK replay fixtures > runs command_output_streaming/claudeAgent through OrchestratorV2 using deterministic replay",
+    "issue": 205,
+    "why": "the replayed command output does not stream on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/orchestration-v2/testkit/ClaudeReplayFixtures.integration.test.ts",
+    "name": "Claude Agent SDK replay fixtures > streams a subagent's foreground Bash output live during the root turn",
+    "issue": 205,
+    "why": "the replayed command output does not stream on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/preview/PreviewBrowser.test.ts",
+    "name": "PreviewBrowser > retains another version when installing 0.8.0",
+    "issue": 205,
+    "why": "an abandoned install folder is still listed on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/preview/PreviewBrowser.test.ts",
+    "name": "PreviewBrowser > retains another version when installing 1.2.3",
+    "issue": 205,
+    "why": "an abandoned install folder is still listed on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/process/agentScope.test.ts",
+    "name": "AgentScope service > Force stop kills a thread's own scope but never a shared Codex scope (OOM policy false)",
+    "issue": 205,
+    "why": "cgroup and systemd scope fixtures do not exist on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/process/agentScope.test.ts",
+    "name": "AgentScope service > Force stop kills a thread's own scope but never a shared Codex scope (OOM policy true)",
+    "issue": 205,
+    "why": "cgroup and systemd scope fixtures do not exist on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/process/agentScope.test.ts",
+    "name": "AgentScope service > reports failed daemon cleanup without failing session teardown",
+    "issue": 205,
+    "why": "cgroup and systemd scope fixtures do not exist on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/process/agentScope.test.ts",
+    "name": "AgentScope service > stops leftover processes only in an active agent scope",
+    "issue": 205,
+    "why": "cgroup and systemd scope fixtures do not exist on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "does not install a cached update the manifest has since withdrawn",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "downloads the pinned release when the local CLI is unsupported or broken: {\"version\":\"0.128.9\"}",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "downloads the pinned release when the local CLI is unsupported or broken: {\"version\":\"0.145.0\"}",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "downloads the pinned release when the local CLI is unsupported or broken: {\"version\":\"0.155.1\"}",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "downloads the pinned release when the local CLI is unsupported or broken: {\"version\":\"0.155.9\"}",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "downloads the pinned release when the local CLI is unsupported or broken: {\"version\":\"0.156.1\",\"appServerFails\":true}",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "downloads the pinned release when the local CLI is unsupported or broken: {\"version\":\"0.156.1\",\"versionFails\":true}",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "downloads the pinned release when the local CLI is unsupported or broken: {\"version\":\"0.156.1-alpha.1\"}",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "downloads the pinned release when the local CLI is unsupported or broken: {\"version\":\"unknown\"}",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "installs the complete verified package in tools/codex/version and survives a restart",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "keeps an activated runtime when a later update fails verification",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "keeps the managed install when an update fails its published checksum",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "preserves the invoked name of native aqua-proxy launcher symlinks",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "preserves the invoked name of native mise launcher symlinks",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "preserves the invoked name of native volta-shim launcher symlinks",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "preserves the invoked name of script volta-shim launcher symlinks",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "protects active process leases and removes the runtime after release",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "rechecks a cached local executable when the shared manifest policy changes",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "rechecks compatibility after the local executable is replaced",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "rejects withdrawal during reinstall validation",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "rejects withdrawal during update validation",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "requires an update before running an older activated managed installation",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "returns a managed install the manifest withdraws to the pinned release",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "reuses installed Codex 0.156.0 without downloading or taking ownership of it",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "reuses installed Codex 0.156.1 without downloading or taking ownership of it",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "reuses installed Codex 0.156.2 without downloading or taking ownership of it",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "reuses installed Codex 0.157.0 without downloading or taking ownership of it",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "updates a managed install to OpenAI's newest release and never downgrades it",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "updates an older supported managed installation to the pinned release on startup",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/CodexInstallation.test.ts",
+    "name": "uses bundled Codex compatibility when the remote manifest omits its policy",
+    "issue": 205,
+    "why": "the local Codex install fixture does not install or detect on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/Drivers/ClaudeSkills.test.ts",
+    "name": "discoverClaudeSkills > gives a synced namespace to an installed plugin, then the first synced row",
+    "issue": 205,
+    "why": "creating the synced plugin folder finds it already there on Windows (AlreadyExists); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/Drivers/CodexDriver.test.ts",
+    "name": "CodexDriver > probes again when auth.json in the Codex home changes",
+    "issue": 205,
+    "why": "times out on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/antigravityAuthSupport.test.ts",
+    "name": "Antigravity profile preparation > links the user's global rule files and never replaces the profile's own",
+    "issue": 205,
+    "why": "reading the linked rule file fails on Windows (readLink Unknown); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/provider/providerCompatibility.test.ts",
+    "name": "a remote policy refresh preserves a newer health result on the registry stream",
+    "issue": 205,
+    "why": "the refreshed health result stays Healthy instead of the newer Authentication failed; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/workspace/WorkspaceFileSystem.test.ts",
+    "name": "WorkspaceFileSystemLive > writeFile > writes through symlinks that stay inside the workspace root",
+    "issue": 205,
+    "why": "returns a Windows path (`docs\\README.md`) where the test expects `docs/README.md`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/web/src/components/files/AttachmentFilePreview.browser.test.tsx",
+    "name": "large text preview recovery > preserves the source row when indexing grows beyond 5 lines (mixed heights: true)",
+    "issue": 205,
+    "why": "row height measurements differ in Chromium on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/web/src/components/files/FilePreviewPanel.browser.test.tsx",
+    "name": "source file scroll > keeps an upward drag whose anchor unmou…",
+    "issue": 205,
+    "why": "scroll offset measurements differ in Chromium on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "evals/shared/proxy.test.ts",
+    "name": "proxyConfig > fails when the provider requires OpenAI auth and a ChatGPT-login auth.json has no key",
+    "issue": 205,
+    "why": "spawns `python3`, which Windows does not have (ENOENT); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "evals/shared/proxy.test.ts",
+    "name": "proxyConfig > fails when the provider requires OpenAI auth and no auth.json has no key",
+    "issue": 205,
+    "why": "spawns `python3`, which Windows does not have (ENOENT); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > falls back to a valid cached registry index when refresh fails",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > gives Antigravity a T3-owned temp directory that is removed with the process",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > honors an exact Windows PATH override when launching a global package",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > inspects from disk without waiting for a registry refresh",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > installs a contained binary whose name starts with two dots",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > installs a tar archive with a root entry and a listing larger than 1 MiB",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > installs and reuses a registry binary in the managed cache",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > installs into T3 home a package and launches its exposed command",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > keeps a binary prepared by another client while an uninstall is waiting",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > keeps a prepared binary ready after the registry advances its version",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > keeps only the end of a failed install's output in its error",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > launches the managed uv command over a PATH command named after the agent",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > prepares the registry version despite an older PATH binary and permits explicit overrides",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > recovers inspection from a corrupt cache once the registry is reachable",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > reports missing or non-executable local commands without registry fallback",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > requires a regular executable file in the managed binary cache",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > reserves a prepared binary until a configured instance inspects it",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > resolves a local command on the selected environment without the registry",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > resolves an installed agent while another agent's download is still running",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > searches compatible agents with deterministic ranking and bounded metadata",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > searches retry the network after falling back to the cached index",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > uses its managed prefix despite a system-owned npm prefix",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-acp-registry/src/server/AcpRegistrySupport.test.ts",
+    "name": "AcpRegistrySupport > uses the effective provider environment for inspection and resolution",
+    "issue": 205,
+    "why": "the archive and install-command fixtures are POSIX executables, which Windows does not run; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-core/src/server/maintenanceResolver.test.ts",
+    "name": "providerMaintenance > pins npm updates to the global prefix that owns the package and the provider's PATH",
+    "issue": 205,
+    "why": "package-tool resolution fixtures resolve differently on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-core/src/server/maintenanceResolver.test.ts",
+    "name": "providerMaintenance > prefers npm ownership over the Node keg the package lives under",
+    "issue": 205,
+    "why": "package-tool resolution fixtures resolve differently on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-core/src/server/maintenanceResolver.test.ts",
+    "name": "providerMaintenance > switches to pnpm updates when the real path lives in pnpm's global store",
+    "issue": 205,
+    "why": "package-tool resolution fixtures resolve differently on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-core/src/server/maintenanceResolver.test.ts",
+    "name": "providerMaintenance > updates Volta installs only when Volta has the package",
+    "issue": 205,
+    "why": "package-tool resolution fixtures resolve differently on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-core/src/server/maintenanceResolver.test.ts",
+    "name": "providerMaintenance > updates Yarn global installs with yarn",
+    "issue": 205,
+    "why": "package-tool resolution fixtures resolve differently on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-core/src/server/maintenanceResolver.test.ts",
+    "name": "providerMaintenance > updates through vp only for the install the shim runs: a system_first shim (VP_HOME layout) to…",
+    "issue": 205,
+    "why": "package-tool resolution fixtures resolve differently on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-core/src/server/maintenanceResolver.test.ts",
+    "name": "providerMaintenance > updates through vp only for the install the shim runs: a system_first shim (XDG layout) to a l…",
+    "issue": 205,
+    "why": "package-tool resolution fixtures resolve differently on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-cursor/src/server/adapter.test.ts",
+    "name": "CursorAdapterV2 > honors the user's Cursor CLI attribution preferences",
+    "issue": 205,
+    "why": "a scoped temp directory is still in use when it is removed on Windows (Busy); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-cursor/src/server/adapter.test.ts",
+    "name": "CursorAdapterV2 > opens a model added to the account after its workspace already ran an agent",
+    "issue": 205,
+    "why": "a scoped temp directory is still in use when it is removed on Windows (Busy); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-opencode/src/server/status.test.ts",
+    "name": "reads Go limits with the instance's XDG credentials and preserves reset times",
+    "issue": 205,
+    "why": "the status fixture reports a different value on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/provider-pi/src/server/status.test.ts",
+    "name": "PiProvider > reports a version the policy rates broken as an error",
+    "issue": 205,
+    "why": "the version fixture reports no version on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/shared/src/atomicWrite.test.ts",
+    "name": "writeFileStringAtomically > resolves a relative link through a symlinked parent directory",
+    "issue": 205,
+    "why": "returns a Windows relative path (`..\\config\\settings.json`) where the test expects `../config/settings.json`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/shared/src/relayClient.test.ts",
+    "name": "RelayClient > cancels a contended install without removing the other installer's lock",
+    "issue": 205,
+    "why": "the cloudflared fixtures time out or are not found on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/shared/src/relayClient.test.ts",
+    "name": "RelayClient > keeps a lock with a recent legacy",
+    "issue": 205,
+    "why": "the cloudflared fixtures time out or are not found on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/shared/src/relayClient.test.ts",
+    "name": "RelayClient > keeps a replacement lock when a stale contender resumes cleanup",
+    "issue": 205,
+    "why": "the cloudflared fixtures time out or are not found on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/source-control-github/src/server/GitHubRest.test.ts",
+    "name": "GitHubRest > routes REST and GraphQL through gh's plain HTTP Unix socket",
+    "issue": 205,
+    "why": "listening on a Unix socket path is refused on Windows (EACCES); fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > archive launcher reuses the replacement without host Node",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > bounds the wait when the host clock jumps back",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > fails without starting a second server when the home's owner never answers",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > keeps waiting while a stale runtime record points at a dead port",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > preserves expired markers without waiting",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > preserves future markers without waiting",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > preserves malformed markers without waiting",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > refreshes runtime after readiness removes the marker between polls",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > reuses a runtime published before the first marker read",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > reuses recorded external server without runtime metadata or an update wait",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > reuses recorded managed server without runtime metadata or an update wait",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > starts a server when the marker expires without a replacement becoming ready",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > starts immediately without a marker",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > waits across the eight-second installer gap and reuses the replacement server",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > waits for a boot service between two servers (archive: false)",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "SSH launch during desktop update > waits for a boot service between two servers (archive: true)",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "ssh tunnel scripts > concurrent launches on one remote home record the server that owns it",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "ssh tunnel scripts > names missing gzip after verifying with sha256sum",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "ssh tunnel scripts > names missing gzip after verifying with shasum",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "packages/ssh/src/tunnel.test.ts",
+    "name": "ssh tunnel scripts > names missing tar before downloading the release archive",
+    "issue": 205,
+    "why": "the tunnel scripts run under `/bin/sh`, which Windows does not have (ENOENT); one fixture folder name holds a newline; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "scripts/dev-runner.test.ts",
+    "name": "dev-runner > runDevRunnerWithInput > expands a home-relative T3 home the way the server does",
+    "issue": 205,
+    "why": "expects `/home/dev/.t3/` to stay a POSIX path; Windows resolves it to `C:\\home\\dev\\.t3`; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "scripts/install.test.ts",
+    "name": "install.ps1 t3 command > replaces only its own t3.cmd, also in non-ASCII and bracketed paths",
+    "issue": 205,
+    "why": "times out on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/orchestration-v2/testkit/ClaudeReplayFixtures.integration.test.ts",
+    "name": "Claude Agent SDK replay fixtures > refuses messages to a native subagent thread without touching it",
+    "issue": 205,
+    "why": "the scenario has no checkpoint workspace, so it captures the real checkout and diffs it against a reused checkpoint ref; on a large Windows checkout that diff outlasts the scenario deadline (alone 62.9 s on unmodified upstream 1f8f3698b0 and on the fork); passes in the whole-file run"
   }
 ]

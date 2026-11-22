@@ -154,7 +154,10 @@ const browserTestProject = {
     include: ["src/**/*.browser.test.{ts,tsx}"],
     hookTimeout: 15_000,
     testTimeout: 15_000,
-    setupFiles: ["./test/browserSetup.ts"],
+    setupFiles: [
+      "./test/browserSetup.ts",
+      "../../packages/shared/src/testing/windowsQuarantineBrowser.ts",
+    ],
     api: { port: browserTestApiPort, strictPort: false },
     browser: {
       enabled: true,

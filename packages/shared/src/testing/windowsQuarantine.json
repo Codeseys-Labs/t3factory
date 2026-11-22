@@ -1774,5 +1774,11 @@
     "name": "install.ps1 t3 command > replaces only its own t3.cmd, also in non-ASCII and bracketed paths",
     "issue": 205,
     "why": "times out on Windows; fails the same way on unmodified upstream 1f8f3698b0 on Windows"
+  },
+  {
+    "file": "apps/server/src/orchestration-v2/testkit/ClaudeReplayFixtures.integration.test.ts",
+    "name": "Claude Agent SDK replay fixtures > refuses messages to a native subagent thread without touching it",
+    "issue": 205,
+    "why": "the scenario has no checkpoint workspace, so it captures the real checkout and diffs it against a reused checkpoint ref; on a large Windows checkout that diff outlasts the scenario deadline (alone 62.9 s on unmodified upstream 1f8f3698b0 and on the fork); passes in the whole-file run"
   }
 ]

@@ -28,25 +28,28 @@ export default workflow(
     yield* tags(taskTags(syncId, project, "doing"));
     const config = yield* step("config", { returns: PackConfig }, readConfig(project));
 
+    // The ref goes into commands the agent runs, and a ref may hold `$`, `'` or a backtick.
+    const literal = `'${ref.replaceAll("'", "'\\''")}'`;
     const branch = `sync/upstream-${ref
-      .replace(/[^\w.-]+/g, "-")
+      .replace(/[^\w.-]/g, "-")
       .replace(/\.{2,}/g, ".")
-      .replace(/[.-]+$/, "")
+      .replace(/\.+$/, "")
       .replace(/\.lock$/, "-lock")}`;
     const base = config.baseRef?.replace(/^(?:origin\/|refs\/heads\/)/, "");
     const synced = yield* agent("sync", {
       project,
       title: `Sync upstream ${ref}`,
       brief: [
-        `Take the upstream revision \`${ref}\` into this fork, in this worktree. Do these steps in order.`,
+        `Take the upstream revision ${literal} into this fork, in this worktree. Do these steps in order. The revision is quoted for the shell: pass it as written, as one argument, and do not expand or retype it.`,
         "",
-        `1. Create the branch \`${branch}\` and run \`git merge ${ref}\` on it. Never rebase or squash: upstream's history must stay intact.`,
+        `1. Create the branch \`${branch}\` and run \`git merge ${literal}\` on it. Never rebase or squash: upstream's history must stay intact.`,
         "2. Resolve conflicts. In the seam files listed in `factory/seams.json`, keep both sides' lines. For a generated file, take upstream's version. Do not hand-merge `pnpm-lock.yaml`: it must equal upstream's.",
-        "3. Regenerate the generated files: the route tree, and run `vp run i18n:generate` in `apps/web`, `apps/mobile` and `apps/desktop`.",
-        `4. Run \`node scripts/factory-i18n.ts merge --base ${ref}\`, then \`node scripts/factory-i18n.ts check --base ${ref}\`, then \`node scripts/factory-seams.ts --base ${ref}\`. If a seam is stale, remove it from \`factory/seams.json\`.`,
-        "5. Run the Factory tests, `vp test run apps/server/src/factory scripts/factory- evals/factory-pack` and, in `apps/web`, `vp test run src/factory --project unit`, and fix what broke.",
-        `6. Commit, push, and open a pull request against ${base === undefined ? "the project's default branch" : `the branch \`${base}\``}.`,
-        "7. Return the pull request's URL as `prUrl`, a short `summary`, and in `conflicts` one entry for each conflict you resolved, naming its path and how you resolved it.",
+        "3. If the merge stopped for conflicts, stage your resolutions and complete the merge with `git commit --no-edit` now. The next steps compare against the merge base of the revision and HEAD, so HEAD must already contain the merge.",
+        "4. Regenerate the generated files: the route tree, by running `vp build` in `apps/web`, and the translation catalogs, by running `vp run i18n:generate` in `apps/web`, `apps/mobile` and `apps/desktop`.",
+        `5. Run \`node scripts/factory-i18n.ts merge --base ${literal}\`, then \`node scripts/factory-i18n.ts check --base ${literal}\`, then \`node scripts/factory-seams.ts --base ${literal}\`. If a seam is stale, remove it from \`factory/seams.json\`.`,
+        "6. Run the Factory tests, `vp test run apps/server/src/factory scripts/factory- evals/factory-pack` and, in `apps/web`, `vp test run src/factory --project unit`, and fix what broke.",
+        `7. Commit everything steps 4 to 6 changed, push, and open a pull request against ${base === undefined ? "the project's default branch" : `the branch \`${base}\``}.`,
+        "8. Return the pull request's URL as `prUrl`, a short `summary`, and in `conflicts` one entry for each conflict you resolved, naming its path and how you resolved it.",
       ].join("\n"),
       workspace: { type: "worktree", baseRef: config.baseRef ?? "HEAD" },
       runtimeMode: "full-access",

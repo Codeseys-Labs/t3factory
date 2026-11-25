@@ -65,11 +65,11 @@ const script = (
   }),
 });
 
-const startSync = (workflows: Service) =>
+const startSync = (workflows: Service, ref = REF) =>
   workflows.start(
     "factory-sync-upstream",
-    { projectId: PROJECT, ref: REF },
-    { idempotencyKey: `sync/${REF}` },
+    { projectId: PROJECT, ref },
+    { idempotencyKey: `sync/${ref}` },
   );
 
 const askMerge = Effect.fn("factoryPack.test.askMerge")(function* (
@@ -115,7 +115,7 @@ it("an approved sync merges its pull request once, with a merge commit", () =>
           workspace: { type: "worktree", baseRef: "HEAD" },
           runtimeMode: "full-access",
         });
-        expect(turn?.prompt).toContain(`git merge ${REF}`);
+        expect(turn?.prompt).toContain(`git merge '${REF}'`);
         expect(turn?.prompt).toContain("sync/upstream-v0.0.1-nightly");
         expect(turn?.prompt).toContain("the project's default branch");
         expect(turn?.prompt).not.toContain("scripts/factory-sync.ts");
@@ -185,6 +185,46 @@ it("a pull request outside the project stops the sync before its checks", () =>
         expect(world.questions).toEqual([]);
         expect(world.reads).toEqual([]);
         expect(world.acts).toEqual([]);
+      }),
+    ),
+  ));
+
+it.each([
+  { ref: "v1", quoted: "'v1'", branch: "sync/upstream-v1" },
+  { ref: "v1-", quoted: "'v1-'", branch: "sync/upstream-v1-" },
+  { ref: "release$build", quoted: "'release$build'", branch: "sync/upstream-release-build" },
+  { ref: "a'b`c", quoted: "'a'\\''b`c'", branch: "sync/upstream-a-b-c" },
+])("the brief passes $ref to every command as one literal argument", ({ ref, quoted, branch }) =>
+  withWorld(script({ checks: ["failing"] }), (world) =>
+    world.server(
+      Effect.fn("factoryPack.test.syncRef")(function* (workflows) {
+        const { runId } = yield* startSync(workflows, ref);
+        yield* world.ended(workflows, runId, true);
+        const prompt = world.turns[0]?.prompt ?? "";
+        expect(prompt).toContain(`Create the branch \`${branch}\` and`);
+        expect(prompt).toContain(`\`git merge ${quoted}\``);
+        expect(prompt).toContain(`\`node scripts/factory-i18n.ts merge --base ${quoted}\``);
+        expect(prompt).toContain(`\`node scripts/factory-i18n.ts check --base ${quoted}\``);
+        expect(prompt).toContain(`\`node scripts/factory-seams.ts --base ${quoted}\``);
+        expect(prompt.replaceAll(quoted, "").replaceAll(branch, "")).not.toContain(ref);
+      }),
+    ),
+  ),
+);
+
+it("the brief completes the merge before it regenerates and validates", () =>
+  withWorld(script({ checks: ["failing"] }), (world) =>
+    world.server(
+      Effect.fn("factoryPack.test.syncOrder")(function* (workflows) {
+        const { runId } = yield* startSync(workflows);
+        yield* world.ended(workflows, runId, true);
+        const prompt = world.turns[0]?.prompt ?? "";
+        const at = (text: string) => prompt.indexOf(text);
+        expect(at("git commit --no-edit")).toBeGreaterThan(at("Resolve conflicts"));
+        expect(at("vp build")).toBeGreaterThan(at("git commit --no-edit"));
+        expect(at("factory-i18n.ts merge")).toBeGreaterThan(at("vp build"));
+        expect(at("Commit everything")).toBeGreaterThan(at("vp test run"));
+        expect(at("Commit everything")).toBeLessThan(at("open a pull request"));
       }),
     ),
   ));

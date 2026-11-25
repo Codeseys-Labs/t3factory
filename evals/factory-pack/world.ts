@@ -384,7 +384,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
     use: (workflows: Service) => Effect.Effect<A, E>,
   ) {
     const loaded: Array<WorkflowDefinition> = [];
-    for (const name of ["factory-task.ts", "factory-intake.ts"]) {
+    for (const name of ["factory-task.ts", "factory-intake.ts", "factory-sync-upstream.ts"]) {
       loaded.push(
         ...(yield* loadDefinitions(
           path.resolve(import.meta.dirname, "../../factory/workflows", name),

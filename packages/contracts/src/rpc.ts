@@ -439,6 +439,7 @@ import {
   WorkflowRunsUpdate,
   WorkflowRunsSubscribeInput,
 } from "./workflow.ts";
+import { FactoryRpcGroup } from "./factory.ts";
 import {
   ScheduledTaskDeleteInput,
   ScheduledTaskDeleteResult,
@@ -2735,4 +2736,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2SubscribeThreadRpc,
   WsOrchestrationV2SubscribeCommandOutputRpc,
   WsOrchestrationV2SubscribePromptSuggestionRpc,
-).middleware(RpcScopeAuthorization);
+)
+  .merge(FactoryRpcGroup)
+  .middleware(RpcScopeAuthorization);

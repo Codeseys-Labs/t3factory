@@ -1,0 +1,65 @@
+# Gates changes to the factory branch; upstream's workflows are disabled in this fork.
+name: Factory
+
+on:
+  pull_request:
+    branches:
+      - factory
+  push:
+    branches:
+      - factory
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: factory-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  factory:
+    name: Factory
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          sparse-checkout: |
+            /*
+            !/.repos/
+            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: ./.github/actions/setup-ci-deps
+
+      - name: Install dependencies
+        run: vp i --frozen-lockfile
+
+      - name: Fetch upstream mirror branch
+        run: git fetch origin main
+
+      - name: Check the lockfile is unchanged from upstream
+        run: git diff --exit-code origin/main -- pnpm-lock.yaml
+
+      - name: Check upstream seams
+        run: node scripts/factory-seams.ts --base origin/main
+
+      - name: Typecheck
+        run: vp run --filter @t3tools/contracts --filter t3 --filter @t3tools/web --filter @t3tools/scripts --filter @t3tools/evals typecheck
+
+      - name: Test factory
+        run: vp test run apps/server/src/factory scripts/factory-seams.test.ts scripts/factory-pack.test.ts scripts/factory-home.test.ts scripts/factory-i18n.test.ts evals/factory-pack
+
+      - name: Test factory web logic
+        working-directory: apps/web
+        run: vp test run src/factory --project unit
+
+      - name: Check i18n catalogs
+        run: vp run i18n:check
+
+      - name: Check fork translations
+        run: node scripts/factory-i18n.ts check

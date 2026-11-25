@@ -1,0 +1,35 @@
+{
+  "base": "origin/main",
+  "owned": [
+    "factory/**",
+    "packages/contracts/src/factory.ts",
+    "apps/server/src/factory/**",
+    "apps/web/src/factory/**",
+    "apps/web/src/routes/_chat.work.tsx",
+    "scripts/factory-*.ts",
+    "evals/factory-pack/**",
+    ".github/workflows/factory.yml",
+    "docs/user/factory.md",
+    "docs/internals/factory.md",
+    "docs/operations/factory-fork.md"
+  ],
+  "seams": [
+    "packages/contracts/src/index.ts",
+    "packages/contracts/src/rpc.ts",
+    "packages/contracts/src/clientRpcPermissions.ts",
+    "apps/server/src/auth/RpcAuthorization.ts",
+    "apps/server/src/ws.ts",
+    "apps/server/src/orchestration-v2/runtimeLayer.ts",
+    "apps/server/src/observability/RpcInstrumentation.ts",
+    "packages/client-runtime/src/rpc/client.ts",
+    "apps/web/src/components/sidebar/SidebarChrome.tsx",
+    "apps/web/src/components/sidebar/mainAppLocation.ts",
+    "apps/web/src/components/CommandPalette.tsx"
+  ],
+  "generated": [
+    "apps/web/src/routeTree.gen.ts",
+    "apps/web/src/i18n/translations/*.json",
+    "apps/mobile/src/i18n/translations/*.json",
+    "apps/desktop/src/i18n/translations/*.json"
+  ]
+}

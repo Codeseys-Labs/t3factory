@@ -1,3 +1,9 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { expect, it } from "vite-plus/test";
@@ -115,7 +121,8 @@ it("an approved sync merges its pull request once, with a merge commit", () =>
           workspace: { type: "worktree", baseRef: "HEAD" },
           runtimeMode: "full-access",
         });
-        expect(turn?.prompt).toContain(`git merge '${REF}'`);
+        expect(turn?.prompt).toContain(`POSIX shell (bash, zsh, sh): '${REF}'`);
+        expect(turn?.prompt).toContain("`git merge <ref>`");
         expect(turn?.prompt).toContain("sync/upstream-v0.0.1-nightly");
         expect(turn?.prompt).toContain("the project's default branch");
         expect(turn?.prompt).not.toContain("scripts/factory-sync.ts");
@@ -189,28 +196,72 @@ it("a pull request outside the project stops the sync before its checks", () =>
     ),
   ));
 
-it.each([
-  { ref: "v1", quoted: "'v1'", branch: "sync/upstream-v1" },
-  { ref: "v1-", quoted: "'v1-'", branch: "sync/upstream-v1-" },
-  { ref: "release$build", quoted: "'release$build'", branch: "sync/upstream-release-build" },
-  { ref: "a'b`c", quoted: "'a'\\''b`c'", branch: "sync/upstream-a-b-c" },
-])("the brief passes $ref to every command as one literal argument", ({ ref, quoted, branch }) =>
-  withWorld(script({ checks: ["failing"] }), (world) =>
+const REFS = [
+  { ref: "v1", branch: "sync/upstream-v1" },
+  { ref: "v1-", branch: "sync/upstream-v1-" },
+  { ref: "release/v1", branch: "sync/upstream-release/v1" },
+  { ref: "release-v1", branch: "sync/upstream-release-v1" },
+  { ref: "release$build", branch: "sync/upstream-release%24build" },
+  { ref: "nightly'oct", branch: "sync/upstream-nightly%27oct" },
+  { ref: "a`b;c&d|(e)", branch: "sync/upstream-a%60b%3Bc%26d%7C%28e%29" },
+  { ref: "v\u20181", branch: "sync/upstream-v%E2%80%981" },
+  { ref: "feat/.x..y.lock", branch: "sync/upstream-feat/%2Ex%2E.y%2Elock" },
+];
+
+const printArguments = NodePath.join(
+  NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "factory-sync-")),
+  "arguments.js",
+).replaceAll("\\", "/");
+NodeFS.writeFileSync(
+  printArguments,
+  'console.log(Buffer.from(JSON.stringify(process.argv.slice(2))).toString("hex"));',
+);
+const SHELLS = [
+  { name: "POSIX shell", label: "POSIX shell (bash, zsh, sh)", command: "sh", args: ["-c"] },
+  { name: "PowerShell", label: "PowerShell", command: "pwsh", args: ["-NoProfile", "-Command"] },
+].filter(
+  (shell) => NodeChildProcess.spawnSync(shell.command, [...shell.args, "exit 0"]).status === 0,
+);
+
+it("every ref reaches the agent as one literal argument and gets a branch of its own", () => {
+  expect(SHELLS.length).toBeGreaterThan(0);
+  return withWorld(script({ checks: REFS.map(() => "failing" as const) }), (world) =>
     world.server(
       Effect.fn("factoryPack.test.syncRef")(function* (workflows) {
-        const { runId } = yield* startSync(workflows, ref);
-        yield* world.ended(workflows, runId, true);
-        const prompt = world.turns[0]?.prompt ?? "";
-        expect(prompt).toContain(`Create the branch \`${branch}\` and`);
-        expect(prompt).toContain(`\`git merge ${quoted}\``);
-        expect(prompt).toContain(`\`node scripts/factory-i18n.ts merge --base ${quoted}\``);
-        expect(prompt).toContain(`\`node scripts/factory-i18n.ts check --base ${quoted}\``);
-        expect(prompt).toContain(`\`node scripts/factory-seams.ts --base ${quoted}\``);
-        expect(prompt.replaceAll(quoted, "").replaceAll(branch, "")).not.toContain(ref);
+        const branches = new Set<string>();
+        for (const { ref, branch } of REFS) {
+          const { runId } = yield* startSync(workflows, ref);
+          yield* world.ended(workflows, runId, true);
+          const prompt = world.turns.find((turn) => turn.origin.runId === runId)?.prompt ?? "";
+          expect(prompt).toContain(`Create the branch \`${branch}\` and run \`git merge <ref>\``);
+          expect(() =>
+            NodeChildProcess.execFileSync("git", ["check-ref-format", `refs/heads/${branch}`]),
+          ).not.toThrow();
+          branches.add(branch);
+          let rest = prompt.replaceAll(branch, "");
+          for (const shell of SHELLS) {
+            const line = prompt.split("\n").find((entry) => entry.startsWith(`${shell.label}: `));
+            const literal = line?.slice(shell.label.length + 2) ?? "";
+            const out = NodeChildProcess.execFileSync(shell.command, [
+              ...shell.args,
+              `node '${printArguments}' ${literal}`,
+            ]);
+            expect({
+              shell: shell.name,
+              received: JSON.parse(Buffer.from(out.toString().trim(), "hex").toString()),
+            }).toEqual({
+              shell: shell.name,
+              received: [ref],
+            });
+            rest = rest.replaceAll(literal, "");
+          }
+          if (SHELLS.length === 2) expect(rest).not.toContain(ref);
+        }
+        expect(branches.size).toBe(REFS.length);
       }),
     ),
-  ),
-);
+  );
+});
 
 it("the brief completes the merge before it regenerates and validates", () =>
   withWorld(script({ checks: ["failing"] }), (world) =>

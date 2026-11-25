@@ -1,13 +1,12 @@
 // Every five minutes, turns the new issues of each project with intake on into Ready tasks.
 import {
-  FACTORY_TASK,
   INTAKE_PREFIX,
   IntakeBinding,
   StartOutcome,
   TaskRef,
-  type TaskWorkflow,
   capturedKey,
   createTask,
+  factoryTaskRef,
   isStored,
   readAll,
   seenKey,
@@ -16,9 +15,6 @@ import {
 } from "./lib/records.ts";
 
 const { workflow, step, skip, every, within, issues, store, Tick } = T3;
-
-// A workflow file cannot import another one: the loader would register its workflows twice.
-const factoryTask = { name: FACTORY_TASK, version: 1 } as unknown as TaskWorkflow;
 
 const Binding = Schema.Struct({
   projectId: Schema.String,
@@ -154,7 +150,10 @@ export default [
             step.try(
               `start/${projectId}/${issue.key}`,
               { returns: StartOutcome },
-              startTask(factoryTask, task.taskId, "factory-intake"),
+              startTask(factoryTaskRef, task.taskId, "factory-intake", {
+                runId: run.id,
+                slot: `start/${projectId}/${issue.key}`,
+              }),
             ),
           );
           if (started.outcome === "failed") failed.push({ projectId, reason: started.reason });

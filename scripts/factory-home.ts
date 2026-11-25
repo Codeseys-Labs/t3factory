@@ -32,6 +32,8 @@ export class FactoryHomeError extends Schema.TaggedError<FactoryHomeError>()("Fa
   message: Schema.String,
 }) {}
 
+export const quoteHomePath = (home: string) => `'${home.replaceAll("'", "'\\''")}'`;
+
 export const initFactoryHome = Effect.fn("factoryHome.init")(function* (input: {
   readonly home: string;
   readonly skills?: string | undefined;
@@ -40,11 +42,15 @@ export const initFactoryHome = Effect.fn("factoryHome.init")(function* (input: {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const userdata = path.join(input.home, "userdata");
-  const database = path.join(userdata, "statev2.sqlite");
-  if (!input.existing && (yield* fs.exists(database))) {
-    return yield* new FactoryHomeError({
-      message: `Database already exists: ${database}; use --existing to proceed`,
-    });
+  if (!input.existing) {
+    for (const name of ["statev2.sqlite", "state.sqlite"]) {
+      const database = path.join(userdata, name);
+      if (yield* fs.exists(database)) {
+        return yield* new FactoryHomeError({
+          message: `Database already exists: ${database}; use --existing to proceed`,
+        });
+      }
+    }
   }
   const settingsPath = path.join(userdata, "settings.json");
   const previous = (yield* fs.exists(settingsPath)) ? yield* fs.readFileString(settingsPath) : null;
@@ -80,7 +86,8 @@ const command = Command.make("factory-home").pipe(
       ({ home, skills, existing }) =>
         Effect.gen(function* () {
           yield* initFactoryHome({ home, skills: Option.getOrUndefined(skills), existing });
-          const quotedHome = `"${home.replaceAll('"', '\\"')}"`;
+          const path = yield* Path.Path;
+          const quotedHome = quoteHomePath(path.resolve(home));
           yield* Console.log(`vp run dev --home-dir ${quotedHome}`);
           yield* Console.log(
             `Open the pairingUrl it prints. To get a new one later: node apps/server/src/bin.ts pair --base-dir ${quotedHome}`,

@@ -3,6 +3,7 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as TestConsole from "effect/testing/TestConsole";
 
 import {
   installFactoryPack,
@@ -139,6 +140,10 @@ it.layer(NodeServices.layer)("factory pack", (it) => {
       });
       yield* fs.writeFileString(path.join(workflows, "other.ts"), "other");
       yield* uninstallFactoryPack(home);
+      assert.include(
+        (yield* TestConsole.logLines).join("\n"),
+        "Restart the server to finish removing this pack: a running server keeps the old lib/ helpers.",
+      );
       assert.isFalse(yield* fs.exists(path.join(workflows, "run.ts")));
       assert.isFalse(yield* fs.exists(path.join(workflows, "lib", "helper.ts")));
       assert.isFalse(yield* fs.exists(path.join(workflows, ".factory-pack.json")));

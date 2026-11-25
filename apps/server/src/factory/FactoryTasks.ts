@@ -10,6 +10,7 @@ import {
   type FactoryTaskDetail,
   FactoryTaskError,
   type FactoryTaskGetInput,
+  type FactoryTaskRunInput,
   type FactoryTaskStartInput,
   type FactoryTasksSnapshot,
   type FactoryTasksSubscribeInput,
@@ -36,15 +37,6 @@ import * as FactoryTaskStore from "./FactoryTaskStore.ts";
 
 export const FACTORY_TASK_WORKFLOW = "factory-task";
 export const FACTORY_POLL_INTERVAL = "5 seconds";
-
-export const FACTORY_RPC_AGGREGATES = {
-  [FACTORY_WS_METHODS.factoryTasksSubscribe]: "factory",
-  [FACTORY_WS_METHODS.factoryTasksGet]: "factory",
-  [FACTORY_WS_METHODS.factoryTasksCreate]: "factory",
-  [FACTORY_WS_METHODS.factoryTasksUpdate]: "factory",
-  [FACTORY_WS_METHODS.factoryTasksStart]: "factory",
-  [FACTORY_WS_METHODS.factoryOrchestratorSet]: "factory",
-} as const;
 
 export class FactoryTasks extends Context.Service<
   FactoryTasks,
@@ -383,7 +375,7 @@ const make = Effect.gen(function* () {
   const start = Effect.fn("FactoryTasks.start")(
     function* (input: FactoryTaskStartInput, requestedBy: string) {
       const { task, attempt } = yield* prepareAttempt(input, requestedBy);
-      const runInput = {
+      const runInput: typeof FactoryTaskRunInput.Type = {
         taskId: task.id,
         number: task.number,
         attempt: attempt.n,

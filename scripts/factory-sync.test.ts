@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import * as Stream from "effect/Stream";
 
 import type { SeamConfig } from "./factory-seams.ts";
 import {
@@ -20,7 +21,7 @@ import {
 const config = {
   base: "origin/main",
   owned: ["factory/**", "scripts/factory-*.ts"],
-  seams: ["apps/server/src/ws.ts", "factory/owned-seam.ts"],
+  seams: ["apps/server/src/ws.ts", { path: "factory/owned-seam.ts", maxAdded: 3 }],
   generated: ["apps/web/src/i18n/translations/*.json"],
 } satisfies SeamConfig;
 
@@ -109,6 +110,21 @@ it.effect.each(exitCodeCases)("exit code: $name", ({ plan, expected }) =>
   }),
 );
 
+it.effect("treats an unclassified merge-tree failure as an outside conflict", () =>
+  Effect.sync(() => {
+    const conflicts = parseMergeTreeConflicts("abc123\0", 1).map((path) => ({
+      kind: classifyConflict(path, config),
+      path,
+    }));
+    assert.deepStrictEqual(conflicts, [{ kind: "outside", path: "<unclassified merge conflict>" }]);
+    assert.strictEqual(
+      classifyConflict("<unclassified merge conflict>", { ...config, owned: ["**"] }),
+      "outside",
+    );
+    assert.strictEqual(planExitCode({ ...goodPlan, conflicts }), 1);
+  }),
+);
+
 it.effect("formats the plan as tab-separated lines", () =>
   Effect.sync(() => {
     assert.deepStrictEqual(formatPlan(goodPlan), [
@@ -175,7 +191,35 @@ const isolateGitConfig = Effect.fn("factorySyncTest.isolateGitConfig")(function*
 const makeGit = Effect.fn("factorySyncTest.makeGit")(function* (cwd: string) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   return (...args: ReadonlyArray<string>) =>
-    spawner.string(ChildProcess.make("git", ["-c", "commit.gpgsign=false", ...args], { cwd }));
+    Effect.scoped(
+      Effect.gen(function* () {
+        const child = yield* spawner.spawn(
+          ChildProcess.make("git", ["-c", "commit.gpgsign=false", ...args], { cwd }),
+        );
+        const [stdout, stderr, exitCode] = yield* Effect.all(
+          [
+            child.stdout.pipe(
+              Stream.decodeText(),
+              Stream.runFold(
+                () => "",
+                (all, chunk) => all + chunk,
+              ),
+            ),
+            child.stderr.pipe(
+              Stream.decodeText(),
+              Stream.runFold(
+                () => "",
+                (all, chunk) => all + chunk,
+              ),
+            ),
+            child.exitCode,
+          ],
+          { concurrency: "unbounded" },
+        );
+        assert.strictEqual(Number(exitCode), 0, `git ${args.join(" ")} failed: ${stderr}`);
+        return stdout;
+      }),
+    );
 });
 
 const makeRepository = Effect.fn("factorySyncTest.makeRepository")(function* () {

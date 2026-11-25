@@ -14,17 +14,17 @@
     "docs/operations/factory-fork.md"
   ],
   "seams": [
-    "packages/contracts/src/index.ts",
-    "packages/contracts/src/rpc.ts",
-    "packages/contracts/src/clientRpcPermissions.ts",
-    "apps/server/src/auth/RpcAuthorization.ts",
-    "apps/server/src/ws.ts",
-    "apps/server/src/orchestration-v2/runtimeLayer.ts",
-    "apps/server/src/observability/RpcInstrumentation.ts",
-    "packages/client-runtime/src/rpc/client.ts",
-    "apps/web/src/components/sidebar/SidebarChrome.tsx",
-    "apps/web/src/components/sidebar/mainAppLocation.ts",
-    "apps/web/src/components/CommandPalette.tsx"
+    { "path": "packages/contracts/src/index.ts", "maxAdded": 3 },
+    { "path": "packages/contracts/src/rpc.ts", "maxAdded": 6 },
+    { "path": "packages/contracts/src/clientRpcPermissions.ts", "maxAdded": 4 },
+    { "path": "apps/server/src/auth/RpcAuthorization.ts", "maxAdded": 4 },
+    { "path": "apps/server/src/ws.ts", "maxAdded": 5 },
+    { "path": "apps/server/src/orchestration-v2/runtimeLayer.ts", "maxAdded": 4 },
+    { "path": "apps/server/src/observability/RpcInstrumentation.ts", "maxAdded": 8 },
+    { "path": "packages/client-runtime/src/rpc/client.ts", "maxAdded": 5 },
+    { "path": "apps/web/src/components/sidebar/SidebarChrome.tsx", "maxAdded": 4 },
+    { "path": "apps/web/src/components/sidebar/mainAppLocation.ts", "maxAdded": 4 },
+    { "path": "apps/web/src/components/CommandPalette.tsx", "maxAdded": 6 }
   ],
   "generated": [
     "apps/web/src/routeTree.gen.ts",

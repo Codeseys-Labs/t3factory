@@ -43,16 +43,19 @@ jobs:
         run: git fetch origin main
 
       - name: Check the lockfile is unchanged from upstream
-        run: git diff --exit-code origin/main -- pnpm-lock.yaml
+        run: git diff --exit-code "$(git merge-base origin/main HEAD)" -- pnpm-lock.yaml
 
       - name: Check upstream seams
         run: node scripts/factory-seams.ts --base origin/main
 
       - name: Typecheck
-        run: vp run --filter @t3tools/contracts --filter t3 --filter @t3tools/web --filter @t3tools/scripts --filter @t3tools/evals typecheck
+        run: vp run --filter @t3tools/contracts --filter @t3tools/client-runtime --filter @t3tools/mobile --filter t3 --filter @t3tools/web --filter @t3tools/scripts --filter @t3tools/evals typecheck
 
       - name: Test factory
         run: vp test run apps/server/src/factory scripts/factory- evals/factory-pack
+
+      - name: Test upstream seams
+        run: vp test run apps/server/src/ws.test.ts apps/server/src/auth/RpcAuthorization.test.ts apps/server/src/observability/RpcInstrumentation.test.ts packages/contracts/src/rpc.test.ts packages/client-runtime/src/rpc/client.test.ts
 
       - name: Test factory web logic
         working-directory: apps/web

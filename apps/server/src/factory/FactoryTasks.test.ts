@@ -28,7 +28,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
-import WorkflowsMigration from "../persistence/Migrations/110_Workflows.ts";
+import { runMigrations } from "../persistence/Migrations.ts";
 import { KeyValues, layerKeyValues } from "../workflows/stepServices.ts";
 import * as Workflows from "../workflows/Workflows.ts";
 import * as FactoryTasks from "./FactoryTasks.ts";
@@ -241,7 +241,7 @@ const withFactory = <A, E>(
       Effect.scoped(use(workflows)),
       Layer.merge(FactoryTasks.layer, layerKeyValues).pipe(
         Layer.provide(Layer.succeed(Workflows.Workflows, workflows.service)),
-        Layer.provideMerge(Layer.effectDiscard(WorkflowsMigration)),
+        Layer.provideMerge(Layer.effectDiscard(runMigrations())),
         Layer.provideMerge(database),
       ),
     );

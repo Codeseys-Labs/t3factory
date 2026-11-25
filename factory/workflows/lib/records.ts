@@ -2,7 +2,7 @@
 // The records the pack shares with the server's FactoryTasks service, the store work both
 // workflow files do with them, and the review gates every workflow that merges goes through.
 // Everything here that touches the store is for inside a `step`.
-const { ask, pullRequests, runs, sleep, start, step, store } = T3;
+const { ask, pullRequests, runs, sleep, start, step, stop, store } = T3;
 
 const PREFIX = "factory/v1/";
 const SEQ_KEY = `${PREFIX}seq`;
@@ -136,8 +136,11 @@ export const FactoryTaskRunInput = Schema.Struct({
 });
 export type FactoryTaskRunInput = typeof FactoryTaskRunInput.Type;
 
-/** What `start` takes to start `factory-task`. */
-export type TaskWorkflow = Parameters<typeof start<FactoryTaskRunInput>>[0];
+type TaskWorkflow = Parameters<typeof start<FactoryTaskRunInput>>[0];
+
+// `start` reads only the name and version. factory-intake cannot import factory-task.ts for the
+// definition itself: the loader would register that file's workflows twice.
+export const factoryTaskRef = { name: FACTORY_TASK, version: 1 } as unknown as TaskWorkflow;
 
 type DurationInput = Parameters<typeof Duration.fromInput>[0];
 const DurationText = Schema.String.pipe(
@@ -346,7 +349,7 @@ export const createTask = Effect.fn("factoryPack.createTask")(function* (
         if (Option.isSome(earlier)) return { task: earlier.value };
       }
       for (const id of [...(task.parentId === null ? [] : [task.parentId]), ...task.blockedBy]) {
-        if (!(yield* isStored(taskKey(id)))) return { problem: `There is no task ${id}.` };
+        if (Option.isNone(yield* readTask(id))) return { problem: `There is no task ${id}.` };
       }
       const number = yield* nextNumber;
       const at = yield* now;
@@ -374,16 +377,18 @@ const highest = (attempts: ReadonlyArray<FactoryAttempt>) =>
   );
 
 /**
- * Starts a task as the service's `start` does. The newest attempt that has a run decides whether
- * one is live; otherwise an attempt without a run above it is reused, or the next is written
- * before its run starts, and then gets the run while the task moves to `doing`. Run it inside
- * `within(startPool(taskId), { limit: 1 }, …)` so that two starts of a task do not cross.
+ * Starts a task like the service's `start`, serialized by `within(startPool(taskId), { limit: 1 })`.
+ * `caller` keys a replay marker committed with `runId` so a replayed step returns the same start.
  */
 export const startTask = Effect.fn("factoryPack.startTask")(function* (
   definition: TaskWorkflow,
   taskId: string,
   requestedBy: string,
+  caller: { readonly runId: string; readonly slot: string },
 ) {
+  const marker = capturedKey(caller.runId, caller.slot);
+  const replayed = yield* readRecord(marker, StartOutcome);
+  if (Option.isSome(replayed)) return replayed.value;
   const found = yield* readTask(taskId);
   if (Option.isNone(found)) return yield* Effect.fail(`There is no task ${taskId}.`);
   const task = found.value;
@@ -426,9 +431,11 @@ export const startTask = Effect.fn("factoryPack.startTask")(function* (
     },
     { key },
   );
+  const started = { outcome: "started", attempt: n, runId } as const;
   yield* store.transaction(
     Effect.gen(function* () {
       yield* entry.set({ ...attempt, runId });
+      yield* store.entry(marker, StartOutcome).set(started);
       const latest = yield* readTask(taskId);
       if (Option.isNone(latest) || latest.value.lane === "dropped") return;
       const at = yield* now;
@@ -441,7 +448,7 @@ export const startTask = Effect.fn("factoryPack.startTask")(function* (
       });
     }),
   );
-  return { outcome: "started", attempt: n, runId } as const;
+  return started;
 });
 
 /** Appends a note with `marker` beside it; a second call that finds the marker writes nothing. */
@@ -472,6 +479,23 @@ export const taskTags = (
 
 const comparableUrl = (url: string) => url.trim().replace(/\/+$/, "").toLowerCase();
 
+// Hosts' address parsers take a pull request's route only in lowercase; the rest of its path is
+// the repository's own spelling, which stays.
+const PULL_REQUEST_ROUTE =
+  /^(.*\/)(pulls?|pull-requests|pullrequest|merge_requests)(\/\d+(?:\/.*)?)$/iu;
+
+/** `url` with its scheme, host and pull request route in lowercase, as a read parses it. */
+const readableUrl = (url: string) => {
+  const parsed = URL.parse(url.trim());
+  if (parsed === null) return url.trim();
+  parsed.pathname = parsed.pathname.replace(
+    PULL_REQUEST_ROUTE,
+    (_whole, before: string, route: string, after: string) =>
+      `${before}${route.toLowerCase()}${after}`,
+  );
+  return parsed.href;
+};
+
 const PullRequestLookup = Schema.Union([
   Schema.Struct({ outcome: Schema.Literal("found"), url: Schema.String }),
   Schema.Struct({ outcome: Schema.Literals(["foreign", "listing-empty"]) }),
@@ -492,7 +516,7 @@ const lookUpPullRequest = Effect.fn("factoryPack.lookUpPullRequest")(function* (
   const listed = yield* pullRequests.list({ project, state: "all", limit: 500 });
   const found = listed.find((entry) => comparableUrl(entry.url) === wanted);
   if (found !== undefined) return { outcome: "found", url: found.url } as const;
-  const read = yield* Effect.option(pullRequests.read({ project, url: reported.trim() }));
+  const read = yield* Effect.option(pullRequests.read({ project, url: readableUrl(reported) }));
   if (Option.isNone(read)) return { outcome: "foreign" } as const;
   const detail = read.value;
   if (detail.projectId !== project) return { outcome: "foreign" } as const;
@@ -553,4 +577,46 @@ export const mergeApproved = Effect.fn("factoryPack.mergeApproved")(function* (
     person.value.choice === "Merge" &&
     person.value.answeredBySession !== undefined
   );
+});
+
+type PullRequestAddress = Parameters<typeof pullRequests.read>[0];
+
+const HeadSha = Schema.NullOr(Schema.String);
+const MergeOutcome = Schema.Literals(["merged", "head-changed"]);
+
+/** The commit `pr`'s head is on now, for `mergePullRequest`; null when the host does not say. */
+export const pullRequestHead = (pr: PullRequestAddress) =>
+  step(
+    "head-sha",
+    { returns: HeadSha },
+    Effect.map(pullRequests.read(pr), (detail) => detail.headSha ?? null),
+  );
+
+/**
+ * Merges `pr`, or stops the run when its head has moved from `expectedHeadSha`: a push after the
+ * review and the merge question would otherwise merge commits nobody looked at.
+ */
+export const mergePullRequest = Effect.fn("factoryPack.mergePullRequest")(function* (
+  pr: PullRequestAddress,
+  expectedHeadSha: string | null,
+  mergeMethod: PackConfig["mergeMethod"],
+) {
+  const merged = yield* step(
+    "merge",
+    { returns: MergeOutcome },
+    Effect.gen(function* () {
+      const detail = yield* pullRequests.read(pr);
+      if (detail.state === "merged") return "merged" as const;
+      if (
+        expectedHeadSha !== null &&
+        detail.headSha !== undefined &&
+        detail.headSha !== expectedHeadSha
+      ) {
+        return "head-changed" as const;
+      }
+      yield* pullRequests.act(pr, "merge", { mergeMethod });
+      return "merged" as const;
+    }),
+  );
+  if (merged === "head-changed") return yield* stop("pull request head changed after review");
 });

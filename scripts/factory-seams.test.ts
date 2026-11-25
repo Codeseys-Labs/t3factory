@@ -95,6 +95,30 @@ it.effect.each(classificationCases)("$name", ({ changes, config, expected }) =>
   }),
 );
 
+it.effect.each([
+  { added: 3, expected: { ok: true, offences: [] } },
+  {
+    added: 4,
+    expected: {
+      ok: false,
+      offences: [
+        { path: "seam.ts", reason: "too-many-added-lines" as const, added: 4, maxAdded: 3 },
+      ],
+    },
+  },
+])("enforces seam cap with $added added lines", ({ added, expected }) =>
+  Effect.sync(() => {
+    assert.deepStrictEqual(
+      classifySeamChanges(
+        [{ status: "M", path: "seam.ts" }],
+        { ...baseConfig, seams: [{ path: "seam.ts", maxAdded: 3 }] },
+        new Map([["seam.ts", added]]),
+      ),
+      expected,
+    );
+  }),
+);
+
 const globCases: ReadonlyArray<{
   readonly glob: string;
   readonly path: string;

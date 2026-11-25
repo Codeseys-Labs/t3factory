@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
-import { initFactoryHome, withWorkflowsEnabled } from "./factory-home.ts";
+import { initFactoryHome, quoteHomePath, withWorkflowsEnabled } from "./factory-home.ts";
 
 it.effect.each([
   { name: "absent", input: null, expected: { text: '{\n  "workflowsEnabled": true\n}\n' } },
@@ -26,6 +26,12 @@ it.effect.each([
 ])("settings: $name", ({ input, expected }) =>
   Effect.sync(() => {
     assert.deepStrictEqual(withWorkflowsEnabled(input), expected);
+  }),
+);
+
+it.effect("quotes shell expansion and single quotes literally", () =>
+  Effect.sync(() => {
+    assert.strictEqual(quoteHomePath("/tmp/$USER/$(id)/it's"), "'/tmp/$USER/$(id)/it'\\''s'");
   }),
 );
 
@@ -61,6 +67,19 @@ it.layer(NodeServices.layer)("factory home", (it) => {
       assert.deepStrictEqual(yield* fs.readFile(database), new Uint8Array([0, 1, 2, 255]));
       assert.isTrue(yield* fs.exists(path.join(userdata, "settings.json")));
       assert.isTrue(yield* fs.exists(path.join(occupied, "workflows", ".factory-pack.json")));
+
+      const legacy = path.join(root, "legacy");
+      const legacyUserdata = path.join(legacy, "userdata");
+      yield* fs.makeDirectory(legacyUserdata, { recursive: true });
+      yield* fs.writeFileString(path.join(legacyUserdata, "state.sqlite"), "legacy");
+      const legacyError = yield* Effect.flip(initFactoryHome({ home: legacy, existing: false }));
+      assert.strictEqual(legacyError._tag, "FactoryHomeError");
+      assert.isFalse(yield* fs.exists(path.join(legacy, "workflows")));
+      yield* initFactoryHome({ home: legacy, existing: true });
+      assert.strictEqual(
+        yield* fs.readFileString(path.join(legacyUserdata, "state.sqlite")),
+        "legacy",
+      );
     }),
   );
 });

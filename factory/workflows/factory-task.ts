@@ -12,7 +12,9 @@ import {
   capturedKey,
   createTask,
   mergeApproved,
+  mergePullRequest,
   projectPullRequest,
+  pullRequestHead,
   readConfig,
   startPool,
   startTask,
@@ -312,6 +314,7 @@ const factoryTaskPart = workflow(
       if (failure !== undefined && failure.notes !== null) lastNotes = failure.notes;
     }
 
+    const headSha = yield* pullRequestHead(pr);
     if (
       (config.askMerge || config.mergeNeedsPerson) &&
       !(yield* mergeApproved(
@@ -321,15 +324,7 @@ const factoryTaskPart = workflow(
     ) {
       return yield* stop("merge held");
     }
-    yield* step(
-      "merge",
-      { returns: Schema.Void },
-      Effect.gen(function* () {
-        const detail = yield* pullRequests.read(pr);
-        if (detail.state === "merged") return;
-        yield* pullRequests.act(pr, "merge", { mergeMethod: config.mergeMethod });
-      }),
-    );
+    yield* mergePullRequest(pr, headSha, config.mergeMethod);
     return { outcome: "merged", prUrl } as const;
   }),
 );
@@ -464,7 +459,10 @@ const factoryCapture = workflow(
       step(
         "start",
         { returns: StartOutcome },
-        startTask(factoryTask, captured.taskId, "factory-capture"),
+        startTask(factoryTask, captured.taskId, "factory-capture", {
+          runId: run.id,
+          slot: "start",
+        }),
       ),
     );
     return { ...captured, runId: started.outcome === "dropped" ? null : started.runId };
@@ -474,14 +472,14 @@ const factoryCapture = workflow(
 const factoryStart = workflow(
   "factory-start",
   { version: 1, payload: Schema.Struct({ taskId: Schema.String }), returns: Started },
-  Effect.fn(function* (input) {
+  Effect.fn(function* (input, run) {
     const started = yield* within(
       startPool(input.taskId),
       { limit: 1 },
       step(
         "start",
         { returns: StartOutcome },
-        startTask(factoryTask, input.taskId, "factory-start"),
+        startTask(factoryTask, input.taskId, "factory-start", { runId: run.id, slot: "start" }),
       ),
     );
     if (started.outcome === "dropped") return yield* stop("task is dropped");

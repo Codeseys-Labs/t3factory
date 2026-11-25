@@ -15,7 +15,9 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 export const SeamConfig = Schema.Struct({
   base: Schema.String,
   owned: Schema.Array(Schema.String),
-  seams: Schema.Array(Schema.String),
+  seams: Schema.Array(
+    Schema.Union([Schema.String, Schema.Struct({ path: Schema.String, maxAdded: Schema.Number })]),
+  ),
   generated: Schema.Array(Schema.String),
 });
 export type SeamConfig = typeof SeamConfig.Type;
@@ -33,11 +35,14 @@ export type SeamOffenceReason =
   | "upstream-delete"
   | "upstream-rename"
   | "too-many-seams"
-  | "stale-seam";
+  | "stale-seam"
+  | "too-many-added-lines";
 
 export interface SeamOffence {
   readonly path: string;
   readonly reason: SeamOffenceReason;
+  readonly added?: number;
+  readonly maxAdded?: number;
 }
 
 export interface SeamChangeClassification {
@@ -169,6 +174,7 @@ const matchesAny = (globs: ReadonlyArray<string>, path: string) =>
 export const classifySeamChanges = (
   changes: ReadonlyArray<SeamChange>,
   config: SeamConfig,
+  addedLines: ReadonlyMap<string, number> = new Map(),
 ): SeamChangeClassification => {
   const offences: Array<SeamOffence> = [];
 
@@ -182,7 +188,9 @@ export const classifySeamChanges = (
       case "M":
         if (
           !matchesAny(config.owned, change.path) &&
-          !config.seams.includes(change.path) &&
+          !config.seams.some(
+            (seam) => (typeof seam === "string" ? seam : seam.path) === change.path,
+          ) &&
           !matchesAny(config.generated, change.path)
         ) {
           offences.push({ path: change.path, reason: "unlisted-edit" });
@@ -203,8 +211,15 @@ export const classifySeamChanges = (
 
   const changedPaths = new Set(changes.map((change) => change.path));
   for (const seam of config.seams) {
-    if (!changedPaths.has(seam)) {
-      offences.push({ path: seam, reason: "stale-seam" });
+    const path = typeof seam === "string" ? seam : seam.path;
+    if (!changedPaths.has(path)) {
+      offences.push({ path, reason: "stale-seam" });
+    }
+    if (typeof seam !== "string") {
+      const added = addedLines.get(path) ?? 0;
+      if (added > seam.maxAdded) {
+        offences.push({ path, reason: "too-many-added-lines", added, maxAdded: seam.maxAdded });
+      }
     }
   }
 
@@ -361,7 +376,25 @@ export const checkFactorySeams = Effect.fn("factorySeams.checkFactorySeams")(fun
   const diff = yield* runGit(repositoryRoot, ["diff", "--name-status", "-M", mergeBase, "HEAD"]);
   const changes = yield* parseSeamChanges(diff, config.owned);
 
-  return { changes, classification: classifySeamChanges(changes, config) };
+  const addedLines = new Map<string, number>();
+  for (const seam of config.seams) {
+    if (typeof seam === "string") continue;
+    const numstat = yield* runGit(repositoryRoot, [
+      "diff",
+      "--numstat",
+      mergeBase,
+      "HEAD",
+      "--",
+      seam.path,
+    ]);
+    if (!numstat) continue;
+    const added = numstat.split("\t")[0];
+    if (added === undefined || !/^\d+$/.test(added)) {
+      return yield* new FactorySeamsDiffParseError({ line: numstat.trim() });
+    }
+    addedLines.set(seam.path, Number(added));
+  }
+  return { changes, classification: classifySeamChanges(changes, config, addedLines) };
 });
 
 const reportClassification = Effect.fn("factorySeams.reportClassification")(function* (input: {
@@ -369,7 +402,11 @@ const reportClassification = Effect.fn("factorySeams.reportClassification")(func
   readonly classification: SeamChangeClassification;
 }) {
   for (const offence of input.classification.offences) {
-    yield* Console.log(`${offence.reason}\t${offence.path}`);
+    yield* Console.log(
+      offence.reason === "too-many-added-lines"
+        ? `${offence.reason}\t${offence.path}: ${offence.added} added lines exceeds cap ${offence.maxAdded}`
+        : `${offence.reason}\t${offence.path}`,
+    );
   }
   yield* Console.log(
     input.classification.ok

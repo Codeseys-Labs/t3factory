@@ -172,6 +172,9 @@ export const forkKeys = (upstreamEn: Catalog, generatedEn: Catalog): string[] =>
     .filter((key) => !Object.hasOwn(upstreamEn, key))
     .sort();
 
+export const pruneAdoptedOverlayKeys = (overlay: Catalog, upstreamEn: Catalog): Catalog =>
+  Object.fromEntries(Object.entries(overlay).filter(([key]) => !Object.hasOwn(upstreamEn, key)));
+
 export const mergeCatalogText = (upstreamText: string, entries: Catalog): string => {
   const keys = Object.keys(entries).sort();
   if (keys.length === 0) return upstreamText;
@@ -294,8 +297,15 @@ const run = Effect.fn("factoryI18n.run")(function* (
     )) {
       const overlayPath = path.join(overlayDir, name);
       const overlay = yield* readCatalog(yield* fs.readFileString(overlayPath), overlayPath);
+      if (mode === "merge") {
+        const pruned = pruneAdoptedOverlayKeys(overlay, upstreamEn);
+        if (Object.keys(pruned).length !== Object.keys(overlay).length) {
+          yield* fs.writeFileString(overlayPath, formatSource(pruned));
+        }
+      }
       for (const key of Object.keys(overlay)) {
         if (!Object.hasOwn(source, key)) {
+          if (mode === "merge" && Object.hasOwn(upstreamEn, key)) continue;
           yield* Console.error(`${app}/${name}: overlay key ${key} is not a fork key`);
           if (mode === "check") problems++;
         } else if (mode === "check" && !sameTranslationSlots(source[key], overlay[key])) {

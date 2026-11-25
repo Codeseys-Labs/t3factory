@@ -3,7 +3,9 @@
 import {
   PackConfig,
   mergeApproved,
+  mergePullRequest,
   projectPullRequest,
+  pullRequestHead,
   readConfig,
   taskTags,
 } from "./lib/records.ts";
@@ -92,6 +94,7 @@ export default workflow(
       if (standing.value.checks !== "passing" && standing.value.checks !== "none") {
         return yield* stop("checks are not passing");
       }
+      const headSha = yield* pullRequestHead(pr);
       const approved = yield* mergeApproved(
         {
           title: "Merge the upstream sync?",
@@ -103,15 +106,7 @@ export default workflow(
         config.mergeNeedsPerson,
       );
       if (!approved) return yield* stop("merge held");
-      yield* step(
-        "merge",
-        { returns: Schema.Void },
-        Effect.gen(function* () {
-          const detail = yield* pullRequests.read(pr);
-          if (detail.state === "merged") return;
-          yield* pullRequests.act(pr, "merge", { mergeMethod: "merge" });
-        }),
-      );
+      yield* mergePullRequest(pr, headSha, "merge");
     }
     yield* tags(taskTags(syncId, project, "done"));
     return { prUrl };

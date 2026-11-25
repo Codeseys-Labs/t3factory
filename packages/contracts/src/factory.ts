@@ -62,6 +62,18 @@ export const FactoryTask = Schema.Struct({
 });
 export type FactoryTask = typeof FactoryTask.Type;
 
+export const FactoryTaskRunInput = Schema.Struct({
+  taskId: FactoryTaskId,
+  number: Schema.Number,
+  attempt: Schema.Number,
+  title: Schema.String,
+  description: Schema.String,
+  projectId: Schema.NullOr(Schema.String),
+  model: Schema.NullOr(Schema.toType(ModelSelection)),
+  issueUrl: Schema.NullOr(Schema.String),
+});
+export type FactoryTaskRunInput = typeof FactoryTaskRunInput.Type;
+
 export const FactoryAttempt = Schema.Struct({
   v: Schema.Literal(1),
   taskId: FactoryTaskId,
@@ -269,6 +281,15 @@ export const FactoryRpcGroup = RpcGroup.make(
   FactoryTasksStartRpc,
   FactoryOrchestratorSetRpc,
 );
+
+export const FACTORY_RPC_AGGREGATES = {
+  [FACTORY_WS_METHODS.factoryTasksSubscribe]: "factory",
+  [FACTORY_WS_METHODS.factoryTasksGet]: "factory",
+  [FACTORY_WS_METHODS.factoryTasksCreate]: "factory",
+  [FACTORY_WS_METHODS.factoryTasksUpdate]: "factory",
+  [FACTORY_WS_METHODS.factoryTasksStart]: "factory",
+  [FACTORY_WS_METHODS.factoryOrchestratorSet]: "factory",
+} as const;
 
 export const FACTORY_RPC_READ_SCOPES = {
   [FACTORY_WS_METHODS.factoryTasksSubscribe]: AuthOrchestrationReadScope,

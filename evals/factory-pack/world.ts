@@ -53,6 +53,7 @@ export interface World {
   readonly nextTurn: Effect.Effect<AgentTurnInput>;
   readonly releaseTurn: (turn: AgentTurnInput) => Effect.Effect<void>;
   readonly finishExecutions: ReadonlyArray<string>;
+  readonly startExecutions: ReadonlyArray<string>;
   readonly validateRecords: (
     workflows: Service,
   ) => Effect.Effect<void, Workflows.WorkflowInputError>;
@@ -98,12 +99,14 @@ interface Script {
   readonly holdAgent?: (turn: AgentTurnInput) => boolean;
   readonly startError?: (turn: AgentTurnInput) => string | undefined;
   readonly failFinishAfterCommit?: boolean;
+  readonly failStartAfterCommit?: boolean;
   readonly failIssueCapture?: { readonly projectId: string; readonly issueKey: string };
 }
 
 const decodePullRequestDetail = Schema.decodeSync(PullRequestDetail);
 const decodeTaskRecord = Schema.decodeUnknownEffect(FactoryTask);
 const decodeAttemptRecord = Schema.decodeUnknownEffect(FactoryAttempt);
+const decodeAttemptJson = Schema.decodeUnknownOption(Schema.fromJsonString(FactoryAttempt));
 const decodeNoteRecord = Schema.decodeUnknownEffect(FactoryNote);
 
 const validateRecords = Effect.fn("factoryPack.validateRecords")(function* (workflows: Service) {
@@ -211,6 +214,8 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
   const activeCounts: Array<number> = [];
   const finishExecutions: Array<string> = [];
   let failFinish = script.failFinishAfterCommit === true;
+  const startExecutions: Array<string> = [];
+  let failStart = script.failStartAfterCommit === true;
   const questions: Array<Workflows.WorkflowQuestion> = [];
   const tagHistory: Array<{ readonly runId: string; readonly tags: ReadonlyArray<string> }> = [];
   const questionKeys = new Set<string>();
@@ -278,6 +283,62 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
                   failFinish = false;
                   return yield* Effect.die(new Error("Injected failure after finish committed"));
                 }
+                return result;
+              }),
+            });
+          },
+        }),
+      );
+    }),
+  });
+
+  const injectStartFailure = (definition: WorkflowDefinition): WorkflowDefinition => ({
+    ...definition,
+    body: Effect.fn("factoryPack.injectStartFailure")(function* (payload, run) {
+      const context = yield* RunContext;
+      return yield* definition.body(payload, run).pipe(
+        Effect.provideService(RunContext, {
+          ...context,
+          forStep: (name) => {
+            const services = context.forStep(name);
+            if (name !== "start") return services;
+            startExecutions.push(context.runId);
+            const values = Context.get(services, KeyValues);
+            let depth = 0;
+            let attemptCommitted = false;
+            // Dies once, after the write that gives the attempt its run commits: the gap
+            // between starting the task and the step recording its result.
+            const failOnce = Effect.suspend(() => {
+              if (!attemptCommitted || !failStart) return Effect.void;
+              failStart = false;
+              return Effect.die(new Error("Injected failure after start committed"));
+            });
+            return Context.add(services, KeyValues, {
+              ...values,
+              set: Effect.fn("factoryPack.startWrite")(function* (key, valueJson) {
+                yield* values.set(key, valueJson);
+                const attempt = decodeAttemptJson(valueJson);
+                if (
+                  key.startsWith("factory/v1/attempt/") &&
+                  Option.isSome(attempt) &&
+                  attempt.value.runId !== null
+                ) {
+                  attemptCommitted = true;
+                }
+                if (depth === 0) yield* failOnce;
+              }),
+              transaction: Effect.fn("factoryPack.startTransaction")(function* <A, E, R>(
+                effect: Effect.Effect<A, E, R>,
+              ) {
+                depth++;
+                const result = yield* values.transaction(effect).pipe(
+                  Effect.ensuring(
+                    Effect.sync(() => {
+                      depth--;
+                    }),
+                  ),
+                );
+                if (depth === 0) yield* failOnce;
                 return result;
               }),
             });
@@ -410,6 +471,13 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
       const definition = loaded[taskIndex];
       if (definition !== undefined) loaded[taskIndex] = injectFinishFailure(definition);
     }
+    if (script.failStartAfterCommit) {
+      for (const name of ["factory-start", "factory-capture"]) {
+        const index = loaded.findIndex((definition) => definition.name === name);
+        const definition = loaded[index];
+        if (definition !== undefined) loaded[index] = injectStartFailure(definition);
+      }
+    }
     if (script.failIssueCapture !== undefined) {
       const intakeIndex = loaded.findIndex((definition) => definition.name === "factory-intake");
       const definition = loaded[intakeIndex];
@@ -535,6 +603,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
     nextTurn: Queue.take(turnStarts),
     releaseTurn,
     finishExecutions,
+    startExecutions,
     validateRecords,
     expireQuestion,
     questions,

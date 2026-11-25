@@ -6,11 +6,19 @@ import {
   jsonEqual,
   mergeCatalogText,
   missingTranslationKeys,
+  pruneAdoptedOverlayKeys,
   sameTranslationSlots,
 } from "./factory-i18n.ts";
 
 it("identifies only generated keys absent upstream, in sorted order", () => {
   assert.deepStrictEqual(forkKeys({ old: "Old" }, { z: "Z", old: "Changed", a: "A" }), ["a", "z"]);
+});
+
+it("prunes keys adopted upstream while retaining other overlay entries", () => {
+  assert.deepStrictEqual(
+    pruneAdoptedOverlayKeys({ adopted: "A", fork: "F", stale: "S" }, { adopted: "A" }),
+    { fork: "F", stale: "S" },
+  );
 });
 
 it.each(["\n", ""])(

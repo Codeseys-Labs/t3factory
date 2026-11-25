@@ -485,6 +485,7 @@ it("failing checks continue the do thread in fix/0 before review and merge", () 
           "failing",
           "passing",
           "passing",
+          "passing",
         ]);
         expect(
           (yield* workflows.get(child.runId)).steps
@@ -1511,6 +1512,7 @@ effectIt.effect.each(["own", "foreign", "unreadable"] as const)(
                   { project: PROJECT, url: reportedUrl },
                   { project: PROJECT, url: canonicalUrl },
                   { project: PROJECT, url: canonicalUrl },
+                  { project: PROJECT, url: canonicalUrl },
                 ]);
                 expect(steps.find((step) => step.name === "checks/0")?.result).toMatchObject({
                   url: canonicalUrl,
@@ -1613,6 +1615,42 @@ effectIt.effect.each([
     );
   }),
 );
+
+it("P2a reads an unlisted pull request through a lowercase GitHub URL", () => {
+  const answers = script();
+  const reportedUrl = PR_URL.toUpperCase();
+  const canonicalUrl = "https://github.com/Factory/Pack/pull/17";
+  return withWorld(
+    {
+      ...answers,
+      pullRequests: [pullRequestAt(99)],
+      agent: (turn) =>
+        turn.origin.step === "do"
+          ? { output: { summary: "Implemented.", prUrl: reportedUrl } }
+          : answers.agent(turn),
+      readPullRequest: (_address, detail) =>
+        Effect.succeed({ ...detail, number: 17, repository: "factory/pack", url: canonicalUrl }),
+    },
+    (world) =>
+      world.server(
+        Effect.fn("factoryPack.test.uppercaseUnlisted")(function* (workflows) {
+          yield* workflows.storeSet("factory/v1/config", { v: 1, askPlan: false, askMerge: false });
+          const { runId } = yield* startTask(workflows);
+          const child = yield* world.child(workflows, runId, 0);
+          const part = yield* world.ended(workflows, child.runId, true);
+          const done = yield* world.ended(workflows, runId, true);
+          expectMerged(world, done, part, canonicalUrl);
+          const [fallback, ...rest] = world.readCalls;
+          expect(fallback).toMatchObject({
+            project: PROJECT,
+            url: expect.stringMatching(/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/17$/),
+          });
+          expect(rest.length).toBeGreaterThan(0);
+          expect(rest).toEqual(rest.map(() => ({ project: PROJECT, url: canonicalUrl })));
+        }),
+      ),
+  );
+});
 
 effectIt.effect.each([
   { label: "global", key: "factory/v1/config" },
@@ -1871,6 +1909,41 @@ effectIt.effect.each(invalidCaptures)(
             expect(yield* workflows.stored("factory/v1/")).toEqual([]);
             expect(world.turns).toEqual([]);
             expect(world.acts).toEqual([]);
+          }),
+        ),
+      ),
+    ),
+);
+
+const BAD_TASK_ID = "30000000-0000-4000-8000-000000000001";
+const damagedReferences: ReadonlyArray<{ label: string; input: Schema.JsonObject }> = [
+  { label: "parent", input: { title: "Child task", parentId: BAD_TASK_ID } },
+  { label: "blocker", input: { title: "Blocked task", blockedBy: [BAD_TASK_ID] } },
+];
+
+effectIt.effect.each(damagedReferences)(
+  "H4 a damaged $label task returns a problem and writes no task",
+  ({ input }) =>
+    Effect.promise(() =>
+      withWorld(script(), (world) =>
+        world.server(
+          Effect.fn("factoryPack.test.damagedReference")(function* (workflows) {
+            const damaged = {
+              key: `factory/v1/task/${BAD_TASK_ID}`,
+              value: { v: 1, broken: true },
+            };
+            yield* workflows.storeSet(damaged.key, damaged.value);
+            const { runId } = yield* workflows.start("factory-capture", input, {
+              idempotencyKey: "damaged-reference",
+            });
+            const done = yield* world.ended(workflows, runId, true);
+            expect(done.status).toBe("completed");
+            const problem = yield* decodeProblem(done.result).pipe(Effect.orDie);
+            expect(done.result).toEqual(problem);
+            expect(problem.problem.trim().length).toBeGreaterThan(0);
+            expect(yield* workflows.stored("factory/v1/task/")).toEqual([damaged]);
+            expect(world.turns).toEqual([]);
+            yield* workflows.storeDelete(damaged.key);
           }),
         ),
       ),
@@ -2311,6 +2384,68 @@ it("P9 retrying finish after a committed note writes exactly one note", () =>
     ),
   ));
 
+effectIt.effect.each([
+  { workflow: "factory-start", seeded: true, input: { taskId: TASK_ID } },
+  {
+    workflow: "factory-capture",
+    seeded: false,
+    input: {
+      title: "Replayed capture",
+      description: "Start the task once.",
+      projectId: PROJECT,
+      parentId: null,
+      blockedBy: [],
+      lane: "ready",
+      assignee: null,
+      model: MODEL,
+      start: true,
+    },
+  },
+] as const)("H2 replaying $workflow after its attempt committed starts no second run", (entry) =>
+  Effect.promise(() =>
+    withWorld({ ...script(), failStartAfterCommit: true }, (world) =>
+      world.server(
+        Effect.fn("factoryPack.test.startReplay")(function* (workflows) {
+          if (entry.seeded) {
+            yield* workflows.storeSet("factory/v1/seq", TASK.number);
+            yield* workflows.storeSet(`factory/v1/task/${TASK_ID}`, TASK);
+          }
+          const { runId } = yield* workflows.start(entry.workflow, entry.input, {
+            idempotencyKey: "start-replay",
+          });
+          const paused = yield* workflows.waitFor(
+            runId,
+            (run) => run.status === "paused" || run.endedAt !== null,
+          );
+          expect(paused.status).toBe("paused");
+          expect(paused.detail).toContain("Injected failure after start committed");
+          expect(world.startExecutions).toEqual([runId]);
+          const attempts = yield* workflows.stored("factory/v1/attempt/");
+          expect(attempts).toHaveLength(1);
+          const attempt = yield* decodeAttempt(attempts[0]?.value).pipe(Effect.orDie);
+          if (attempt.runId === null) throw new Error("the start step did not record its run");
+          yield* ask(world, workflows, attempt.runId, "approve-plan", "plan", ["Start", "Drop"]);
+          yield* workflows.answer(attempt.runId, "approve-plan", { choice: "Drop" });
+          const dropped = yield* workflows.waitFor(attempt.runId, (run) => run.endedAt !== null);
+          expect(dropped.status).toBe("stopped");
+          yield* workflows.resume(runId);
+          const done = yield* world.ended(workflows, runId);
+          expect(done.status).toBe("completed");
+          expect(done.result).toMatchObject({ taskId: attempt.taskId, runId: attempt.runId });
+          expect(world.startExecutions).toEqual([runId, runId]);
+          expect(yield* workflows.stored("factory/v1/attempt/")).toEqual(attempts);
+          expect(
+            (yield* workflows.list())
+              .filter((run) => run.workflow === "factory-task")
+              .map((run) => run.runId),
+          ).toEqual([attempt.runId]);
+          expect(world.turns).toHaveLength(1);
+        }),
+      ),
+    ),
+  ),
+);
+
 it("P10 merge reads the PR again and does not act when it is already merged", () => {
   const answers = script();
   let merged = false;
@@ -2340,13 +2475,60 @@ it("P10 merge reads the PR again and does not act when it is already merged", ()
             outcome: "merged",
             prUrl: PR_URL,
           });
-          expect(world.reads.map((read) => read.standing.state)).toEqual(["open", "merged"]);
+          expect(world.reads.map((read) => read.standing.state)).toEqual([
+            "open",
+            "open",
+            "merged",
+          ]);
           expect(world.acts).toEqual([]);
           expectTurns(world, child.runId, ["do", "review/0"]);
         }),
       ),
   );
 });
+
+effectIt.effect.each([
+  { label: "unchanged", pushed: "aaa111", merged: true },
+  { label: "pushed", pushed: "bbb222", merged: false },
+] as const)("H1 the pull request head is $label while the merge waits", (entry) =>
+  Effect.promise(() => {
+    const answers = script();
+    let approved = false;
+    return withWorld(
+      {
+        ...answers,
+        readPullRequest: (_address, detail) =>
+          Effect.succeed({ ...detail, headSha: approved ? entry.pushed : "aaa111" }),
+      },
+      (world) =>
+        world.server(
+          Effect.fn("factoryPack.test.headBinding")(function* (workflows) {
+            const { runId } = yield* startTask(workflows);
+            yield* approvePlan(world, workflows, runId);
+            const child = yield* world.child(workflows, runId, 0);
+            yield* ask(world, workflows, child.runId, "approve-merge", "merge", ["Merge", "Hold"]);
+            approved = true;
+            yield* workflows.answer(child.runId, "approve-merge", { choice: "Merge" });
+            const part = yield* world.ended(workflows, child.runId);
+            const done = yield* world.ended(workflows, runId);
+            if (entry.merged) {
+              expectMerged(world, done, part, PR_URL);
+              return;
+            }
+            expect(part).toMatchObject({
+              status: "stopped",
+              detail: "pull request head changed after review",
+            });
+            expect(done.status).toBe("completed");
+            expect(done.result).toMatchObject({
+              parts: [{ title: PART.title, outcome: "stopped" }],
+            });
+            expect(world.acts).toEqual([]);
+          }),
+        ),
+    );
+  }),
+);
 
 effectIt.effect.each([
   { baseRef: "origin/factory", branch: "factory" },
@@ -2446,7 +2628,9 @@ effectIt.effect.each([false, true])(
               expect(continuation?.prompt).toMatch(/\bsummary\b/i);
               expect(continuation?.prompt).toMatch(/\b(?:prUrl|pull request)\b/i);
               expect(world.reads.map(({ standing }) => standing.checks)).toEqual(
-                needsFix ? ["failing", "passing", "passing"] : ["passing", "passing"],
+                needsFix
+                  ? ["failing", "passing", "passing", "passing"]
+                  : ["passing", "passing", "passing"],
               );
               if (needsFix) {
                 const fix = world.turns.find(

@@ -240,6 +240,7 @@ effectIt.effect.each(["own", "foreign", "unreadable"] as const)(
                   { project: PROJECT, url: reportedUrl },
                   { project: PROJECT, url: canonicalUrl },
                   { project: PROJECT, url: canonicalUrl },
+                  { project: PROJECT, url: canonicalUrl },
                 ]);
                 expect(steps.find((step) => step.name === "checks/0")?.result).toMatchObject({
                   url: canonicalUrl,
@@ -268,6 +269,86 @@ effectIt.effect.each(["own", "foreign", "unreadable"] as const)(
     }),
 );
 
+it("P2a sync reads an unlisted pull request through a lowercase GitHub URL", () => {
+  const answers = script();
+  const reportedUrl = PR_URL.toUpperCase();
+  const canonicalUrl = "https://github.com/Factory/Pack/pull/17";
+  return withWorld(
+    {
+      ...answers,
+      pullRequests: [pullRequestAt(99)],
+      agent: (turn) => ({
+        ...answers.agent(turn),
+        output: { ...SYNCED, prUrl: reportedUrl },
+      }),
+      readPullRequest: (_address, detail) =>
+        Effect.succeed({ ...detail, number: 17, repository: "factory/pack", url: canonicalUrl }),
+    },
+    (world) =>
+      world.server(
+        Effect.fn("factoryPack.test.syncUppercaseUnlisted")(function* (workflows) {
+          const { runId } = yield* startSync(workflows);
+          const question = yield* world.question(workflows, runId);
+          expect(question.request).toMatchObject({
+            data: { ...SYNCED, prUrl: canonicalUrl, ref: REF },
+          });
+          yield* workflows.answer(runId, question.name, { choice: "Merge" });
+          const done = yield* world.ended(workflows, runId);
+          expect(done).toMatchObject({ status: "completed", result: { prUrl: canonicalUrl } });
+          const [fallback, ...rest] = world.readCalls;
+          expect(fallback).toMatchObject({
+            project: PROJECT,
+            url: expect.stringMatching(/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/17$/),
+          });
+          expect(rest.length).toBeGreaterThan(0);
+          expect(rest).toEqual(rest.map(() => ({ project: PROJECT, url: canonicalUrl })));
+          expect(world.acts).toEqual([
+            [{ project: PROJECT, url: canonicalUrl }, "merge", { mergeMethod: "merge" }],
+          ]);
+        }),
+      ),
+  );
+});
+
+effectIt.effect.each([
+  { label: "unchanged", pushed: "aaa111", merged: true },
+  { label: "pushed", pushed: "bbb222", merged: false },
+] as const)("H1 sync: the pull request head is $label while the merge waits", (entry) =>
+  Effect.promise(() => {
+    const answers = script();
+    let approved = false;
+    return withWorld(
+      {
+        ...answers,
+        readPullRequest: (_address, detail) =>
+          Effect.succeed({ ...detail, headSha: approved ? entry.pushed : "aaa111" }),
+      },
+      (world) =>
+        world.server(
+          Effect.fn("factoryPack.test.syncHeadBinding")(function* (workflows) {
+            const { runId } = yield* startSync(workflows);
+            yield* askMerge(world, workflows, runId);
+            approved = true;
+            yield* workflows.answer(runId, "approve-merge", { choice: "Merge" });
+            const done = yield* world.ended(workflows, runId);
+            if (entry.merged) {
+              expect(done).toMatchObject({ status: "completed", result: { prUrl: PR_URL } });
+              expect(world.acts).toEqual([
+                [{ project: PROJECT, url: PR_URL }, "merge", { mergeMethod: "merge" }],
+              ]);
+            } else {
+              expect(done).toMatchObject({
+                status: "stopped",
+                detail: "pull request head changed after review",
+              });
+              expect(world.acts).toEqual([]);
+            }
+          }),
+        ),
+    );
+  }),
+);
+
 const REFS = [
   { ref: "v1", branch: "sync/upstream-v1" },
   { ref: "v1-", branch: "sync/upstream-v1-" },
@@ -281,8 +362,13 @@ const REFS = [
 ];
 
 const SHELLS = [
-  { name: "POSIX shell", label: "POSIX shell (bash, zsh, sh)", command: "sh", args: ["-c"] },
-  { name: "PowerShell", label: "PowerShell", command: "pwsh", args: ["-NoProfile", "-Command"] },
+  { name: "POSIX shell", label: "POSIX shell (bash, zsh, sh)", commands: ["sh"], args: ["-c"] },
+  {
+    name: "PowerShell",
+    label: "PowerShell",
+    commands: ["pwsh", "powershell.exe"],
+    args: ["-NoProfile", "-Command"],
+  },
 ];
 
 it("every ref reaches the agent as one literal argument and gets a branch of its own", async () => {
@@ -293,9 +379,13 @@ it("every ref reaches the agent as one literal argument and gets a branch of its
       printArguments,
       'console.log(Buffer.from(JSON.stringify(process.argv.slice(2))).toString("hex"));',
     );
-    const shells = SHELLS.filter(
-      (shell) => NodeChildProcess.spawnSync(shell.command, [...shell.args, "exit 0"]).status === 0,
-    );
+    const shells = SHELLS.flatMap((shell) => {
+      const command = shell.commands.find(
+        (candidate) =>
+          NodeChildProcess.spawnSync(candidate, [...shell.args, "exit 0"]).status === 0,
+      );
+      return command === undefined ? [] : [{ ...shell, command }];
+    });
     expect(shells.length).toBeGreaterThan(0);
     await withWorld(script({ checks: REFS.map(() => "failing" as const) }), (world) =>
       world.server(

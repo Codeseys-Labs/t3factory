@@ -81,7 +81,9 @@ const matchesAny = (globs: ReadonlyArray<string>, path: string) =>
   globs.some((glob) => matchesSeamGlob(glob, path));
 
 export const classifyConflict = (path: string, config: SeamConfig): ConflictKind => {
-  if (config.seams.includes(path)) return "seam";
+  if (path === "<unclassified merge conflict>") return "outside";
+  if (config.seams.some((seam) => (typeof seam === "string" ? seam : seam.path) === path))
+    return "seam";
   if (matchesAny(config.generated, path)) return "generated";
   if (matchesAny(config.owned, path)) return "owned";
   return "outside";
@@ -89,9 +91,10 @@ export const classifyConflict = (path: string, config: SeamConfig): ConflictKind
 
 // `merge-tree -z` ends each entry in NUL and leaves paths unquoted; the tree id comes first.
 // Without NUL the output is the newline format, where git may quote unusual paths.
-export const parseMergeTreeConflicts = (stdout: string): ReadonlyArray<string> => {
+export const parseMergeTreeConflicts = (stdout: string, exitCode = 0): ReadonlyArray<string> => {
   const [, ...paths] = stdout.includes("\0") ? stdout.split("\0") : stdout.split(/\r?\n/);
-  return [...new Set(paths.filter((path) => path.length > 0))];
+  const conflicts = [...new Set(paths.filter((path) => path.length > 0))];
+  return exitCode === 1 && conflicts.length === 0 ? ["<unclassified merge conflict>"] : conflicts;
 };
 
 const escapeField = (value: string): string => {
@@ -276,10 +279,12 @@ export const planUpstreamSync = Effect.fn("factorySync.planUpstreamSync")(functi
     ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", "HEAD", sha],
     [0, 1],
   );
-  const conflicts = parseMergeTreeConflicts(merge.stdout).map((path): UpstreamConflict => ({
-    kind: classifyConflict(path, config),
-    path,
-  }));
+  const conflicts = parseMergeTreeConflicts(merge.stdout, merge.exitCode).map(
+    (path): UpstreamConflict => ({
+      kind: classifyConflict(path, config),
+      path,
+    }),
+  );
 
   return {
     clean,

@@ -19,7 +19,7 @@ vp run dev --home-dir "<dir>"
 It loads the pack from `<dir>/workflows`, picks free ports, and prints a `pairingUrl:` line; open that link in a browser. To get a new pairing link later, run `node apps/server/src/bin.ts pair --base-dir "<dir>"`. A path such as `~/.t3factory-v2` works for `<dir>`. This runs the development build from the checkout; a packaged desktop build of T3 Factory does not exist yet.
 
 - Never point `init` or the dev server at a home that is in use, and never start Factory against `~/.t3/userdata` or `~/.t3factory`. The first is T3 Code's home; the second is the live v1 install.
-- `init` refuses a home that already has a database. Pass `--existing` only to run it again on a home Factory created.
+- `init` refuses a home that already has a database (`userdata/statev2.sqlite` or legacy `userdata/state.sqlite`). Pass `--existing` only to run it again on a home Factory created.
 - Add `--skills <skills-dir>` to also install the Orchestrator skill, as `<skills-dir>/t3factory-orchestrator`. Use the folder your agent reads skills from.
 - `node scripts/factory-home.ts status --home <dir>` says whether workflows are on and whether each pack file is current. It exits 1 when either is not.
 
@@ -40,7 +40,7 @@ The server reloads changed top-level workflow files without a restart, but not t
 - Running `install` again updates the pack files and removes ones the pack no longer ships.
 - A file in `workflows` that is not from the pack and differs from it is a conflict: nothing is written, and the paths are listed. `--force` overwrites them.
 - `status` prints `same`, `changed`, `missing` or `stale` per file and exits 1 unless all are `same`.
-- `uninstall` removes only the files the manifest lists.
+- `uninstall` removes only the files the manifest lists, and prints a restart warning if it removed helpers under `lib/`.
 - The skill is copied by `install` and left alone by `status` and `uninstall`.
 
 ## Take a new upstream nightly
@@ -89,16 +89,17 @@ Write the string in Factory code through `gt-react` as upstream's [translation p
 3. Add each key and its translation to `factory/i18n/<app>/<locale>.json`, one file per locale. Keys are the generated hashes.
 4. Run `merge` again, then `node scripts/factory-i18n.ts check --base origin/main`.
 
-`check` fails when a catalog is not upstream's plus Factory's sorted keys, when a Factory key is missing, when `source.json` is stale, or when an overlay disagrees with its catalog. It also fails on a locale's translation that is absent, or identical to English while the English has letters outside its `{placeholders}`; a string such as `{task} {title}, {column}` may stay as it is. A translation must keep every placeholder name and every embedded element of the English. Word order and the number of text segments may differ. `--base` defaults to `origin/main`.
+`merge` prunes any overlay key that upstream now defines in `en.json`. `check` fails when a catalog is not upstream's plus Factory's sorted keys, when a Factory key is missing from an overlay, when `source.json` is stale, or when an overlay disagrees with its catalog. A translation must keep every placeholder name and every embedded element of the English; word order and the number of text segments may differ. `--base` defaults to `origin/main`.
 
 ## What Factory CI checks
 
 `.github/workflows/factory.yml` runs on pull requests and pushes to `factory`, and by hand. Upstream's workflows are disabled in the fork. It checks, in order:
 
-- the lockfile equals `origin/main`'s;
-- `node scripts/factory-seams.ts --base origin/main`;
-- typecheck of contracts, server, web, scripts and evals;
-- the server's `factory` tests, the seam, pack, home and i18n script tests, and `evals/factory-pack`;
+- the lockfile equals the merge base with `origin/main`;
+- `node scripts/factory-seams.ts --base origin/main` (including per-seam `maxAdded` line caps);
+- typecheck of contracts, server, client-runtime, web, mobile, scripts and evals;
+- upstream seam tests (`ws.test.ts`, `RpcAuthorization.test.ts`, `RpcInstrumentation.test.ts`, `rpc.test.ts`, `client.test.ts`);
+- the server's `factory` tests, all `scripts/factory-*.test.ts` tests, and `evals/factory-pack`;
 - the web `src/factory` unit tests;
 - `vp run i18n:check`, upstream's catalog check;
 - `node scripts/factory-i18n.ts check`, the fork's translations.

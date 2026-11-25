@@ -271,9 +271,17 @@ export const uninstallFactoryPack = Effect.fn("factoryPack.uninstall")(function*
   const directory = path.join(home, "workflows");
   const manifest = yield* readManifest(directory);
   if (manifest === null) return;
-  for (const name of manifest.keys())
-    yield* fs.remove(path.join(directory, ...name.split("/")), { force: true });
+  let removedNested = false;
+  for (const name of manifest.keys()) {
+    const filename = path.join(directory, ...name.split("/"));
+    if (name.includes("/") && (yield* fs.exists(filename))) removedNested = true;
+    yield* fs.remove(filename, { force: true });
+  }
   yield* fs.remove(path.join(directory, manifestName));
+  if (removedNested)
+    yield* Console.log(
+      "Restart the server to finish removing this pack: a running server keeps the old lib/ helpers.",
+    );
 });
 
 const command = Command.make("factory-pack").pipe(

@@ -47,7 +47,7 @@ export class FactorySyncGitError extends Schema.TaggedError<FactorySyncGitError>
   override get message(): string {
     const detail = this.stderr ? `: ${this.stderr.trim()}` : "";
     const hint = this.command.includes("merge-tree")
-      ? " (merge-tree --write-tree needs git 2.38 or later)"
+      ? " (merge-tree --write-tree needs git 2.38 or later, and GIT_NO_LAZY_FETCH needs 2.44)"
       : "";
     return `factory-sync: git ${this.command} failed during ${this.operation}${detail}${hint}`;
   }
@@ -87,9 +87,10 @@ export const classifyConflict = (path: string, config: SeamConfig): ConflictKind
   return "outside";
 };
 
+// Input is `merge-tree -z` output: the tree id, then each path ends in NUL and is unquoted.
 export const parseMergeTreeConflicts = (stdout: string): ReadonlyArray<string> => {
-  const [, ...lines] = stdout.split(/\r?\n/);
-  return [...new Set(lines.filter((line) => line.length > 0))];
+  const [, ...paths] = stdout.split("\0");
+  return [...new Set(paths.filter((path) => path.length > 0))];
 };
 
 export const planProblemCount = (plan: UpstreamSyncPlan): number =>
@@ -125,7 +126,9 @@ const runGit = Effect.fn("factorySync.runGit")(function* (
   return yield* Effect.scoped(
     Effect.gen(function* () {
       const child = yield* spawner
-        .spawn(ChildProcess.make("git", args, { cwd }))
+        .spawn(
+          ChildProcess.make("git", args, { cwd, env: { GIT_NO_LAZY_FETCH: "1" }, extendEnv: true }),
+        )
         .pipe(
           Effect.mapError(
             (cause) => new FactorySyncGitError({ ...context, operation: "spawn", cause }),
@@ -249,7 +252,7 @@ export const planUpstreamSync = Effect.fn("factorySync.planUpstreamSync")(functi
 
   const merge = yield* runGitExpecting(
     repositoryRoot,
-    ["merge-tree", "--write-tree", "--name-only", "--no-messages", "HEAD", sha],
+    ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", "HEAD", sha],
     [0, 1],
   );
   const conflicts = parseMergeTreeConflicts(merge.stdout).map((path): UpstreamConflict => ({

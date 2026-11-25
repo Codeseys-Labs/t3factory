@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { assert, it } from "@effect/vitest";
+import { assert, it, vi } from "@effect/vitest";
+import * as NodeURL from "node:url";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -35,13 +36,18 @@ it.effect.each([
 );
 
 it.effect.each([
-  { name: "only the tree id", stdout: "abc123\n", expected: [] },
+  { name: "only the tree id", stdout: "abc123\0", expected: [] },
   { name: "nothing", stdout: "", expected: [] },
-  { name: "several paths", stdout: "abc123\na.ts\nb/c.ts\n", expected: ["a.ts", "b/c.ts"] },
+  { name: "several paths", stdout: "abc123\0a.ts\0b/c.ts\0", expected: ["a.ts", "b/c.ts"] },
   {
-    name: "duplicates and blank lines",
-    stdout: "abc123\r\na.ts\r\n\r\nb.ts\r\na.ts\r\n\r\n",
+    name: "duplicates and empty entries",
+    stdout: "abc123\0a.ts\0\0b.ts\0a.ts\0\0",
     expected: ["a.ts", "b.ts"],
+  },
+  {
+    name: "paths with non-ASCII, spaces and newlines",
+    stdout: "abc123\0factory/café.txt\0a b\nc.ts\0",
+    expected: ["factory/café.txt", "a b\nc.ts"],
   },
 ])("parses merge-tree output: $name", ({ stdout, expected }) =>
   Effect.sync(() => {
@@ -115,14 +121,37 @@ it.effect("formats the plan as tab-separated lines", () =>
 
 const seamsJson = `${JSON.stringify(config, null, 2)}\n`;
 
+// The planner's git subprocesses inherit the process environment, so the fixture
+// points git at an empty global file and ignores the system file while a test runs.
+const isolateGitConfig = Effect.fn("factorySyncTest.isolateGitConfig")(function* (root: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const globalConfig = path.join(root, "empty-gitconfig");
+  yield* fs.writeFileString(globalConfig, "");
+  yield* Effect.acquireRelease(
+    Effect.sync(() => {
+      vi.stubEnv("GIT_CONFIG_GLOBAL", globalConfig);
+      vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
+    }),
+    () => Effect.sync(() => vi.unstubAllEnvs()),
+  );
+});
+
+const makeGit = Effect.fn("factorySyncTest.makeGit")(function* (cwd: string) {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  return (...args: ReadonlyArray<string>) =>
+    spawner.string(ChildProcess.make("git", ["-c", "commit.gpgsign=false", ...args], { cwd }));
+});
+
 const makeRepository = Effect.fn("factorySyncTest.makeRepository")(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "factory-sync-" });
+  const root = yield* fs.makeTempDirectoryScoped({ prefix: "factory-sync-" });
+  yield* isolateGitConfig(root);
+  const cwd = path.join(root, "repository");
+  yield* fs.makeDirectory(cwd);
+  const git = yield* makeGit(cwd);
 
-  const git = (...args: ReadonlyArray<string>) =>
-    spawner.string(ChildProcess.make("git", ["-c", "commit.gpgsign=false", ...args], { cwd }));
   const write = (file: string, text: string) =>
     Effect.gen(function* () {
       yield* fs.makeDirectory(path.dirname(path.join(cwd, file)), { recursive: true });
@@ -139,12 +168,18 @@ const makeRepository = Effect.fn("factorySyncTest.makeRepository")(function* () 
   yield* git("config", "user.email", "factory-test@example.com");
   yield* git("config", "core.autocrlf", "false");
   yield* write("factory/seams.json", seamsJson);
+  yield* write("factory/café.txt", "one\ntwo\nthree\n");
   yield* write("shared.txt", "one\ntwo\nthree\n");
   yield* write("other.txt", "untouched\n");
   yield* commit("base");
 
-  return { cwd, git, write, commit };
+  return { root, cwd, git, write, commit };
 });
+
+const missingObjects = (git: Effect.Success<ReturnType<typeof makeGit>>, ref: string) =>
+  git("rev-list", "--objects", "--missing=print", ref).pipe(
+    Effect.map((out) => out.split("\n").filter((line) => line.startsWith("?"))),
+  );
 
 it.layer(NodeServices.layer)("factory sync plan", (it) => {
   it.effect("reports a clean merge", () =>
@@ -186,6 +221,22 @@ it.layer(NodeServices.layer)("factory sync plan", (it) => {
     }),
   );
 
+  it.effect("classifies a conflict in a non-ASCII path by its real name", () =>
+    Effect.gen(function* () {
+      const repository = yield* makeRepository();
+      yield* repository.git("switch", "-c", "upstream");
+      yield* repository.write("factory/café.txt", "one\nupstream\nthree\n");
+      yield* repository.commit("upstream edit");
+      yield* repository.git("switch", "main");
+      yield* repository.write("factory/café.txt", "one\nlocal\nthree\n");
+      yield* repository.commit("local edit");
+
+      const plan = yield* planUpstreamSync(repository.cwd, "upstream");
+      assert.deepStrictEqual(plan.conflicts, [{ kind: "owned", path: "factory/café.txt" }]);
+      assert.strictEqual(planExitCode(plan), 0);
+    }),
+  );
+
   it.effect("fails on an unknown ref and a dirty tree", () =>
     Effect.gen(function* () {
       const repository = yield* makeRepository();
@@ -218,6 +269,40 @@ it.layer(NodeServices.layer)("factory sync plan", (it) => {
       assert.strictEqual(plan.mergeBase.status, "none");
       assert.deepStrictEqual(plan.conflicts, []);
       assert.strictEqual(planExitCode(plan), 1);
+    }),
+  );
+
+  it.effect("does not fetch missing objects in a partial clone", () =>
+    Effect.gen(function* () {
+      const source = yield* makeRepository();
+      yield* source.git("config", "uploadpack.allowFilter", "true");
+      yield* source.git("config", "uploadpack.allowAnySHA1InWant", "true");
+      yield* source.git("switch", "-c", "upstream");
+      yield* source.write("shared.txt", "one\nupstream\nthree\n");
+      yield* source.commit("upstream edit");
+      yield* source.git("switch", "main");
+      yield* source.write("shared.txt", "one\ntwo\nlocal\n");
+      yield* source.commit("local edit");
+
+      const path = yield* Path.Path;
+      const clone = path.join(source.root, "clone");
+      yield* source.git(
+        "-c",
+        "protocol.file.allow=always",
+        "clone",
+        "--filter=blob:none",
+        "--branch",
+        "main",
+        NodeURL.pathToFileURL(source.cwd).href,
+        clone,
+      );
+      const git = yield* makeGit(clone);
+      const before = yield* missingObjects(git, "origin/upstream");
+      assert.isAbove(before.length, 0);
+
+      const error = yield* Effect.flip(planUpstreamSync(clone, "origin/upstream"));
+      assert.strictEqual(error._tag, "FactorySyncGitError");
+      assert.deepStrictEqual(yield* missingObjects(git, "origin/upstream"), before);
     }),
   );
 });

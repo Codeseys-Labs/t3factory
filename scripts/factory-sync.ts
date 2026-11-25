@@ -47,7 +47,7 @@ export class FactorySyncGitError extends Schema.TaggedError<FactorySyncGitError>
   override get message(): string {
     const detail = this.stderr ? `: ${this.stderr.trim()}` : "";
     const hint = this.command.includes("merge-tree")
-      ? " (merge-tree --write-tree needs git 2.38 or later, and GIT_NO_LAZY_FETCH needs 2.44)"
+      ? " (merge-tree --write-tree needs git 2.38 or later; objects missing from a partial clone are never fetched, so fetch them first)"
       : "";
     return `factory-sync: git ${this.command} failed during ${this.operation}${detail}${hint}`;
   }
@@ -87,10 +87,25 @@ export const classifyConflict = (path: string, config: SeamConfig): ConflictKind
   return "outside";
 };
 
-// Input is `merge-tree -z` output: the tree id, then each path ends in NUL and is unquoted.
+// `merge-tree -z` ends each entry in NUL and leaves paths unquoted; the tree id comes first.
+// Without NUL the output is the newline format, where git may quote unusual paths.
 export const parseMergeTreeConflicts = (stdout: string): ReadonlyArray<string> => {
-  const [, ...paths] = stdout.split("\0");
+  const [, ...paths] = stdout.includes("\0") ? stdout.split("\0") : stdout.split(/\r?\n/);
   return [...new Set(paths.filter((path) => path.length > 0))];
+};
+
+const escapeField = (value: string): string => {
+  let escaped = "";
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0;
+    if (character === "\\") escaped += "\\\\";
+    else if (character === "\t") escaped += "\\t";
+    else if (character === "\n") escaped += "\\n";
+    else if (character === "\r") escaped += "\\r";
+    else if (code < 0x20 || code === 0x7f) escaped += `\\x${code.toString(16).padStart(2, "0")}`;
+    else escaped += character;
+  }
+  return escaped;
 };
 
 export const planProblemCount = (plan: UpstreamSyncPlan): number =>
@@ -105,14 +120,22 @@ export const planExitCode = (plan: UpstreamSyncPlan): 0 | 1 =>
 export const formatPlan = (plan: UpstreamSyncPlan): ReadonlyArray<string> => {
   const lines = [
     `tree\t${plan.clean ? "clean" : "dirty"}`,
-    `ref\t${plan.ref}\t${plan.refFound ? "found" : "unknown"}`,
+    `ref\t${escapeField(plan.ref)}\t${plan.refFound ? "found" : "unknown"}`,
   ];
   if (plan.mergeBase.status === "found") lines.push(`merge-base\t${plan.mergeBase.sha}`);
   if (plan.mergeBase.status === "none") lines.push("merge-base\tnone");
-  for (const conflict of plan.conflicts) lines.push(`conflict\t${conflict.kind}\t${conflict.path}`);
+  for (const conflict of plan.conflicts)
+    lines.push(`conflict\t${conflict.kind}\t${escapeField(conflict.path)}`);
   const problems = planProblemCount(plan);
   lines.push(problems === 0 ? "factory-sync: ok" : `factory-sync: ${problems} problem(s)`);
   return lines;
+};
+
+// Not every git that has GIT_NO_LAZY_FETCH honours it (2.44.0 can still fetch), so the
+// transports are refused too: a fetch from a promisor remote then fails instead of running.
+export const gitNoFetchEnv = {
+  GIT_NO_LAZY_FETCH: "1",
+  GIT_ALLOW_PROTOCOL: "factory-sync-no-transport",
 };
 
 const runGit = Effect.fn("factorySync.runGit")(function* (
@@ -126,9 +149,7 @@ const runGit = Effect.fn("factorySync.runGit")(function* (
   return yield* Effect.scoped(
     Effect.gen(function* () {
       const child = yield* spawner
-        .spawn(
-          ChildProcess.make("git", args, { cwd, env: { GIT_NO_LAZY_FETCH: "1" }, extendEnv: true }),
-        )
+        .spawn(ChildProcess.make("git", args, { cwd, env: gitNoFetchEnv, extendEnv: true }))
         .pipe(
           Effect.mapError(
             (cause) => new FactorySyncGitError({ ...context, operation: "spawn", cause }),

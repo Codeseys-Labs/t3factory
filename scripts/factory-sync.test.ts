@@ -10,6 +10,7 @@ import type { SeamConfig } from "./factory-seams.ts";
 import {
   classifyConflict,
   formatPlan,
+  gitNoFetchEnv,
   parseMergeTreeConflicts,
   planExitCode,
   planUpstreamSync,
@@ -48,6 +49,17 @@ it.effect.each([
     name: "paths with non-ASCII, spaces and newlines",
     stdout: "abc123\0factory/café.txt\0a b\nc.ts\0",
     expected: ["factory/café.txt", "a b\nc.ts"],
+  },
+  { name: "newline format, only the tree id", stdout: "abc123\n", expected: [] },
+  {
+    name: "newline format, several paths",
+    stdout: "abc123\na.ts\nb/c.ts\n",
+    expected: ["a.ts", "b/c.ts"],
+  },
+  {
+    name: "newline format, duplicates and blank lines",
+    stdout: "abc123\r\na.ts\r\n\r\nb.ts\r\na.ts\r\n\r\n",
+    expected: ["a.ts", "b.ts"],
   },
 ])("parses merge-tree output: $name", ({ stdout, expected }) =>
   Effect.sync(() => {
@@ -116,6 +128,29 @@ it.effect("formats the plan as tab-separated lines", () =>
       }).slice(-3),
       ["merge-base\tabc", "conflict\toutside\tx.ts", "factory-sync: 2 problem(s)"],
     );
+  }),
+);
+
+it.effect("prints one three-field record per conflict, escaping control characters", () =>
+  Effect.sync(() => {
+    const path = "factory/a\tb\nc\\d\x01.txt";
+    const lines = formatPlan({
+      ...goodPlan,
+      ref: "v1\tx",
+      conflicts: [
+        { kind: "owned", path },
+        { kind: "owned", path: "factory/café.txt" },
+      ],
+    });
+    assert.deepStrictEqual(lines.slice(1, 2), ["ref\tv1\\tx\tfound"]);
+    const records = lines.filter((line) => line.startsWith("conflict\t"));
+    assert.deepStrictEqual(records, [
+      "conflict\towned\tfactory/a\\tb\\nc\\\\d\\x01.txt",
+      "conflict\towned\tfactory/café.txt",
+    ]);
+    for (const record of records) assert.lengthOf(record.split("\t"), 3);
+    assert.lengthOf(lines, 1 + 1 + 1 + 2 + 1);
+    assert.strictEqual(classifyConflict(path, config), "owned");
   }),
 );
 
@@ -302,6 +337,22 @@ it.layer(NodeServices.layer)("factory sync plan", (it) => {
 
       const error = yield* Effect.flip(planUpstreamSync(clone, "origin/upstream"));
       assert.strictEqual(error._tag, "FactorySyncGitError");
+      assert.deepStrictEqual(yield* missingObjects(git, "origin/upstream"), before);
+
+      // A git that ignores GIT_NO_LAZY_FETCH must still be unable to fetch.
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const exitCode = yield* spawner.exitCode(
+        ChildProcess.make(
+          "git",
+          ["merge-tree", "--write-tree", "--name-only", "-z", "HEAD", "origin/upstream"],
+          {
+            cwd: clone,
+            env: { GIT_ALLOW_PROTOCOL: gitNoFetchEnv.GIT_ALLOW_PROTOCOL },
+            extendEnv: true,
+          },
+        ),
+      );
+      assert.notStrictEqual(Number(exitCode), 0);
       assert.deepStrictEqual(yield* missingObjects(git, "origin/upstream"), before);
     }),
   );

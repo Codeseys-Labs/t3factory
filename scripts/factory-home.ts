@@ -81,8 +81,10 @@ const command = Command.make("factory-home").pipe(
         Effect.gen(function* () {
           yield* initFactoryHome({ home, skills: Option.getOrUndefined(skills), existing });
           const quotedHome = `"${home.replaceAll('"', '\\"')}"`;
-          yield* Console.log(`node apps/server/src/bin.ts serve --base-dir ${quotedHome}`);
-          yield* Console.log(`node apps/server/src/bin.ts pair --base-dir ${quotedHome}`);
+          yield* Console.log(`vp run dev --home-dir ${quotedHome}`);
+          yield* Console.log(
+            `Open the pairingUrl it prints. To get a new one later: node apps/server/src/bin.ts pair --base-dir ${quotedHome}`,
+          );
         }),
     ),
     Command.make("status", { home: Flag.String("home") }, ({ home }) =>

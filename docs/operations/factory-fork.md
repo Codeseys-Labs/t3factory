@@ -10,16 +10,15 @@ A home is the directory T3 keeps its database, settings and workflows in. Give F
 node scripts/factory-home.ts init --home <dir>
 ```
 
-`init` creates `<dir>`, turns on `workflowsEnabled` in `<dir>/userdata/settings.json`, installs the workflow pack into `<dir>/workflows`, and prints the two commands to run next:
+`init` creates `<dir>`, turns on `workflowsEnabled` in `<dir>/userdata/settings.json`, installs the workflow pack into `<dir>/workflows`, and prints the commands to run next. Start the server and the web app together from the checkout:
 
 ```sh
-node apps/server/src/bin.ts serve --base-dir "<dir>"
-node apps/server/src/bin.ts pair --base-dir "<dir>"
+vp run dev --home-dir "<dir>"
 ```
 
-Open the pairing link `pair` prints in a browser. A path such as `~/.t3factory-v2` works for `<dir>`.
+It loads the pack from `<dir>/workflows`, picks free ports, and prints a `pairingUrl:` line; open that link in a browser. To get a new pairing link later, run `node apps/server/src/bin.ts pair --base-dir "<dir>"`. A path such as `~/.t3factory-v2` works for `<dir>`. This runs the development build from the checkout; a packaged desktop build of T3 Factory does not exist yet.
 
-- Never point `init` or `serve` at a home that is in use, and never start Factory against `~/.t3/userdata` or `~/.t3factory`. The first is T3 Code's home; the second is the live v1 install.
+- Never point `init` or the dev server at a home that is in use, and never start Factory against `~/.t3/userdata` or `~/.t3factory`. The first is T3 Code's home; the second is the live v1 install.
 - `init` refuses a home that already has a database. Pass `--existing` only to run it again on a home Factory created.
 - Add `--skills <skills-dir>` to also install the Orchestrator skill, as `<skills-dir>/t3factory-orchestrator`. Use the folder your agent reads skills from.
 - `node scripts/factory-home.ts status --home <dir>` says whether workflows are on and whether each pack file is current. It exits 1 when either is not.

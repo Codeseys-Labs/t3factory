@@ -59,7 +59,7 @@ jobs:
 
       - name: Test factory web logic
         working-directory: apps/web
-        run: vp test run src/factory --project unit
+        run: vp test run src/factory src/components/CommandPalette.logic.test.ts --project unit
 
       - name: Check i18n catalogs
         run: vp run i18n:check

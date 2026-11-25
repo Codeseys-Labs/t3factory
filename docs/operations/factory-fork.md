@@ -98,8 +98,8 @@ Write the string in Factory code through `gt-react` as upstream's [translation p
 - the lockfile equals the merge base with `origin/main`;
 - `node scripts/factory-seams.ts --base origin/main` (including per-seam `maxAdded` line caps);
 - typecheck of contracts, server, client-runtime, web, mobile, scripts and evals;
-- upstream seam tests (`ws.test.ts`, `RpcAuthorization.test.ts`, `RpcInstrumentation.test.ts`, `rpc.test.ts`, `client.test.ts`);
 - the server's `factory` tests, all `scripts/factory-*.test.ts` tests, and `evals/factory-pack`;
-- the web `src/factory` unit tests;
+- upstream seam unit tests (`ws.test.ts`, `RpcAuthorization.test.ts`, `RpcInstrumentation.test.ts`, `rpc.test.ts`, `client.test.ts`);
+- the web `src/factory` unit tests and `CommandPalette.logic.test.ts` (Playwright browser seam tests — `CommandPalette*.browser.test.tsx` and `mainAppLocation.browser.test.tsx` — are not run in `factory.yml` because it does not install browser binaries);
 - `vp run i18n:check`, upstream's catalog check;
 - `node scripts/factory-i18n.ts check`, the fork's translations.

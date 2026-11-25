@@ -208,59 +208,62 @@ const REFS = [
   { ref: "feat/.x..y.lock", branch: "sync/upstream-feat/%2Ex%2E.y%2Elock" },
 ];
 
-const printArguments = NodePath.join(
-  NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "factory-sync-")),
-  "arguments.js",
-).replaceAll("\\", "/");
-NodeFS.writeFileSync(
-  printArguments,
-  'console.log(Buffer.from(JSON.stringify(process.argv.slice(2))).toString("hex"));',
-);
 const SHELLS = [
   { name: "POSIX shell", label: "POSIX shell (bash, zsh, sh)", command: "sh", args: ["-c"] },
   { name: "PowerShell", label: "PowerShell", command: "pwsh", args: ["-NoProfile", "-Command"] },
-].filter(
-  (shell) => NodeChildProcess.spawnSync(shell.command, [...shell.args, "exit 0"]).status === 0,
-);
+];
 
-it("every ref reaches the agent as one literal argument and gets a branch of its own", () => {
-  expect(SHELLS.length).toBeGreaterThan(0);
-  return withWorld(script({ checks: REFS.map(() => "failing" as const) }), (world) =>
-    world.server(
-      Effect.fn("factoryPack.test.syncRef")(function* (workflows) {
-        const branches = new Set<string>();
-        for (const { ref, branch } of REFS) {
-          const { runId } = yield* startSync(workflows, ref);
-          yield* world.ended(workflows, runId, true);
-          const prompt = world.turns.find((turn) => turn.origin.runId === runId)?.prompt ?? "";
-          expect(prompt).toContain(`Create the branch \`${branch}\` and run \`git merge <ref>\``);
-          expect(() =>
-            NodeChildProcess.execFileSync("git", ["check-ref-format", `refs/heads/${branch}`]),
-          ).not.toThrow();
-          branches.add(branch);
-          let rest = prompt.replaceAll(branch, "");
-          for (const shell of SHELLS) {
-            const line = prompt.split("\n").find((entry) => entry.startsWith(`${shell.label}: `));
-            const literal = line?.slice(shell.label.length + 2) ?? "";
-            const out = NodeChildProcess.execFileSync(shell.command, [
-              ...shell.args,
-              `node '${printArguments}' ${literal}`,
-            ]);
-            expect({
-              shell: shell.name,
-              received: JSON.parse(Buffer.from(out.toString().trim(), "hex").toString()),
-            }).toEqual({
-              shell: shell.name,
-              received: [ref],
-            });
-            rest = rest.replaceAll(literal, "");
+it("every ref reaches the agent as one literal argument and gets a branch of its own", async () => {
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "factory-sync-"));
+  try {
+    const printArguments = NodePath.join(directory, "arguments.js").replaceAll("\\", "/");
+    NodeFS.writeFileSync(
+      printArguments,
+      'console.log(Buffer.from(JSON.stringify(process.argv.slice(2))).toString("hex"));',
+    );
+    const shells = SHELLS.filter(
+      (shell) => NodeChildProcess.spawnSync(shell.command, [...shell.args, "exit 0"]).status === 0,
+    );
+    expect(shells.length).toBeGreaterThan(0);
+    await withWorld(script({ checks: REFS.map(() => "failing" as const) }), (world) =>
+      world.server(
+        Effect.fn("factoryPack.test.syncRef")(function* (workflows) {
+          const branches = new Set<string>();
+          for (const { ref, branch } of REFS) {
+            const { runId } = yield* startSync(workflows, ref);
+            yield* world.ended(workflows, runId, true);
+            const prompt = world.turns.find((turn) => turn.origin.runId === runId)?.prompt ?? "";
+            expect(prompt).toContain(`Create the branch \`${branch}\` and run \`git merge <ref>\``);
+            expect(() =>
+              NodeChildProcess.execFileSync("git", ["check-ref-format", `refs/heads/${branch}`]),
+            ).not.toThrow();
+            branches.add(branch);
+            let rest = prompt.replaceAll(branch, "");
+            for (const shell of shells) {
+              const line = prompt.split("\n").find((entry) => entry.startsWith(`${shell.label}: `));
+              const literal = line?.slice(shell.label.length + 2) ?? "";
+              const out = NodeChildProcess.execFileSync(shell.command, [
+                ...shell.args,
+                `node '${printArguments}' ${literal}`,
+              ]);
+              expect({
+                shell: shell.name,
+                received: JSON.parse(Buffer.from(out.toString().trim(), "hex").toString()),
+              }).toEqual({
+                shell: shell.name,
+                received: [ref],
+              });
+              rest = rest.replaceAll(literal, "");
+            }
+            if (shells.length === SHELLS.length) expect(rest).not.toContain(ref);
           }
-          if (SHELLS.length === 2) expect(rest).not.toContain(ref);
-        }
-        expect(branches.size).toBe(REFS.length);
-      }),
-    ),
-  );
+          expect(branches.size).toBe(REFS.length);
+        }),
+      ),
+    );
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 it("the brief completes the merge before it regenerates and validates", () =>

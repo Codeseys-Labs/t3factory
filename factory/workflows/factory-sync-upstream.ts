@@ -33,7 +33,8 @@ export default workflow(
     // PowerShell also reads the typographic single quotes as quotes.
     const powershell = `'${ref.replace(/['‘’‚‛]/g, "$&$&")}'`;
     // A character a branch name cannot hold, and a `%` so that the result is unambiguous, becomes
-    // %XX: two refs never share a branch. A `/` stays, as it is valid in a ref.
+    // %XX, not `-`, because hyphens would let two different refs share one branch name.
+    // A `/` stays, as it is valid in a ref.
     const hex = (byte: number) => `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
     const branch = `sync/upstream-${ref
       .replace(/[^\w./-]/gu, (char) => Array.from(new TextEncoder().encode(char), hex).join(""))

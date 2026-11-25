@@ -70,6 +70,7 @@ import {
   FolderGit2Icon,
   FolderIcon,
   FolderPlusIcon,
+  KanbanIcon,
   MessageSquareDashedIcon,
   LinkIcon,
   MessageSquareIcon,
@@ -132,6 +133,7 @@ import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { useScratchProject } from "../hooks/useScratchProject";
 import { useWorkflowEnvironmentIds } from "./workflows/useWorkflowEnvironmentIds";
+import { useMakeThreadOrchestrator } from "../factory/state";
 import { useStartTriage } from "../hooks/useStartTriage";
 import { pickTriageEnvironment } from "../lib/triageTarget";
 import { useNewProject } from "../hooks/useNewProject";
@@ -522,6 +524,7 @@ function OpenCommandPaletteDialog(props: {
         : null;
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
   const workflowsReachable = useWorkflowEnvironmentIds().length > 0;
+  const makeThreadOrchestrator = useMakeThreadOrchestrator(activeThread);
   const activeThreadServerConfig = useServerConfigs().get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
   );
@@ -1773,6 +1776,27 @@ function OpenCommandPaletteDialog(props: {
       run: async () => {
         await navigate({ to: "/workflows" });
       },
+    });
+  }
+
+  actionItems.push({
+    kind: "action",
+    value: "action:work",
+    searchTerms: ["work", "tasks", "board", "kanban", "factory"],
+    title: gt("Open work"),
+    icon: <KanbanIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/work" });
+    },
+  });
+  if (makeThreadOrchestrator !== null) {
+    actionItems.push({
+      kind: "action",
+      value: "action:work-orchestrator",
+      searchTerms: ["orchestrator", "factory", "work", "tasks"],
+      title: gt("Make this thread the project's Orchestrator"),
+      icon: <KanbanIcon className={ITEM_ICON_CLASS} />,
+      run: makeThreadOrchestrator,
     });
   }
 

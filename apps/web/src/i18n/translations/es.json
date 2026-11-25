@@ -12975,5 +12975,246 @@
   "201490988858b511": "retirada por {by}",
   "99451a5d2d40440f": "Retirada por {by}.",
   "3ee30a50b70fffab": "Retirada por {by}: {reason}",
-  "92e129bf413a1220": "retirada"
+  "92e129bf413a1220": "retirada",
+  "0094310916298140": "Tablero",
+  "05ac7284b77b849c": "Usar los suyos",
+  "069abdf7d6ce5cf5": "Deshacer",
+  "0822282c37437989": "Abrir Trabajo",
+  "0930858b7d7bdab6": "Proyecto",
+  "0af077539f2098b3": "Descripción",
+  "0ddb69435fb951d8": "Proyecto",
+  "0e7829110b2ebbbf": "Solo cambió su revisión; ninguno de sus campos cambió.",
+  "0fe5811407f794ec": "Aún no hay notas.",
+  "1119c65be9b7bcc6": "Revisión",
+  "121999b234ff2db3": "Bloqueada por",
+  "16543672eb03378c": "Tarea",
+  "165803dbcb0970a8": "Aún no hay tareas",
+  "171fa8f63668276b": "Nota",
+  "1769f97c40ed0dc1": "Añade la primera con Nueva tarea.",
+  "19c3c1a9ac268e42": "Este hilo es ahora el Orquestador de {project}",
+  "1bad9d7b05e8f610": "Terminada",
+  "1da04a9d790cb95b": "Título",
+  "216c7e223db0c2c3": "Cerrar la tarea",
+  "23aa75365aeeaecf": "No se inició",
+  "24a5ed46772567f9": "Cargando ejecuciones de flujos de trabajo. Las tareas con una ejecución aún pueden cambiar de columna.",
+  "2782905be91e0179": "Nadie",
+  "28e1ddaf54c703d5": "Terminada",
+  "29f578cc41aa9f45": "No se pudo restablecer {task}",
+  "2a6452bf54cd9476": "Parte de",
+  "2abf58f8384fe4a8": "Asignado",
+  "2b895ef0b0e9ad8c": "Número",
+  "2c0aa5ba4eebc412": "Guardar",
+  "2d566d79a5dfada8": "Modelo",
+  "2dbd7dd181026a38": "Iniciar",
+  "2e1f42066eed2aa5": "Bloqueada",
+  "3034167b1fed95ab": "La tarea se creó, pero no se inició.",
+  "339dae6f825c6866": "Convertir este hilo en el Orquestador del proyecto",
+  "3acc2e4803ca995a": "Título",
+  "3c0f7b24ac041b05": "Añadir una nota",
+  "401acc7606948304": "Proyecto",
+  "410a433c8f7c9a69": "Asignado",
+  "43b7f004759517c6": "Carril",
+  "443df25339924a1a": "Grafo",
+  "4601d8c6cfb99f21": "Trabajo",
+  "4981ae28b841b971": "No se pudo convertir este hilo en el Orquestador",
+  "4a0f8fca00706810": "Orquestador",
+  "4bd7266ef7aad7a5": "Notas",
+  "4f352fa61dc4ef61": [
+    "Los flujos de trabajo están desactivados en este servidor. Actívalos en",
+    " ",
+    {
+      "t": "Link",
+      "i": 1,
+      "c": "Ajustes → Labs"
+    },
+    " y luego vuelve a iniciar la tarea."
+  ],
+  "57b36fa6ad882791": "Esta tarea cambió en otro lugar",
+  "5cb583427721b345": "Comprobando su ejecución…",
+  "5e15635f0c285d0f": "Esta tarea cambió en otro lugar y se recargó. Vuelve a intentarlo.",
+  "6243b0090ac24fe0": "Columna",
+  "669fc276c14e6e3b": "En curso",
+  "66a5dbbae70d81ce": "No se pudo iniciar la tarea.",
+  "6828296ea374e663": "Conservar los míos",
+  "690a337e8dc06a36": [
+    "No se pudieron cargar las ejecuciones de flujos de trabajo, por lo que las tarjetas no muestran el estado de ejecución. Revisa los flujos de trabajo en",
+    " ",
+    {
+      "t": "Link",
+      "i": 1,
+      "c": "Ajustes → Labs"
+    },
+    "."
+  ],
+  "6a0656e8e0e14b1b": "Backlog",
+  "6af1920a1db1a000": "Ninguna",
+  "6c1ed7642df18f14": "Te necesitan",
+  "6e854b5468c726ae": "Proyecto",
+  "6f7f4e5329bdc6af": "Trabajo",
+  "788c4835f1c28d4e": "{task} se descartó",
+  "79c2aa22caf69a8e": "En curso",
+  "7fdb1f8753f3532b": "Carril",
+  "80b1e0d96c7b16f2": "Asignado",
+  "828fa78ef4e9dbb9": "Ruta de navegación de Trabajo",
+  "85d0ee772919c83e": "Actualizado",
+  "892065b607da928c": "Este servidor no tiene ninguna tarea con ese enlace.",
+  "8b14a12660038932": "Preparada",
+  "8b31ee36486f3ec1": "Este servidor no es compatible con Trabajo",
+  "8e09a072d3dc8145": "Carril",
+  "8ed7ebb992529278": "Tú",
+  "8ef6bd7b080d04e5": "Fallida",
+  "9160bff2a14a7bbf": "Aún no iniciada.",
+  "91fe864350610824": "Descartada",
+  "92890bd3707845d3": "Abrir",
+  "96a6809814dca07e": "Lista",
+  "9922804e4af97f5b": "Ninguna",
+  "9b7329363a9a50b0": "Te necesitan",
+  "9e4689c5d789b845": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "t": "p",
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " bloqueo abierto"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " bloqueos abiertos"
+          ]
+        }
+      }
+    }
+  },
+  "9eda62107551fc6d": "Todos los proyectos",
+  "9f62431445e9e436": "{name} no está conectado. Crea la tarea cuando se vuelva a conectar.",
+  "a0f7d217daefa9db": "Revisión",
+  "a11a289f43a92f17": "Descripción",
+  "a58a2368e460fc8b": "Mostrando las 2000 tareas más recientes.",
+  "a7be4068ae6036da": "Mostrar tareas como",
+  "adae883fd7189da7": "Cargando tareas…",
+  "aea8f73a29717a31": "Cerrar",
+  "b1a18f3ba4bc860c": "Backlog",
+  "b4fed0b16bdac961": "Bloqueada por",
+  "b552cd7f582a1b8b": "Añadir nota",
+  "b6221630968b378a": "Sus tareas se mostrarán de nuevo cuando se vuelva a conectar. Elige otro entorno para ver sus tareas.",
+  "bdc47e01d7e0b74f": "Proyecto",
+  "bdc8a79834c2f462": "{task} {title}, {column}, bloqueada por {blockers}",
+  "bfc58b00d4441dac": "{task} {title}, {column}",
+  "c3cf36342aa39f5b": "Abrir ejecución",
+  "c71e095a16303b19": "No se pudo crear la tarea.",
+  "cc78c0c57bcb0361": "Parte de",
+  "cde1887cb7981573": "El paquete de flujos de trabajo de Factory no está instalado en este servidor.",
+  "cf13d3cec58613fb": "Sin proyecto",
+  "d35730dea8ec42d4": "Título",
+  "d9170272700d12c0": "Filtrar por título o número T",
+  "d9b1d99e68db555e": "Descartar",
+  "dad1bbef69a544b4": "Abrir tarea",
+  "db6a7cc088d6329c": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "t": "p",
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " subtarea"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " subtareas"
+          ]
+        }
+      }
+    }
+  },
+  "dba8de737cad1d51": "El grafo muestra las {shown} tareas más recientes de {count}. Filtra para ver el resto.",
+  "de681e69363df52f": "Modelo",
+  "dfb84b0d544c2d87": [
+    "Los flujos de trabajo están desactivados en este servidor, por lo que las tareas no pueden iniciarse. Actívalos en",
+    " ",
+    {
+      "t": "Link",
+      "i": 1,
+      "c": "Ajustes → Labs"
+    },
+    "."
+  ],
+  "e727bdbb71e2eb84": "Filtrar tareas",
+  "e879c04b416eb751": "No se pudo guardar la tarea.",
+  "e8e8d87e6fc02fc6": "Preparada",
+  "e95d0ec70d504f53": "Bloqueada por",
+  "ea6d2138d955f584": "Parte de",
+  "ec15e1b4845411ea": "Ninguna",
+  "eecefdbee8435729": "Crear tarea",
+  "eee704e25dbc15e6": "Iniciar ahora",
+  "eeea97b0cf7b81e2": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "t": "p",
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " registro de tarea no se pudo leer."
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " registros de tareas no se pudieron leer."
+          ]
+        }
+      }
+    }
+  },
+  "f966abe4b6a5d91f": "Detenida",
+  "fb90b8e5705ab86c": "Sin tareas",
+  "fc9df14ea23f45b9": "Intentos",
+  "fe0d419a5d3fbfc4": "Cargando la tarea…",
+  "fe1661762f04bca8": "Conecta un entorno para ver sus tareas."
 }

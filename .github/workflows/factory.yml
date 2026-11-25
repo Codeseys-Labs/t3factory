@@ -52,7 +52,7 @@ jobs:
         run: vp run --filter @t3tools/contracts --filter t3 --filter @t3tools/web --filter @t3tools/scripts --filter @t3tools/evals typecheck
 
       - name: Test factory
-        run: vp test run apps/server/src/factory scripts/factory-seams.test.ts scripts/factory-pack.test.ts scripts/factory-home.test.ts scripts/factory-i18n.test.ts evals/factory-pack
+        run: vp test run apps/server/src/factory scripts/factory- evals/factory-pack
 
       - name: Test factory web logic
         working-directory: apps/web

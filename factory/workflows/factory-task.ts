@@ -44,6 +44,7 @@ const PartPayload = Schema.Struct({
   title: Schema.String,
   brief: Schema.String,
   projectId: Schema.NullOr(Schema.String),
+  issueUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
   model: Schema.NullOr(ModelChoice),
   config: PackConfig,
 });
@@ -99,6 +100,18 @@ const Started = Schema.Struct({
   runId: Schema.String,
 });
 
+const HeadSha = Schema.NullOr(Schema.String);
+
+const IssueLink = Schema.Literals(["linked", "commented"]);
+
+const ISSUE_NUMBER = /\/issues\/(\d+)$/;
+
+const mentionsIssue = (body: string, issueUrl: string) => {
+  if (body.toLowerCase().includes(issueUrl.toLowerCase())) return true;
+  const number = ISSUE_NUMBER.exec(issueUrl)?.[1];
+  return number !== undefined && new RegExp(`#${number}\\b`).test(body);
+};
+
 const factoryTaskPart = workflow(
   "factory-task-part",
   {
@@ -115,13 +128,20 @@ const factoryTaskPart = workflow(
     yield* tags(taskTags(input.taskId, input.projectId, "doing"));
     if (input.projectId === null) return yield* stop(NO_PROJECT);
     const project = input.projectId;
+    const issueUrl = input.issueUrl ?? null;
     const workerModel = config.workerModel ?? input.model;
+    const followUps = `If you discover an out-of-scope bug or follow-up while working, do not widen this pull request: capture it as a new task with \`t3 workflow start factory-capture --input '{"title":"…","projectId":"${project}","lane":"ready","blockedBy":["${input.taskId}"]}' --key capture/<slug>\`.`;
     const returnRules = [
       "If the project is a Git repository with a remote, commit, push a branch, open a pull request and return its URL as `prUrl`. Otherwise return `prUrl: null`.",
       ...(config.baseRef === null
         ? []
         : [
             `Open the pull request against the branch \`${config.baseRef.replace(/^(?:origin\/|refs\/heads\/)/, "")}\`.`,
+          ]),
+      ...(issueUrl === null
+        ? []
+        : [
+            `Include a reference to \`${issueUrl}\` in the pull request description (for example \`Closes #N\` or \`Refs <url>\`).`,
           ]),
       "Return a short `summary` of what you changed.",
     ];
@@ -134,6 +154,7 @@ const factoryTaskPart = workflow(
         input.brief,
         "",
         "Make the change in this worktree and check that it works.",
+        followUps,
         ...returnRules,
       ].join("\n"),
       workspace: { type: "worktree", baseRef: config.baseRef ?? "HEAD" },
@@ -169,6 +190,7 @@ const factoryTaskPart = workflow(
                     `Your last turn on part ${input.part + 1} of task T-${input.number} was stopped before it returned a result: ${tried.reason}`,
                     "",
                     "Do not start over. Run `git status` and `git log` in this worktree to see what is already done, then carry on from there: finish the part and check that it works.",
+                    followUps,
                     ...returnRules,
                   ].join("\n"),
                   timeout: config.stepTimeout,
@@ -193,10 +215,24 @@ const factoryTaskPart = workflow(
     if (prUrl === null) return yield* stop("pull request is not this project's");
 
     const pr = { project, url: prUrl };
+    if (issueUrl !== null) {
+      yield* step(
+        "issue-link",
+        { returns: IssueLink },
+        Effect.gen(function* () {
+          const detail = yield* pullRequests.read(pr);
+          if (mentionsIssue(detail.body, issueUrl)) return "linked" as const;
+          yield* pullRequests.comment(pr, `Refs ${issueUrl}`);
+          return "commented" as const;
+        }),
+      );
+    }
     const links = [{ label: "Pull request", url: prUrl }];
     const reviewModel = config.reviewModel ?? input.model;
     const rulings: Array<string> = [];
     let lastNotes: string | null = null;
+    let fixRoundsApplied = 0;
+    let fixRoundsNoOp = 0;
     // Checks, then a review once they pass: `approved`, `merged`, or what still stands in the way.
     const round = Effect.fnUntraced(function* (at: string) {
       const standing = yield* pullRequests.wait(`checks/${at}`, pr, {
@@ -233,6 +269,12 @@ const factoryTaskPart = workflow(
             input.brief,
             "",
             "Change nothing. Read its diff and check that it does what the brief asks, works, and changes nothing else.",
+            "Actively try to disprove the change: name one concrete input, edge case, or counterfactual state that could break it, verify whether the diff handles it, and cite exact file paths and line numbers for every finding.",
+            ...(issueUrl === null
+              ? []
+              : [
+                  `It is for issue ${issueUrl}: check that the pull request description, or a comment on it, references that issue.`,
+                ]),
             ...(rulings.length === 0
               ? []
               : [
@@ -253,36 +295,72 @@ const factoryTaskPart = workflow(
         notes: review.value.notes,
       };
     });
-
-    yield* tags(taskTags(input.taskId, project, "review"));
-    let failure: { readonly problem: string; readonly notes: string | null } | undefined;
-    for (let r = 0; r <= config.fixRounds; r++) {
-      const result = yield* round(`${r}`);
-      if (result === "merged") return { outcome: "merged", prUrl } as const;
-      failure = result === "approved" ? undefined : result;
-      if (failure === undefined) break;
-      if (failure.notes !== null) lastNotes = failure.notes;
-      if (r === config.fixRounds) break;
+    // A fix that leaves the head where it was is not checked or reviewed again: its problem stands.
+    const fix = Effect.fnUntraced(function* (at: string, problem: string, brief: string) {
+      const before = yield* step(
+        `fix-before/${at}`,
+        { returns: HeadSha },
+        Effect.map(pullRequests.read(pr), (detail) => detail.headSha ?? null),
+      );
       yield* within(
         pool,
         slot,
-        agent(`fix/${r}`, {
-          thread: done.thread,
-          brief: [
-            `Pull request ${prUrl} is not ready to merge. ${failure.problem}`,
-            "",
-            "Fix it in your worktree, check it, and push to the same branch. Then say what you changed.",
-          ].join("\n"),
-          timeout: config.stepTimeout,
-        }),
+        agent(`fix/${at}`, { thread: done.thread, brief, timeout: config.stepTimeout }),
       );
+      const after = yield* step(
+        `fix-after/${at}`,
+        { returns: HeadSha },
+        Effect.map(pullRequests.read(pr), (detail) => detail.headSha ?? null),
+      );
+      if (before === null || after === null || after !== before) {
+        fixRoundsApplied++;
+        return undefined;
+      }
+      fixRoundsNoOp++;
+      return {
+        problem: `Fix round ${at} pushed no new commit to ${prUrl} (head stayed ${after}). Previous issue remains open:\n\n${problem}`,
+        notes: lastNotes,
+      };
+    });
+
+    yield* tags(taskTags(input.taskId, project, "review"));
+    let failure: { readonly problem: string; readonly notes: string | null } | undefined;
+    let pushed = true;
+    for (let r = 0; r <= config.fixRounds; r++) {
+      if (pushed) {
+        const result = yield* round(`${r}`);
+        if (result === "merged") return { outcome: "merged", prUrl } as const;
+        failure = result === "approved" ? undefined : result;
+        if (failure !== undefined && failure.notes !== null) lastNotes = failure.notes;
+      }
+      if (failure === undefined || r === config.fixRounds) break;
+      const stalled = yield* fix(
+        `${r}`,
+        failure.problem,
+        [
+          `Pull request ${prUrl} is not ready to merge. ${failure.problem}`,
+          "",
+          "Fix it in your worktree, check it, and push to the same branch. Then say what you changed.",
+          followUps,
+        ].join("\n"),
+      );
+      pushed = stalled === undefined;
+      failure = stalled ?? failure;
     }
     for (let n = 1; failure !== undefined; n++) {
       const stuck = yield* ask(n === 1 ? "stuck" : `stuck/x${n - 1}`, {
         title: `${label} did not pass review: ${input.title}`,
         kind: "stuck",
         choices: ["Merge anyway", { value: "Fix again", requireReason: true }, "Stop"],
-        data: { prUrl, problem: failure.problem },
+        data: {
+          prUrl,
+          problem: failure.problem,
+          summary,
+          fixRoundsUsed: fixRoundsApplied,
+          noOpFixRounds: fixRoundsNoOp,
+          lastReviewNotes: lastNotes,
+          rulings,
+        },
         links,
       });
       if (Option.isNone(stuck) || stuck.value.choice === "Stop") {
@@ -291,23 +369,24 @@ const factoryTaskPart = workflow(
       if (stuck.value.choice === "Merge anyway") break;
       const ruling = (stuck.value.reason ?? "").trim();
       rulings.push(ruling);
-      yield* within(
-        pool,
-        slot,
-        agent(`fix/x${n}`, {
-          thread: done.thread,
-          brief: [
-            `A person looked at why pull request ${prUrl} did not pass review and ruled: ${ruling}`,
-            "",
-            "Follow that ruling wherever it differs from the review.",
-            ...(lastNotes === null ? [] : ["", "The review's last notes:", "", lastNotes]),
-            ...(failure.notes === null ? ["", failure.problem] : []),
-            "",
-            "Make the changes in your worktree, check them, and push to the same branch so they land on the same pull request. Then say what you changed.",
-          ].join("\n"),
-          timeout: config.stepTimeout,
-        }),
+      const stalled = yield* fix(
+        `x${n}`,
+        failure.problem,
+        [
+          `A person looked at why pull request ${prUrl} did not pass review and ruled: ${ruling}`,
+          "",
+          "Follow that ruling wherever it differs from the review.",
+          ...(lastNotes === null ? [] : ["", "The review's last notes:", "", lastNotes]),
+          ...(failure.notes === null ? ["", failure.problem] : []),
+          "",
+          "Make the changes in your worktree, check them, and push to the same branch so they land on the same pull request. Then say what you changed.",
+          followUps,
+        ].join("\n"),
       );
+      if (stalled !== undefined) {
+        failure = stalled;
+        continue;
+      }
       const result = yield* round(`x${n}`);
       if (result === "merged") return { outcome: "merged", prUrl } as const;
       failure = result === "approved" ? undefined : result;
@@ -318,7 +397,20 @@ const factoryTaskPart = workflow(
     if (
       (config.askMerge || config.mergeNeedsPerson) &&
       !(yield* mergeApproved(
-        { title: `Merge ${label}: ${input.title}?`, kind: "merge", links },
+        {
+          title: `Merge ${label}: ${input.title}?`,
+          kind: "merge",
+          links,
+          data: {
+            prUrl,
+            headSha,
+            summary,
+            fixRoundsUsed: fixRoundsApplied,
+            noOpFixRounds: fixRoundsNoOp,
+            lastReviewNotes: lastNotes,
+            rulings,
+          },
+        },
         config.mergeNeedsPerson,
       ))
     ) {
@@ -384,6 +476,7 @@ const factoryTask = workflow(
             title: part.title,
             brief: part.brief,
             projectId: input.projectId,
+            issueUrl: input.issueUrl,
             model: input.model,
             config,
           }),

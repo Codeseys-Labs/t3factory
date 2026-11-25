@@ -47,6 +47,10 @@ export interface World {
     readonly pullRequest: WorkflowForge.PullRequestAddress;
     readonly standing: WorkflowForge.PullRequestStanding;
   }>;
+  readonly prComments: ReadonlyArray<{
+    readonly pullRequest: WorkflowForge.PullRequestAddress;
+    readonly body: string;
+  }>;
   readonly issueQueries: ReadonlyArray<WorkflowForge.IssueQuery>;
   readonly pullRequestQueries: ReadonlyArray<WorkflowForge.PullRequestQuery>;
   readonly activeCounts: ReadonlyArray<number>;
@@ -205,6 +209,10 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
   const reads: Array<{
     readonly pullRequest: WorkflowForge.PullRequestAddress;
     readonly standing: WorkflowForge.PullRequestStanding;
+  }> = [];
+  const prComments: Array<{
+    readonly pullRequest: WorkflowForge.PullRequestAddress;
+    readonly body: string;
   }> = [];
   const issueQueries: Array<WorkflowForge.IssueQuery> = [];
   const pullRequestQueries: Array<WorkflowForge.PullRequestQuery> = [];
@@ -447,6 +455,10 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
         reads.push({ pullRequest, standing: WorkflowForge.standingOf(detail) });
         return detail;
       }),
+      comment: Effect.fn("factoryPack.pullRequests.comment")(function* (pullRequest, body) {
+        prComments.push({ pullRequest, body });
+        return yield* Effect.void;
+      }),
       act: Effect.fn("factoryPack.pullRequests.act")(function* (...input) {
         acts.push(input);
         return yield* Effect.void;
@@ -597,6 +609,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
     acts,
     readCalls,
     reads,
+    prComments,
     issueQueries,
     pullRequestQueries,
     activeCounts,

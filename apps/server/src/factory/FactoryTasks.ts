@@ -375,7 +375,7 @@ const make = Effect.gen(function* () {
   const start = Effect.fn("FactoryTasks.start")(
     function* (input: FactoryTaskStartInput, requestedBy: string) {
       const { task, attempt } = yield* prepareAttempt(input, requestedBy);
-      const runInput: typeof FactoryTaskRunInput.Type = {
+      const runInput: FactoryTaskRunInput = {
         taskId: task.id,
         number: task.number,
         attempt: attempt.n,

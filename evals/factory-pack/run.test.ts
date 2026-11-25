@@ -1,4 +1,4 @@
-import { FactoryAttempt, type WorkflowRun } from "@t3tools/contracts";
+import { FactoryAttempt, type PullRequestDetail, type WorkflowRun } from "@t3tools/contracts";
 import { it as effectIt } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -86,6 +86,8 @@ const decodeAttempt = Schema.decodeUnknownEffect(FactoryAttempt);
 const Problem = Schema.Struct({ problem: Schema.String });
 const decodeProblem = Schema.decodeUnknownEffect(Problem);
 const PR_URL = "https://github.com/factory/pack/pull/17";
+const ISSUE_URL = "https://github.com/acme/repo/issues/191";
+const decodeQuestionData = Schema.decodeUnknownSync(Schema.Struct({ data: Schema.Json }));
 
 const pullRequestAt = (number: number, projectId = PROJECT) =>
   decodePullRequest({
@@ -196,7 +198,26 @@ const script = (
   };
 };
 
-const startTask = Effect.fn("factoryPack.test.startTask")(function* (workflows: Service) {
+// A finished fix turn moves the scripted head, as a real push would.
+const pushingFixes = <T extends { readonly agent: (turn: AgentTurnInput) => Partial<AgentResult> }>(
+  answers: T,
+) => {
+  let pushes = 0;
+  return {
+    ...answers,
+    agent: (turn: AgentTurnInput) => {
+      if (/^fix\/x?\d+$/.test(turn.origin.step)) pushes++;
+      return answers.agent(turn);
+    },
+    readPullRequest: (_address: WorkflowForge.PullRequestAddress, detail: PullRequestDetail) =>
+      Effect.succeed({ ...detail, headSha: `sha-${pushes}` }),
+  };
+};
+
+const startTask = Effect.fn("factoryPack.test.startTask")(function* (
+  workflows: Service,
+  issueUrl: string | null = null,
+) {
   yield* workflows.storeSet("factory/v1/seq", TASK.number);
   yield* workflows.storeSet(`factory/v1/task/${TASK_ID}`, TASK);
   return yield* workflows.start(
@@ -209,7 +230,7 @@ const startTask = Effect.fn("factoryPack.test.startTask")(function* (workflows: 
       description: TASK.description,
       projectId: PROJECT,
       model: MODEL,
-      issueUrl: null,
+      issueUrl,
     },
     { idempotencyKey: `task/${TASK_ID}/a1` },
   );
@@ -465,7 +486,7 @@ it("askPlan false and askMerge false complete without questions", () =>
   ));
 
 it("failing checks continue the do thread in fix/0 before review and merge", () =>
-  withWorld(script({ checks: ["failing", "passing"] }), (world) =>
+  withWorld(pushingFixes(script({ checks: ["failing", "passing"] })), (world) =>
     world.server(
       Effect.fn("factoryPack.test.checkFix")(function* (workflows) {
         const { runId } = yield* startTask(workflows);
@@ -481,17 +502,26 @@ it("failing checks continue the do thread in fix/0 before review and merge", () 
         expectTurns(world, runId, ["plan"]);
         expectTurns(world, child.runId, ["do", "fix/0", "review/1"]);
         expect(world.turns).toHaveLength(4);
+        // checks/0, fix-before/0, fix-after/0, checks/1, then the head and merge reads.
         expect(world.reads.map(({ standing }) => standing.checks)).toEqual([
           "failing",
           "passing",
           "passing",
           "passing",
+          "passing",
+          "passing",
         ]);
-        expect(
-          (yield* workflows.get(child.runId)).steps
-            .filter((step) => step.name.startsWith("checks/"))
-            .map((step) => step.name),
-        ).toEqual(["checks/0", "checks/1"]);
+        const names = (yield* workflows.get(child.runId)).steps.map((step) => step.name);
+        expect(names.filter((name) => name.startsWith("checks/"))).toEqual([
+          "checks/0",
+          "checks/1",
+        ]);
+        expect(names.filter((name) => name.startsWith("fix"))).toEqual([
+          "fix-before/0",
+          "fix/0",
+          "fix-after/0",
+        ]);
+        expect(names.indexOf("checks/1")).toBeGreaterThan(names.indexOf("fix-after/0"));
         expectQuestions(world, [
           [runId, "approve-plan", "plan"],
           [child.runId, "approve-merge", "merge"],
@@ -531,7 +561,13 @@ it("fixRounds one asks stuck after two changes reviews and Stop ends only the pa
           [child.runId, "stuck", "stuck"],
         ]);
         expect(world.acts).toEqual([]);
-        expect(world.reads.map(({ standing }) => standing.checks)).toEqual(["passing", "passing"]);
+        // An unreported head is no no-op. Reads: checks/0, fix-before/0, fix-after/0, checks/1.
+        expect(world.reads.map(({ standing }) => standing.checks)).toEqual([
+          "passing",
+          "passing",
+          "passing",
+          "passing",
+        ]);
         expect(world.issueQueries).toEqual([]);
         yield* expectNote(workflows, TASK_ID, [{ title: PART.title, outcome: "stopped" }]);
       }),
@@ -2576,7 +2612,9 @@ effectIt.effect.each([false, true])(
   "P12 a timed-out do continues its worktree and merges (checks need a fix: %s)",
   (needsFix) =>
     Effect.promise(() => {
-      const answers = script({ checks: needsFix ? ["failing", "passing"] : ["passing"] });
+      const answers = pushingFixes(
+        script({ checks: needsFix ? ["failing", "passing"] : ["passing"] }),
+      );
       return withWorld(
         {
           ...answers,
@@ -2629,7 +2667,7 @@ effectIt.effect.each([false, true])(
               expect(continuation?.prompt).toMatch(/\b(?:prUrl|pull request)\b/i);
               expect(world.reads.map(({ standing }) => standing.checks)).toEqual(
                 needsFix
-                  ? ["failing", "passing", "passing", "passing"]
+                  ? ["failing", "passing", "passing", "passing", "passing", "passing"]
                   : ["passing", "passing", "passing"],
               );
               if (needsFix) {
@@ -2995,10 +3033,16 @@ effectIt.effect.each([
     const ruling = "Keep the public API and repair only the internal implementation.";
     const secondRuling = "Preserve the import boundary and finish the missing assertion.";
     const extraNotes = "The import boundary still needs a regression test.";
-    const answers = script({
-      changes: true,
-      checks: entry.failure === "checks" ? ["passing", "failing", "passing"] : ["passing"],
-    });
+    const answers = pushingFixes(
+      script({
+        changes: true,
+        // checks/0, fix-before/x1, fix-after/x1, checks/x1 (failing), then the same around x2.
+        checks:
+          entry.failure === "checks"
+            ? ["passing", "passing", "passing", "failing", "passing", "passing", "passing"]
+            : ["passing"],
+      }),
+    );
     return withWorld(
       {
         ...answers,
@@ -3093,6 +3137,15 @@ effectIt.effect.each([
               expect(fix?.prompt).toMatch(/push/i);
               const at = (name: string) => steps.findIndex((step) => step.name === name);
               expect(at(`checks/x${round}`)).toBeGreaterThan(at(`fix/x${round}`));
+              const around = [
+                `fix-before/x${round}`,
+                `fix/x${round}`,
+                `fix-after/x${round}`,
+                `checks/x${round}`,
+              ];
+              expect(
+                steps.map((step) => step.name).filter((name) => around.includes(name)),
+              ).toEqual(around);
               if (round === 2 || entry.failure !== "checks") {
                 const review = world.turns.find(
                   (turn) =>
@@ -3169,7 +3222,8 @@ effectIt.effect.each(["merged", "closed"] as const)(
           ...answers,
           standing: (address, read) => ({
             ...answers.standing(address, read),
-            state: read === 1 ? state : "open",
+            // checks/0, fix-before/x1, fix-after/x1, then checks/x1.
+            state: read === 3 ? state : "open",
           }),
         },
         (world) =>
@@ -3329,3 +3383,241 @@ it("P13 extra fixes share the concurrency-one pool across two parts", () => {
       ),
   );
 });
+
+it("a fix round that adds no commit asks stuck without another checks or review cycle", () => {
+  const answers = script({ changes: true });
+  return withWorld(
+    {
+      ...answers,
+      agent: (turn) =>
+        turn.origin.step === "review/0"
+          ? { output: { verdict: "changes", notes: "Missing null guard" } }
+          : answers.agent(turn),
+      readPullRequest: (_address, detail) => Effect.succeed({ ...detail, headSha: "sha-1" }),
+    },
+    (world) =>
+      world.server(
+        Effect.fn("factoryPack.test.noOpFix")(function* (workflows) {
+          yield* workflows.storeSet("factory/v1/config", { v: 1, askPlan: false, fixRounds: 1 });
+          const { runId } = yield* startTask(workflows);
+          const child = yield* world.child(workflows, runId, 0);
+          const stuck = yield* askStuck(world, workflows, child.runId);
+          const data = decodeQuestionData(stuck.request).data;
+          expect(data).toMatchObject({
+            lastReviewNotes: expect.stringContaining("Missing null guard"),
+            noOpFixRounds: 1,
+            fixRoundsUsed: 0,
+          });
+          expect(JSON.stringify(data)).toMatch(/no new commit/i);
+          expect(JSON.stringify(data)).toContain("sha-1");
+          yield* workflows.answer(child.runId, "stuck", { choice: "Stop" });
+          const part = yield* world.ended(workflows, child.runId);
+          const done = yield* world.ended(workflows, runId);
+          expect(part).toMatchObject({ status: "stopped", result: null });
+          expect(done.status).toBe("completed");
+          const names = (yield* workflows.get(child.runId)).steps.map((step) => step.name);
+          expect(names.filter((name) => /^(?:checks|review|fix)/.test(name))).toEqual([
+            "checks/0",
+            "review/0",
+            "fix-before/0",
+            "fix/0",
+            "fix-after/0",
+          ]);
+          expectTurns(world, child.runId, ["do", "review/0", "fix/0"]);
+          expect(world.turns).toHaveLength(4);
+          expect(world.reads.map(({ standing }) => standing.checks)).toEqual([
+            "passing",
+            "passing",
+            "passing",
+          ]);
+          expectQuestions(world, [[child.runId, "stuck", "stuck"]]);
+          expect(world.acts).toEqual([]);
+        }),
+      ),
+  );
+});
+
+const issueLinkCases: ReadonlyArray<{
+  readonly label: string;
+  readonly issueUrl: string | null;
+  readonly body: string;
+  readonly commented: boolean;
+}> = [
+  {
+    label: "comments Refs when the pull request body lacks the issue",
+    issueUrl: ISSUE_URL,
+    body: "Implements the part.",
+    commented: true,
+  },
+  {
+    label: "stays silent when the body already closes the issue",
+    issueUrl: ISSUE_URL,
+    body: "Closes #191",
+    commented: false,
+  },
+  {
+    label: "does not run without an issue",
+    issueUrl: null,
+    body: "Implements the part.",
+    commented: false,
+  },
+];
+
+effectIt.effect.each(issueLinkCases)("issue-link $label", (entry) =>
+  Effect.promise(() => {
+    const answers = script();
+    return withWorld(
+      {
+        ...answers,
+        readPullRequest: (_address, detail) => Effect.succeed({ ...detail, body: entry.body }),
+      },
+      (world) =>
+        world.server(
+          Effect.fn("factoryPack.test.issueLink")(function* (workflows) {
+            yield* workflows.storeSet("factory/v1/config", {
+              v: 1,
+              askPlan: false,
+              askMerge: false,
+            });
+            const { runId } = yield* startTask(workflows, entry.issueUrl);
+            const done = yield* world.ended(workflows, runId, true);
+            const child = yield* world.child(workflows, runId, 0);
+            const part = yield* world.ended(workflows, child.runId);
+            expectMerged(world, done, part, PR_URL);
+            const linked = [
+              ...(yield* workflows.get(runId)).steps,
+              ...(yield* workflows.get(child.runId)).steps,
+            ].filter((step) => step.name === "issue-link");
+            if (entry.issueUrl === null) {
+              expect(linked).toEqual([]);
+            } else {
+              expect(linked.map((step) => step.status)).toEqual(["completed"]);
+            }
+            expect(world.prComments).toEqual(
+              entry.commented
+                ? [{ pullRequest: { project: PROJECT, url: PR_URL }, body: `Refs ${ISSUE_URL}` }]
+                : [],
+            );
+            for (const step of ["do", "review/0"]) {
+              const brief = world.turns.find(
+                (turn) => turn.origin.runId === child.runId && turn.origin.step === step,
+              )?.prompt;
+              expect(brief, step).toBeDefined();
+              if (entry.issueUrl === null) expect(brief).not.toContain(ISSUE_URL);
+              else expect(brief).toContain(ISSUE_URL);
+            }
+          }),
+        ),
+    );
+  }),
+);
+
+it("the do brief routes follow-ups to factory-capture and the review brief asks to disprove", () =>
+  withWorld(script(), (world) =>
+    world.server(
+      Effect.fn("factoryPack.test.briefs")(function* (workflows) {
+        yield* workflows.storeSet("factory/v1/config", { v: 1, askPlan: false, askMerge: false });
+        const { runId } = yield* startTask(workflows);
+        yield* world.ended(workflows, runId, true);
+        const child = yield* world.child(workflows, runId, 0);
+        const brief = (step: string) =>
+          world.turns.find((turn) => turn.origin.runId === child.runId && turn.origin.step === step)
+            ?.prompt;
+        expect(brief("do")).toContain("factory-capture");
+        expect(brief("do")).toContain("blockedBy");
+        expect(brief("do")).toContain(TASK_ID);
+        expect(brief("review/0")).toMatch(/disprove/i);
+        expect(brief("review/0")).toMatch(/edge cases?/i);
+        expect(brief("review/0")).toMatch(/counterfactual/i);
+        expect(brief("review/0")).toMatch(/\bcit(?:e|ing)\b/i);
+        expect(brief("review/0")).toMatch(/\blines?\b/i);
+      }),
+    ),
+  ));
+
+const MERGE_FIELDS = [
+  "prUrl",
+  "headSha",
+  "summary",
+  "fixRoundsUsed",
+  "noOpFixRounds",
+  "lastReviewNotes",
+  "rulings",
+] as const;
+
+effectIt.effect.each([
+  {
+    label: "a clean approval",
+    kind: "clean",
+    expected: {
+      prUrl: PR_URL,
+      headSha: "sha-0",
+      summary: "Implemented the requested part.",
+      fixRoundsUsed: 0,
+      noOpFixRounds: 0,
+    },
+  },
+  {
+    label: "a fix round",
+    kind: "fix",
+    expected: { prUrl: PR_URL, headSha: "sha-1", fixRoundsUsed: 1, noOpFixRounds: 0 },
+  },
+  {
+    label: "a ruled extra round",
+    kind: "ruling",
+    expected: { prUrl: PR_URL, headSha: "sha-1", noOpFixRounds: 0 },
+  },
+] as const)("approve-merge carries its structured data after $label", (entry) =>
+  Effect.promise(() => {
+    const ruling = "Keep the public API and finish the missing assertion.";
+    const answers = pushingFixes(script());
+    return withWorld(
+      {
+        ...answers,
+        agent: (turn) =>
+          entry.kind !== "clean" && turn.origin.step === "review/0"
+            ? { output: { verdict: "changes", notes: "Missing null guard" } }
+            : answers.agent(turn),
+      },
+      (world) =>
+        world.server(
+          Effect.fn("factoryPack.test.mergeData")(function* (workflows) {
+            yield* workflows.storeSet("factory/v1/config", {
+              v: 1,
+              askPlan: false,
+              fixRounds: entry.kind === "ruling" ? 0 : 2,
+            });
+            const { runId } = yield* startTask(workflows);
+            const child = yield* world.child(workflows, runId, 0);
+            if (entry.kind === "ruling") {
+              yield* askStuck(world, workflows, child.runId);
+              yield* workflows.answer(child.runId, "stuck", {
+                choice: "Fix again",
+                reason: ruling,
+              });
+            }
+            const question = yield* ask(world, workflows, child.runId, "approve-merge", "merge", [
+              "Merge",
+              "Hold",
+            ]);
+            const data = decodeQuestionData(question.request).data;
+            expect(data).toMatchObject(entry.expected);
+            for (const field of MERGE_FIELDS) expect(data).toHaveProperty(field);
+            if (entry.kind === "ruling") expect(JSON.stringify(data)).toContain(ruling);
+            yield* workflows.answer(
+              child.runId,
+              "approve-merge",
+              { choice: "Merge" },
+              { label: "Test person" },
+            );
+            expectMerged(
+              world,
+              yield* world.ended(workflows, runId),
+              yield* world.ended(workflows, child.runId),
+              PR_URL,
+            );
+          }),
+        ),
+    );
+  }),
+);

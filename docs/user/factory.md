@@ -33,6 +33,8 @@ Press **Start** on a task, or tick the start option when you create it. A task n
 5. You approve the merge. The pull request is then merged.
 6. A part with no pull request is shown to you instead, and you accept it or ask for a redo.
 
+A task made from an issue asks each part's agent to reference that issue in its pull request description; when the description does not, the workflow comments `Refs <issue URL>` on the pull request. A fix round that pushes no new commit is reported as such, and the same commit is not checked or reviewed again. The merge question and the question for a part that did not pass review show the pull request, the agent's summary, how many fix rounds pushed a commit and how many pushed nothing, the last review notes, and your rulings.
+
 If an agent runs out of time (`stepTimeout`), its thread is continued once from where it stopped rather than restarted. If it runs out again, the task shows **Failed** and waits in **Needs you**; resume the run on the Workflows page and the same thread carries on. An agent that you stopped, or whose turn could not be stopped, is not continued automatically: the part stops and says why.
 
 Starting again after a run stops makes a new attempt; the task lists its attempts. A task that is already running cannot be started, and neither can a dropped one, from the page or the command line.

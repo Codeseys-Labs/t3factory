@@ -4,7 +4,15 @@ import { memo } from "react";
 
 import { cn } from "../lib/utils";
 import { ScrollArea } from "../components/ui/scroll-area";
-import { sameWorkCard, taskNumber, waitsOnRun, WORK_COLUMN_LABELS, WorkBadges } from "./WorkBoard";
+import {
+  sameWorkCard,
+  shownActivity,
+  taskNumber,
+  waitsOnRun,
+  WORK_COLUMN_LABELS,
+  WorkActivity,
+  WorkBadges,
+} from "./WorkBoard";
 import { deriveWorkGraph, type WorkCard } from "./workBoard.logic";
 import { layoutWorkGraph } from "./workGraph.logic";
 
@@ -152,6 +160,7 @@ const GraphNode = memo(
             )}
           </span>
           <WorkBadges badges={card.badges} />
+          <WorkActivity activity={shownActivity(card)} />
         </span>
         <span className="truncate text-sm text-foreground">{task.title}</span>
       </button>

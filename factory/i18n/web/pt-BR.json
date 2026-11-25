@@ -39,6 +39,7 @@
   "43b7f004759517c6": "Raia",
   "443df25339924a1a": "Gráfico",
   "4601d8c6cfb99f21": "Trabalho",
+  "48fc54a50627134f": "Aguardando",
   "4981ae28b841b971": "Não foi possível tornar esta thread o orquestrador",
   "4a0f8fca00706810": "Orquestrador",
   "4bd7266ef7aad7a5": "Notas",
@@ -52,6 +53,7 @@
     },
     " e inicie a tarefa novamente."
   ],
+  "4fd41cd4bac9af2c": "Trabalhando",
   "57b36fa6ad882791": "Esta tarefa mudou em outro local",
   "5cb583427721b345": "Verificando execução…",
   "5e15635f0c285d0f": "Esta tarefa mudou em outro local e foi recarregada. Tente novamente.",
@@ -142,6 +144,39 @@
   "bfc58b00d4441dac": "{task} {title}, {column}",
   "c3cf36342aa39f5b": "Abrir execução",
   "c71e095a16303b19": "Não foi possível criar a tarefa.",
+  "c776a66a7ac127a4": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " subtarefa em andamento"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " subtarefas em andamento"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
   "cc78c0c57bcb0361": "Tarefa pai",
   "cde1887cb7981573": "O pacote de workflow Factory não está instalado neste servidor.",
   "cf13d3cec58613fb": "Nenhum projeto",

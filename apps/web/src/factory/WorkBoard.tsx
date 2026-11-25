@@ -50,7 +50,27 @@ export const sameWorkCard = (left: WorkCard, right: WorkCard) =>
   left.badges.join() === right.badges.join() &&
   left.run?.status === right.run?.status &&
   left.childCount === right.childCount &&
-  left.openBlockers.length === right.openBlockers.length;
+  left.openBlockers.length === right.openBlockers.length &&
+  left.activity === right.activity &&
+  left.liveParts === right.liveParts;
+
+/** What a card's run is doing, while nothing on it waits on a person. */
+export const shownActivity = (card: WorkCard) =>
+  card.badges.some((badge) => badge === "needs-you" || badge === "failed") ? null : card.activity;
+
+export function WorkActivity({ activity }: { readonly activity: WorkCard["activity"] }) {
+  if (activity === null) return null;
+  return activity === "working" ? (
+    <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-info-foreground">
+      <span aria-hidden className="size-1.5 rounded-full bg-info" />
+      <T context="task status: an agent is at work on it">Working</T>
+    </span>
+  ) : (
+    <span className="shrink-0 text-xs text-muted-foreground">
+      <T context="task status: its run waits, and nothing waits on a person">Waiting</T>
+    </span>
+  );
+}
 
 /** A card's column comes from its run until the run list arrives to say otherwise. */
 export const waitsOnRun = (card: WorkCard) => card.run === null && card.task.attempt?.runId != null;
@@ -226,6 +246,7 @@ const WorkCardItem = memo(
           <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <span className="shrink-0 font-mono">{taskNumber(task)}</span>
             <span className="min-w-0 flex-1 truncate">{projectName}</span>
+            <WorkActivity activity={shownActivity(card)} />
           </span>
           <span className="text-sm wrap-anywhere text-foreground">{task.title}</span>
           <WorkBadges badges={card.badges} wrap />

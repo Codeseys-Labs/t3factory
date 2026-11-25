@@ -39,6 +39,7 @@
   "43b7f004759517c6": "Couloir",
   "443df25339924a1a": "Graphe",
   "4601d8c6cfb99f21": "Travail",
+  "48fc54a50627134f": "En attente",
   "4981ae28b841b971": "Impossible de faire de ce fil l’Orchestrateur",
   "4a0f8fca00706810": "Orchestrateur",
   "4bd7266ef7aad7a5": "Notes",
@@ -52,6 +53,7 @@
     },
     ", puis redémarrez la tâche."
   ],
+  "4fd41cd4bac9af2c": "Au travail",
   "57b36fa6ad882791": "Cette tâche a été modifiée ailleurs",
   "5cb583427721b345": "Vérification de son exécution…",
   "5e15635f0c285d0f": "Cette tâche a été modifiée ailleurs et rechargée. Réessayez.",
@@ -142,6 +144,39 @@
   "bfc58b00d4441dac": "{task} {title}, {column}",
   "c3cf36342aa39f5b": "Ouvrir l’exécution",
   "c71e095a16303b19": "Impossible de créer la tâche.",
+  "c776a66a7ac127a4": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " sous-tâche en cours"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " sous-tâches en cours"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
   "cc78c0c57bcb0361": "Fait partie de",
   "cde1887cb7981573": "Le pack de workflows Factory n’est pas installé sur ce serveur.",
   "cf13d3cec58613fb": "Aucun projet",

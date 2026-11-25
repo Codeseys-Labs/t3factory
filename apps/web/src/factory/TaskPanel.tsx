@@ -22,7 +22,7 @@ import {
 } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
-import { msg, T, useGT, useMessages } from "gt-react";
+import { msg, Plural, T, useGT, useMessages, Var } from "gt-react";
 import { PlayIcon, XIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
@@ -60,7 +60,7 @@ import {
   type TaskDraftField,
   type TaskDraftSent,
 } from "./taskDraft.logic";
-import { taskNumber, WorkBadges } from "./WorkBoard";
+import { shownActivity, taskNumber, WorkActivity, WorkBadges } from "./WorkBoard";
 import type { WorkCard } from "./workBoard.logic";
 
 const isFactoryTaskError = Schema.is(FactoryTaskError);
@@ -250,6 +250,9 @@ export function TaskPanel({
       ? null
       : (runs.find((run) => run.runId === latestAttempt.runId) ?? null);
   const running = latestRun !== null && latestRun.endedAt === null;
+  // The task's own run waits on its parts while their agents work, so its state word says less.
+  const latestActivity =
+    card !== null && running && card.run?.runId === latestRun.runId ? shownActivity(card) : null;
   const problemFor = (control: TaskControl) =>
     problem === null || problem.control !== control ? null : (
       <p role="alert" className="text-xs text-destructive-foreground">
@@ -650,6 +653,8 @@ export function TaskPanel({
                         ? null
                         : (nodes.find((node) => node.run.runId === attempt.runId) ?? null)
                     }
+                    activity={attempt.n === latestAttempt?.n ? latestActivity : null}
+                    liveParts={attempt.n === latestAttempt?.n ? (card?.liveParts ?? 0) : 0}
                     onOpenRun={onOpenRun}
                   />
                 ))}
@@ -744,11 +749,16 @@ function TaskChip({
 function AttemptRow({
   attempt,
   node,
+  activity,
+  liveParts,
   onOpenRun,
 }: {
   readonly attempt: FactoryAttempt;
   /** Its run as the live list has it; null when the list does not have it. */
   readonly node: WorkflowRunNode | null;
+  /** What the run and its parts are doing, shown in place of its state while it runs. */
+  readonly activity: WorkCard["activity"];
+  readonly liveParts: number;
   readonly onOpenRun: (runId: string) => void;
 }) {
   const { runId } = attempt;
@@ -758,7 +768,30 @@ function AttemptRow({
       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
         <RelativeLabel value={attempt.startedAt} />
       </span>
-      {node !== null ? (
+      {activity !== null ? (
+        <>
+          <WorkActivity activity={activity} />
+          {liveParts === 0 ? null : (
+            <span className="shrink-0 text-xs text-muted-foreground">
+              <T>
+                <Plural
+                  n={liveParts}
+                  one={
+                    <>
+                      <Var>{liveParts}</Var> part under way
+                    </>
+                  }
+                  other={
+                    <>
+                      <Var>{liveParts}</Var> parts under way
+                    </>
+                  }
+                />
+              </T>
+            </span>
+          )}
+        </>
+      ) : node !== null ? (
         <WorkflowStateWord node={node} />
       ) : runId === null ? (
         <span className="text-xs text-muted-foreground">

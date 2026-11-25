@@ -24,7 +24,16 @@ const card = (id: string): WorkCard => {
     hasDescription: false,
     attempt: null,
   };
-  return { task, column: "backlog", badges: [], run: null, childCount: 0, openBlockers: [] };
+  return {
+    task,
+    column: "backlog",
+    badges: [],
+    run: null,
+    childCount: 0,
+    openBlockers: [],
+    activity: null,
+    liveParts: 0,
+  };
 };
 
 describe("laying out the work graph", () => {

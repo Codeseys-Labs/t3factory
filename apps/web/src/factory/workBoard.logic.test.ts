@@ -241,6 +241,164 @@ describe("deriveWorkCards", () => {
     expect(parent?.openBlockers).toEqual(["open"]);
     expect(parent?.childCount).toBe(1);
   });
+  // B11: activity and live parts derive from active descendants, without treating ended roots or cycles as active work.
+  it("derives activity and live parts across root, descendant, ended, and cyclic runs", () => {
+    const cases = [
+      {
+        name: "no attempt",
+        task: task("no-attempt"),
+        runs: [],
+        activity: null,
+        liveParts: 0,
+      },
+      {
+        name: "missing attempt run",
+        task: task("missing-run", { attempt: taskRun("missing") }),
+        runs: [],
+        activity: null,
+        liveParts: 0,
+      },
+      {
+        name: "completed root with a running part",
+        task: task("completed-root", { attempt: taskRun("completed-root-run") }),
+        runs: [
+          run("completed-root-run", { status: "completed", endedAt: at(20) }),
+          run("completed-part", { status: "running", parentRunId: "completed-root-run" }),
+        ],
+        activity: null,
+        liveParts: 1,
+      },
+      {
+        name: "stopped root with a running part",
+        task: task("stopped-root", { attempt: taskRun("stopped-root-run") }),
+        runs: [
+          run("stopped-root-run", { status: "stopped", endedAt: at(20) }),
+          run("stopped-part", { status: "running", parentRunId: "stopped-root-run" }),
+        ],
+        activity: null,
+        liveParts: 1,
+      },
+      {
+        name: "running root",
+        task: task("running-root", { attempt: taskRun("running-root-run") }),
+        runs: [run("running-root-run", { status: "running" })],
+        activity: "working",
+        liveParts: 0,
+      },
+      {
+        name: "waiting agent plan",
+        task: task("agent-plan", { attempt: taskRun("agent-plan-run") }),
+        runs: [run("agent-plan-run", { status: "waiting", detail: "agent plan" })],
+        activity: "working",
+        liveParts: 0,
+      },
+      {
+        name: "waiting root with two working parts",
+        task: task("working-parts", { attempt: taskRun("working-parts-root") }),
+        runs: [
+          run("working-parts-root", { status: "waiting", detail: "part-1" }),
+          run("working-part-one", {
+            status: "waiting",
+            detail: "agent do",
+            parentRunId: "working-parts-root",
+          }),
+          run("working-part-two", {
+            status: "waiting",
+            detail: "agent do",
+            parentRunId: "working-parts-root",
+          }),
+        ],
+        activity: "working",
+        liveParts: 2,
+      },
+      {
+        name: "waiting root with two waiting parts",
+        task: task("waiting-parts", { attempt: taskRun("waiting-parts-root") }),
+        runs: [
+          run("waiting-parts-root", { status: "waiting", detail: "part-1" }),
+          run("waiting-part-one", {
+            status: "waiting",
+            detail: "checks/0",
+            parentRunId: "waiting-parts-root",
+          }),
+          run("waiting-part-two", { status: "waiting", parentRunId: "waiting-parts-root" }),
+        ],
+        activity: "waiting",
+        liveParts: 2,
+      },
+      {
+        name: "ended working part",
+        task: task("ended-part", { attempt: taskRun("ended-part-root") }),
+        runs: [
+          run("ended-part-root", { status: "waiting", detail: "part-1" }),
+          run("ended-working-part", {
+            status: "completed",
+            detail: "agent do",
+            parentRunId: "ended-part-root",
+            endedAt: at(20),
+          }),
+        ],
+        activity: "waiting",
+        liveParts: 0,
+      },
+      {
+        name: "working grandchild",
+        task: task("working-grandchild", { attempt: taskRun("working-grandchild-root") }),
+        runs: [
+          run("working-grandchild-root", { status: "waiting", detail: "part-1" }),
+          run("waiting-part", {
+            status: "waiting",
+            detail: "checks/0",
+            parentRunId: "working-grandchild-root",
+          }),
+          run("working-grandchild-run", {
+            status: "running",
+            parentRunId: "waiting-part",
+          }),
+        ],
+        activity: "working",
+        liveParts: 1,
+      },
+      {
+        name: "agents is not agent work",
+        task: task("agents-detail", { attempt: taskRun("agents-detail-run") }),
+        runs: [run("agents-detail-run", { status: "waiting", detail: "agents" })],
+        activity: "waiting",
+        liveParts: 0,
+      },
+      {
+        name: "capitalized agent is not agent work",
+        task: task("capital-agent", { attempt: taskRun("capital-agent-run") }),
+        runs: [run("capital-agent-run", { status: "waiting", detail: "Agent do" })],
+        activity: "waiting",
+        liveParts: 0,
+      },
+      {
+        name: "parent cycle",
+        task: task("cycle-root", { attempt: taskRun("cycle-root-run") }),
+        runs: [
+          run("cycle-root-run", {
+            status: "waiting",
+            detail: "checks/0",
+            parentRunId: "cycle-part-run",
+          }),
+          run("cycle-part-run", {
+            status: "waiting",
+            detail: "checks/0",
+            parentRunId: "cycle-root-run",
+          }),
+        ],
+        activity: "waiting",
+        liveParts: 1,
+      },
+    ];
+
+    for (const entry of cases) {
+      const [card] = cardsFor([entry.task], entry.runs);
+      expect(card?.activity).toBe(entry.activity);
+      expect(card?.liveParts).toBe(entry.liveParts);
+    }
+  });
 });
 
 describe("filterWorkCards", () => {

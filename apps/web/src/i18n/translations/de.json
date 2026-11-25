@@ -13021,6 +13021,7 @@
   "43b7f004759517c6": "Bahn",
   "443df25339924a1a": "Graph",
   "4601d8c6cfb99f21": "Arbeit",
+  "48fc54a50627134f": "Wartet",
   "4981ae28b841b971": "Dieser Thread konnte nicht zum Orchestrator gemacht werden",
   "4a0f8fca00706810": "Orchestrator",
   "4bd7266ef7aad7a5": "Notizen",
@@ -13034,6 +13035,7 @@
     },
     " und starte die Aufgabe dann erneut."
   ],
+  "4fd41cd4bac9af2c": "Arbeitet",
   "57b36fa6ad882791": "Diese Aufgabe wurde an anderer Stelle geändert",
   "5cb583427721b345": "Ausführung wird geprüft…",
   "5e15635f0c285d0f": "Diese Aufgabe wurde an anderer Stelle geändert und neu geladen. Versuche es erneut.",
@@ -13124,6 +13126,39 @@
   "bfc58b00d4441dac": "{task} {title}, {column}",
   "c3cf36342aa39f5b": "Ausführung öffnen",
   "c71e095a16303b19": "Die Aufgabe konnte nicht erstellt werden.",
+  "c776a66a7ac127a4": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " Teilaufgabe in Bearbeitung"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " Teilaufgaben in Bearbeitung"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
   "cc78c0c57bcb0361": "Teil von",
   "cde1887cb7981573": "Das Factory-Workflow-Paket ist auf diesem Server nicht installiert.",
   "cf13d3cec58613fb": "Kein Projekt",

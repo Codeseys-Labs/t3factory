@@ -13016,6 +13016,7 @@
   "43b7f004759517c6": "Carril",
   "443df25339924a1a": "Grafo",
   "4601d8c6cfb99f21": "Trabajo",
+  "48fc54a50627134f": "Esperando",
   "4981ae28b841b971": "No se pudo convertir este hilo en el Orquestador",
   "4a0f8fca00706810": "Orquestador",
   "4bd7266ef7aad7a5": "Notas",
@@ -13029,6 +13030,7 @@
     },
     " y luego vuelve a iniciar la tarea."
   ],
+  "4fd41cd4bac9af2c": "Trabajando",
   "57b36fa6ad882791": "Esta tarea cambió en otro lugar",
   "5cb583427721b345": "Comprobando su ejecución…",
   "5e15635f0c285d0f": "Esta tarea cambió en otro lugar y se recargó. Vuelve a intentarlo.",
@@ -13119,6 +13121,39 @@
   "bfc58b00d4441dac": "{task} {title}, {column}",
   "c3cf36342aa39f5b": "Abrir ejecución",
   "c71e095a16303b19": "No se pudo crear la tarea.",
+  "c776a66a7ac127a4": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " parte en curso"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " partes en curso"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
   "cc78c0c57bcb0361": "Parte de",
   "cde1887cb7981573": "El paquete de flujos de trabajo de Factory no está instalado en este servidor.",
   "cf13d3cec58613fb": "Sin proyecto",

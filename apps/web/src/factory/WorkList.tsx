@@ -19,7 +19,9 @@ import {
   waitsOnRun,
   WORK_COLUMN_LABELS,
   WORK_PAGE_SIZE,
+  WorkActivity,
   WorkBadges,
+  shownActivity,
 } from "./WorkBoard";
 import type { WorkCard } from "./workBoard.logic";
 
@@ -129,6 +131,7 @@ const WorkRow = memo(
               {task.title}
             </button>
             <WorkBadges badges={badges} />
+            <WorkActivity activity={shownActivity(card)} />
           </span>
         </TableCell>
         <TableCell>

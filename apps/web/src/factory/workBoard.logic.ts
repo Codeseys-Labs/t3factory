@@ -21,6 +21,9 @@ export interface WorkCard {
   readonly childCount: number;
   /** Ids of `blockedBy` tasks not yet done. */
   readonly openBlockers: ReadonlyArray<string>;
+  readonly activity: "working" | "waiting" | null;
+  /** Runs directly below the card's run that have not ended. */
+  readonly liveParts: number;
 }
 
 function resolveColumn(task: FactoryTaskSummary, run: WorkflowRun | null): WorkColumn | null {
@@ -31,6 +34,36 @@ function resolveColumn(task: FactoryTaskSummary, run: WorkflowRun | null): WorkC
   }
   if (task.laneSetAt > run.endedAt) return task.lane;
   return run.status === "completed" ? "done" : task.lane;
+}
+
+function readActivity(
+  run: WorkflowRun,
+  childrenOf: ReadonlyMap<string, ReadonlyArray<WorkflowRun>>,
+): { readonly activity: "working" | "waiting" | null; readonly liveParts: number } {
+  let liveParts = 0;
+  for (const child of childrenOf.get(run.runId) ?? []) {
+    if (child.endedAt === null && child.runId !== run.runId) liveParts += 1;
+  }
+  if (run.endedAt !== null) return { activity: null, liveParts };
+  const seen = new Set<string>([run.runId]);
+  const pending: WorkflowRun[] = [run];
+  let working = false;
+  for (let head = 0; head < pending.length; head += 1) {
+    const current = pending[head]!;
+    if (
+      current.endedAt === null &&
+      (current.status === "running" ||
+        (current.status === "waiting" && current.detail?.startsWith("agent ") === true))
+    ) {
+      working = true;
+    }
+    for (const child of childrenOf.get(current.runId) ?? []) {
+      if (seen.has(child.runId)) continue;
+      seen.add(child.runId);
+      pending.push(child);
+    }
+  }
+  return { activity: working ? "working" : "waiting", liveParts };
 }
 
 function compareTasks(a: FactoryTaskSummary, b: FactoryTaskSummary): number {
@@ -55,6 +88,14 @@ export function deriveWorkCards(input: {
       askingRuns.add(runId);
       runId = runsById.get(runId)?.parentRunId ?? null;
     }
+  }
+
+  const childrenOf = new Map<string, WorkflowRun[]>();
+  for (const run of input.runs) {
+    if (run.parentRunId === null) continue;
+    const siblings = childrenOf.get(run.parentRunId);
+    if (siblings === undefined) childrenOf.set(run.parentRunId, [run]);
+    else siblings.push(run);
   }
 
   const childCounts = new Map<string, number>();
@@ -89,6 +130,8 @@ export function deriveWorkCards(input: {
     if (run?.status === "paused") badges.push("failed");
     if (openBlockers.length > 0) badges.push("blocked");
     if (stopped) badges.push("stopped");
+    const { activity, liveParts } =
+      run === null ? { activity: null, liveParts: 0 } : readActivity(run, childrenOf);
     cards.push({
       task,
       column,
@@ -96,6 +139,8 @@ export function deriveWorkCards(input: {
       run,
       childCount: childCounts.get(task.id) ?? 0,
       openBlockers,
+      activity,
+      liveParts,
     });
   }
   return cards;

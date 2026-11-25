@@ -36,26 +36,33 @@ function resolveColumn(task: FactoryTaskSummary, run: WorkflowRun | null): WorkC
   return run.status === "completed" ? "done" : task.lane;
 }
 
-function readActivity(
+function readRunActivity(
   run: WorkflowRun,
   childrenOf: ReadonlyMap<string, ReadonlyArray<WorkflowRun>>,
-): { readonly activity: "working" | "waiting" | null; readonly liveParts: number } {
+): {
+  readonly activity: "working" | "waiting" | null;
+  readonly liveParts: number;
+  readonly paused: boolean;
+} {
   let liveParts = 0;
   for (const child of childrenOf.get(run.runId) ?? []) {
     if (child.endedAt === null && child.runId !== run.runId) liveParts += 1;
   }
-  if (run.endedAt !== null) return { activity: null, liveParts };
+  if (run.endedAt !== null) return { activity: null, liveParts, paused: false };
   const seen = new Set<string>([run.runId]);
   const pending: WorkflowRun[] = [run];
   let working = false;
+  let paused = false;
   for (let head = 0; head < pending.length; head += 1) {
     const current = pending[head]!;
-    if (
-      current.endedAt === null &&
-      (current.status === "running" ||
-        (current.status === "waiting" && current.detail?.startsWith("agent ") === true))
-    ) {
-      working = true;
+    if (current.endedAt === null) {
+      if (current.status === "paused") paused = true;
+      if (
+        current.status === "running" ||
+        (current.status === "waiting" && current.detail?.startsWith("agent ") === true)
+      ) {
+        working = true;
+      }
     }
     for (const child of childrenOf.get(current.runId) ?? []) {
       if (seen.has(child.runId)) continue;
@@ -63,7 +70,7 @@ function readActivity(
       pending.push(child);
     }
   }
-  return { activity: working ? "working" : "waiting", liveParts };
+  return { activity: working ? "working" : "waiting", liveParts, paused };
 }
 
 function compareTasks(a: FactoryTaskSummary, b: FactoryTaskSummary): number {
@@ -120,6 +127,10 @@ export function deriveWorkCards(input: {
       const blockerColumn = columns.get(id);
       return blockerColumn !== undefined && blockerColumn !== null && blockerColumn !== "done";
     });
+    const { activity, liveParts, paused } =
+      run === null
+        ? { activity: null, liveParts: 0, paused: false }
+        : readRunActivity(run, childrenOf);
     const stopped =
       run !== null &&
       run.endedAt !== null &&
@@ -127,11 +138,9 @@ export function deriveWorkCards(input: {
       task.laneSetAt <= run.endedAt;
     const badges: WorkBadge[] = [];
     if (run !== null && askingRuns.has(run.runId)) badges.push("needs-you");
-    if (run?.status === "paused") badges.push("failed");
+    if (paused) badges.push("failed");
     if (openBlockers.length > 0) badges.push("blocked");
     if (stopped) badges.push("stopped");
-    const { activity, liveParts } =
-      run === null ? { activity: null, liveParts: 0 } : readActivity(run, childrenOf);
     cards.push({
       task,
       column,

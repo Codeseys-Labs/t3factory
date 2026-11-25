@@ -191,7 +191,7 @@ const DEFAULT_CONFIG: PackConfig = {
   workerModel: null,
   reviewModel: null,
   baseRef: null,
-  stepTimeout: "45 minutes",
+  stepTimeout: "2 hours",
   checksTimeout: "1 hour",
   fixRounds: 2,
   mergeMethod: "squash",

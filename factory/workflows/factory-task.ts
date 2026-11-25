@@ -106,33 +106,54 @@ const factoryTaskPart = workflow(
     if (input.projectId === null) return yield* stop(NO_PROJECT);
     const project = input.projectId;
     const workerModel = config.workerModel ?? input.model;
-    const done = yield* within(
-      pool,
-      slot,
-      agent("do", {
-        project,
-        title: `${label}: ${input.title}`,
-        brief: [
-          `Do part ${input.part + 1} of task T-${input.number}: ${input.title}`,
-          "",
-          input.brief,
-          "",
-          "Make the change in this worktree and check that it works.",
-          "If the project is a Git repository with a remote, commit, push a branch, open a pull request and return its URL as `prUrl`. Otherwise return `prUrl: null`.",
-          ...(config.baseRef === null
-            ? []
-            : [
-                `Open the pull request against the branch \`${config.baseRef.replace(/^(?:origin\/|refs\/heads\/)/, "")}\`.`,
-              ]),
-          "Return a short `summary` of what you changed.",
-        ].join("\n"),
-        workspace: { type: "worktree", baseRef: config.baseRef ?? "HEAD" },
-        runtimeMode: "full-access",
-        ...(workerModel === null ? {} : { model: workerModel }),
-        timeout: config.stepTimeout,
-        returns: Done,
-      }),
-    );
+    const returnRules = [
+      "If the project is a Git repository with a remote, commit, push a branch, open a pull request and return its URL as `prUrl`. Otherwise return `prUrl: null`.",
+      ...(config.baseRef === null
+        ? []
+        : [
+            `Open the pull request against the branch \`${config.baseRef.replace(/^(?:origin\/|refs\/heads\/)/, "")}\`.`,
+          ]),
+      "Return a short `summary` of what you changed.",
+    ];
+    const doOptions = {
+      project,
+      title: `${label}: ${input.title}`,
+      brief: [
+        `Do part ${input.part + 1} of task T-${input.number}: ${input.title}`,
+        "",
+        input.brief,
+        "",
+        "Make the change in this worktree and check that it works.",
+        ...returnRules,
+      ].join("\n"),
+      workspace: { type: "worktree", baseRef: config.baseRef ?? "HEAD" },
+      runtimeMode: "full-access",
+      ...(workerModel === null ? {} : { model: workerModel }),
+      timeout: config.stepTimeout,
+      returns: Done,
+    } as const;
+    const tried = yield* within(pool, slot, agent.try("do", doOptions));
+    // A turn cut off at its time limit leaves its work in the thread's worktree: carry on there.
+    const done =
+      tried.outcome === "done"
+        ? tried
+        : yield* within(
+            pool,
+            slot,
+            tried.thread === undefined
+              ? agent("do/again", doOptions)
+              : agent("do/continue", {
+                  thread: tried.thread,
+                  brief: [
+                    `Your last turn on part ${input.part + 1} of task T-${input.number} was stopped before it returned a result: ${tried.reason}`,
+                    "",
+                    "Do not start over. Run `git status` and `git log` in this worktree to see what is already done, then carry on from there: finish the part and check that it works.",
+                    ...returnRules,
+                  ].join("\n"),
+                  timeout: config.stepTimeout,
+                  returns: Done,
+                }),
+          );
     const { summary, prUrl: reported } = done.value;
     if (reported === null) {
       const accepted = yield* ask("accept", {

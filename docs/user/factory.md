@@ -17,7 +17,8 @@ A task that has a run follows the run instead of its lane:
 - While the run is going the task shows under **Doing**, or **Review** once its pull requests are being checked.
 - When the run completes, the task shows under **Done**. If you moved it after the run ended, your lane wins.
 - When the run stops or is cancelled, the task goes back to its lane and shows **Stopped**.
-- A run paused by a failed step shows **Failed**.
+- A task shows **Working** while any of its agents is at work, and **Waiting** when nothing is, for example while its run waits on checks.
+- **Failed** shows when its run, or any of its parts, has paused on a failed step. A failed task is also listed under **Needs you**.
 
 Notes are a log on the task. You can add one at any time; the workflow adds one when a run ends, saying what each part came to.
 
@@ -31,6 +32,8 @@ Press **Start** on a task, or tick the start option when you create it. A task n
 4. The workflow waits for the pull request's checks, then a separate review agent reads the change. If the checks fail or the review asks for changes, the part's agent fixes it, up to two rounds by default. If it still does not pass, you choose **Merge anyway** or **Stop**.
 5. You approve the merge. The pull request is then merged.
 6. A part with no pull request is shown to you instead, and you accept it or ask for a redo.
+
+If an agent runs out of time (`stepTimeout`), its thread is continued once from where it stopped rather than restarted. If it runs out again, the task shows **Failed** and waits in **Needs you**; resume the run on the Workflows page and the same thread carries on.
 
 Starting again after a run stops makes a new attempt; the task lists its attempts. A task that is already running cannot be started, and neither can a dropped one, from the page or the command line.
 
@@ -72,7 +75,7 @@ Settings are JSON values in the workflow store. `factory/v1/config` applies to e
 - `concurrency`: how many agents of one task work at a time, 1 to 4. Default 2. A part waiting on checks or on you does not hold a place.
 - `askPlan`, `askMerge`: ask you before starting and before merging. Both default to on.
 - `fixRounds`: fix rounds, 0 to 3. Default 2.
-- `stepTimeout`, `checksTimeout`: how long an agent step and the wait for checks may take. Defaults `"45 minutes"` and `"1 hour"`.
+- `stepTimeout`, `checksTimeout`: how long an agent step and the wait for checks may take. Defaults `"2 hours"` and `"1 hour"`.
 - `mergeMethod`: `merge`, `squash`, `rebase` or `fast-forward`. Default `squash`.
 - `mergeNeedsPerson`: a merge goes ahead only on an answer you give in the app. An agent's answer through the command line makes the question come back, and only your answer counts. It also asks the merge question when `askMerge` is off. Default off. It guards against an agent answering by habit; it is not a security boundary.
 

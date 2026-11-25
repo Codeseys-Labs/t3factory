@@ -59,6 +59,10 @@ The server reloads changed top-level workflow files without a restart, but not t
 
 Do not hand-merge `pnpm-lock.yaml`; Factory adds no dependencies, so it must equal upstream's.
 
+## Development server inside the checkout
+
+When the dev server's home is inside the checkout, the default for `vp run dev` in a worktree, the worktrees that workflow agents work in are created under `<checkout>/.t3/worktrees`, and tools that walk the repository can stall on them. This was seen with `vp run i18n:generate`, whose `gt generate` hangs in its package-version check until it is run as `gt --skip-version-check generate` or those worktrees are removed. A real install keeps its home outside the repository and is not affected.
+
 ## Add a translated string
 
 Write the string in Factory code through `gt-react` as upstream's [translation page](../internals/14_i18n.md) describes. Then:

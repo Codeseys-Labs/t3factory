@@ -253,6 +253,12 @@ export function TaskPanel({
   // The task's own run waits on its parts while their agents work, so its state word says less.
   const latestActivity =
     card !== null && running && card.run?.runId === latestRun.runId ? shownActivity(card) : null;
+  // A paused part leaves the task's own run waiting, so its state word would not say it failed.
+  const latestFailed =
+    card !== null &&
+    running &&
+    card.run?.runId === latestRun.runId &&
+    card.badges.includes("failed");
   const problemFor = (control: TaskControl) =>
     problem === null || problem.control !== control ? null : (
       <p role="alert" className="text-xs text-destructive-foreground">
@@ -654,6 +660,7 @@ export function TaskPanel({
                         : (nodes.find((node) => node.run.runId === attempt.runId) ?? null)
                     }
                     activity={attempt.n === latestAttempt?.n ? latestActivity : null}
+                    failed={attempt.n === latestAttempt?.n && latestFailed}
                     liveParts={attempt.n === latestAttempt?.n ? (card?.liveParts ?? 0) : 0}
                     onOpenRun={onOpenRun}
                   />
@@ -751,6 +758,7 @@ function AttemptRow({
   node,
   activity,
   liveParts,
+  failed,
   onOpenRun,
 }: {
   readonly attempt: FactoryAttempt;
@@ -759,6 +767,8 @@ function AttemptRow({
   /** What the run and its parts are doing, shown in place of its state while it runs. */
   readonly activity: WorkCard["activity"];
   readonly liveParts: number;
+  /** The run, or a part below it, is paused by a failing step. */
+  readonly failed: boolean;
   readonly onOpenRun: (runId: string) => void;
 }) {
   const { runId } = attempt;
@@ -768,7 +778,9 @@ function AttemptRow({
       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
         <RelativeLabel value={attempt.startedAt} />
       </span>
-      {activity !== null ? (
+      {failed ? (
+        <WorkBadges badges={["failed"]} />
+      ) : activity !== null ? (
         <>
           <WorkActivity activity={activity} />
           {liveParts === 0 ? null : (

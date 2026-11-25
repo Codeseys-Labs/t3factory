@@ -399,6 +399,115 @@ describe("deriveWorkCards", () => {
       expect(card?.liveParts).toBe(entry.liveParts);
     }
   });
+  // B12 AMBIGUOUS: ended roots suppress failed from paused descendants, while B6 still preserves cancelled roots' stopped badge.
+  it("adds failed for every live paused descendant and keeps it out of ended branches", () => {
+    const cases = [
+      {
+        name: "paused root",
+        task: task("paused-root", { attempt: taskRun("paused-root-run") }),
+        runs: [run("paused-root-run", { status: "paused" })],
+        badges: ["failed"],
+      },
+      {
+        name: "paused part beside a waiting part",
+        task: task("paused-part", { attempt: taskRun("paused-part-root") }),
+        runs: [
+          run("paused-part-root", { status: "waiting" }),
+          run("paused-part-run", { status: "paused", parentRunId: "paused-part-root" }),
+          run("waiting-part-run", { status: "waiting", parentRunId: "paused-part-root" }),
+        ],
+        badges: ["failed"],
+      },
+      {
+        name: "paused grandchild",
+        task: task("paused-grandchild", { attempt: taskRun("paused-grandchild-root") }),
+        runs: [
+          run("paused-grandchild-root", { status: "waiting" }),
+          run("paused-grandchild-part", {
+            status: "waiting",
+            parentRunId: "paused-grandchild-root",
+          }),
+          run("paused-grandchild-run", {
+            status: "paused",
+            parentRunId: "paused-grandchild-part",
+          }),
+        ],
+        badges: ["failed"],
+      },
+      {
+        name: "ended paused part",
+        task: task("ended-paused-part", { attempt: taskRun("ended-paused-part-root") }),
+        runs: [
+          run("ended-paused-part-root", { status: "waiting" }),
+          run("ended-paused-part-run", {
+            status: "paused",
+            parentRunId: "ended-paused-part-root",
+            endedAt: at(20),
+          }),
+        ],
+        badges: [],
+      },
+      {
+        name: "completed root with a paused part",
+        task: task("completed-paused-part", { attempt: taskRun("completed-paused-part-root") }),
+        runs: [
+          run("completed-paused-part-root", { status: "completed", endedAt: at(20) }),
+          run("completed-paused-part-run", {
+            status: "paused",
+            parentRunId: "completed-paused-part-root",
+          }),
+        ],
+        badges: [],
+      },
+      {
+        name: "cancelled root with a paused part",
+        task: task("cancelled-paused-part", {
+          laneSetAt: at(10),
+          attempt: taskRun("cancelled-paused-part-root"),
+        }),
+        runs: [
+          run("cancelled-paused-part-root", { status: "cancelled", endedAt: at(20) }),
+          run("cancelled-paused-part-run", {
+            status: "paused",
+            parentRunId: "cancelled-paused-part-root",
+          }),
+        ],
+        badges: ["stopped"],
+      },
+      {
+        name: "no paused run",
+        task: task("no-paused-run", { attempt: taskRun("no-paused-run-root") }),
+        runs: [
+          run("no-paused-run-root", { status: "waiting" }),
+          run("no-paused-run-part", { status: "waiting", parentRunId: "no-paused-run-root" }),
+        ],
+        badges: [],
+      },
+      {
+        name: "question and paused part",
+        task: task("question-paused-part", { attempt: taskRun("question-paused-part-root") }),
+        runs: [
+          run("question-paused-part-root", { status: "waiting" }),
+          run("question-part", {
+            status: "waiting",
+            parentRunId: "question-paused-part-root",
+          }),
+          run("paused-question-part", {
+            status: "paused",
+            parentRunId: "question-paused-part-root",
+          }),
+        ],
+        questions: [question("question-part")],
+        badges: ["needs-you", "failed"],
+      },
+    ];
+
+    for (const entry of cases) {
+      const questions = "questions" in entry ? entry.questions : [];
+      const [card] = cardsFor([entry.task], entry.runs, questions);
+      expect(card?.badges).toEqual(entry.badges);
+    }
+  });
 });
 
 describe("filterWorkCards", () => {

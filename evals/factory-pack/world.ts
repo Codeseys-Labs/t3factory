@@ -40,6 +40,7 @@ type Service = Workflows.Workflows["Service"];
 export interface World {
   readonly definitions: ReadonlyArray<WorkflowDefinition>;
   readonly turns: ReadonlyArray<AgentTurnInput>;
+  readonly startAttempts: ReadonlyArray<AgentTurnInput>;
   readonly acts: ReadonlyArray<Parameters<Forge["pullRequests"]["act"]>>;
   readonly reads: ReadonlyArray<{
     readonly pullRequest: WorkflowForge.PullRequestAddress;
@@ -90,6 +91,7 @@ interface Script {
   readonly pullRequests?: ReadonlyArray<WorkflowForge.PullRequest>;
   readonly listPullRequests?: Forge["pullRequests"]["list"];
   readonly holdAgent?: (turn: AgentTurnInput) => boolean;
+  readonly startError?: (turn: AgentTurnInput) => string | undefined;
   readonly failFinishAfterCommit?: boolean;
   readonly failIssueCapture?: { readonly projectId: string; readonly issueKey: string };
 }
@@ -188,6 +190,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
 
   const definitions: Array<WorkflowDefinition> = [];
   const turns: Array<AgentTurnInput> = [];
+  const startAttempts: Array<AgentTurnInput> = [];
   const started = new Map<string, AgentTurnInput>();
   const acts: Array<Parameters<Forge["pullRequests"]["act"]>> = [];
   const reads: Array<{
@@ -307,6 +310,9 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
 
   const agents = WorkflowAgents.WorkflowAgents.of({
     start: Effect.fn("factoryPack.agents.start")(function* (input) {
+      startAttempts.push(input);
+      const reason = script.startError?.(input);
+      if (reason !== undefined) return yield* new WorkflowAgents.WorkflowAgentError({ reason });
       turns.push(input);
       started.set(input.key, input);
       active.add(input.key);
@@ -502,6 +508,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
   return {
     definitions,
     turns,
+    startAttempts,
     acts,
     reads,
     issueQueries,

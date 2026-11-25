@@ -11,6 +11,8 @@ import {
   addNote,
   capturedKey,
   createTask,
+  mergeApproved,
+  projectPullRequest,
   readConfig,
   startPool,
   startTask,
@@ -18,6 +20,12 @@ import {
 } from "./lib/records.ts";
 
 const { workflow, step, agent, ask, invoke, stop, title, tags, within, pullRequests } = T3;
+
+// Upstream's wording (workflowAgent.ts) for a turn stopped at its time limit, and for a stop that
+// may not have held.
+const TIMED_OUT = "was not done after";
+const NOT_STOPPED = "could not be stopped";
+const STILL_AT_WORK = "may still be at work";
 
 const Plan = Schema.Struct({
   summary: Schema.String,
@@ -133,7 +141,18 @@ const factoryTaskPart = workflow(
       returns: Done,
     } as const;
     const tried = yield* within(pool, slot, agent.try("do", doOptions));
-    // A turn cut off at its time limit leaves its work in the thread's worktree: carry on there.
+    if (
+      tried.outcome === "failed" &&
+      tried.thread !== undefined &&
+      !(
+        tried.reason.includes(TIMED_OUT) &&
+        !tried.reason.includes(NOT_STOPPED) &&
+        !tried.reason.includes(STILL_AT_WORK)
+      )
+    ) {
+      return yield* stop(`worker stopped: ${tried.reason}`);
+    }
+    // A turn cut off cleanly at its time limit leaves its work in the worktree: carry on there.
     const done =
       tried.outcome === "done"
         ? tried
@@ -168,117 +187,139 @@ const factoryTaskPart = workflow(
       return { outcome: "accepted", prUrl: null } as const;
     }
 
-    const prUrl = yield* step(
-      "pull-request",
-      { returns: Schema.NullOr(Schema.String) },
-      Effect.gen(function* () {
-        const wanted = reported.trim().replace(/\/+$/, "").toLowerCase();
-        if (wanted === "") return null;
-        const listed = yield* pullRequests.list({ project, state: "all", limit: 500 });
-        const found = listed.find(
-          (entry) => entry.url.trim().replace(/\/+$/, "").toLowerCase() === wanted,
-        );
-        return found === undefined ? null : found.url;
-      }),
-    );
+    const prUrl = yield* projectPullRequest(project, reported);
     if (prUrl === null) return yield* stop("pull request is not this project's");
 
     const pr = { project, url: prUrl };
     const links = [{ label: "Pull request", url: prUrl }];
     const reviewModel = config.reviewModel ?? input.model;
-    yield* tags(taskTags(input.taskId, project, "review"));
-    for (let r = 0; r <= config.fixRounds; r++) {
-      const standing = yield* pullRequests.wait(`checks/${r}`, pr, {
+    const rulings: Array<string> = [];
+    let lastNotes: string | null = null;
+    // Checks, then a review once they pass: `approved`, `merged`, or what still stands in the way.
+    const round = Effect.fnUntraced(function* (at: string) {
+      const standing = yield* pullRequests.wait(`checks/${at}`, pr, {
         until: "checks",
         timeout: config.checksTimeout,
       });
-      if (Option.isSome(standing) && standing.value.state === "merged") {
-        return { outcome: "merged", prUrl } as const;
-      }
+      if (Option.isSome(standing) && standing.value.state === "merged") return "merged" as const;
       if (Option.isSome(standing) && standing.value.state === "closed") {
         return yield* stop("pull request closed");
       }
-      let problem: string;
-      if (
-        Option.isSome(standing) &&
-        (standing.value.checks === "passing" || standing.value.checks === "none")
-      ) {
-        const review = yield* within(
-          pool,
-          slot,
-          agent(`review/${r}`, {
-            project,
-            title: `${label} review: ${input.title}`,
-            brief: [
-              `Review pull request ${prUrl}. It does part ${input.part + 1} of task T-${input.number}: ${input.title}`,
-              "",
-              "Its brief:",
-              "",
-              input.brief,
-              "",
-              "Change nothing. Read its diff and check that it does what the brief asks, works, and changes nothing else.",
-              'Return `verdict: "approve"` when it can be merged as it is, or `verdict: "changes"` with `notes` saying what must change.',
-            ].join("\n"),
-            ...(reviewModel === null ? {} : { model: reviewModel }),
-            timeout: config.stepTimeout,
-            returns: Review,
-          }),
-        );
-        if (review.value.verdict === "approve") break;
-        problem = `A review asked for changes:\n\n${review.value.notes}`;
-      } else {
-        problem = Option.isNone(standing)
-          ? `Its checks were still running after ${config.checksTimeout}.`
-          : "Its checks are failing: read them on the pull request to find out why.";
+      if (Option.isNone(standing)) {
+        return {
+          problem: `Its checks were still running after ${config.checksTimeout}.`,
+          notes: null,
+        };
       }
-      if (r < config.fixRounds) {
-        yield* within(
-          pool,
-          slot,
-          agent(`fix/${r}`, {
-            thread: done.thread,
-            brief: [
-              `Pull request ${prUrl} is not ready to merge. ${problem}`,
-              "",
-              "Fix it in your worktree, check it, and push to the same branch. Then say what you changed.",
-            ].join("\n"),
-            timeout: config.stepTimeout,
-          }),
-        );
-        continue;
+      if (standing.value.checks !== "passing" && standing.value.checks !== "none") {
+        return {
+          problem: "Its checks are failing: read them on the pull request to find out why.",
+          notes: null,
+        };
       }
-      const stuck = yield* ask("stuck", {
+      const review = yield* within(
+        pool,
+        slot,
+        agent(`review/${at}`, {
+          project,
+          title: `${label} review: ${input.title}`,
+          brief: [
+            `Review pull request ${prUrl}. It does part ${input.part + 1} of task T-${input.number}: ${input.title}`,
+            "",
+            "Its brief:",
+            "",
+            input.brief,
+            "",
+            "Change nothing. Read its diff and check that it does what the brief asks, works, and changes nothing else.",
+            ...(rulings.length === 0
+              ? []
+              : [
+                  "",
+                  "A person has ruled on this pull request. Follow these rulings, and do not ask again for what they overrule:",
+                  ...rulings.map((ruling) => `- ${ruling}`),
+                ]),
+            'Return `verdict: "approve"` when it can be merged as it is, or `verdict: "changes"` with `notes` saying what must change.',
+          ].join("\n"),
+          ...(reviewModel === null ? {} : { model: reviewModel }),
+          timeout: config.stepTimeout,
+          returns: Review,
+        }),
+      );
+      if (review.value.verdict === "approve") return "approved" as const;
+      return {
+        problem: `A review asked for changes:\n\n${review.value.notes}`,
+        notes: review.value.notes,
+      };
+    });
+
+    yield* tags(taskTags(input.taskId, project, "review"));
+    let failure: { readonly problem: string; readonly notes: string | null } | undefined;
+    for (let r = 0; r <= config.fixRounds; r++) {
+      const result = yield* round(`${r}`);
+      if (result === "merged") return { outcome: "merged", prUrl } as const;
+      failure = result === "approved" ? undefined : result;
+      if (failure === undefined) break;
+      if (failure.notes !== null) lastNotes = failure.notes;
+      if (r === config.fixRounds) break;
+      yield* within(
+        pool,
+        slot,
+        agent(`fix/${r}`, {
+          thread: done.thread,
+          brief: [
+            `Pull request ${prUrl} is not ready to merge. ${failure.problem}`,
+            "",
+            "Fix it in your worktree, check it, and push to the same branch. Then say what you changed.",
+          ].join("\n"),
+          timeout: config.stepTimeout,
+        }),
+      );
+    }
+    for (let n = 1; failure !== undefined; n++) {
+      const stuck = yield* ask(n === 1 ? "stuck" : `stuck/x${n - 1}`, {
         title: `${label} did not pass review: ${input.title}`,
         kind: "stuck",
-        choices: ["Merge anyway", "Stop"],
-        data: { prUrl, problem },
+        choices: ["Merge anyway", { value: "Fix again", requireReason: true }, "Stop"],
+        data: { prUrl, problem: failure.problem },
         links,
       });
-      if (Option.isNone(stuck) || stuck.value.choice !== "Merge anyway") {
+      if (Option.isNone(stuck) || stuck.value.choice === "Stop") {
         return yield* stop("review did not pass");
       }
+      if (stuck.value.choice === "Merge anyway") break;
+      const ruling = (stuck.value.reason ?? "").trim();
+      rulings.push(ruling);
+      yield* within(
+        pool,
+        slot,
+        agent(`fix/x${n}`, {
+          thread: done.thread,
+          brief: [
+            `A person looked at why pull request ${prUrl} did not pass review and ruled: ${ruling}`,
+            "",
+            "Follow that ruling wherever it differs from the review.",
+            ...(lastNotes === null ? [] : ["", "The review's last notes:", "", lastNotes]),
+            ...(failure.notes === null ? ["", failure.problem] : []),
+            "",
+            "Make the changes in your worktree, check them, and push to the same branch so they land on the same pull request. Then say what you changed.",
+          ].join("\n"),
+          timeout: config.stepTimeout,
+        }),
+      );
+      const result = yield* round(`x${n}`);
+      if (result === "merged") return { outcome: "merged", prUrl } as const;
+      failure = result === "approved" ? undefined : result;
+      if (failure !== undefined && failure.notes !== null) lastNotes = failure.notes;
     }
 
-    if (config.askMerge || config.mergeNeedsPerson) {
-      const question = {
-        title: `Merge ${label}: ${input.title}?`,
-        kind: "merge",
-        choices: ["Merge", "Hold"],
-        links,
-      } as const;
-      const merge = yield* ask("approve-merge", question);
-      if (Option.isNone(merge) || merge.value.choice !== "Merge") return yield* stop("merge held");
-      // Only an answer given in the app carries a session; the server drops one a sender supplies.
-      if (config.mergeNeedsPerson && merge.value.answeredBySession === undefined) {
-        const person = yield* ask("approve-merge/person", question);
-        if (
-          Option.isNone(person) ||
-          person.value.choice !== "Merge" ||
-          person.value.answeredBySession === undefined
-        ) {
-          return yield* stop("merge held");
-        }
-      }
+    if (
+      (config.askMerge || config.mergeNeedsPerson) &&
+      !(yield* mergeApproved(
+        { title: `Merge ${label}: ${input.title}?`, kind: "merge", links },
+        config.mergeNeedsPerson,
+      ))
+    ) {
+      return yield* stop("merge held");
     }
     yield* step(
       "merge",

@@ -29,11 +29,11 @@ Press **Start** on a task, or tick the start option when you create it. A task n
 1. An agent reads the project and proposes a plan of one to six parts. It changes nothing.
 2. You approve the plan, or drop it.
 3. Each part runs in its own worktree with its own agent. The agent opens a pull request when the project is a Git repository with a remote; with `baseRef` set, it is told to open it against that branch. The pull request must be one of the project's own, or the part stops.
-4. The workflow waits for the pull request's checks, then a separate review agent reads the change. If the checks fail or the review asks for changes, the part's agent fixes it, up to two rounds by default. If it still does not pass, you choose **Merge anyway** or **Stop**.
+4. The workflow waits for the pull request's checks, then a separate review agent reads the change. If the checks fail or the review asks for changes, the part's agent fixes it, up to two rounds by default. If it still does not pass, you choose **Merge anyway**, **Fix again** or **Stop**. **Fix again** needs a reason: the worker takes it as your ruling for one more round, and the next reviewer is shown it.
 5. You approve the merge. The pull request is then merged.
 6. A part with no pull request is shown to you instead, and you accept it or ask for a redo.
 
-If an agent runs out of time (`stepTimeout`), its thread is continued once from where it stopped rather than restarted. If it runs out again, the task shows **Failed** and waits in **Needs you**; resume the run on the Workflows page and the same thread carries on.
+If an agent runs out of time (`stepTimeout`), its thread is continued once from where it stopped rather than restarted. If it runs out again, the task shows **Failed** and waits in **Needs you**; resume the run on the Workflows page and the same thread carries on. An agent that you stopped, or whose turn could not be stopped, is not continued automatically: the part stops and says why.
 
 Starting again after a run stops makes a new attempt; the task lists its attempts. A task that is already running cannot be started, and neither can a dropped one, from the page or the command line.
 

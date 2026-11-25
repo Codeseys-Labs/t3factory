@@ -176,12 +176,12 @@ const script = (
         urls.set(turn.origin.runId, prUrl);
         return { output: { summary: "Implemented the requested part.", prUrl } };
       }
-      if (/^review\/\d+$/.test(step)) {
+      if (/^review\/x?\d+$/.test(step)) {
         return {
           output: { verdict: options.changes ? "changes" : "approve", notes: "Review feedback." },
         };
       }
-      if (/^fix\/\d+$/.test(step)) return { reply: "Fixed the reported problem." };
+      if (/^fix\/x?\d+$/.test(step)) return { reply: "Fixed the reported problem." };
       throw new Error(`Unexpected agent step ${step}`);
     },
     standing: (pullRequest: WorkflowForge.PullRequestAddress, read: number) => ({
@@ -226,6 +226,24 @@ const ask = Effect.fn("factoryPack.test.ask")(function* (
   const question = yield* world.question(workflows, runId);
   expect({ name: question.name, kind: question.kind }).toEqual({ name, kind });
   expect(question.request).toMatchObject({ choices });
+  return question;
+});
+const askStuck = Effect.fn("factoryPack.test.askStuck")(function* (
+  world: World,
+  workflows: Service,
+  runId: string,
+  name = "stuck",
+) {
+  const question = yield* ask(world, workflows, runId, name, "stuck", [
+    "Merge anyway",
+    "Fix again",
+    "Stop",
+  ]);
+  expect(question.request).toMatchObject({
+    choiceDetails: expect.arrayContaining([
+      expect.objectContaining({ value: "Fix again", requireReason: true }),
+    ]),
+  });
   return question;
 });
 const approvePlan = Effect.fn("factoryPack.test.approvePlan")(function* (
@@ -489,7 +507,7 @@ it("fixRounds one asks stuck after two changes reviews and Stop ends only the pa
         const { runId } = yield* startTask(workflows);
         yield* approvePlan(world, workflows, runId);
         const child = yield* world.child(workflows, runId, 0);
-        yield* ask(world, workflows, child.runId, "stuck", "stuck", ["Merge anyway", "Stop"]);
+        yield* askStuck(world, workflows, child.runId);
         yield* workflows.answer(child.runId, "stuck", { choice: "Stop" });
         const part = yield* world.ended(workflows, child.runId);
         const done = yield* world.ended(workflows, runId);
@@ -1438,36 +1456,90 @@ effectIt.effect.each([
   ),
 );
 
-it("P2 refuses a pull request outside the project before checks, reviews or acts", () =>
-  withWorld({ ...script(), pullRequests: [pullRequestAt(99)] }, (world) =>
-    world.server(
-      Effect.fn("factoryPack.test.foreignPullRequest")(function* (workflows) {
-        yield* workflows.storeSet("factory/v1/config", { v: 1, askPlan: false, askMerge: false });
-        const { runId } = yield* startTask(workflows);
-        const child = yield* world.child(workflows, runId, 0);
-        const part = yield* world.ended(workflows, child.runId);
-        const done = yield* world.ended(workflows, runId);
-        expect(part).toMatchObject({
-          status: "stopped",
-          detail: "pull request is not this project's",
-          result: null,
-        });
-        expect(done.result).toEqual({
-          parts: [{ title: PART.title, outcome: "stopped", prUrl: null }],
-        });
-        expect(done.status).toBe("completed");
-        const { steps } = yield* workflows.get(child.runId);
-        expect(steps.find((step) => step.name === "pull-request")?.status).toBe("completed");
-        expect(steps.filter((step) => step.kind === "wait")).toEqual([]);
-        expectTurns(world, child.runId, ["do"]);
-        expect(world.pullRequestQueries).toHaveLength(1);
-        expect(world.pullRequestQueries[0]).toMatchObject({ project: PROJECT, state: "all" });
-        expect(world.reads).toEqual([]);
-        expect(world.acts).toEqual([]);
-        expectQuestions(world, []);
-      }),
-    ),
-  ));
+effectIt.effect.each(["own", "foreign", "unreadable"] as const)(
+  "P2a reads an unlisted pull request: %s",
+  (ownership) =>
+    Effect.promise(() => {
+      const answers = script();
+      const foreignUrl = "https://github.com/other/repository/pull/17";
+      const reportedUrl = ownership === "foreign" ? foreignUrl : PR_URL;
+      const canonicalUrl = "https://github.com/Factory/Pack/pull/17";
+      return withWorld(
+        {
+          ...answers,
+          pullRequests: [pullRequestAt(99)],
+          agent: (turn) =>
+            turn.origin.step === "do"
+              ? { output: { summary: "Implemented.", prUrl: reportedUrl } }
+              : answers.agent(turn),
+          readPullRequest: Effect.fn("factoryPack.test.readUnlisted")(function* (_address, detail) {
+            if (ownership === "unreadable") {
+              return yield* new WorkflowForge.WorkflowForgeError({
+                reason: "Pull request read failed",
+              });
+            }
+            return {
+              ...detail,
+              number: 17,
+              repository: ownership === "foreign" ? "other/repository" : "factory/pack",
+              url: ownership === "foreign" ? foreignUrl : canonicalUrl,
+            };
+          }),
+        },
+        (world) =>
+          world.server(
+            Effect.fn("factoryPack.test.unlistedPullRequest")(function* (workflows) {
+              yield* workflows.storeSet("factory/v1/config", {
+                v: 1,
+                askPlan: false,
+                askMerge: false,
+              });
+              const { runId } = yield* startTask(workflows);
+              const child = yield* world.child(workflows, runId, 0);
+              const part = yield* world.ended(workflows, child.runId, true);
+              const done = yield* world.ended(workflows, runId, true);
+              const { steps } = yield* workflows.get(child.runId);
+              expect(world.pullRequestQueries).toHaveLength(1);
+              expect(world.pullRequestQueries[0]).toMatchObject({ project: PROJECT, state: "all" });
+              expect(steps.find((step) => step.name === "pull-request")?.status).toBe("completed");
+              expectTurns(world, runId, ["plan"]);
+              expectQuestions(world, []);
+              if (ownership === "own") {
+                expectMerged(world, done, part, canonicalUrl);
+                expectTurns(world, child.runId, ["do", "review/0"]);
+                expect(world.readCalls).toEqual([
+                  { project: PROJECT, url: reportedUrl },
+                  { project: PROJECT, url: canonicalUrl },
+                  { project: PROJECT, url: canonicalUrl },
+                ]);
+                expect(steps.find((step) => step.name === "checks/0")?.result).toMatchObject({
+                  url: canonicalUrl,
+                  checks: "passing",
+                });
+                expect(
+                  world.turns.find((turn) => turn.origin.step === "review/0")?.prompt,
+                ).toContain(canonicalUrl);
+              } else {
+                expect(part).toMatchObject({
+                  status: "stopped",
+                  detail: "pull request is not this project's",
+                  result: null,
+                });
+                expect(done.status).toBe("completed");
+                expect(done.result).toEqual({
+                  parts: [{ title: PART.title, outcome: "stopped", prUrl: null }],
+                });
+                expectTags(world, done, "done");
+                expect(steps.filter((step) => step.kind === "wait")).toEqual([]);
+                expectTurns(world, child.runId, ["do"]);
+                expect(world.readCalls).toEqual([{ project: PROJECT, url: reportedUrl }]);
+                expect(world.acts).toEqual([]);
+              }
+            }),
+          ),
+      );
+    }),
+);
 
 effectIt.effect.each([
   { label: "case", url: PR_URL.toUpperCase(), accepted: true },
@@ -2606,6 +2678,468 @@ it("P12 continuations and another part's do share the concurrency-one pool", () 
             ]),
           );
           expectQuestions(world, []);
+          expect(Math.max(...world.activeCounts)).toBe(1);
+        }),
+      ),
+  );
+});
+
+effectIt.effect.each([
+  {
+    label: "a person interrupted the turn",
+    result: { ending: "stopped", detail: "interrupted", reply: "" },
+    reason: "the agent's turn was stopped: interrupted",
+    turns: 1,
+  },
+  {
+    label: "the timed-out turn could not be stopped",
+    result: {
+      ending: "stopped",
+      detail: "it was not done after 2h, and its turn could not be stopped",
+      reply: "",
+    },
+    reason:
+      "the agent's turn was stopped: it was not done after 2h, and its turn could not be stopped",
+    turns: 1,
+  },
+  {
+    label: "the timed-out turn may still be at work",
+    result: {
+      ending: "stopped",
+      detail:
+        "it was not done after 2h: its turn ended without its result, and the agent may still be at work on its thread",
+      reply: "",
+    },
+    reason:
+      "the agent's turn was stopped: it was not done after 2h: its turn ended without its result, and the agent may still be at work on its thread",
+    turns: 1,
+  },
+  {
+    label: "no usable result was returned",
+    result: { ending: "completed", detail: "", reply: "The work is unfinished." },
+    reason: "the agent did not return a result: its turn ended with none accepted",
+    turns: 3,
+  },
+  {
+    label: "the turn died twice",
+    result: { ending: "failed", detail: "provider disconnected", reply: "" },
+    reason: "the agent's turn was cut short: provider disconnected",
+    turns: 2,
+  },
+] as const)("P12a stops after $label without recovering the worker", (entry) =>
+  Effect.promise(() => {
+    const answers = script();
+    return withWorld(
+      {
+        ...answers,
+        agent: (turn) => (turn.origin.step === "do" ? entry.result : answers.agent(turn)),
+      },
+      (world) =>
+        world.server(
+          Effect.fn("factoryPack.test.workerStopped")(function* (workflows) {
+            yield* workflows.storeSet("factory/v1/config", {
+              v: 1,
+              askPlan: false,
+              askMerge: false,
+            });
+            const { runId } = yield* startTask(workflows);
+            const child = yield* world.child(workflows, runId, 0);
+            const part = yield* world.ended(workflows, child.runId, true);
+            const done = yield* world.ended(workflows, runId, true);
+            expect(part).toMatchObject({
+              status: "stopped",
+              detail: `worker stopped: ${entry.reason}`,
+              result: null,
+              pauses: 0,
+            });
+            expect(done).toMatchObject({
+              status: "completed",
+              result: { parts: [{ title: PART.title, outcome: "stopped", prUrl: null }] },
+            });
+            expectTags(world, part, "doing");
+            expectTags(world, done, "done");
+            expectTurns(world, runId, ["plan"]);
+            const turns = world.turns.filter((turn) => turn.origin.runId === child.runId);
+            expect(turns.map((turn) => turn.origin.step)).toEqual(
+              Array.from({ length: entry.turns }, () => "do"),
+            );
+            expect(turns[0]?.thread).toBeUndefined();
+            if (entry.result.ending === "completed") {
+              expect(turns.slice(1).map((turn) => turn.thread)).toEqual([
+                `thread-${turns[0]?.key}`,
+                `thread-${turns[0]?.key}`,
+              ]);
+            } else {
+              expect(turns.every((turn) => turn.thread === undefined)).toBe(true);
+            }
+            expect(world.startAttempts).toHaveLength(entry.turns + 1);
+            const { steps } = yield* workflows.get(child.runId);
+            expect(steps.find((step) => step.name === "do")).toMatchObject({
+              status: "failed",
+              detail: entry.reason,
+              threadId: expect.any(String),
+            });
+            expect(
+              steps.filter(
+                (step) =>
+                  step.name === "do/continue" ||
+                  step.name === "do/again" ||
+                  step.name === "pull-request" ||
+                  step.kind === "wait",
+              ),
+            ).toEqual([]);
+            expect(world.pullRequestQueries).toEqual([]);
+            expect(world.readCalls).toEqual([]);
+            expect(world.acts).toEqual([]);
+            expectQuestions(world, []);
+          }),
+        ),
+    );
+  }),
+);
+
+effectIt.effect.each([
+  { failure: "none", next: null },
+  { failure: "changes", next: "Fix again" },
+  { failure: "checks", next: "Fix again" },
+  { failure: "changes", next: "Stop" },
+  { failure: "checks", next: "Stop" },
+  { failure: "changes", next: "Merge anyway" },
+  { failure: "checks", next: "Merge anyway" },
+] as const)("P13 an extra round with $failure then $next", (entry) =>
+  Effect.promise(() => {
+    const ruling = "Keep the public API and repair only the internal implementation.";
+    const secondRuling = "Preserve the import boundary and finish the missing assertion.";
+    const extraNotes = "The import boundary still needs a regression test.";
+    const answers = script({
+      changes: true,
+      checks: entry.failure === "checks" ? ["passing", "failing", "passing"] : ["passing"],
+    });
+    return withWorld(
+      {
+        ...answers,
+        agent: (turn) => {
+          if (turn.origin.step === "review/x1") {
+            return {
+              output: {
+                verdict: entry.failure === "changes" ? "changes" : "approve",
+                notes: extraNotes,
+              },
+            };
+          }
+          if (turn.origin.step === "review/x2") {
+            return { output: { verdict: "approve", notes: "The ruling is satisfied." } };
+          }
+          return answers.agent(turn);
+        },
+      },
+      (world) =>
+        world.server(
+          Effect.fn("factoryPack.test.extraRound")(function* (workflows) {
+            yield* workflows.storeSet("factory/v1/config", { v: 1, askPlan: false, fixRounds: 0 });
+            const { runId } = yield* startTask(workflows);
+            const child = yield* world.child(workflows, runId, 0);
+            yield* askStuck(world, workflows, child.runId);
+            const refused = yield* workflows
+              .answer(child.runId, "stuck", { choice: "Fix again" })
+              .pipe(Effect.flip);
+            expect(refused._tag).toBe("WorkflowInputError");
+            expect(refused.message).toMatch(/reason/i);
+            yield* askStuck(world, workflows, child.runId);
+            expectTurns(world, child.runId, ["do", "review/0"]);
+            yield* workflows.answer(child.runId, "stuck", { choice: "Fix again", reason: ruling });
+            if (entry.next !== null) {
+              yield* askStuck(world, workflows, child.runId, "stuck/x1");
+              expect(world.acts).toEqual([]);
+              yield* workflows.answer(
+                child.runId,
+                "stuck/x1",
+                entry.next === "Fix again"
+                  ? { choice: entry.next, reason: secondRuling }
+                  : { choice: entry.next },
+              );
+            }
+            if (entry.next !== "Stop") yield* merge(world, workflows, child.runId);
+            const part = yield* world.ended(workflows, child.runId);
+            const done = yield* world.ended(workflows, runId);
+            if (entry.next === "Stop") {
+              expect(part).toMatchObject({
+                status: "stopped",
+                detail: "review did not pass",
+                result: null,
+              });
+              expect(done).toMatchObject({
+                status: "completed",
+                result: { parts: [{ title: PART.title, outcome: "stopped", prUrl: null }] },
+              });
+              expect(world.acts).toEqual([]);
+            } else {
+              expectMerged(world, done, part, PR_URL);
+            }
+            const expectedTurns = ["do", "review/0", "fix/x1"];
+            if (entry.failure !== "checks") expectedTurns.push("review/x1");
+            if (entry.next === "Fix again") expectedTurns.push("fix/x2", "review/x2");
+            expectTurns(world, child.runId, expectedTurns);
+            expectQuestions(world, [
+              [child.runId, "stuck", "stuck"],
+              ...(entry.next === null ? [] : ([[child.runId, "stuck/x1", "stuck"]] as const)),
+              ...(entry.next === "Stop"
+                ? []
+                : ([[child.runId, "approve-merge", "merge"]] as const)),
+            ]);
+            const { steps } = yield* workflows.get(child.runId);
+            expect(
+              steps.filter((step) => step.name.startsWith("checks/")).map((step) => step.name),
+            ).toEqual(
+              entry.next === "Fix again"
+                ? ["checks/0", "checks/x1", "checks/x2"]
+                : ["checks/0", "checks/x1"],
+            );
+            const rounds = entry.next === "Fix again" ? [1, 2] : [1];
+            for (const round of rounds) {
+              const fix = world.turns.find(
+                (turn) => turn.origin.runId === child.runId && turn.origin.step === `fix/x${round}`,
+              );
+              const reason = round === 1 ? ruling : secondRuling;
+              expect(fix?.prompt).toContain(reason);
+              expect(fix?.prompt).toContain(
+                round === 2 && entry.failure === "changes" ? extraNotes : "Review feedback.",
+              );
+              expect(fix?.prompt).toContain(PR_URL);
+              expect(fix?.prompt).toMatch(/push/i);
+              const at = (name: string) => steps.findIndex((step) => step.name === name);
+              expect(at(`checks/x${round}`)).toBeGreaterThan(at(`fix/x${round}`));
+              if (round === 2 || entry.failure !== "checks") {
+                const review = world.turns.find(
+                  (turn) =>
+                    turn.origin.runId === child.runId && turn.origin.step === `review/x${round}`,
+                );
+                expect(review?.prompt).toContain(reason);
+                expect(at(`review/x${round}`)).toBeGreaterThan(at(`checks/x${round}`));
+              }
+            }
+            expectTags(world, part, "review");
+            expectTags(world, done, "done");
+          }),
+        ),
+    );
+  }),
+);
+
+effectIt.effect.each(["Merge anyway", "timeout"] as const)(
+  "P13 the first stuck question preserves %s",
+  (choice) =>
+    Effect.promise(() =>
+      withWorld(script({ changes: true }), (world) =>
+        world.server(
+          Effect.fn("factoryPack.test.stuckExistingChoices")(function* (workflows) {
+            yield* workflows.storeSet("factory/v1/config", { v: 1, askPlan: false, fixRounds: 0 });
+            const { runId } = yield* startTask(workflows);
+            const child = yield* world.child(workflows, runId, 0);
+            yield* askStuck(world, workflows, child.runId);
+            if (choice === "timeout") {
+              yield* world.expireQuestion(workflows, child.runId, "stuck");
+            } else {
+              yield* workflows.answer(child.runId, "stuck", { choice });
+              yield* merge(world, workflows, child.runId);
+            }
+            const part = yield* world.ended(workflows, child.runId);
+            const done = yield* world.ended(workflows, runId);
+            if (choice === "timeout") {
+              expect(part).toMatchObject({
+                status: "stopped",
+                detail: "review did not pass",
+                result: null,
+              });
+              expect(done).toMatchObject({
+                status: "completed",
+                result: { parts: [{ title: PART.title, outcome: "stopped", prUrl: null }] },
+              });
+              expect(world.acts).toEqual([]);
+            } else {
+              expectMerged(world, done, part, PR_URL);
+            }
+            expectTurns(world, child.runId, ["do", "review/0"]);
+            expectQuestions(
+              world,
+              choice === "timeout"
+                ? [[child.runId, "stuck", "stuck"]]
+                : [
+                    [child.runId, "stuck", "stuck"],
+                    [child.runId, "approve-merge", "merge"],
+                  ],
+            );
+          }),
+        ),
+      ),
+    ),
+);
+
+effectIt.effect.each(["merged", "closed"] as const)(
+  "P13 checks/x1 sees the pull request already %s",
+  (state) =>
+    Effect.promise(() => {
+      const answers = script({ changes: true });
+      return withWorld(
+        {
+          ...answers,
+          standing: (address, read) => ({
+            ...answers.standing(address, read),
+            state: read === 1 ? state : "open",
+          }),
+        },
+        (world) =>
+          world.server(
+            Effect.fn("factoryPack.test.extraRoundClosed")(function* (workflows) {
+              yield* workflows.storeSet("factory/v1/config", {
+                v: 1,
+                askPlan: false,
+                fixRounds: 0,
+              });
+              const { runId } = yield* startTask(workflows);
+              const child = yield* world.child(workflows, runId, 0);
+              yield* askStuck(world, workflows, child.runId);
+              yield* workflows.answer(child.runId, "stuck", {
+                choice: "Fix again",
+                reason: "Finish the missing assertion on the existing pull request.",
+              });
+              const part = yield* world.ended(workflows, child.runId);
+              const done = yield* world.ended(workflows, runId);
+              if (state === "merged") {
+                expect(part).toMatchObject({
+                  status: "completed",
+                  result: { outcome: "merged", prUrl: PR_URL },
+                });
+              } else {
+                expect(part).toMatchObject({
+                  status: "stopped",
+                  detail: "pull request closed",
+                  result: null,
+                });
+              }
+              expect(done).toMatchObject({
+                status: "completed",
+                result: {
+                  parts: [
+                    {
+                      title: PART.title,
+                      outcome: state === "merged" ? "merged" : "stopped",
+                      prUrl: state === "merged" ? PR_URL : null,
+                    },
+                  ],
+                },
+              });
+              expect(
+                (yield* workflows.get(child.runId)).steps.find((step) => step.name === "checks/x1")
+                  ?.result,
+              ).toMatchObject({ state });
+              expectTurns(world, child.runId, ["do", "review/0", "fix/x1"]);
+              expectQuestions(world, [[child.runId, "stuck", "stuck"]]);
+              expect(world.acts).toEqual([]);
+            }),
+          ),
+      );
+    }),
+);
+
+it("P13 extra fixes share the concurrency-one pool across two parts", () => {
+  const parts = [PART, { title: "Second part", brief: "Implement the other independent change." }];
+  const answers = script({ parts, changes: true });
+  return withWorld(
+    {
+      ...answers,
+      holdAgent: (turn) => turn.origin.step !== "plan",
+      agent: (turn) =>
+        turn.origin.step === "review/x1"
+          ? { output: { verdict: "approve", notes: "The ruling is satisfied." } }
+          : answers.agent(turn),
+    },
+    (world) =>
+      world.server(
+        Effect.fn("factoryPack.test.extraRoundSlot")(function* (workflows) {
+          yield* workflows.storeSet("factory/v1/config", {
+            v: 1,
+            concurrency: 1,
+            fixRounds: 0,
+            askPlan: false,
+            askMerge: false,
+          });
+          const { runId } = yield* startTask(workflows);
+          expect((yield* world.nextTurn).origin.step).toBe("plan");
+          const children = yield* Effect.forEach(
+            parts,
+            (_, index) => world.child(workflows, runId, index),
+            { concurrency: "unbounded" },
+          );
+          for (let index = 0; index < parts.length * 2; index++) {
+            const turn = yield* world.nextTurn;
+            expect(["do", "review/0"]).toContain(turn.origin.step);
+            expect(Math.max(...world.activeCounts)).toBe(1);
+            yield* world.releaseTurn(turn);
+          }
+          for (const child of children) yield* askStuck(world, workflows, child.runId);
+          const first = children[0];
+          const second = children[1];
+          if (first === undefined || second === undefined) throw new Error("Expected two parts");
+          const answer = {
+            choice: "Fix again",
+            reason: "Keep the public API and finish the assertion.",
+          };
+          yield* workflows.answer(first.runId, "stuck", answer);
+          const held = yield* world.nextTurn;
+          expect(held.origin).toMatchObject({ runId: first.runId, step: "fix/x1" });
+          yield* workflows.answer(second.runId, "stuck", answer);
+          const queued = yield* workflows.waitFor(
+            second.runId,
+            (run) =>
+              run.detail === `queue factory-task:${TASK_ID}` ||
+              run.detail === "agent fix/x1" ||
+              run.status === "paused" ||
+              run.endedAt !== null,
+          );
+          expect(queued).toMatchObject({
+            status: "waiting",
+            detail: `queue factory-task:${TASK_ID}`,
+          });
+          expect(Math.max(...world.activeCounts)).toBe(1);
+          yield* world.releaseTurn(held);
+          for (let index = 0; index < 3; index++) {
+            const turn = yield* world.nextTurn;
+            expect(["fix/x1", "review/x1"]).toContain(turn.origin.step);
+            expect(Math.max(...world.activeCounts)).toBe(1);
+            yield* world.releaseTurn(turn);
+          }
+          const done = yield* world.ended(workflows, runId);
+          expect(done).toMatchObject({
+            status: "completed",
+            result: {
+              parts: children.map((child, index) => ({
+                title: parts[index]?.title,
+                outcome: "merged",
+                prUrl: answers.urls.get(child.runId),
+              })),
+            },
+          });
+          for (const child of children) {
+            expectTurns(world, child.runId, ["do", "review/0", "fix/x1", "review/x1"]);
+            expect((yield* world.ended(workflows, child.runId)).status).toBe("completed");
+          }
+          expect(world.questions).toHaveLength(2);
+          expect(world.questions.map((question) => [question.name, question.kind])).toEqual([
+            ["stuck", "stuck"],
+            ["stuck", "stuck"],
+          ]);
+          expect(world.acts).toHaveLength(2);
+          expect(world.acts).toEqual(
+            expect.arrayContaining([
+              [{ project: PROJECT, url: PR_URL }, "merge", { mergeMethod: "squash" }],
+              [
+                { project: PROJECT, url: "https://github.com/factory/pack/pull/18" },
+                "merge",
+                { mergeMethod: "squash" },
+              ],
+            ]),
+          );
           expect(Math.max(...world.activeCounts)).toBe(1);
         }),
       ),

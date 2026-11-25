@@ -41,6 +41,8 @@ A workflow step can run again after a restart, so a step that creates a task mus
 
 The trap: upstream's loader ([`WorkflowRuntime.ts`](../../apps/server/src/workflows/WorkflowRuntime.ts), `loadDefinitions`) reloads a changed workflow file by importing it under a new address, but a module it imports by relative path, such as `lib/records.ts`, keeps its address and Node returns the first copy. After a change under `factory/workflows/lib/` a running server fails to load the workflow or runs it against the old helper until it restarts. That includes the dev server: restart `vp run dev` after editing `lib/`.
 
+The pack's rules for checking that a pull request is the project's and for a person-only merge live once, in [`records.ts`](../../factory/workflows/lib/records.ts). Every workflow that merges, whether a task's part or an upstream sync, must go through them; a copy in a workflow file would drift from the rules the others follow.
+
 ## Keeping up with upstream
 
 Every edit to an upstream file is a possible conflict on every merge, so each is counted. [`factory/seams.json`](../../factory/seams.json) lists the files Factory owns, the upstream files it may edit by hand (the seams, at most twelve), and the generated files. [`scripts/factory-seams.ts`](../../scripts/factory-seams.ts) compares `HEAD` with its merge base and fails on any other change, on a deleted or renamed upstream file, and on a seam that no longer differs. A seam edit is one or two lines. The service is read in `ws.ts` through `FactoryTasks.orDisabled`, which needs no context, so upstream's own tests of that file stay untouched.

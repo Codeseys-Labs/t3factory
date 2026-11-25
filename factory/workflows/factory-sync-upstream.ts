@@ -1,8 +1,14 @@
 // Takes a new upstream nightly into the fork: an agent merges it and opens a pull request, then a
 // person says whether to merge it once its checks pass. Upstream's history is merged, never rewritten.
-import { PackConfig, readConfig, taskTags } from "./lib/records.ts";
+import {
+  PackConfig,
+  mergeApproved,
+  projectPullRequest,
+  readConfig,
+  taskTags,
+} from "./lib/records.ts";
 
-const { workflow, step, agent, ask, stop, title, tags, pullRequests } = T3;
+const { workflow, step, agent, stop, title, tags, pullRequests } = T3;
 
 const Synced = Schema.Struct({
   prUrl: Schema.String,
@@ -71,19 +77,7 @@ export default workflow(
     });
     const { prUrl: reported, summary, conflicts } = synced.value;
 
-    const prUrl = yield* step(
-      "pull-request",
-      { returns: Schema.NullOr(Schema.String) },
-      Effect.gen(function* () {
-        const wanted = reported.trim().replace(/\/+$/, "").toLowerCase();
-        if (wanted === "") return null;
-        const listed = yield* pullRequests.list({ project, state: "all", limit: 500 });
-        const found = listed.find(
-          (entry) => entry.url.trim().replace(/\/+$/, "").toLowerCase() === wanted,
-        );
-        return found === undefined ? null : found.url;
-      }),
-    );
+    const prUrl = yield* projectPullRequest(project, reported);
     if (prUrl === null) return yield* stop("pull request is not this project's");
 
     const pr = { project, url: prUrl };
@@ -98,17 +92,17 @@ export default workflow(
       if (standing.value.checks !== "passing" && standing.value.checks !== "none") {
         return yield* stop("checks are not passing");
       }
-      const answer = yield* ask("approve-merge", {
-        title: "Merge the upstream sync?",
-        kind: "merge",
-        choices: ["Merge", "Hold"],
-        data: { prUrl, ref, conflicts, summary },
-        links: [{ label: "Pull request", url: prUrl }],
-        timeout: "7 days",
-      });
-      if (Option.isNone(answer) || answer.value.choice !== "Merge") {
-        return yield* stop("merge held");
-      }
+      const approved = yield* mergeApproved(
+        {
+          title: "Merge the upstream sync?",
+          kind: "merge",
+          data: { prUrl, ref, conflicts, summary },
+          links: [{ label: "Pull request", url: prUrl }],
+          timeout: "7 days",
+        },
+        config.mergeNeedsPerson,
+      );
+      if (!approved) return yield* stop("merge held");
       yield* step(
         "merge",
         { returns: Schema.Void },

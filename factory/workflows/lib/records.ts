@@ -1,7 +1,8 @@
 // @effect-diagnostics globalDateInEffect:off
-// The records the pack shares with the server's FactoryTasks service, and the store work both
-// workflow files do with them. Everything here that touches the store is for inside a `step`.
-const { runs, start, store } = T3;
+// The records the pack shares with the server's FactoryTasks service, the store work both
+// workflow files do with them, and the review gates every workflow that merges goes through.
+// Everything here that touches the store is for inside a `step`.
+const { ask, pullRequests, runs, sleep, start, step, store } = T3;
 
 const PREFIX = "factory/v1/";
 const SEQ_KEY = `${PREFIX}seq`;
@@ -468,3 +469,88 @@ export const taskTags = (
   projectId: string | null,
   stage: "planning" | "doing" | "review" | "done",
 ) => [`task:${taskId}`, ...(projectId === null ? [] : [`project:${projectId}`]), `stage:${stage}`];
+
+const comparableUrl = (url: string) => url.trim().replace(/\/+$/, "").toLowerCase();
+
+const PullRequestLookup = Schema.Union([
+  Schema.Struct({ outcome: Schema.Literal("found"), url: Schema.String }),
+  Schema.Struct({ outcome: Schema.Literals(["foreign", "listing-empty"]) }),
+]);
+
+/**
+ * Whether `reported` is one of the project's pull requests, with its URL as the host spells it.
+ * The listing can be stale and is capped, so a miss is read. A read names the project whose
+ * checkout served it, but a public host is read for any repository under the asking project, so
+ * its repository is the project's only when the project's own listing shows that repository.
+ */
+const lookUpPullRequest = Effect.fn("factoryPack.lookUpPullRequest")(function* (
+  project: string,
+  reported: string,
+) {
+  const wanted = comparableUrl(reported);
+  if (wanted === "") return { outcome: "foreign" } as const;
+  const listed = yield* pullRequests.list({ project, state: "all", limit: 500 });
+  const found = listed.find((entry) => comparableUrl(entry.url) === wanted);
+  if (found !== undefined) return { outcome: "found", url: found.url } as const;
+  const read = yield* Effect.option(pullRequests.read({ project, url: reported.trim() }));
+  if (Option.isNone(read)) return { outcome: "foreign" } as const;
+  const detail = read.value;
+  if (detail.projectId !== project) return { outcome: "foreign" } as const;
+  if (listed.length === 0) return { outcome: "listing-empty" } as const;
+  const host = URL.parse(detail.url)?.host.toLowerCase();
+  const ours =
+    host !== undefined &&
+    listed.some(
+      (entry) =>
+        entry.repository.toLowerCase() === detail.repository.toLowerCase() &&
+        URL.parse(entry.url)?.host.toLowerCase() === host,
+    );
+  return ours
+    ? ({ outcome: "found", url: detail.url } as const)
+    : ({ outcome: "foreign" } as const);
+});
+
+/**
+ * The project's own URL for the pull request an agent reported, or null when it is not the
+ * project's. A read of this project's pull request behind an empty listing cannot show the
+ * repository, so it looks once more after the listing's cache (about 30 seconds) has run out.
+ */
+export const projectPullRequest = Effect.fn("factoryPack.projectPullRequest")(function* (
+  project: string,
+  reported: string,
+) {
+  let lookup = yield* step(
+    "pull-request",
+    { returns: PullRequestLookup },
+    lookUpPullRequest(project, reported),
+  );
+  if (lookup.outcome === "listing-empty") {
+    yield* sleep("pull-request/sleep", "45 seconds");
+    lookup = yield* step(
+      "pull-request/again",
+      { returns: PullRequestLookup },
+      lookUpPullRequest(project, reported),
+    );
+  }
+  return lookup.outcome === "found" ? lookup.url : null;
+});
+
+/**
+ * Whether the merge question was answered `Merge`. With `mergeNeedsPerson` only an answer given in
+ * the app counts: the server stamps its session and drops a session a sender supplies.
+ */
+export const mergeApproved = Effect.fn("factoryPack.mergeApproved")(function* (
+  question: Omit<Parameters<typeof ask>[1], "choices">,
+  mergeNeedsPerson: boolean,
+) {
+  const options = { ...question, choices: ["Merge", "Hold"] as const };
+  const answer = yield* ask("approve-merge", options);
+  if (Option.isNone(answer) || answer.value.choice !== "Merge") return false;
+  if (!mergeNeedsPerson || answer.value.answeredBySession !== undefined) return true;
+  const person = yield* ask("approve-merge/person", options);
+  return (
+    Option.isSome(person) &&
+    person.value.choice === "Merge" &&
+    person.value.answeredBySession !== undefined
+  );
+});

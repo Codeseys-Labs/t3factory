@@ -45,7 +45,25 @@ The server reloads changed top-level workflow files without a restart, but not t
 
 ## Take a new upstream nightly
 
-`origin/main` mirrors upstream. The steps keep upstream's history intact and move `factory` only when everything passes.
+`origin/main` mirrors upstream. The steps keep upstream's history intact and move `factory` only when everything passes. Two tools shorten the work; the manual steps below remain the reference.
+
+Start with the plan. It changes nothing:
+
+```sh
+node scripts/factory-sync.ts plan --ref <tag>
+```
+
+It prints whether the tree is clean, whether the ref exists, the merge base, and one `conflict` line per file a merge would conflict in, marked `seam`, `generated`, `owned` or `outside`. It ends with `factory-sync: ok` and exits 0, or says how many problems it found and exits 1. A dirty tree, an unknown ref, no merge base and any `outside` conflict are problems; conflicts in seams, generated files and fork-owned files are expected.
+
+To have an agent do the merge, start the workflow `factory-sync-upstream` on the project that holds the fork:
+
+```sh
+t3 workflow start factory-sync-upstream --input '{"projectId":"<projectId>","ref":"<tag>"}' --key sync/<tag>
+```
+
+An agent does the manual steps in a worktree and opens a pull request. When its checks pass, the workflow asks before merging it, always with a merge commit. Read the conflicts it reports in that question before you answer.
+
+By hand:
 
 1. Fetch the tags and pick the newest nightly, `<tag>`.
 2. `git switch -c sync/upstream factory`, then `git merge <tag>`.

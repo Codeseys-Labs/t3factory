@@ -4,6 +4,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { expect, it } from "vite-plus/test";
@@ -52,10 +53,9 @@ const SYNCED = {
 const script = (
   options: {
     readonly checks?: ReadonlyArray<WorkflowForge.PullRequestStanding["checks"]>;
-    readonly listed?: boolean;
   } = {},
 ) => ({
-  pullRequests: options.listed === false ? [] : [pullRequestAt(17)],
+  pullRequests: [pullRequestAt(17)],
   agent: (turn: AgentTurnInput) => {
     if (turn.origin.step !== "sync") throw new Error(`Unexpected agent step ${turn.origin.step}`);
     return { output: SYNCED };
@@ -177,24 +177,96 @@ it("failing checks stop the sync before any question", () =>
     ),
   ));
 
-it("a pull request outside the project stops the sync before its checks", () =>
-  withWorld(script({ listed: false }), (world) =>
-    world.server(
-      Effect.fn("factoryPack.test.syncUnlisted")(function* (workflows) {
-        const { runId } = yield* startSync(workflows);
-        const done = yield* world.ended(workflows, runId, true);
-        expect(done).toMatchObject({
-          status: "stopped",
-          detail: "pull request is not this project's",
-        });
-        const { steps } = yield* workflows.get(runId);
-        expect(steps.some((step) => step.name.startsWith("checks/"))).toBe(false);
-        expect(world.questions).toEqual([]);
-        expect(world.reads).toEqual([]);
-        expect(world.acts).toEqual([]);
-      }),
-    ),
-  ));
+effectIt.effect.each(["own", "foreign", "unreadable"] as const)(
+  "P2a sync reads an unlisted pull request: %s",
+  (ownership) =>
+    Effect.promise(() => {
+      const answers = script();
+      const foreignUrl = "https://github.com/other/repository/pull/17";
+      const reportedUrl = ownership === "foreign" ? foreignUrl : PR_URL;
+      const canonicalUrl = "https://github.com/Factory/Pack/pull/17";
+      return withWorld(
+        {
+          ...answers,
+          pullRequests: [pullRequestAt(99)],
+          agent: (turn) => ({
+            ...answers.agent(turn),
+            output: { ...SYNCED, prUrl: reportedUrl },
+          }),
+          readPullRequest: Effect.fn("factoryPack.test.syncReadUnlisted")(
+            function* (_address, detail) {
+              if (ownership === "unreadable") {
+                return yield* new WorkflowForge.WorkflowForgeError({
+                  reason: "Pull request read failed",
+                });
+              }
+              return {
+                ...detail,
+                number: 17,
+                repository: ownership === "foreign" ? "other/repository" : "factory/pack",
+                url: ownership === "foreign" ? foreignUrl : canonicalUrl,
+              };
+            },
+          ),
+        },
+        (world) =>
+          world.server(
+            Effect.fn("factoryPack.test.syncOwnership")(function* (workflows) {
+              const { runId } = yield* startSync(workflows);
+              if (ownership === "own") {
+                const question = yield* world.question(workflows, runId);
+                expect(question).toMatchObject({ name: "approve-merge", kind: "merge" });
+                expect(question.request).toMatchObject({
+                  title: "Merge the upstream sync?",
+                  choices: ["Merge", "Hold"],
+                  data: { ...SYNCED, prUrl: canonicalUrl, ref: REF },
+                });
+                expect(world.acts).toEqual([]);
+                yield* workflows.answer(runId, question.name, { choice: "Merge" });
+              }
+              const done = yield* world.ended(workflows, runId, ownership !== "own");
+              const { steps } = yield* workflows.get(runId);
+              expect(world.pullRequestQueries).toHaveLength(1);
+              expect(world.pullRequestQueries[0]).toMatchObject({ project: PROJECT, state: "all" });
+              expect(world.turns.map((turn) => turn.origin.step)).toEqual(["sync"]);
+              expect(world.turns[0]?.thread).toBeUndefined();
+              if (ownership === "own") {
+                expect(done).toMatchObject({
+                  status: "completed",
+                  result: { prUrl: canonicalUrl },
+                });
+                expect(done.tags?.at(-1)).toBe("stage:done");
+                expect(world.readCalls).toEqual([
+                  { project: PROJECT, url: reportedUrl },
+                  { project: PROJECT, url: canonicalUrl },
+                  { project: PROJECT, url: canonicalUrl },
+                ]);
+                expect(steps.find((step) => step.name === "checks/0")?.result).toMatchObject({
+                  url: canonicalUrl,
+                  checks: "passing",
+                });
+                expect(world.acts).toEqual([
+                  [{ project: PROJECT, url: canonicalUrl }, "merge", { mergeMethod: "merge" }],
+                ]);
+                expect(world.questions.map(({ name, kind }) => [name, kind])).toEqual([
+                  ["approve-merge", "merge"],
+                ]);
+              } else {
+                expect(done).toMatchObject({
+                  status: "stopped",
+                  detail: "pull request is not this project's",
+                  result: null,
+                });
+                expect(steps.filter((step) => step.kind === "wait")).toEqual([]);
+                expect(world.readCalls).toEqual([{ project: PROJECT, url: reportedUrl }]);
+                expect(world.questions).toEqual([]);
+                expect(world.acts).toEqual([]);
+              }
+            }),
+          ),
+      );
+    }),
+);
 
 const REFS = [
   { ref: "v1", branch: "sync/upstream-v1" },
@@ -282,3 +354,133 @@ it("the brief completes the merge before it regenerates and validates", () =>
       }),
     ),
   ));
+
+effectIt.effect.each([
+  {
+    label: "a signal followed by a person",
+    needsPerson: true,
+    first: "signal",
+    second: "session",
+    merged: true,
+  },
+  {
+    label: "two signals cannot merge",
+    needsPerson: true,
+    first: "signal",
+    second: "signal",
+    merged: false,
+  },
+  {
+    label: "a second Hold stops",
+    needsPerson: true,
+    first: "signal",
+    second: "hold",
+    merged: false,
+  },
+  {
+    label: "a second timeout stops",
+    needsPerson: true,
+    first: "signal",
+    second: "timeout",
+    merged: false,
+  },
+  {
+    label: "a person answers the first question",
+    needsPerson: true,
+    first: "session",
+    second: null,
+    merged: true,
+  },
+  {
+    label: "an ordinary merge accepts a signal",
+    needsPerson: false,
+    first: "signal",
+    second: null,
+    merged: true,
+  },
+] as const)("P1 sync: $label", (entry) =>
+  Effect.promise(() =>
+    withWorld(script(), (world) =>
+      world.server(
+        Effect.fn("factoryPack.test.syncPersonOnly")(function* (workflows) {
+          yield* workflows.storeSet("factory/v1/config", {
+            v: 1,
+            askMerge: !entry.needsPerson,
+            mergeNeedsPerson: entry.needsPerson,
+          });
+          const { runId } = yield* startSync(workflows);
+          const first = yield* askMerge(world, workflows, runId);
+          expect(world.acts).toEqual([]);
+          if (entry.first === "signal") {
+            yield* workflows.signal(
+              { runId, wait: first.name },
+              { choice: "Merge" },
+              { id: "sync-agent-first", answeredBy: "t3 workflow signal" },
+            );
+          } else {
+            yield* workflows.answer(
+              runId,
+              first.name,
+              { choice: "Merge" },
+              { label: "Person", sessionId: "trusted-sync-session" },
+            );
+          }
+          if (entry.second !== null) {
+            const second = yield* world.question(workflows, runId);
+            expect(second).toMatchObject({ name: "approve-merge/person", kind: "merge" });
+            expect(second.request).toMatchObject({
+              title: "Merge the upstream sync?",
+              choices: ["Merge", "Hold"],
+            });
+            expect(world.acts).toEqual([]);
+            expect(
+              (yield* workflows.get(runId)).steps.find((step) => step.name === first.name)?.result,
+            ).not.toHaveProperty("answeredBySession");
+            if (entry.second === "timeout") {
+              yield* world.expireQuestion(workflows, runId, second.name);
+            } else if (entry.second === "signal") {
+              yield* workflows.signal(
+                { runId, wait: second.name },
+                { choice: "Merge" },
+                { id: "sync-agent-second", answeredBy: "t3 workflow signal" },
+              );
+            } else {
+              yield* workflows.answer(
+                runId,
+                second.name,
+                { choice: entry.second === "hold" ? "Hold" : "Merge" },
+                { label: "Person", sessionId: "trusted-sync-session" },
+              );
+            }
+          }
+          const done = yield* world.ended(workflows, runId);
+          if (entry.merged) {
+            expect(done).toMatchObject({ status: "completed", result: { prUrl: PR_URL } });
+            expect(world.acts).toEqual([
+              [{ project: PROJECT, url: PR_URL }, "merge", { mergeMethod: "merge" }],
+            ]);
+            expect(done.tags?.at(-1)).toBe("stage:done");
+            if (entry.needsPerson) {
+              const name = entry.second === null ? first.name : "approve-merge/person";
+              expect(
+                (yield* workflows.get(runId)).steps.find((step) => step.name === name)?.result,
+              ).toHaveProperty("answeredBySession", "trusted-sync-session");
+            }
+          } else {
+            expect(done).toMatchObject({ status: "stopped", detail: "merge held", result: null });
+            expect(world.acts).toEqual([]);
+          }
+          expect(world.questions.map(({ name, kind }) => [name, kind])).toEqual(
+            entry.second === null
+              ? [["approve-merge", "merge"]]
+              : [
+                  ["approve-merge", "merge"],
+                  ["approve-merge/person", "merge"],
+                ],
+          );
+          expect(world.turns.map((turn) => turn.origin.step)).toEqual(["sync"]);
+        }),
+      ),
+    ),
+  ),
+);

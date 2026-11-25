@@ -42,6 +42,7 @@ export interface World {
   readonly turns: ReadonlyArray<AgentTurnInput>;
   readonly startAttempts: ReadonlyArray<AgentTurnInput>;
   readonly acts: ReadonlyArray<Parameters<Forge["pullRequests"]["act"]>>;
+  readonly readCalls: ReadonlyArray<WorkflowForge.PullRequestAddress>;
   readonly reads: ReadonlyArray<{
     readonly pullRequest: WorkflowForge.PullRequestAddress;
     readonly standing: WorkflowForge.PullRequestStanding;
@@ -90,6 +91,10 @@ interface Script {
   readonly listIssues?: Forge["issues"]["list"];
   readonly pullRequests?: ReadonlyArray<WorkflowForge.PullRequest>;
   readonly listPullRequests?: Forge["pullRequests"]["list"];
+  readonly readPullRequest?: (
+    address: WorkflowForge.PullRequestAddress,
+    detail: PullRequestDetail,
+  ) => ReturnType<Forge["pullRequests"]["read"]>;
   readonly holdAgent?: (turn: AgentTurnInput) => boolean;
   readonly startError?: (turn: AgentTurnInput) => string | undefined;
   readonly failFinishAfterCommit?: boolean;
@@ -193,6 +198,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
   const startAttempts: Array<AgentTurnInput> = [];
   const started = new Map<string, AgentTurnInput>();
   const acts: Array<Parameters<Forge["pullRequests"]["act"]>> = [];
+  const readCalls: Array<WorkflowForge.PullRequestAddress> = [];
   const reads: Array<{
     readonly pullRequest: WorkflowForge.PullRequestAddress;
     readonly standing: WorkflowForge.PullRequestStanding;
@@ -211,6 +217,14 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
   const latestTags = new Map<string, string>();
   const readCounts = new Map<string, number>();
 
+  const rememberRun = (run: WorkflowRunsSnapshot["runs"][number]) => {
+    if (run.tags === undefined || run.tags.length === 0) return;
+    const key = JSON.stringify(run.tags);
+    if (latestTags.get(run.runId) === key) return;
+    latestTags.set(run.runId, key);
+    tagHistory.push({ runId: run.runId, tags: run.tags });
+  };
+
   const remember = (snapshot: WorkflowRunsSnapshot) => {
     for (const question of snapshot.questions) {
       const key = JSON.stringify([question.runId, question.name, question.askedAt]);
@@ -219,13 +233,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
         questions.push(question);
       }
     }
-    for (const run of snapshot.runs) {
-      if (run.tags === undefined || run.tags.length === 0) continue;
-      const key = JSON.stringify(run.tags);
-      if (latestTags.get(run.runId) === key) continue;
-      latestTags.set(run.runId, key);
-      tagHistory.push({ runId: run.runId, tags: run.tags });
-    }
+    for (const run of snapshot.runs) rememberRun(run);
   };
 
   const releaseTurn = Effect.fn("factoryPack.releaseTurn")(function* (turn: AgentTurnInput) {
@@ -366,12 +374,17 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
           : script.listPullRequests(query);
       }),
       read: Effect.fn("factoryPack.pullRequests.read")(function* (pullRequest) {
+        readCalls.push(pullRequest);
         const key = yield* encodeKey(pullRequest).pipe(Effect.orDie);
         const index = readCounts.get(key) ?? 0;
         readCounts.set(key, index + 1);
         const standing = script.standing(pullRequest, index);
-        reads.push({ pullRequest, standing });
-        return yield* Effect.sync(() => detailOf(standing));
+        const detail =
+          script.readPullRequest === undefined
+            ? detailOf(standing)
+            : yield* script.readPullRequest(pullRequest, detailOf(standing));
+        reads.push({ pullRequest, standing: WorkflowForge.standingOf(detail) });
+        return detail;
       }),
       act: Effect.fn("factoryPack.pullRequests.act")(function* (...input) {
         acts.push(input);
@@ -420,7 +433,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
             remember(snapshot);
             yield* Deferred.succeed(ready, undefined);
             const waiting = snapshot.runs.filter(
-              (run) => run.status === "waiting" && /^checks\/\d+$/.test(run.detail ?? ""),
+              (run) => run.status === "waiting" && /^checks\/x?\d+$/.test(run.detail ?? ""),
             );
             for (const run of waiting) {
               const key = yield* encodeKey([run.runId, run.detail]).pipe(Effect.orDie);
@@ -465,6 +478,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
   ) {
     return yield* Workflows.wholeLists(workflows.watch).pipe(
       Stream.filterMap((snapshot) => {
+        remember(snapshot);
         const found = snapshot.runs.find(
           (run) => run.parentRunId === parentRunId && run.parentStep === `part-${part}`,
         );
@@ -502,7 +516,10 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
     );
     return yield* workflows
       .waitFor(runId, (run) => run.endedAt !== null || run.status === "paused")
-      .pipe(Effect.raceFirst(guard));
+      .pipe(
+        Effect.raceFirst(guard),
+        Effect.tap((run) => Effect.sync(() => rememberRun(run))),
+      );
   });
 
   return {
@@ -510,6 +527,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
     turns,
     startAttempts,
     acts,
+    readCalls,
     reads,
     issueQueries,
     pullRequestQueries,

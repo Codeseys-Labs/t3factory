@@ -61,12 +61,16 @@ export const planInstall = (input: PlanInput & { readonly force: boolean }) => {
   };
 };
 
-export const needsWorkflowRestart = (changes: {
-  readonly write: ReadonlyArray<string>;
-  readonly remove: ReadonlyArray<string>;
-}) =>
-  changes.write.some((name) => name.includes("/")) ||
-  changes.remove.some((name) => name.includes("/"));
+export const needsWorkflowRestart = (
+  changes: {
+    readonly write: ReadonlyArray<string>;
+    readonly remove: ReadonlyArray<string>;
+  },
+  existing: boolean,
+) =>
+  existing &&
+  (changes.write.some((name) => name.includes("/")) ||
+    changes.remove.some((name) => name.includes("/")));
 
 export const planStatus = (input: PlanInput) => {
   const result: Array<{
@@ -191,6 +195,7 @@ export const installFactoryPack = Effect.fn("factoryPack.install")(function* (in
     }),
   );
   const target = yield* readTargets(directory, pack.hashes.keys());
+  const existing = target.size > 0 || (yield* fs.exists(path.join(directory, manifestName)));
   const plan = planInstall({ pack: pack.hashes, target, manifest, force: input.force });
   const skillRoot =
     input.skills === undefined ? undefined : path.join(input.skills, "t3factory-orchestrator");
@@ -241,7 +246,7 @@ export const installFactoryPack = Effect.fn("factoryPack.install")(function* (in
   if (previousManifest !== manifestJson) yield* fs.writeFileString(manifestPath, manifestJson);
   if (skillRoot)
     yield* Console.log(`Skill installed at ${skillRoot}; status and uninstall do not manage it.`);
-  if (needsWorkflowRestart({ write: plan.write, remove: removed }))
+  if (needsWorkflowRestart({ write: plan.write, remove: removed }, existing))
     yield* Console.log(
       "Restart the server to load this update: a running server keeps the old lib/ helpers.",
     );

@@ -1,6 +1,6 @@
 # T3 Factory fork runbook
 
-Procedures for maintaining the `factory` branch. Run commands from the repository root. For why the fork is shaped this way, read [the internals page](../internals/factory.md).
+Procedures for maintaining the `factory` branch. Run commands from the repository root. For why the fork is shaped this way, read [the internals page](../internals/factory.md). The fork's default branch is `factory`. Version 1 lives on `feat/t3factory` and the tag `factory-v1-final`; anything still working on v1 must open pull requests with `--base feat/t3factory`, because `gh pr create` defaults to the repository's default branch.
 
 ## Run Factory on its own home
 

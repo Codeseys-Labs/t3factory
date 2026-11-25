@@ -20,7 +20,7 @@ it.effect("plans installs and status from pack, target, and manifest hashes", ()
     ]);
     const empty = new Map<string, string>();
     const fresh = { pack, target: empty, manifest: null, force: false };
-    assert.isTrue(needsWorkflowRestart(planInstall(fresh)));
+    assert.isFalse(needsWorkflowRestart(planInstall(fresh), false));
     assert.deepStrictEqual(planInstall(fresh), {
       conflicts: [],
       write: ["workflow.ts", "lib/helper.ts"],
@@ -32,7 +32,7 @@ it.effect("plans installs and status from pack, target, and manifest hashes", ()
       { path: "lib/helper.ts", status: "missing" },
     ]);
     const installed = { pack, target: pack, manifest: pack, force: false };
-    assert.isFalse(needsWorkflowRestart(planInstall(installed)));
+    assert.isFalse(needsWorkflowRestart(planInstall(installed), true));
     assert.deepStrictEqual(planInstall(installed), {
       conflicts: [],
       write: [],
@@ -49,7 +49,7 @@ it.effect("plans installs and status from pack, target, and manifest hashes", ()
       ["old.ts", "old"],
     ]);
     const update = { pack, target: old, manifest: old, force: false };
-    assert.isFalse(needsWorkflowRestart(planInstall(update)));
+    assert.isFalse(needsWorkflowRestart(planInstall(update), true));
     assert.isTrue(
       needsWorkflowRestart(
         planInstall({
@@ -59,9 +59,10 @@ it.effect("plans installs and status from pack, target, and manifest hashes", ()
             ["lib/helper.ts", "old"],
           ]),
         }),
+        true,
       ),
     );
-    assert.isTrue(needsWorkflowRestart({ write: [], remove: ["lib/old.ts"] }));
+    assert.isTrue(needsWorkflowRestart({ write: [], remove: ["lib/old.ts"] }, true));
     assert.deepStrictEqual(planInstall(update), {
       conflicts: [],
       write: ["workflow.ts"],

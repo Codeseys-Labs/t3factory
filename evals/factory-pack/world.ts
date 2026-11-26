@@ -1,8 +1,10 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
+  FactoryArtifact,
   FactoryAttempt,
   FactoryNote,
+  FactoryReceipt,
   FactoryTask,
   PullRequestDetail,
   type WorkflowRunsSnapshot,
@@ -94,6 +96,8 @@ interface Script {
   ) => WorkflowForge.PullRequestStanding;
   readonly issues?: ReadonlyArray<WorkflowForge.Issue>;
   readonly listIssues?: Forge["issues"]["list"];
+  readonly readIssue?: Forge["issues"]["read"];
+  readonly commentIssue?: Forge["issues"]["comment"];
   readonly pullRequests?: ReadonlyArray<WorkflowForge.PullRequest>;
   readonly listPullRequests?: Forge["pullRequests"]["list"];
   readonly readPullRequest?: (
@@ -112,6 +116,8 @@ const decodeTaskRecord = Schema.decodeUnknownEffect(FactoryTask);
 const decodeAttemptRecord = Schema.decodeUnknownEffect(FactoryAttempt);
 const decodeAttemptJson = Schema.decodeUnknownOption(Schema.fromJsonString(FactoryAttempt));
 const decodeNoteRecord = Schema.decodeUnknownEffect(FactoryNote);
+const decodeArtifactRecord = Schema.decodeUnknownEffect(FactoryArtifact);
+const decodeReceiptRecord = Schema.decodeUnknownEffect(FactoryReceipt);
 
 const validateRecords = Effect.fn("factoryPack.validateRecords")(function* (workflows: Service) {
   for (const row of yield* workflows.stored("factory/v1/task/")) {
@@ -122,6 +128,12 @@ const validateRecords = Effect.fn("factoryPack.validateRecords")(function* (work
   }
   for (const row of yield* workflows.stored("factory/v1/note/")) {
     yield* decodeNoteRecord(row.value).pipe(Effect.orDie);
+  }
+  for (const row of yield* workflows.stored("factory/v1/artifact/")) {
+    yield* decodeArtifactRecord(row.value).pipe(Effect.orDie);
+  }
+  for (const row of yield* workflows.stored("factory/v1/receipt/")) {
+    yield* decodeReceiptRecord(row.value).pipe(Effect.orDie);
   }
 });
 
@@ -159,6 +171,7 @@ const detailOf = (standing: WorkflowForge.PullRequestStanding) =>
     additions: 1,
     deletions: 0,
     changedFiles: 1,
+    headSha: "sha-default",
     headBranch: "factory-part",
     baseBranch: "main",
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -229,6 +242,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
   const questionKeys = new Set<string>();
   const latestTags = new Map<string, string>();
   const readCounts = new Map<string, number>();
+  let latestHeadSha: string | undefined;
 
   const rememberRun = (run: WorkflowRunsSnapshot["runs"][number]) => {
     if (run.tags === undefined || run.tags.length === 0) return;
@@ -406,12 +420,18 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
       if (input === undefined) return yield* Effect.die(new Error(`Unknown turn ${turn.turnId}`));
       const gate = gates.get(input.key);
       if (gate !== undefined) yield* Deferred.await(gate);
-      return yield* Effect.sync(() => ({
-        ending: "completed" as const,
-        detail: "",
-        reply: "Fixed checks and review feedback.",
-        ...script.agent(input),
-      })).pipe(
+      return yield* Effect.sync(() => {
+        const result = script.agent(input);
+        return {
+          ending: "completed" as const,
+          detail: "",
+          reply: "Fixed checks and review feedback.",
+          ...result,
+          ...(input.origin.step.startsWith("scope/") && result.output === undefined
+            ? { output: { headSha: latestHeadSha ?? "sha-default", files: ["src/part.ts"] } }
+            : {}),
+        };
+      }).pipe(
         Effect.ensuring(
           Effect.sync(() => {
             active.delete(input.key);
@@ -433,6 +453,8 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
           ? Effect.succeed(script.issues ?? [])
           : script.listIssues(query);
       }),
+      read: script.readIssue ?? WorkflowForge.unavailable.issues.read,
+      comment: script.commentIssue ?? WorkflowForge.unavailable.issues.comment,
     },
     pullRequests: {
       ...WorkflowForge.unavailable.pullRequests,
@@ -452,6 +474,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
           script.readPullRequest === undefined
             ? detailOf(standing)
             : yield* script.readPullRequest(pullRequest, detailOf(standing));
+        latestHeadSha = detail.headSha;
         reads.push({ pullRequest, standing: WorkflowForge.standingOf(detail) });
         return detail;
       }),
@@ -470,7 +493,14 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
     use: (workflows: Service) => Effect.Effect<A, E>,
   ) {
     const loaded: Array<WorkflowDefinition> = [];
-    for (const name of ["factory-task.ts", "factory-intake.ts", "factory-sync-upstream.ts"]) {
+    for (const name of [
+      "factory-task.ts",
+      "factory-intake.ts",
+      "factory-sync-upstream.ts",
+      "factory-brief.ts",
+      "factory-experiment.ts",
+      "factory-self-repair.ts",
+    ]) {
       loaded.push(
         ...(yield* loadDefinitions(
           path.resolve(import.meta.dirname, "../../factory/workflows", name),

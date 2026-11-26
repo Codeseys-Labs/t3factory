@@ -4,22 +4,30 @@ import {
   FACTORY_TASK,
   FactoryTaskRunInput,
   ModelChoice,
-  NO_PROJECT,
   PackConfig,
+  RunTarget,
   StartOutcome,
   TaskLane,
   addNote,
   capturedKey,
   createTask,
+  hashFile,
+  listAttempts,
   mergeApproved,
   mergePullRequest,
   projectPullRequest,
   pullRequestHead,
   readConfig,
+  recordAttemptPullRequest,
+  resolveTarget,
+  rootPool,
   startPool,
   startTask,
   taskTags,
+  writeArtifact,
+  writeReceipt,
 } from "./lib/records.ts";
+import { classifyRisk, ratchetRiskTier, type RiskTier } from "./lib/risk.ts";
 
 const { workflow, step, agent, ask, invoke, stop, title, tags, within, pullRequests } = T3;
 
@@ -37,14 +45,19 @@ const Plan = Schema.Struct({
   ),
 });
 
+const PullRequestUrls = Schema.Array(Schema.String);
+
 const PartPayload = Schema.Struct({
   taskId: Schema.String,
   number: Schema.Number,
+  attempt: Schema.optionalKey(Schema.Int),
   part: Schema.Number,
   title: Schema.String,
   brief: Schema.String,
   projectId: Schema.NullOr(Schema.String),
+  target: Schema.optionalKey(RunTarget),
   issueUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  priorPrUrls: Schema.optional(PullRequestUrls),
   model: Schema.NullOr(ModelChoice),
   config: PackConfig,
 });
@@ -67,7 +80,23 @@ const TaskResult = Schema.Struct({
 const Done = Schema.Struct({
   summary: Schema.String,
   prUrl: Schema.NullOr(Schema.String),
+  artifacts: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ path: Schema.String, label: Schema.String })).check(
+      Schema.isMaxLength(10),
+    ),
+  ),
 });
+
+const Hashed = Schema.Array(
+  Schema.Struct({
+    path: Schema.String,
+    label: Schema.String,
+    sha256: Schema.String,
+    bytes: Schema.Number,
+  }),
+);
+
+const ARTIFACT_MAX_BYTES = 25 * 1024 * 1024;
 
 const Review = Schema.Struct({
   verdict: Schema.Literals(["approve", "changes"]),
@@ -85,6 +114,7 @@ const CapturePayload = Schema.Struct({
   model: Schema.optional(Schema.NullOr(ModelChoice)),
   issue: Schema.optional(Schema.Struct({ url: Schema.String, displayKey: Schema.String })),
   start: Schema.optional(Schema.Boolean),
+  kind: Schema.optionalKey(Schema.String),
 });
 
 const Problem = Schema.Struct({ problem: Schema.String });
@@ -101,6 +131,14 @@ const Started = Schema.Struct({
 });
 
 const HeadSha = Schema.NullOr(Schema.String);
+
+const ScopeReport = Schema.Struct({ headSha: Schema.String, files: Schema.Array(Schema.String) });
+
+const PullRequestRiskSnapshot = Schema.Struct({
+  headSha: Schema.NullOr(Schema.String),
+  changedFiles: Schema.Number,
+  checks: Schema.Literals(["passing", "failing", "pending", "none"]),
+});
 
 const IssueLink = Schema.Literals(["linked", "commented"]);
 
@@ -120,19 +158,37 @@ const factoryTaskPart = workflow(
     returns: PartResult,
     asks: { accept: "Accept the result?", stuck: "Review did not pass", merge: "Merge?" },
   },
-  Effect.fn(function* (input) {
+  Effect.fn(function* (input, run) {
     const { config } = input;
     const label = `T-${input.number} part ${input.part + 1}`;
     const pool = `factory-task:${input.taskId}`;
     const slot = { limit: config.concurrency };
     yield* tags(taskTags(input.taskId, input.projectId, "doing"));
-    if (input.projectId === null) return yield* stop(NO_PROJECT);
-    const project = input.projectId;
+    const target = input.target ?? (yield* resolveTarget(input.projectId));
+    if ("problem" in target) return yield* stop(target.problem);
+    const project = target.projectId;
+    const rooted = target.workspace === "root";
+    const where = target.workspace === "worktree" ? "this worktree" : "this folder";
+    // A folder agents work in directly is shared by every task on its project. The task's place
+    // is always taken before the folder's, so no two runs each hold what the other waits for.
+    const held = <A, E, R>(body: Parameters<typeof within<A, E, R>>[2]) =>
+      within(pool, slot, rooted ? within(rootPool(project), { limit: 1 }, body) : body);
     const issueUrl = input.issueUrl ?? null;
+    const attempt = input.attempt ?? 1;
     const workerModel = config.workerModel ?? input.model;
-    const followUps = `If you discover an out-of-scope bug or follow-up while working, do not widen this pull request: capture it as a new task with \`t3 workflow start factory-capture --input '{"title":"…","projectId":"${project}","lane":"ready","blockedBy":["${input.taskId}"]}' --key capture/<slug>\`.`;
+    const taskProject = input.projectId === null ? "null" : `"${input.projectId}"`;
+    const followUps = `If you discover an out-of-scope bug or follow-up while working, do not widen this pull request: capture it as a new task with \`t3 workflow start factory-capture --input '{"title":"…","projectId":${taskProject},"lane":"ready","blockedBy":["${input.taskId}"]}' --key capture/<slug>\`.`;
+    const priorPrUrls = input.priorPrUrls ?? [];
+    const priorPrs =
+      priorPrUrls.length === 0
+        ? []
+        : [
+            `An earlier attempt at this task left ${priorPrUrls.length === 1 ? "this pull request" : "these pull requests"} open: ${priorPrUrls.join(", ")}`,
+            "If one of them is for this part, check out its branch, make the change there, and push to that branch so that pull request is updated; return its URL as `prUrl`. Do not open a second pull request for the same change.",
+          ];
     const returnRules = [
       "If the project is a Git repository with a remote, commit, push a branch, open a pull request and return its URL as `prUrl`. Otherwise return `prUrl: null`.",
+      "If there is no pull request and you left files a person should look at, return them as `artifacts`: at most 10, each with its absolute `path` and a short `label`.",
       ...(config.baseRef === null
         ? []
         : [
@@ -145,6 +201,9 @@ const factoryTaskPart = workflow(
           ]),
       "Return a short `summary` of what you changed.",
     ];
+    const workspace = rooted
+      ? ({ type: "root" } as const)
+      : ({ type: "worktree", baseRef: config.baseRef ?? "HEAD" } as const);
     const doOptions = {
       project,
       title: `${label}: ${input.title}`,
@@ -153,17 +212,18 @@ const factoryTaskPart = workflow(
         "",
         input.brief,
         "",
-        "Make the change in this worktree and check that it works.",
+        `Make the change in ${where} and check that it works.`,
         followUps,
+        ...priorPrs,
         ...returnRules,
       ].join("\n"),
-      workspace: { type: "worktree", baseRef: config.baseRef ?? "HEAD" },
+      workspace,
       runtimeMode: "full-access",
       ...(workerModel === null ? {} : { model: workerModel }),
       timeout: config.stepTimeout,
       returns: Done,
     } as const;
-    const tried = yield* within(pool, slot, agent.try("do", doOptions));
+    const tried = yield* held(agent.try("do", doOptions));
     if (
       tried.outcome === "failed" &&
       tried.thread !== undefined &&
@@ -175,13 +235,11 @@ const factoryTaskPart = workflow(
     ) {
       return yield* stop(`worker stopped: ${tried.reason}`);
     }
-    // A turn cut off cleanly at its time limit leaves its work in the worktree: carry on there.
+    // A turn cut off cleanly at its time limit leaves its work where it was: carry on there.
     const done =
       tried.outcome === "done"
         ? tried
-        : yield* within(
-            pool,
-            slot,
+        : yield* held(
             tried.thread === undefined
               ? agent("do/again", doOptions)
               : agent("do/continue", {
@@ -189,7 +247,9 @@ const factoryTaskPart = workflow(
                   brief: [
                     `Your last turn on part ${input.part + 1} of task T-${input.number} was stopped before it returned a result: ${tried.reason}`,
                     "",
-                    "Do not start over. Run `git status` and `git log` in this worktree to see what is already done, then carry on from there: finish the part and check that it works.",
+                    target.workspace === "worktree"
+                      ? "Do not start over. Run `git status` and `git log` in this worktree to see what is already done, then carry on from there: finish the part and check that it works."
+                      : "Do not start over. Look through this folder to see what is already done, then carry on from there: finish the part and check that it works.",
                     followUps,
                     ...returnRules,
                   ].join("\n"),
@@ -199,20 +259,100 @@ const factoryTaskPart = workflow(
           );
     const { summary, prUrl: reported } = done.value;
     if (reported === null) {
+      let artifacts: typeof Hashed.Type = [];
+      const listed = done.value.artifacts ?? [];
+      if (listed.length > 0) {
+        const hashed = yield* step.try(
+          "artifacts",
+          { returns: Hashed },
+          Effect.forEach(listed, (file) =>
+            Effect.gen(function* () {
+              const { sha256, bytes } = yield* hashFile(file.path, ARTIFACT_MAX_BYTES);
+              yield* writeArtifact({
+                taskId: input.taskId,
+                attempt,
+                sha256,
+                kind: "file",
+                location: { _tag: "file", path: file.path },
+                bytes,
+                label: file.label,
+                step: "artifacts",
+                runId: run.id,
+              });
+              return { path: file.path, label: file.label, sha256, bytes };
+            }),
+          ),
+        );
+        if (hashed.outcome === "failed") {
+          return yield* stop(`artifacts could not be recorded: ${hashed.reason}`);
+        }
+        artifacts = hashed.value;
+      }
       const accepted = yield* ask("accept", {
         title: `Accept ${label}: ${input.title}?`,
         kind: "accept",
         choices: ["Accept", "Redo"],
-        data: { summary },
+        data: artifacts.length === 0 ? { summary } : { summary, artifacts },
       });
       if (Option.isNone(accepted) || accepted.value.choice !== "Accept") {
         return yield* stop("not accepted");
+      }
+      if (artifacts.length > 0) {
+        const by = accepted.value.answeredBySession === undefined ? "agent" : "person";
+        const unchanged = yield* step(
+          "accepted",
+          { returns: Schema.Boolean },
+          Effect.gen(function* () {
+            const changed = (yield* Effect.forEach(artifacts, (file) =>
+              Effect.map(Effect.option(hashFile(file.path, ARTIFACT_MAX_BYTES)), (again) =>
+                Option.isSome(again) && again.value.sha256 === file.sha256 ? [] : [file],
+              ),
+            )).flat();
+            if (changed.length > 0) {
+              yield* Effect.forEach(
+                changed,
+                (file) =>
+                  writeReceipt({
+                    taskId: input.taskId,
+                    attempt,
+                    sha256: file.sha256,
+                    kind: "rejected",
+                    by: "pack",
+                    runId: run.id,
+                    detail: { reason: "changed after review" },
+                  }),
+                { discard: true },
+              );
+              return false;
+            }
+            yield* Effect.forEach(
+              artifacts,
+              (file) =>
+                writeReceipt({
+                  taskId: input.taskId,
+                  attempt,
+                  sha256: file.sha256,
+                  kind: "accepted",
+                  by,
+                  runId: run.id,
+                }),
+              { discard: true },
+            );
+            return true;
+          }),
+        );
+        if (!unchanged) return yield* stop("artifact changed after review");
       }
       return { outcome: "accepted", prUrl: null } as const;
     }
 
     const prUrl = yield* projectPullRequest(project, reported);
     if (prUrl === null) return yield* stop("pull request is not this project's");
+    yield* step(
+      "pr-record",
+      { returns: Schema.Void },
+      recordAttemptPullRequest(input.taskId, attempt, prUrl),
+    );
 
     const pr = { project, url: prUrl };
     if (issueUrl !== null) {
@@ -233,6 +373,17 @@ const factoryTaskPart = workflow(
     let lastNotes: string | null = null;
     let fixRoundsApplied = 0;
     let fixRoundsNoOp = 0;
+    // The tier a part's changes earn only goes up: a later round can raise it, never lower it.
+    const risk: { tier: RiskTier | undefined; headSha: string | null; reasons: Array<string> } = {
+      tier: undefined,
+      headSha: null,
+      reasons: [],
+    };
+    const noteRisk = (reasons: ReadonlyArray<string>) => {
+      for (const reason of reasons) {
+        if (!risk.reasons.includes(reason)) risk.reasons.push(reason);
+      }
+    };
     // Checks, then a review once they pass: `approved`, `merged`, or what still stands in the way.
     const round = Effect.fnUntraced(function* (at: string) {
       const standing = yield* pullRequests.wait(`checks/${at}`, pr, {
@@ -255,9 +406,63 @@ const factoryTaskPart = workflow(
           notes: null,
         };
       }
-      const review = yield* within(
-        pool,
-        slot,
+      const { checks } = standing.value;
+      const snapshot = yield* step(
+        `risk-pr/${at}`,
+        { returns: PullRequestRiskSnapshot },
+        Effect.map(pullRequests.read(pr), (detail) => ({
+          headSha: detail.headSha ?? null,
+          changedFiles: detail.changedFiles,
+          checks,
+        })),
+      );
+      if (
+        risk.tier === undefined ||
+        (snapshot.headSha !== null && snapshot.headSha !== risk.headSha)
+      ) {
+        const scoped = yield* held(
+          agent.try(`scope/${at}`, {
+            project,
+            title: `${label} scope: ${input.title}`,
+            brief: [
+              `List the files pull request ${prUrl} changes.`,
+              "",
+              "Change nothing: no edits, commits or pushes.",
+              `Fetch the pull request's head commit${snapshot.headSha === null ? "" : ` \`${snapshot.headSha}\``} and run \`git diff --name-only <base>...<head>\`, where <head> is that commit and <base> is the branch the pull request targets.`,
+              "Return `headSha`: the full SHA of the commit you listed, and `files`: every path the command printed, exactly as printed.",
+            ].join("\n"),
+            ...(reviewModel === null ? {} : { model: reviewModel }),
+            timeout: config.stepTimeout,
+            returns: ScopeReport,
+          }),
+        );
+        if (scoped.outcome !== "done") {
+          noteRisk([`the changed files could not be listed: ${scoped.reason}`]);
+        } else if (snapshot.headSha !== null && scoped.value.headSha !== snapshot.headSha) {
+          noteRisk([
+            `the changed files were listed at ${scoped.value.headSha}, not at the head ${snapshot.headSha}`,
+          ]);
+        }
+        const classified = classifyRisk({
+          files:
+            scoped.outcome === "done" &&
+            snapshot.headSha !== null &&
+            scoped.value.headSha === snapshot.headSha
+              ? scoped.value.files
+              : null,
+          changedFiles: snapshot.changedFiles,
+          headSha: snapshot.headSha ?? undefined,
+          checks: snapshot.checks,
+          fixRoundsUsed: fixRoundsApplied,
+          fixRounds: config.fixRounds,
+          protectedPaths: config.protectedPaths,
+          lowRiskPaths: config.lowRiskPaths,
+        });
+        risk.tier = ratchetRiskTier(risk.tier ?? null, classified.tier);
+        noteRisk(classified.reasons);
+        risk.headSha = snapshot.headSha;
+      }
+      const review = yield* held(
         agent(`review/${at}`, {
           project,
           title: `${label} review: ${input.title}`,
@@ -302,11 +507,7 @@ const factoryTaskPart = workflow(
         { returns: HeadSha },
         Effect.map(pullRequests.read(pr), (detail) => detail.headSha ?? null),
       );
-      yield* within(
-        pool,
-        slot,
-        agent(`fix/${at}`, { thread: done.thread, brief, timeout: config.stepTimeout }),
-      );
+      yield* held(agent(`fix/${at}`, { thread: done.thread, brief, timeout: config.stepTimeout }));
       const after = yield* step(
         `fix-after/${at}`,
         { returns: HeadSha },
@@ -323,7 +524,7 @@ const factoryTaskPart = workflow(
       };
     });
 
-    yield* tags(taskTags(input.taskId, project, "review"));
+    yield* tags(taskTags(input.taskId, input.projectId, "review"));
     let failure: { readonly problem: string; readonly notes: string | null } | undefined;
     let pushed = true;
     for (let r = 0; r <= config.fixRounds; r++) {
@@ -394,8 +595,22 @@ const factoryTaskPart = workflow(
     }
 
     const headSha = yield* pullRequestHead(pr);
+    const exhausted = config.fixRounds > 0 && fixRoundsApplied >= config.fixRounds;
+    if (risk.tier === undefined) noteRisk(["no review round listed the changed files"]);
+    if (headSha === null) {
+      noteRisk(["the host did not report the head commit"]);
+    } else if (risk.tier !== undefined && headSha !== risk.headSha) {
+      noteRisk([`the head moved to ${headSha} after its changed files were listed`]);
+    }
+    if (exhausted) noteRisk([`${fixRoundsApplied} of ${config.fixRounds} fix rounds used`]);
+    const finalTier = ratchetRiskTier(
+      risk.tier ?? "high",
+      headSha === null || headSha !== risk.headSha || exhausted ? "high" : "low",
+    );
+    const mustAskMerge = finalTier === "high" || config.askMerge || config.mergeNeedsPerson;
+    const needsPerson = finalTier === "high" || config.mergeNeedsPerson;
     if (
-      (config.askMerge || config.mergeNeedsPerson) &&
+      mustAskMerge &&
       !(yield* mergeApproved(
         {
           title: `Merge ${label}: ${input.title}?`,
@@ -409,9 +624,11 @@ const factoryTaskPart = workflow(
             noOpFixRounds: fixRoundsNoOp,
             lastReviewNotes: lastNotes,
             rulings,
+            riskTier: finalTier,
+            riskReasons: risk.reasons,
           },
         },
-        config.mergeNeedsPerson,
+        needsPerson,
       ))
     ) {
       return yield* stop("merge held");
@@ -433,17 +650,24 @@ const factoryTask = workflow(
     yield* title(`T-${input.number} ${input.title}`);
     yield* tags(taskTags(input.taskId, input.projectId, "planning"));
     const config = yield* step("config", { returns: PackConfig }, readConfig(input.projectId));
-    if (input.projectId === null) return yield* stop(NO_PROJECT);
+    const target = yield* resolveTarget(input.projectId);
+    if ("problem" in target) return yield* stop(target.problem);
     const planModel = config.planModel ?? input.model;
+    const layout =
+      target.workspace === "worktree"
+        ? "separate agents can do at the same time, each in its own worktree of this project"
+        : target.workspace === "root"
+          ? "agents do one after another in this project's folder"
+          : "separate agents can do at the same time, each in its own empty folder";
     const plan = yield* agent("plan", {
-      project: input.projectId,
+      project: target.projectId,
       title: `T-${input.number} plan: ${input.title}`,
       brief: [
         `Plan task T-${input.number}: ${input.title}`,
         ...(input.description.trim() === "" ? [] : ["", input.description]),
         ...(input.issueUrl === null ? [] : ["", `Issue: ${input.issueUrl}`]),
         "",
-        "Change nothing: no edits, commits, branches or pull requests. Read what you need, then split the work into 1 to 6 parts that separate agents can do at the same time, each in its own worktree of this project.",
+        `Change nothing: no edits, commits, branches or pull requests. Read what you need, then split the work into 1 to 6 parts that ${layout}.`,
         "Each agent sees only its part's brief, so make every brief complete: what to change, where, and how to check it.",
         "Return a short summary of the plan and the parts, each with a title and its brief.",
       ].join("\n"),
@@ -465,6 +689,27 @@ const factoryTask = workflow(
     }
 
     yield* tags(taskTags(input.taskId, input.projectId, "doing"));
+    const priorPrUrls =
+      input.attempt >= 2 && target.workspace === "worktree"
+        ? yield* step(
+            "prior-prs",
+            { returns: PullRequestUrls },
+            Effect.gen(function* () {
+              const urls = new Set(
+                (yield* listAttempts(input.taskId))
+                  .filter((earlier) => earlier.n < input.attempt)
+                  .flatMap((earlier) => earlier.prUrls ?? []),
+              );
+              const open = yield* Effect.forEach([...urls], (url) =>
+                Effect.map(
+                  Effect.option(pullRequests.read({ project: target.projectId, url })),
+                  (detail) => (Option.isSome(detail) && detail.value.state === "open" ? [url] : []),
+                ),
+              );
+              return open.flat();
+            }),
+          )
+        : [];
     // All at once: each part takes a place in the task's pool only while one of its agents works.
     const parts = yield* Effect.all(
       plan.value.parts.map((part, i) =>
@@ -472,13 +717,16 @@ const factoryTask = workflow(
           invoke(`part-${i}`, factoryTaskPart, {
             taskId: input.taskId,
             number: input.number,
+            attempt: input.attempt,
             part: i,
             title: part.title,
             brief: part.brief,
             projectId: input.projectId,
+            target,
             issueUrl: input.issueUrl,
             model: input.model,
             config,
+            ...(priorPrUrls.length === 0 ? {} : { priorPrUrls }),
           }),
           (ended) =>
             ended.outcome === "completed"
@@ -533,6 +781,7 @@ const factoryCapture = workflow(
             blockedBy: input.blockedBy ?? [],
             assignee: input.assignee ?? null,
             model: input.model ?? null,
+            ...(input.kind === undefined ? {} : { kind: input.kind }),
             source:
               input.issue === undefined
                 ? { _tag: "local" }
@@ -552,7 +801,7 @@ const factoryCapture = workflow(
       step(
         "start",
         { returns: StartOutcome },
-        startTask(factoryTask, captured.taskId, "factory-capture", {
+        startTask(captured.taskId, "factory-capture", {
           runId: run.id,
           slot: "start",
         }),
@@ -572,7 +821,7 @@ const factoryStart = workflow(
       step(
         "start",
         { returns: StartOutcome },
-        startTask(factoryTask, input.taskId, "factory-start", { runId: run.id, slot: "start" }),
+        startTask(input.taskId, "factory-start", { runId: run.id, slot: "start" }),
       ),
     );
     if (started.outcome === "dropped") return yield* stop("task is dropped");

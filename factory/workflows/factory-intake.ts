@@ -6,7 +6,6 @@ import {
   TaskRef,
   capturedKey,
   createTask,
-  factoryTaskRef,
   isStored,
   readAll,
   seenKey,
@@ -150,7 +149,7 @@ export default [
             step.try(
               `start/${projectId}/${issue.key}`,
               { returns: StartOutcome },
-              startTask(factoryTaskRef, task.taskId, "factory-intake", {
+              startTask(task.taskId, "factory-intake", {
                 runId: run.id,
                 slot: `start/${projectId}/${issue.key}`,
               }),

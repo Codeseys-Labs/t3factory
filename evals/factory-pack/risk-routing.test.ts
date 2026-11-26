@@ -76,15 +76,39 @@ const script = ({
           return { output: { summary: PART.title, prUrl: PR_URL } };
         case "scope/0":
           return { output: { headSha: reportedHead, files: [file] } };
+        // r9 L1: a reviewer reports its head and findings; an open major blocks (L3).
         case "review/0":
-          return { output: { verdict: fix ? "changes" : "approve", notes: "Check the example." } };
+          return {
+            output: {
+              reviewedHead: headSha,
+              findings: fix
+                ? [
+                    {
+                      severity: "major",
+                      category: "correctness",
+                      path: file,
+                      line: 1,
+                      claim: "Check the example.",
+                      evidence: "",
+                    },
+                  ]
+                : [],
+            },
+          };
+        // r9 L4: a high tier adds the defects lens.
+        case "review/0/defects":
+        case "review/1/defects":
+          return { output: { reviewedHead: headSha, findings: [] } };
+        // r9 L4: the blocking finding is not refuted, so it still blocks.
+        case "disprove/0":
+          return { output: { results: [] } };
         case "fix/0":
           headSha = FIXED_HEAD;
           return { reply: "Replaced the implementation with a documentation change." };
         case "scope/1":
           return { output: { headSha: FIXED_HEAD, files: ["README.md"] } };
         case "review/1":
-          return { output: { verdict: "approve", notes: "The example is correct." } };
+          return { output: { reviewedHead: headSha, findings: [] } };
         default:
           throw new Error(`Unexpected agent step ${origin.step}`);
       }
@@ -195,13 +219,18 @@ it.effect(
             });
             const childId = yield* approveHighRisk(world, workflows, runId);
             const turns = world.turns.filter((turn) => turn.origin.runId === childId);
+            // r9 L4: the high tier runs the defects lens each round, and the blocking
+            // finding of round 0 is put to the disprove step.
             expect(turns.map((turn) => turn.origin.step)).toEqual([
               "do",
               "scope/0",
               "review/0",
+              "review/0/defects",
+              "disprove/0",
               "fix/0",
               "scope/1",
               "review/1",
+              "review/1/defects",
             ]);
           }),
         ),

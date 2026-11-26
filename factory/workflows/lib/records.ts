@@ -1,4 +1,4 @@
-// @effect-diagnostics globalDateInEffect:off
+// @effect-diagnostics globalDateInEffect:off globalDate:off nodeBuiltinImport:off cryptoRandomUUIDInEffect:off - a workflow file runs in the loader, which provides no platform services.
 // The records the pack shares with the server's FactoryTasks service, the store work both
 // workflow files do with them, and the review gates every workflow that merges goes through.
 // Everything here that touches the store is for inside a `step`.
@@ -228,7 +228,9 @@ type TaskWorkflow = Parameters<typeof start<FactoryTaskRunInput>>[0];
 
 // `start` reads only the name and version. A workflow file cannot import another for its
 // definition: the loader would register that file's workflows twice.
-const workflowRef = (name: string) => ({ name, version: 1 }) as unknown as TaskWorkflow;
+export const FACTORY_TASK_VERSION = 2;
+const workflowRef = (name: string) =>
+  ({ name, version: name === FACTORY_TASK ? FACTORY_TASK_VERSION : 1 }) as unknown as TaskWorkflow;
 
 type DurationInput = Parameters<typeof Duration.fromInput>[0];
 const DurationText = Schema.String.pipe(
@@ -325,7 +327,7 @@ export const seenKey = (projectId: string, issueKey: string) =>
   `${PREFIX}intake-seen/${projectId}/${issueKey}`;
 export const capturedKey = (runId: string, slot: string) => `${PREFIX}captured/${runId}/${slot}`;
 
-const now = Effect.clockWith((clock) =>
+export const now = Effect.clockWith((clock) =>
   Effect.map(clock.currentTimeMillis, (millis) => new Date(millis).toISOString()),
 );
 
@@ -359,7 +361,7 @@ export const readAll = Effect.fn("factoryPack.readAll")(function* <S extends Dec
   );
 });
 
-const readTask = (taskId: string) => readRecord(taskKey(taskId), FactoryTask);
+export const readTask = (taskId: string) => readRecord(taskKey(taskId), FactoryTask);
 
 /** Every attempt recorded for `taskId` that decodes, in number order. */
 export const listAttempts = (taskId: string) =>
@@ -594,6 +596,18 @@ export const startTask = Effect.fn("factoryPack.startTask")(function* (
   return yield* recorded(attempt, runId);
 });
 
+export const writeNote = Effect.fn("factoryPack.writeNote")(function* (
+  taskId: string,
+  text: string,
+  by: string,
+  at: string,
+) {
+  const id = `${at}-${crypto.randomUUID().slice(0, 8)}`;
+  yield* store
+    .entry(`${PREFIX}note/${taskId}/${id}`, FactoryNote)
+    .set({ v: 1, taskId, id, text: text.slice(0, NOTE_MAX), by, at });
+});
+
 /** Appends a note with `marker` beside it; a second call that finds the marker writes nothing. */
 export const addNote = Effect.fn("factoryPack.addNote")(function* (
   taskId: string,
@@ -604,11 +618,7 @@ export const addNote = Effect.fn("factoryPack.addNote")(function* (
   yield* store.transaction(
     Effect.gen(function* () {
       if (yield* isStored(marker)) return;
-      const at = yield* now;
-      const id = `${at}-${crypto.randomUUID().slice(0, 8)}`;
-      yield* store
-        .entry(`${PREFIX}note/${taskId}/${id}`, FactoryNote)
-        .set({ v: 1, taskId, id, text: text.slice(0, NOTE_MAX), by, at });
+      yield* writeNote(taskId, text, by, yield* now);
       yield* store.entry(marker, TaskRef).set({ v: 1, taskId });
     }),
   );

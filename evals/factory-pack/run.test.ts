@@ -170,6 +170,23 @@ const TASK = {
   updatedAt: AT,
 } satisfies typeof TaskRecord.Type;
 
+// r9 L1: what a scripted reviewer reports; each claim is one open major, which blocks (L3).
+const reviewReport = (claims: ReadonlyArray<string>) => ({
+  output: {
+    reviewedHead: null,
+    findings: claims.map((claim) => ({
+      severity: "major",
+      category: "correctness",
+      path: "src/part.ts",
+      line: 3,
+      claim,
+      evidence: "",
+    })),
+  },
+});
+// r9 L4: renderFindings of that one open major, which becomes the review's notes.
+const reviewNotes = (claim: string) => `- [major] src/part.ts:3: ${claim}`;
+
 const script = (
   options: {
     readonly parts?: ReadonlyArray<typeof PART>;
@@ -197,11 +214,12 @@ const script = (
         return { output: { summary: "Implemented the requested part.", prUrl } };
       }
       if (step.startsWith("scope/")) return {};
+      // r9 L4: the defects lens of a high tier reports nothing, and disprove refutes nothing.
       if (/^review\/x?\d+$/.test(step)) {
-        return {
-          output: { verdict: options.changes ? "changes" : "approve", notes: "Review feedback." },
-        };
+        return reviewReport(options.changes ? ["Review feedback."] : []);
       }
+      if (/^review\/x?\d+\/defects$/.test(step)) return reviewReport([]);
+      if (/^disprove\/x?\d+$/.test(step)) return { output: { results: [] } };
       if (/^fix\/x?\d+$/.test(step)) return { reply: "Fixed the reported problem." };
       throw new Error(`Unexpected agent step ${step}`);
     },
@@ -340,6 +358,9 @@ const expectTurns = (world: World, runId: string, steps: ReadonlyArray<string>) 
       expect(turn.model).toBeUndefined();
       expect(turn.outputSchema).toEqual(initial?.outputSchema);
     } else {
+      // r9 L4: the defects lens and disprove also start new threads with the task's model here.
+      // AMBIGUOUS: L4.5 does not name disprove's project; read as the project, which it must
+      // read to reproduce a claim. The other reading leaves `project` unset.
       expect(turn.thread).toBeUndefined();
       expect(turn.project).toBe(PROJECT);
       expect(turn.model).toEqual(MODEL);
@@ -371,14 +392,51 @@ const expectTags = (world: World, run: WorkflowRun, stage: string, taskId = TASK
     );
   }
 };
-const expectMerged = (world: World, parent: WorkflowRun, child: WorkflowRun, prUrl: string) => {
+// r9 M1: what a completed part reports; a test names only what differs from a clean merge.
+type PartStats = {
+  readonly tier: "low" | "standard" | "high" | null;
+  readonly fixRounds: number;
+  readonly noOpFixRounds: number;
+  readonly continued: boolean;
+  readonly asks: number;
+  readonly rulings: number;
+  readonly mergedAnyway: boolean;
+  readonly reviewRounds: number;
+  readonly findingsRaised: number;
+  readonly findingsRefuted: number;
+};
+const partStats = (stats: Partial<PartStats> = {}): PartStats => ({
+  tier: "standard",
+  fixRounds: 0,
+  noOpFixRounds: 0,
+  continued: false,
+  asks: 0,
+  rulings: 0,
+  mergedAnyway: false,
+  reviewRounds: 1,
+  findingsRaised: 0,
+  findingsRefuted: 0,
+  ...stats,
+});
+// r9 M1: no pull request, so no tier and no review; the accept question is the one ask.
+const ACCEPTED_STATS = partStats({ tier: null, asks: 1, reviewRounds: 0 });
+const expectMerged = (
+  world: World,
+  parent: WorkflowRun,
+  child: WorkflowRun,
+  prUrl: string,
+  stats: PartStats,
+) => {
   expect(child.status).toBe("completed");
-  expect(child.result).toEqual({ outcome: "merged", prUrl });
+  // r9 M1: the part returns its statistics, and the task lists them with the part.
+  expect(child.result).toEqual({ outcome: "merged", prUrl, stats });
   expect(child.parentRunId).toBe(parent.runId);
   expect(child.parentStep).toBe("part-0");
   expectTags(world, child, "review");
   expect(parent.status).toBe("completed");
-  expect(parent.result).toEqual({ parts: [{ title: PART.title, outcome: "merged", prUrl }] });
+  expect(parent.result).toEqual({
+    parts: [{ title: PART.title, outcome: "merged", prUrl, stats }],
+  });
   expectTags(world, parent, "done");
   expect(world.acts).toEqual([
     [{ project: PROJECT, url: prUrl }, "merge", { mergeMethod: "squash" }],
@@ -452,7 +510,13 @@ it("one approved part merges once, completes its task, and appends a note", () =
         yield* merge(world, workflows, child.runId);
         const done = yield* world.ended(workflows, runId);
         const part = yield* world.ended(workflows, child.runId);
-        expectMerged(world, done, part, "https://github.com/factory/pack/pull/17");
+        expectMerged(
+          world,
+          done,
+          part,
+          "https://github.com/factory/pack/pull/17",
+          partStats({ asks: 1 }),
+        );
         expectTurns(world, runId, ["plan"]);
         expectTurns(world, child.runId, ["do", "scope/0", "review/0"]);
         expect(world.turns).toHaveLength(4);
@@ -509,7 +573,7 @@ it("askPlan false and askMerge false complete without questions", () =>
         const { runId } = yield* startTask(workflows);
         const done = yield* world.ended(workflows, runId, true);
         const child = yield* world.child(workflows, runId, 0);
-        expectMerged(world, done, child, "https://github.com/factory/pack/pull/17");
+        expectMerged(world, done, child, "https://github.com/factory/pack/pull/17", partStats());
         expectTurns(world, runId, ["plan"]);
         expectTurns(world, child.runId, ["do", "scope/0", "review/0"]);
         expect(world.turns).toHaveLength(4);
@@ -532,13 +596,18 @@ it("failing checks continue the do thread in fix/0 before review and merge", () 
           yield* world.ended(workflows, runId),
           yield* world.ended(workflows, child.runId),
           "https://github.com/factory/pack/pull/17",
+          // r9 M1: the fix moved the head; only round 1 had a review. AMBIGUOUS: a round whose
+          // checks failed is read as writing no ledger record (reviewRounds 1, not 2).
+          partStats({ fixRounds: 1, asks: 1 }),
         );
         expectTurns(world, runId, ["plan"]);
         expectTurns(world, child.runId, ["do", "fix/0", "scope/1", "review/1"]);
         expect(world.turns).toHaveLength(5);
-        // checks/0, the two fix reads, checks/1, risk-pr/1, head-sha, merge.
+        // checks/0, the two fix reads, checks/1, risk-pr/1, head/1 (r9 L4.6), head-sha, merge.
+        // AMBIGUOUS: a round whose checks failed is read as having no head/0 step (no review).
         expect(world.reads.map(({ standing }) => standing.checks)).toEqual([
           "failing",
+          "passing",
           "passing",
           "passing",
           "passing",
@@ -589,20 +658,36 @@ it("fixRounds one asks stuck after two changes reviews and Stop ends only the pa
         });
         expectTags(world, part, "review");
         expect(done.status).toBe("completed");
+        // r9 M1: a part that did not complete is listed with no statistics.
         expect(done.result).toEqual({
-          parts: [{ title: PART.title, outcome: "stopped", prUrl: null }],
+          parts: [{ title: PART.title, outcome: "stopped", prUrl: null, stats: null }],
         });
         expectTags(world, done, "done");
         expectTurns(world, runId, ["plan"]);
-        expectTurns(world, child.runId, ["do", "scope/0", "review/0", "fix/0", "review/1"]);
-        expect(world.turns).toHaveLength(6);
+        // r9 L4: the missing head makes the tier high, so each round adds the defects lens, and
+        // each round's open major is put to the disprove step.
+        expectTurns(world, child.runId, [
+          "do",
+          "scope/0",
+          "review/0",
+          "review/0/defects",
+          "disprove/0",
+          "fix/0",
+          "review/1",
+          "review/1/defects",
+          "disprove/1",
+        ]);
+        expect(world.turns).toHaveLength(10);
         expectQuestions(world, [
           [runId, "approve-plan", "plan"],
           [child.runId, "stuck", "stuck"],
         ]);
         expect(world.acts).toEqual([]);
-        // Both rounds read risk metadata, but the unreported head does not change.
+        // Both rounds read risk metadata and the head again after review (r9 L4.6), but the
+        // unreported head does not change.
         expect(world.reads.map(({ standing }) => standing.checks)).toEqual([
+          "passing",
+          "passing",
           "passing",
           "passing",
           "passing",
@@ -641,7 +726,7 @@ it("a part without a pull request asks accept and completes without a forge act"
         expectTags(world, part, "doing");
         expect(done.status).toBe("completed");
         expect(done.result).toEqual({
-          parts: [{ title: PART.title, outcome: "accepted", prUrl: null }],
+          parts: [{ title: PART.title, outcome: "accepted", prUrl: null, stats: ACCEPTED_STATS }],
         });
         expectTags(world, done, "done");
         expectTurns(world, runId, ["plan"]);
@@ -684,18 +769,24 @@ it("concurrency two runs two children of the task before either merge is answere
           .toSorted((a, b) => (a.parentStep ?? "").localeCompare(b.parentStep ?? ""));
         expect(children).toHaveLength(2);
         expect(done.status).toBe("completed");
+        // r9 M1: each part answered its own merge question.
         expect(done.result).toEqual({
           parts: parts.map((part, index) => ({
             title: part.title,
             outcome: "merged",
             prUrl: answers.urls.get(children[index]?.runId ?? ""),
+            stats: partStats({ asks: 1 }),
           })),
         });
         expectTags(world, done, "done");
         for (const [index, child] of children.entries()) {
           expect(child.parentStep).toBe(`part-${index}`);
           expect(child.status).toBe("completed");
-          expect(child.result).toEqual({ outcome: "merged", prUrl: answers.urls.get(child.runId) });
+          expect(child.result).toEqual({
+            outcome: "merged",
+            prUrl: answers.urls.get(child.runId),
+            stats: partStats({ asks: 1 }),
+          });
           expectTags(world, child, "review");
           expectTurns(world, child.runId, ["do", "scope/0", "review/0"]);
         }
@@ -732,7 +823,7 @@ it("project config overrides global fields without discarding the other global f
         const { runId } = yield* startTask(workflows);
         const done = yield* world.ended(workflows, runId, true);
         const child = yield* world.child(workflows, runId, 0);
-        expectMerged(world, done, child, "https://github.com/factory/pack/pull/17");
+        expectMerged(world, done, child, "https://github.com/factory/pack/pull/17", partStats());
         expect(
           (yield* workflows.get(runId)).steps.find((step) => step.name === "config")?.result,
         ).toEqual({ ...DEFAULT_CONFIG, askPlan: false, askMerge: false });
@@ -1187,7 +1278,13 @@ it("restart at the merge question replays no agent turn and merges exactly once"
           yield* merge(world, workflows, waiting.childId);
           const done = yield* world.ended(workflows, waiting.runId);
           const child = yield* world.ended(workflows, waiting.childId);
-          expectMerged(world, done, child, "https://github.com/factory/pack/pull/17");
+          expectMerged(
+            world,
+            done,
+            child,
+            "https://github.com/factory/pack/pull/17",
+            partStats({ asks: 1 }),
+          );
           expect(world.turns.map((turn) => turn.key)).toEqual(waiting.keys);
           expect(world.turns).toHaveLength(4);
           expectQuestions(world, [
@@ -1490,12 +1587,15 @@ effectIt.effect.each([
           const part = yield* world.ended(workflows, child.runId);
           const done = yield* world.ended(workflows, runId);
           expect(done.status).toBe("completed");
+          // r9 M1: the merge gate is one ask however many questions it took; a part that did
+          // not complete is listed with no statistics.
           expect(done.result).toEqual({
             parts: [
               {
                 title: PART.title,
                 outcome: entry.merged ? "merged" : "stopped",
                 prUrl: entry.merged ? PR_URL : null,
+                stats: entry.merged ? partStats({ asks: 1 }) : null,
               },
             ],
           });
@@ -1585,10 +1685,12 @@ effectIt.effect.each(["own", "foreign", "unreadable"] as const)(
               expectTurns(world, runId, ["plan"]);
               expectQuestions(world, []);
               if (ownership === "own") {
-                expectMerged(world, done, part, canonicalUrl);
+                expectMerged(world, done, part, canonicalUrl, partStats());
                 expectTurns(world, child.runId, ["do", "scope/0", "review/0"]);
+                // checks/0, risk-pr/0, head/0 (r9 L4.6), head-sha, merge.
                 expect(world.readCalls).toEqual([
                   { project: PROJECT, url: reportedUrl },
+                  { project: PROJECT, url: canonicalUrl },
                   { project: PROJECT, url: canonicalUrl },
                   { project: PROJECT, url: canonicalUrl },
                   { project: PROJECT, url: canonicalUrl },
@@ -1609,7 +1711,7 @@ effectIt.effect.each(["own", "foreign", "unreadable"] as const)(
                 });
                 expect(done.status).toBe("completed");
                 expect(done.result).toEqual({
-                  parts: [{ title: PART.title, outcome: "stopped", prUrl: null }],
+                  parts: [{ title: PART.title, outcome: "stopped", prUrl: null, stats: null }],
                 });
                 expectTags(world, done, "done");
                 expect(steps.filter((step) => step.kind === "wait")).toEqual([]);
@@ -1658,7 +1760,7 @@ effectIt.effect.each([
                 result: null,
               });
               expect(done.result).toEqual({
-                parts: [{ title: PART.title, outcome: "stopped", prUrl: null }],
+                parts: [{ title: PART.title, outcome: "stopped", prUrl: null, stats: null }],
               });
               expectTurns(world, child.runId, ["do"]);
               expect(
@@ -1668,10 +1770,11 @@ effectIt.effect.each([
               expect(world.acts).toEqual([]);
               return;
             }
+            // r9 M1: the part's statistics, listed with it.
             expect(done.result).toEqual({
-              parts: [{ title: PART.title, outcome: "merged", prUrl: PR_URL }],
+              parts: [{ title: PART.title, outcome: "merged", prUrl: PR_URL, stats: partStats() }],
             });
-            expect(child.result).toEqual({ outcome: "merged", prUrl: PR_URL });
+            expect(child.result).toEqual({ outcome: "merged", prUrl: PR_URL, stats: partStats() });
             expectTurns(world, child.runId, ["do", "scope/0", "review/0"]);
             expect(world.pullRequestQueries[0]).toMatchObject({ project: PROJECT, state: "all" });
             expect(world.reads.length).toBeGreaterThan(0);
@@ -1719,7 +1822,7 @@ it("P2a reads an unlisted pull request through a lowercase GitHub URL", () => {
           const child = yield* world.child(workflows, runId, 0);
           const part = yield* world.ended(workflows, child.runId, true);
           const done = yield* world.ended(workflows, runId, true);
-          expectMerged(world, done, part, canonicalUrl);
+          expectMerged(world, done, part, canonicalUrl, partStats());
           const [fallback, ...rest] = world.readCalls;
           expect(fallback).toMatchObject({
             project: PROJECT,
@@ -2351,12 +2454,15 @@ effectIt.effect.each(["person", "checks"] as const)(
               expect(children.map((run) => run.status)).toEqual(
                 Array.from({ length: 6 }, () => "completed"),
               );
+              // r9 M1: an accepted part has no tier and no review; a merged one had a fix round
+              // before its one review (see "failing checks continue" for the ambiguity).
               expect(done.result).toEqual({
                 parts: SIX_PARTS.map((part, index) => ({
                   title: part.title,
                   outcome: waitingOn === "person" ? "accepted" : "merged",
                   prUrl:
                     waitingOn === "person" ? null : answers.urls.get(children[index]?.runId ?? ""),
+                  stats: waitingOn === "person" ? ACCEPTED_STATS : partStats({ fixRounds: 1 }),
                 })),
               });
               if (waitingOn === "checks") {
@@ -2462,7 +2568,7 @@ it("P9 retrying finish after a committed note writes exactly one note", () =>
         const done = yield* world.ended(workflows, runId);
         expect(done.status).toBe("completed");
         expect(done.result).toEqual({
-          parts: [{ title: PART.title, outcome: "merged", prUrl: PR_URL }],
+          parts: [{ title: PART.title, outcome: "merged", prUrl: PR_URL, stats: partStats() }],
         });
         expect(world.finishExecutions).toEqual([runId, runId]);
         expect(yield* workflows.stored(`factory/v1/note/${TASK_ID}/`)).toEqual(notes);
@@ -2556,14 +2662,25 @@ it("P10 merge reads the PR again and does not act when it is already merged", ()
           yield* workflows.answer(child.runId, "approve-merge", { choice: "Merge" });
           const done = yield* world.ended(workflows, runId);
           expect(done.status).toBe("completed");
+          // r9 M1: the merge question was the part's one ask.
           expect(done.result).toEqual({
-            parts: [{ title: PART.title, outcome: "merged", prUrl: PR_URL }],
+            parts: [
+              {
+                title: PART.title,
+                outcome: "merged",
+                prUrl: PR_URL,
+                stats: partStats({ asks: 1 }),
+              },
+            ],
           });
           expect((yield* workflows.get(child.runId)).run.result).toEqual({
             outcome: "merged",
             prUrl: PR_URL,
+            stats: partStats({ asks: 1 }),
           });
+          // checks/0, risk-pr/0, head/0 (r9 L4.6), head-sha, then merge.
           expect(world.reads.map((read) => read.standing.state)).toEqual([
+            "open",
             "open",
             "open",
             "open",
@@ -2601,7 +2718,7 @@ effectIt.effect.each([
             const part = yield* world.ended(workflows, child.runId);
             const done = yield* world.ended(workflows, runId);
             if (entry.merged) {
-              expectMerged(world, done, part, PR_URL);
+              expectMerged(world, done, part, PR_URL, partStats({ asks: 1 }));
               return;
             }
             expect(part).toMatchObject({
@@ -2647,7 +2764,7 @@ effectIt.effect.each([
             );
           }
           expect(done.result).toEqual({
-            parts: [{ title: PART.title, outcome: "merged", prUrl: PR_URL }],
+            parts: [{ title: PART.title, outcome: "merged", prUrl: PR_URL, stats: partStats() }],
           });
         }),
       ),
@@ -2685,7 +2802,14 @@ effectIt.effect.each([false, true])(
               const child = yield* world.child(workflows, runId, 0);
               const done = yield* world.ended(workflows, runId, true);
               const part = yield* world.ended(workflows, child.runId);
-              expectMerged(world, done, part, PR_URL);
+              // r9 M1: do/continue ran, so the part continued.
+              expectMerged(
+                world,
+                done,
+                part,
+                PR_URL,
+                partStats({ continued: true, fixRounds: needsFix ? 1 : 0 }),
+              );
               expect(part.pauses).toBe(0);
               expectTurns(world, runId, ["plan"]);
               expectTurns(
@@ -2718,10 +2842,20 @@ effectIt.effect.each([false, true])(
               expect(continuation?.prompt).toMatch(/\bworktree\b/i);
               expect(continuation?.prompt).toMatch(/\bsummary\b/i);
               expect(continuation?.prompt).toMatch(/\b(?:prUrl|pull request)\b/i);
+              // Each reviewed round reads the head again after review (r9 L4.6).
               expect(world.reads.map(({ standing }) => standing.checks)).toEqual(
                 needsFix
-                  ? ["failing", "passing", "passing", "passing", "passing", "passing", "passing"]
-                  : ["passing", "passing", "passing", "passing"],
+                  ? [
+                      "failing",
+                      "passing",
+                      "passing",
+                      "passing",
+                      "passing",
+                      "passing",
+                      "passing",
+                      "passing",
+                    ]
+                  : ["passing", "passing", "passing", "passing", "passing"],
               );
               if (needsFix) {
                 const fix = world.turns.find(
@@ -2786,6 +2920,7 @@ it("P12 a failed continuation pauses there and resume continues the same thread"
             yield* world.ended(workflows, runId, true),
             yield* world.ended(workflows, child.runId),
             PR_URL,
+            partStats({ continued: true }),
           );
           expectTurns(world, child.runId, [
             "do",
@@ -2839,6 +2974,7 @@ it("P12 a do that never started retries as do/again with the original launch opt
             yield* world.ended(workflows, runId, true),
             yield* world.ended(workflows, child.runId),
             PR_URL,
+            partStats({ continued: true }),
           );
           const attempts = world.startAttempts.filter((turn) => turn.origin.runId === child.runId);
           expect(attempts.map((turn) => turn.origin.step)).toEqual([
@@ -2940,6 +3076,7 @@ it("P12 continuations and another part's do share the concurrency-one pool", () 
               title: parts[index]?.title,
               outcome: "merged",
               prUrl: answers.urls.get(child.runId),
+              stats: partStats({ continued: true }),
             })),
           });
           for (const child of children) {
@@ -3100,10 +3237,10 @@ effectIt.effect.each([
     const answers = pushingFixes(
       script({
         changes: true,
-        // checks/0, risk-pr/0, the two fix reads, then checks/x1 fails.
+        // checks/0, risk-pr/0, head/0 (r9 L4.6), the two fix reads, then checks/x1 fails.
         checks:
           entry.failure === "checks"
-            ? ["passing", "passing", "passing", "passing", "failing"]
+            ? ["passing", "passing", "passing", "passing", "passing", "failing"]
             : ["passing"],
       }),
     );
@@ -3112,16 +3249,9 @@ effectIt.effect.each([
         ...answers,
         agent: (turn) => {
           if (turn.origin.step === "review/x1") {
-            return {
-              output: {
-                verdict: entry.failure === "changes" ? "changes" : "approve",
-                notes: extraNotes,
-              },
-            };
+            return reviewReport(entry.failure === "changes" ? [extraNotes] : []);
           }
-          if (turn.origin.step === "review/x2") {
-            return { output: { verdict: "approve", notes: "The ruling is satisfied." } };
-          }
+          if (turn.origin.step === "review/x2") return reviewReport([]);
           return answers.agent(turn);
         },
       },
@@ -3138,7 +3268,8 @@ effectIt.effect.each([
             expect(refused._tag).toBe("WorkflowInputError");
             expect(refused.message).toMatch(/reason/i);
             yield* askStuck(world, workflows, child.runId);
-            expectTurns(world, child.runId, ["do", "scope/0", "review/0"]);
+            // r9 L4: round 0's open major is put to the disprove step.
+            expectTurns(world, child.runId, ["do", "scope/0", "review/0", "disprove/0"]);
             yield* workflows.answer(child.runId, "stuck", { choice: "Fix again", reason: ruling });
             if (entry.next !== null) {
               yield* askStuck(world, workflows, child.runId, "stuck/x1");
@@ -3166,10 +3297,34 @@ effectIt.effect.each([
               });
               expect(world.acts).toEqual([]);
             } else {
-              expectMerged(world, done, part, PR_URL);
+              // r9 M1: one ask per stuck question plus the merge gate, one ruling per Fix again,
+              // a review round per round whose checks passed, one raised major per round that
+              // asked for changes. The tier is high only when the head moved after its files were
+              // listed. r9d: fixRounds counts every fix round that moved the head.
+              expectMerged(
+                world,
+                done,
+                part,
+                PR_URL,
+                partStats({
+                  tier:
+                    entry.failure === "checks" && entry.next === "Merge anyway"
+                      ? "high"
+                      : "standard",
+                  fixRounds: entry.next === "Fix again" ? 2 : 1,
+                  asks: entry.next === null ? 2 : 3,
+                  rulings: entry.next === "Fix again" ? 2 : 1,
+                  mergedAnyway: entry.next === "Merge anyway",
+                  reviewRounds:
+                    1 + (entry.failure === "checks" ? 0 : 1) + (entry.next === "Fix again" ? 1 : 0),
+                  findingsRaised: entry.failure === "changes" ? 2 : 1,
+                }),
+              );
             }
-            const expectedTurns = ["do", "scope/0", "review/0", "fix/x1"];
+            // r9 L4: each round that asked for changes runs the disprove step.
+            const expectedTurns = ["do", "scope/0", "review/0", "disprove/0", "fix/x1"];
             if (entry.failure !== "checks") expectedTurns.push("scope/x1", "review/x1");
+            if (entry.failure === "changes") expectedTurns.push("disprove/x1");
             if (entry.next === "Fix again") expectedTurns.push("fix/x2", "scope/x2", "review/x2");
             expectTurns(world, child.runId, expectedTurns);
             expectQuestions(world, [
@@ -3194,8 +3349,11 @@ effectIt.effect.each([
               );
               const reason = round === 1 ? ruling : secondRuling;
               expect(fix?.prompt).toContain(reason);
+              // r9 L4: the review's last notes are renderFindings of its open findings.
               expect(fix?.prompt).toContain(
-                round === 2 && entry.failure === "changes" ? extraNotes : "Review feedback.",
+                reviewNotes(
+                  round === 2 && entry.failure === "changes" ? extraNotes : "Review feedback.",
+                ),
               );
               expect(fix?.prompt).toContain(PR_URL);
               expect(fix?.prompt).toMatch(/push/i);
@@ -3258,9 +3416,17 @@ effectIt.effect.each(["Merge anyway", "timeout"] as const)(
               });
               expect(world.acts).toEqual([]);
             } else {
-              expectMerged(world, done, part, PR_URL);
+              // r9 M1: the stuck question and the merge gate, and round 0's raised major.
+              expectMerged(
+                world,
+                done,
+                part,
+                PR_URL,
+                partStats({ asks: 2, mergedAnyway: true, findingsRaised: 1 }),
+              );
             }
-            expectTurns(world, child.runId, ["do", "scope/0", "review/0"]);
+            // r9 L4: round 0's open major is put to the disprove step.
+            expectTurns(world, child.runId, ["do", "scope/0", "review/0", "disprove/0"]);
             expectQuestions(
               world,
               choice === "timeout"
@@ -3286,8 +3452,8 @@ effectIt.effect.each(["merged", "closed"] as const)(
           ...answers,
           standing: (address, read) => ({
             ...answers.standing(address, read),
-            // checks/0, risk-pr/0, fix-before/x1, fix-after/x1, then checks/x1.
-            state: read === 4 ? state : "open",
+            // checks/0, risk-pr/0, head/0 (r9 L4.6), fix-before/x1, fix-after/x1, then checks/x1.
+            state: read === 5 ? state : "open",
           }),
         },
         (world) =>
@@ -3335,7 +3501,14 @@ effectIt.effect.each(["merged", "closed"] as const)(
                 (yield* workflows.get(child.runId)).steps.find((step) => step.name === "checks/x1")
                   ?.result,
               ).toMatchObject({ state });
-              expectTurns(world, child.runId, ["do", "scope/0", "review/0", "fix/x1"]);
+              // r9 L4: round 0's open major is put to the disprove step.
+              expectTurns(world, child.runId, [
+                "do",
+                "scope/0",
+                "review/0",
+                "disprove/0",
+                "fix/x1",
+              ]);
               expectQuestions(world, [[child.runId, "stuck", "stuck"]]);
               expect(world.acts).toEqual([]);
             }),
@@ -3351,10 +3524,7 @@ it("P13 extra fixes share the concurrency-one pool across two parts", () => {
     {
       ...answers,
       holdAgent: (turn) => turn.origin.step !== "plan",
-      agent: (turn) =>
-        turn.origin.step === "review/x1"
-          ? { output: { verdict: "approve", notes: "The ruling is satisfied." } }
-          : answers.agent(turn),
+      agent: (turn) => (turn.origin.step === "review/x1" ? reviewReport([]) : answers.agent(turn)),
     },
     (world) =>
       world.server(
@@ -3373,9 +3543,10 @@ it("P13 extra fixes share the concurrency-one pool across two parts", () => {
             (_, index) => world.child(workflows, runId, index),
             { concurrency: "unbounded" },
           );
-          for (let index = 0; index < parts.length * 3; index++) {
+          // r9 L4: each part's round 0 ends with the disprove step, which holds a place too.
+          for (let index = 0; index < parts.length * 4; index++) {
             const turn = yield* world.nextTurn;
-            expect(["do", "scope/0", "review/0"]).toContain(turn.origin.step);
+            expect(["do", "scope/0", "review/0", "disprove/0"]).toContain(turn.origin.step);
             expect(Math.max(...world.activeCounts)).toBe(1);
             yield* world.releaseTurn(turn);
           }
@@ -3427,6 +3598,7 @@ it("P13 extra fixes share the concurrency-one pool across two parts", () => {
               "do",
               "scope/0",
               "review/0",
+              "disprove/0",
               "fix/x1",
               "scope/x1",
               "review/x1",
@@ -3462,7 +3634,7 @@ it("a fix round that adds no commit asks stuck without another checks or review 
       ...answers,
       agent: (turn) =>
         turn.origin.step === "review/0"
-          ? { output: { verdict: "changes", notes: "Missing null guard" } }
+          ? reviewReport(["Missing null guard"])
           : answers.agent(turn),
       readPullRequest: (_address, detail) => Effect.succeed({ ...detail, headSha: "sha-1" }),
     },
@@ -3474,8 +3646,9 @@ it("a fix round that adds no commit asks stuck without another checks or review 
           const child = yield* world.child(workflows, runId, 0);
           const stuck = yield* askStuck(world, workflows, child.runId);
           const data = decodeQuestionData(stuck.request).data;
+          // r9 L7: lastReviewNotes is the round's renderFindings text.
           expect(data).toMatchObject({
-            lastReviewNotes: expect.stringContaining("Missing null guard"),
+            lastReviewNotes: reviewNotes("Missing null guard"),
             noOpFixRounds: 1,
             fixRoundsUsed: 0,
           });
@@ -3495,9 +3668,11 @@ it("a fix round that adds no commit asks stuck without another checks or review 
             "fix/0",
             "fix-after/0",
           ]);
-          expectTurns(world, child.runId, ["do", "scope/0", "review/0", "fix/0"]);
-          expect(world.turns).toHaveLength(5);
+          // r9 L4: the open major is put to the disprove step, and round 0 reads its head again.
+          expectTurns(world, child.runId, ["do", "scope/0", "review/0", "disprove/0", "fix/0"]);
+          expect(world.turns).toHaveLength(6);
           expect(world.reads.map(({ standing }) => standing.checks)).toEqual([
+            "passing",
             "passing",
             "passing",
             "passing",
@@ -3556,7 +3731,7 @@ effectIt.effect.each(issueLinkCases)("issue-link $label", (entry) =>
             const done = yield* world.ended(workflows, runId, true);
             const child = yield* world.child(workflows, runId, 0);
             const part = yield* world.ended(workflows, child.runId);
-            expectMerged(world, done, part, PR_URL);
+            expectMerged(world, done, part, PR_URL, partStats());
             const linked = [
               ...(yield* workflows.get(runId)).steps,
               ...(yield* workflows.get(child.runId)).steps,
@@ -3618,6 +3793,9 @@ const MERGE_FIELDS = [
   "rulings",
   "riskTier",
   "riskReasons",
+  // r9 L7: the open findings of the latest round that was not stale, and how many were refuted.
+  "findings",
+  "refuted",
 ] as const;
 
 effectIt.effect.each([
@@ -3631,16 +3809,20 @@ effectIt.effect.each([
       fixRoundsUsed: 0,
       noOpFixRounds: 0,
     },
+    stats: partStats({ asks: 1 }),
   },
   {
     label: "a fix round",
     kind: "fix",
     expected: { prUrl: PR_URL, headSha: "sha-1", fixRoundsUsed: 1, noOpFixRounds: 0 },
+    stats: partStats({ fixRounds: 1, asks: 1, reviewRounds: 2, findingsRaised: 1 }),
   },
   {
     label: "a ruled extra round",
     kind: "ruling",
     expected: { prUrl: PR_URL, headSha: "sha-1", noOpFixRounds: 0 },
+    // AMBIGUOUS: fixRounds read as counting fix/x1, which pushed (see P13 an extra round).
+    stats: partStats({ fixRounds: 1, asks: 2, rulings: 1, reviewRounds: 2, findingsRaised: 1 }),
   },
 ] as const)("approve-merge carries its structured data after $label", (entry) =>
   Effect.promise(() => {
@@ -3651,7 +3833,7 @@ effectIt.effect.each([
         ...answers,
         agent: (turn) =>
           entry.kind !== "clean" && turn.origin.step === "review/0"
-            ? { output: { verdict: "changes", notes: "Missing null guard" } }
+            ? reviewReport(["Missing null guard"])
             : answers.agent(turn),
       },
       (world) =>
@@ -3690,6 +3872,7 @@ effectIt.effect.each([
               yield* world.ended(workflows, runId),
               yield* world.ended(workflows, child.runId),
               PR_URL,
+              entry.stats,
             );
           }),
         ),
@@ -3941,8 +4124,9 @@ effectIt.effect.each([
                   detail: "artifact changed after review",
                   result: null,
                 });
+                // r9 M1: a part that did not complete is listed with no statistics.
                 expect(done.result).toEqual({
-                  parts: [{ title: PART.title, outcome: "stopped", prUrl: null }],
+                  parts: [{ title: PART.title, outcome: "stopped", prUrl: null, stats: null }],
                 });
               } else {
                 expect(part).toMatchObject({
@@ -3950,7 +4134,9 @@ effectIt.effect.each([
                   result: { outcome: "accepted", prUrl: null },
                 });
                 expect(done.result).toEqual({
-                  parts: [{ title: PART.title, outcome: "accepted", prUrl: null }],
+                  parts: [
+                    { title: PART.title, outcome: "accepted", prUrl: null, stats: ACCEPTED_STATS },
+                  ],
                 });
               }
               expect(done.status).toBe("completed");

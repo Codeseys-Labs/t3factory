@@ -5,6 +5,7 @@ import {
   FactoryAttempt,
   FactoryNote,
   FactoryReceipt,
+  FactoryReviewRound,
   FactoryTask,
   PullRequestDetail,
   type WorkflowRunsSnapshot,
@@ -118,6 +119,7 @@ const decodeAttemptJson = Schema.decodeUnknownOption(Schema.fromJsonString(Facto
 const decodeNoteRecord = Schema.decodeUnknownEffect(FactoryNote);
 const decodeArtifactRecord = Schema.decodeUnknownEffect(FactoryArtifact);
 const decodeReceiptRecord = Schema.decodeUnknownEffect(FactoryReceipt);
+const decodeReviewRound = Schema.decodeUnknownEffect(FactoryReviewRound);
 
 const validateRecords = Effect.fn("factoryPack.validateRecords")(function* (workflows: Service) {
   for (const row of yield* workflows.stored("factory/v1/task/")) {
@@ -134,6 +136,22 @@ const validateRecords = Effect.fn("factoryPack.validateRecords")(function* (work
   }
   for (const row of yield* workflows.stored("factory/v1/receipt/")) {
     yield* decodeReceiptRecord(row.value).pipe(Effect.orDie);
+  }
+  for (const row of yield* workflows.stored("factory/v1/ledger/")) {
+    yield* decodeReviewRound(row.value).pipe(Effect.orDie);
+  }
+  // Pack modules use the globals installed by loadDefinitions, not a second Effect runtime.
+  const { Outcome, Metrics } = yield* Effect.promise(
+    () => import("../../factory/workflows/lib/metrics.ts"),
+  );
+  for (const [prefix, schema] of [
+    ["outcome", Outcome],
+    ["metrics", Metrics],
+  ] as const) {
+    const decode = Schema.decodeUnknownEffect(schema);
+    for (const row of yield* workflows.stored(`factory/v1/${prefix}/`)) {
+      yield* decode(row.value).pipe(Effect.orDie);
+    }
   }
 });
 
@@ -210,7 +228,17 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-factory-pack-" });
-  const database = NodeSqliteClient.layer({ filename: path.join(directory, "state.sqlite") });
+  // The server's own journal settings (persistence/Sqlite.ts); the defaults fsync every commit.
+  const database = Layer.effectDiscard(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`PRAGMA journal_mode = WAL;`;
+      yield* sql`PRAGMA synchronous = NORMAL;`;
+    }),
+  ).pipe(
+    Layer.provideMerge(NodeSqliteClient.layer({ filename: path.join(directory, "state.sqlite") })),
+    Layer.orDie,
+  );
   yield* runMigrations().pipe(Effect.provide(database));
 
   const definitions: Array<WorkflowDefinition> = [];
@@ -500,6 +528,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
       "factory-brief.ts",
       "factory-experiment.ts",
       "factory-self-repair.ts",
+      "factory-metrics.ts",
     ]) {
       loaded.push(
         ...(yield* loadDefinitions(
@@ -543,7 +572,8 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
             remember(snapshot);
             yield* Deferred.succeed(ready, undefined);
             const waiting = snapshot.runs.filter(
-              (run) => run.status === "waiting" && /^checks\/x?\d+$/.test(run.detail ?? ""),
+              (run) =>
+                run.status === "waiting" && /^checks\/x?\d+(?:\/again)?$/.test(run.detail ?? ""),
             );
             for (const run of waiting) {
               const key = yield* encodeKey([run.runId, run.detail]).pipe(Effect.orDie);

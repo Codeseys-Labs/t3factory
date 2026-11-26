@@ -7,6 +7,7 @@ import {
   type FactoryAttempt,
   type FactoryNote,
   type FactoryReceipt,
+  type FactoryReviewRound,
   type FactoryTask,
   type FactoryTaskCreateInput,
   type FactoryTaskError,
@@ -960,6 +961,7 @@ describe("R3 start", () => {
             notes: [],
             artifacts: [],
             receipts: [],
+            reviews: [], // r9 L8
           });
         }),
       ),
@@ -1213,6 +1215,7 @@ describe("R3 start", () => {
           notes: [],
           artifacts: [],
           receipts: [],
+          reviews: [], // r9 L8
         });
         assert.strictEqual(workflows.starts.length, 1);
       }),
@@ -1253,6 +1256,7 @@ describe("R3 start", () => {
           notes: [],
           artifacts: [],
           receipts: [],
+          reviews: [], // r9 L8
         });
       }),
     ),
@@ -1287,6 +1291,7 @@ describe("R4 get", () => {
           notes: notes.slice(1),
           artifacts: [],
           receipts: [],
+          reviews: [], // r9 L8
         });
       }),
     ),
@@ -1934,6 +1939,7 @@ describe("#212 evidence", () => {
           notes: [],
           artifacts,
           receipts,
+          reviews: [], // r9 L8
         });
         assert.deepStrictEqual(yield* tasks.get(other.id), {
           task: other,
@@ -1941,6 +1947,125 @@ describe("#212 evidence", () => {
           notes: [],
           artifacts: [elsewhere],
           receipts: [],
+          reviews: [], // r9 L8
+        });
+      }),
+    ),
+  );
+});
+
+describe("L8 review evidence", () => {
+  it.effect("get orders decoded rounds and excludes damaged and other-task records", () =>
+    withFactory(() =>
+      Effect.gen(function* () {
+        const tasks = yield* FactoryTasks.FactoryTasks;
+        const values = yield* KeyValues;
+        const task = yield* tasks.create({ projectId: null, title: "Reviewed" });
+        const other = yield* tasks.create({ projectId: null, title: "Unreviewed" });
+        const round = (
+          attempt: number,
+          part: number,
+          at: string,
+          createdAt: string,
+        ): FactoryReviewRound => ({
+          v: 1,
+          taskId: task.id,
+          attempt,
+          part,
+          at,
+          runId: `run-${attempt}-${part}-${at}`,
+          head: null,
+          lenses: ["brief"],
+          verdict: "approve",
+          findings: [],
+          createdAt,
+        });
+        const early = "2026-01-01T00:00:00.000Z";
+        const late = "2026-01-02T00:00:00.000Z";
+        const ordered = [
+          round(1, 0, "z", early),
+          round(1, 0, "a", late),
+          round(1, 0, "b", late),
+          round(1, 1, "0", early),
+          round(2, 0, "0", early),
+        ];
+        for (const entry of [...ordered].reverse()) {
+          yield* put(
+            `factory/v1/ledger/${task.id}/a${entry.attempt}/p${entry.part}/${entry.at}`,
+            entry,
+          );
+        }
+        yield* put(`factory/v1/ledger/${task.id}/a1/p0/invalid`, { v: 1 });
+        yield* values.set(`factory/v1/ledger/${task.id}/a1/p0/broken`, "not json");
+        yield* put(`factory/v1/ledger/${other.id}/a1/p0/other`, {
+          ...ordered[0],
+          taskId: other.id,
+          at: "other",
+        });
+        // r9c L8: a round stored under this task's keys that names another task is not its own.
+        yield* put(`factory/v1/ledger/${task.id}/a1/p0/foreign`, {
+          ...ordered[0],
+          taskId: other.id,
+          at: "foreign",
+        });
+        assert.deepStrictEqual((yield* tasks.get(task.id)).reviews, ordered);
+        const empty = yield* tasks.create({ projectId: null, title: "No ledger" });
+        assert.deepStrictEqual((yield* tasks.get(empty.id)).reviews, []);
+        assert.strictEqual((yield* tasks.get(other.id)).reviews?.length, 1);
+      }),
+    ),
+  );
+
+  it.effect("board snapshots and changes never expose review records", () =>
+    withFactory(() =>
+      Effect.gen(function* () {
+        const tasks = yield* FactoryTasks.FactoryTasks;
+        const task = yield* tasks.create({ projectId: null, title: "Board" });
+        yield* put(`factory/v1/ledger/${task.id}/a1/p0/0`, {
+          v: 1,
+          taskId: task.id,
+          attempt: 1,
+          part: 0,
+          at: "0",
+          runId: "run",
+          head: null,
+          lenses: ["brief"],
+          verdict: "approve",
+          findings: [],
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+        const updates = yield* tasks.watch.pipe(Stream.toQueue({ capacity: "unbounded" }));
+        assert.deepStrictEqual(yield* snapshot(updates), {
+          tasks: [summaryOf(task, null)],
+          orchestrators: [],
+          damaged: 0,
+          truncated: false,
+        });
+        yield* TestClock.adjust(FactoryTasks.FACTORY_POLL_INTERVAL);
+        yield* put(`factory/v1/ledger/${task.id}/a1/p0/1`, {
+          v: 1,
+          taskId: task.id,
+          attempt: 1,
+          part: 0,
+          at: "1",
+          runId: "run",
+          head: null,
+          lenses: ["brief"],
+          verdict: "approve",
+          findings: [],
+          createdAt: "2026-01-02T00:00:00.000Z",
+        });
+        yield* TestClock.adjust(FactoryTasks.FACTORY_POLL_INTERVAL);
+        assert.strictEqual(yield* Queue.size(updates), 0);
+        const changed = yield* tasks.update({
+          taskId: task.id,
+          rev: task.rev,
+          patch: { title: "Changed" },
+        });
+        assert.deepStrictEqual(yield* change(updates), {
+          _tag: "changed",
+          tasks: [summaryOf(changed, null)],
+          removed: [],
         });
       }),
     ),

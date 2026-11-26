@@ -403,7 +403,8 @@ const make = Effect.gen(function* () {
       .slice(-200);
     const artifacts = yield* store.listArtifacts(taskId);
     const receipts = yield* store.listReceipts(taskId);
-    return { task, attempts, notes, artifacts, receipts };
+    const reviews = yield* store.listReviews(taskId);
+    return { task, attempts, notes, artifacts, receipts, reviews };
   }, store.transaction);
 
   const readStartState = Effect.fn("FactoryTasks.readStartState")(function* (taskId: string) {

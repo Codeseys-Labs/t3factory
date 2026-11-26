@@ -4,6 +4,7 @@ import {
   FactoryNote,
   FactoryOrchestrator,
   FactoryReceipt,
+  FactoryReviewRound,
   FactoryTask,
   IsoDateTime,
   NonNegativeInt,
@@ -30,7 +31,9 @@ const FactoryTarget = Schema.Struct({
 });
 const decodeArtifact = Schema.decodeOption(Schema.fromJsonString(FactoryArtifact));
 const decodeReceipt = Schema.decodeOption(Schema.fromJsonString(FactoryReceipt));
+const decodeReview = Schema.decodeOption(Schema.fromJsonString(FactoryReviewRound));
 const EVIDENCE_LIMIT = 200;
+const compareText = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0);
 
 export const make = Effect.gen(function* () {
   const keyValues = yield* KeyValues;
@@ -81,8 +84,9 @@ export const make = Effect.gen(function* () {
   const decodeOrchestrator = Schema.decodeUnknownOption(FactoryOrchestrator);
 
   const listEvidence = <A extends { readonly taskId: string }>(
-    group: "artifact" | "receipt",
+    group: "artifact" | "receipt" | "ledger",
     decode: (text: string) => Option.Option<A>,
+    time: "at" | "createdAt" = "at",
   ) =>
     Effect.fn("FactoryTaskStore.listEvidence")(function* (taskId: string) {
       const prefix = `${PREFIX}${group}/${taskId}/`;
@@ -91,7 +95,7 @@ export const make = Effect.gen(function* () {
         const rows = yield* sql<{ value_json: string }>`
           SELECT value_json FROM workflow_store
           WHERE key >= ${prefix} AND key < ${`${prefix}\u{10FFFF}`} AND json_valid(value_json)
-          ORDER BY json_extract(value_json, '$.at') DESC, key DESC
+          ORDER BY json_extract(value_json, ${`$.${time}`}) DESC, key DESC
           LIMIT ${EVIDENCE_LIMIT} OFFSET ${offset}
         `.pipe(Effect.orDie);
         for (const row of rows) {
@@ -104,6 +108,17 @@ export const make = Effect.gen(function* () {
       return values.reverse();
     });
 
+  const newestReviews = listEvidence("ledger", decodeReview, "createdAt");
+  const listReviews = Effect.fn("FactoryTaskStore.listReviews")(function* (taskId: string) {
+    return (yield* newestReviews(taskId)).sort(
+      (left, right) =>
+        left.attempt - right.attempt ||
+        left.part - right.part ||
+        compareText(left.createdAt, right.createdAt) ||
+        compareText(left.at, right.at),
+    );
+  });
+
   return {
     tasks,
     attempts,
@@ -114,6 +129,7 @@ export const make = Effect.gen(function* () {
       targets.set(projectId ?? "scratch", target),
     listArtifacts: listEvidence("artifact", decodeArtifact),
     listReceipts: listEvidence("receipt", decodeReceipt),
+    listReviews,
     sequence: Effect.gen(function* () {
       const text = yield* keyValues.get(`${PREFIX}seq`);
       if (text === undefined) return 0;

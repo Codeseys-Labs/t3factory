@@ -154,6 +154,38 @@ export const FactoryReceipt = Schema.Struct({
 });
 export type FactoryReceipt = typeof FactoryReceipt.Type;
 
+export const FactoryReviewFinding = Schema.Struct({
+  id: Schema.String.check(Schema.isPattern(/^[0-9a-f]{16}$/)),
+  lens: Schema.Literals(["brief", "defects"]),
+  severity: Schema.Literals(["blocker", "major", "minor", "nit"]),
+  category: Schema.Literals(["correctness", "scope", "test", "security", "other"]),
+  path: Schema.String.check(Schema.isMaxLength(500)),
+  line: Schema.NullOr(Schema.Int),
+  claim: Schema.String.check(Schema.isMaxLength(500)),
+  evidence: Schema.String.check(Schema.isMaxLength(2_000)),
+  status: Schema.Literals(["open", "refuted"]),
+  disproof: Schema.Struct({
+    outcome: Schema.Literals(["survived", "refuted", "not-run"]),
+    tried: Schema.String.check(Schema.isMaxLength(1_000)),
+  }),
+});
+export type FactoryReviewFinding = typeof FactoryReviewFinding.Type;
+
+export const FactoryReviewRound = Schema.Struct({
+  v: Schema.Literal(1),
+  taskId: FactoryTaskId,
+  attempt: PositiveInt,
+  part: NonNegativeInt,
+  at: Schema.String.check(Schema.isMaxLength(40)),
+  runId: Schema.String,
+  head: Schema.NullOr(Schema.String),
+  lenses: Schema.Array(Schema.Literals(["brief", "defects"])),
+  verdict: Schema.Literals(["approve", "changes", "stale"]),
+  findings: Schema.Array(FactoryReviewFinding).check(Schema.isMaxLength(40)),
+  createdAt: IsoDateTime,
+});
+export type FactoryReviewRound = typeof FactoryReviewRound.Type;
+
 export const FactoryTaskSummary = FactoryTask.mapFields(Struct.omit(["description"])).mapFields(
   (fields) => ({
     ...fields,
@@ -169,6 +201,7 @@ export const FactoryTaskDetail = Schema.Struct({
   notes: Schema.Array(FactoryNote),
   artifacts: Schema.Array(FactoryArtifact),
   receipts: Schema.Array(FactoryReceipt),
+  reviews: Schema.optionalKey(Schema.Array(FactoryReviewRound)),
 });
 export type FactoryTaskDetail = typeof FactoryTaskDetail.Type;
 

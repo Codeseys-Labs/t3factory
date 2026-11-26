@@ -2,13 +2,13 @@
 // part's pull request. Also the ways in for agents and the CLI: capturing a task, starting one.
 import {
   FACTORY_TASK,
+  FACTORY_TASK_VERSION,
   FactoryTaskRunInput,
   ModelChoice,
   PackConfig,
   RunTarget,
   StartOutcome,
   TaskLane,
-  addNote,
   capturedKey,
   createTask,
   hashFile,
@@ -27,6 +27,18 @@ import {
   writeArtifact,
   writeReceipt,
 } from "./lib/records.ts";
+import {
+  LENSES,
+  ReviewReport,
+  DisproofReport,
+  collectFindings,
+  blockingSeverity,
+  applyDisproof,
+  deriveVerdict,
+  questionEvidence,
+  writeReviewRound,
+} from "./lib/ledger.ts";
+import { PartStats, Outcome, finishAttempt } from "./lib/metrics.ts";
 import { classifyRisk, ratchetRiskTier, type RiskTier } from "./lib/risk.ts";
 
 const { workflow, step, agent, ask, invoke, stop, title, tags, within, pullRequests } = T3;
@@ -36,6 +48,8 @@ const { workflow, step, agent, ask, invoke, stop, title, tags, within, pullReque
 const TIMED_OUT = "was not done after";
 const NOT_STOPPED = "could not be stopped";
 const STILL_AT_WORK = "may still be at work";
+const STALE_RETRIES = 1;
+const HEAD_KEPT_CHANGING = "The pull request's head kept changing while it was reviewed.";
 
 const Plan = Schema.Struct({
   summary: Schema.String,
@@ -65,17 +79,10 @@ const PartPayload = Schema.Struct({
 const PartResult = Schema.Struct({
   outcome: Schema.Literals(["accepted", "merged"]),
   prUrl: Schema.NullOr(Schema.String),
+  stats: PartStats,
 });
 
-const TaskResult = Schema.Struct({
-  parts: Schema.Array(
-    Schema.Struct({
-      title: Schema.String,
-      outcome: Schema.Literals(["accepted", "merged", "stopped", "skipped", "cancelled"]),
-      prUrl: Schema.NullOr(Schema.String),
-    }),
-  ),
-});
+const TaskResult = Schema.Struct({ parts: Outcome.fields.parts });
 
 const Done = Schema.Struct({
   summary: Schema.String,
@@ -97,11 +104,6 @@ const Hashed = Schema.Array(
 );
 
 const ARTIFACT_MAX_BYTES = 25 * 1024 * 1024;
-
-const Review = Schema.Struct({
-  verdict: Schema.Literals(["approve", "changes"]),
-  notes: Schema.String,
-});
 
 const CapturePayload = Schema.Struct({
   title: Schema.String,
@@ -153,7 +155,7 @@ const mentionsIssue = (body: string, issueUrl: string) => {
 const factoryTaskPart = workflow(
   "factory-task-part",
   {
-    version: 1,
+    version: FACTORY_TASK_VERSION,
     payload: PartPayload,
     returns: PartResult,
     asks: { accept: "Accept the result?", stuck: "Review did not pass", merge: "Merge?" },
@@ -258,6 +260,18 @@ const factoryTaskPart = workflow(
                 }),
           );
     const { summary, prUrl: reported } = done.value;
+    const stats = {
+      tier: null,
+      fixRounds: 0,
+      noOpFixRounds: 0,
+      continued: tried.outcome !== "done",
+      asks: 0,
+      rulings: 0,
+      mergedAnyway: false,
+      reviewRounds: 0,
+      findingsRaised: 0,
+      findingsRefuted: 0,
+    };
     if (reported === null) {
       let artifacts: typeof Hashed.Type = [];
       const listed = done.value.artifacts ?? [];
@@ -288,6 +302,7 @@ const factoryTaskPart = workflow(
         }
         artifacts = hashed.value;
       }
+      stats.asks++;
       const accepted = yield* ask("accept", {
         title: `Accept ${label}: ${input.title}?`,
         kind: "accept",
@@ -343,7 +358,7 @@ const factoryTaskPart = workflow(
         );
         if (!unchanged) return yield* stop("artifact changed after review");
       }
-      return { outcome: "accepted", prUrl: null } as const;
+      return { outcome: "accepted", prUrl: null, stats } as const;
     }
 
     const prUrl = yield* projectPullRequest(project, reported);
@@ -370,22 +385,22 @@ const factoryTaskPart = workflow(
     const links = [{ label: "Pull request", url: prUrl }];
     const reviewModel = config.reviewModel ?? input.model;
     const rulings: Array<string> = [];
-    let lastNotes: string | null = null;
-    let fixRoundsApplied = 0;
-    let fixRoundsNoOp = 0;
+    let latest = questionEvidence(null);
     // The tier a part's changes earn only goes up: a later round can raise it, never lower it.
     const risk: { tier: RiskTier | undefined; headSha: string | null; reasons: Array<string> } = {
       tier: undefined,
       headSha: null,
       reasons: [],
     };
+    const merged = (tier = risk.tier ?? null) =>
+      ({ outcome: "merged", prUrl, stats: { ...stats, tier } }) as const;
     const noteRisk = (reasons: ReadonlyArray<string>) => {
       for (const reason of reasons) {
         if (!risk.reasons.includes(reason)) risk.reasons.push(reason);
       }
     };
     // Checks, then a review once they pass: `approved`, `merged`, or what still stands in the way.
-    const round = Effect.fnUntraced(function* (at: string) {
+    const reviewOnce = Effect.fnUntraced(function* (at: string) {
       const standing = yield* pullRequests.wait(`checks/${at}`, pr, {
         until: "checks",
         timeout: config.checksTimeout,
@@ -453,7 +468,7 @@ const factoryTaskPart = workflow(
           changedFiles: snapshot.changedFiles,
           headSha: snapshot.headSha ?? undefined,
           checks: snapshot.checks,
-          fixRoundsUsed: fixRoundsApplied,
+          fixRoundsUsed: stats.fixRounds,
           fixRounds: config.fixRounds,
           protectedPaths: config.protectedPaths,
           lowRiskPaths: config.lowRiskPaths,
@@ -462,43 +477,138 @@ const factoryTaskPart = workflow(
         noteRisk(classified.reasons);
         risk.headSha = snapshot.headSha;
       }
-      const review = yield* held(
-        agent(`review/${at}`, {
-          project,
-          title: `${label} review: ${input.title}`,
-          brief: [
-            `Review pull request ${prUrl}. It does part ${input.part + 1} of task T-${input.number}: ${input.title}`,
-            "",
-            "Its brief:",
-            "",
-            input.brief,
-            "",
-            "Change nothing. Read its diff and check that it does what the brief asks, works, and changes nothing else.",
-            "Actively try to disprove the change: name one concrete input, edge case, or counterfactual state that could break it, verify whether the diff handles it, and cite exact file paths and line numbers for every finding.",
-            ...(issueUrl === null
-              ? []
-              : [
-                  `It is for issue ${issueUrl}: check that the pull request description, or a comment on it, references that issue.`,
-                ]),
-            ...(rulings.length === 0
-              ? []
-              : [
+      const head = snapshot.headSha;
+      const commit = head === null ? [] : [`Review commit \`${head}\`.`];
+      const rulingLines =
+        rulings.length === 0
+          ? []
+          : [
+              "",
+              "A person has ruled on this pull request. Follow these rulings, and do not ask again for what they overrule:",
+              ...rulings.map((ruling) => `- ${ruling}`),
+            ];
+      const reportInstructions =
+        "Return `reviewedHead` (the full SHA you read, or null if unknown) and `findings` (severity, category, repository-relative path or empty string, line or null, claim, and quoted evidence). An empty findings list means it can be merged as it is. Blocker and major findings block the merge; minor and nit do not.";
+      const lenses = risk.tier === "high" ? LENSES : ([LENSES[0]] as const);
+      const reports = yield* Effect.forEach(
+        lenses,
+        (lens) => {
+          const brief =
+            lens === "brief"
+              ? [
+                  `Review pull request ${prUrl}. It does part ${input.part + 1} of task T-${input.number}: ${input.title}`,
+                  ...commit,
                   "",
-                  "A person has ruled on this pull request. Follow these rulings, and do not ask again for what they overrule:",
-                  ...rulings.map((ruling) => `- ${ruling}`),
-                ]),
-            'Return `verdict: "approve"` when it can be merged as it is, or `verdict: "changes"` with `notes` saying what must change.',
-          ].join("\n"),
-          ...(reviewModel === null ? {} : { model: reviewModel }),
-          timeout: config.stepTimeout,
-          returns: Review,
+                  "Its brief:",
+                  "",
+                  input.brief,
+                  "",
+                  "Change nothing. Read its diff and check that it does what the brief asks, works, and changes nothing else.",
+                  "Actively try to disprove the change: name one concrete input, edge case, or counterfactual state that could break it, verify whether the diff handles it, and cite exact file paths and line numbers for every finding.",
+                  ...(issueUrl === null
+                    ? []
+                    : [
+                        `It is for issue ${issueUrl}: check that the pull request description, or a comment on it, references that issue.`,
+                      ]),
+                  ...rulingLines,
+                  reportInstructions,
+                ]
+              : [
+                  `Review pull request ${prUrl}.`,
+                  ...commit,
+                  "What input or state breaks the changed lines? Quote the line. Change nothing.",
+                  ...rulingLines,
+                  reportInstructions,
+                ];
+          return Effect.map(
+            held(
+              agent(lens === "brief" ? `review/${at}` : `review/${at}/defects`, {
+                project,
+                title: `${label} ${lens === "brief" ? "review" : "defects"}: ${input.title}`,
+                brief: brief.join("\n"),
+                ...(reviewModel === null ? {} : { model: reviewModel }),
+                timeout: config.stepTimeout,
+                returns: ReviewReport,
+              }),
+            ),
+            ({ value: report }) => ({ lens, report }),
+          );
+        },
+        { concurrency: "unbounded" },
+      );
+      let findings = collectFindings(reports);
+      const blocking = findings.filter(blockingSeverity);
+      if (blocking.length > 0) {
+        const model = config.planModel ?? input.model;
+        const disproof = yield* held(
+          agent.try(`disprove/${at}`, {
+            project,
+            title: `${label} disprove: ${input.title}`,
+            brief: [
+              `Try to refute each finding on pull request ${prUrl} by reproducing it or by a counter-example.`,
+              ...commit,
+              "Change nothing. Answer refuted only when you have shown the claim false; otherwise answer survived. For each id, say what you tried.",
+              JSON.stringify(
+                blocking.map(({ id, path, line, claim, evidence }) => ({
+                  id,
+                  path,
+                  line,
+                  claim,
+                  evidence,
+                })),
+              ),
+            ].join("\n"),
+            ...(model === null ? {} : { model }),
+            timeout: config.stepTimeout,
+            returns: DisproofReport,
+          }),
+        );
+        if (disproof.outcome === "done") findings = applyDisproof(findings, disproof.value.results);
+      }
+      const after = yield* step(
+        `head/${at}`,
+        { returns: HeadSha },
+        Effect.map(pullRequests.read(pr), (detail) => detail.headSha ?? null),
+      );
+      const stale =
+        head !== null &&
+        ((after !== null && after !== head) ||
+          reports.some(
+            ({ report }) => report.reviewedHead !== null && report.reviewedHead !== head,
+          ));
+      const verdict = stale ? "stale" : deriveVerdict(findings);
+      yield* step(
+        `ledger/${at}`,
+        { returns: Schema.Void },
+        writeReviewRound({
+          taskId: input.taskId,
+          attempt,
+          part: input.part,
+          at,
+          runId: run.id,
+          head,
+          lenses,
+          verdict,
+          findings,
         }),
       );
-      if (review.value.verdict === "approve") return "approved" as const;
+      if (verdict === "stale") return "stale" as const;
+      latest = questionEvidence(findings);
+      stats.reviewRounds++;
+      stats.findingsRaised += blocking.length;
+      stats.findingsRefuted += latest.refuted;
+      if (verdict === "approve") return "approved" as const;
       return {
-        problem: `A review asked for changes:\n\n${review.value.notes}`,
-        notes: review.value.notes,
+        problem: `A review asked for changes:\n\n${latest.lastReviewNotes}`,
+        notes: latest.lastReviewNotes,
       };
+    });
+    const round = Effect.fnUntraced(function* (at: string) {
+      for (let retry = 0; retry <= STALE_RETRIES; retry++) {
+        const result = yield* reviewOnce(retry === 0 ? at : `${at}/again`);
+        if (result !== "stale") return result;
+      }
+      return { problem: HEAD_KEPT_CHANGING, notes: null };
     });
     // A fix that leaves the head where it was is not checked or reviewed again: its problem stands.
     const fix = Effect.fnUntraced(function* (at: string, problem: string, brief: string) {
@@ -514,13 +624,13 @@ const factoryTaskPart = workflow(
         Effect.map(pullRequests.read(pr), (detail) => detail.headSha ?? null),
       );
       if (before === null || after === null || after !== before) {
-        fixRoundsApplied++;
+        stats.fixRounds++;
         return undefined;
       }
-      fixRoundsNoOp++;
+      stats.noOpFixRounds++;
       return {
         problem: `Fix round ${at} pushed no new commit to ${prUrl} (head stayed ${after}). Previous issue remains open:\n\n${problem}`,
-        notes: lastNotes,
+        notes: latest.lastReviewNotes,
       };
     });
 
@@ -530,11 +640,11 @@ const factoryTaskPart = workflow(
     for (let r = 0; r <= config.fixRounds; r++) {
       if (pushed) {
         const result = yield* round(`${r}`);
-        if (result === "merged") return { outcome: "merged", prUrl } as const;
+        if (result === "merged") return merged();
         failure = result === "approved" ? undefined : result;
-        if (failure !== undefined && failure.notes !== null) lastNotes = failure.notes;
       }
-      if (failure === undefined || r === config.fixRounds) break;
+      if (failure === undefined || failure.problem === HEAD_KEPT_CHANGING || r === config.fixRounds)
+        break;
       const stalled = yield* fix(
         `${r}`,
         failure.problem,
@@ -549,6 +659,7 @@ const factoryTaskPart = workflow(
       failure = stalled ?? failure;
     }
     for (let n = 1; failure !== undefined; n++) {
+      stats.asks++;
       const stuck = yield* ask(n === 1 ? "stuck" : `stuck/x${n - 1}`, {
         title: `${label} did not pass review: ${input.title}`,
         kind: "stuck",
@@ -557,9 +668,9 @@ const factoryTaskPart = workflow(
           prUrl,
           problem: failure.problem,
           summary,
-          fixRoundsUsed: fixRoundsApplied,
-          noOpFixRounds: fixRoundsNoOp,
-          lastReviewNotes: lastNotes,
+          fixRoundsUsed: stats.fixRounds,
+          noOpFixRounds: stats.noOpFixRounds,
+          ...latest,
           rulings,
         },
         links,
@@ -567,7 +678,11 @@ const factoryTaskPart = workflow(
       if (Option.isNone(stuck) || stuck.value.choice === "Stop") {
         return yield* stop("review did not pass");
       }
-      if (stuck.value.choice === "Merge anyway") break;
+      if (stuck.value.choice === "Merge anyway") {
+        stats.mergedAnyway = true;
+        break;
+      }
+      stats.rulings++;
       const ruling = (stuck.value.reason ?? "").trim();
       rulings.push(ruling);
       const stalled = yield* fix(
@@ -577,7 +692,9 @@ const factoryTaskPart = workflow(
           `A person looked at why pull request ${prUrl} did not pass review and ruled: ${ruling}`,
           "",
           "Follow that ruling wherever it differs from the review.",
-          ...(lastNotes === null ? [] : ["", "The review's last notes:", "", lastNotes]),
+          ...(latest.lastReviewNotes === null
+            ? []
+            : ["", "The review's last notes:", "", latest.lastReviewNotes]),
           ...(failure.notes === null ? ["", failure.problem] : []),
           "",
           "Make the changes in your worktree, check them, and push to the same branch so they land on the same pull request. Then say what you changed.",
@@ -589,26 +706,26 @@ const factoryTaskPart = workflow(
         continue;
       }
       const result = yield* round(`x${n}`);
-      if (result === "merged") return { outcome: "merged", prUrl } as const;
+      if (result === "merged") return merged();
       failure = result === "approved" ? undefined : result;
-      if (failure !== undefined && failure.notes !== null) lastNotes = failure.notes;
     }
 
     const headSha = yield* pullRequestHead(pr);
-    const exhausted = config.fixRounds > 0 && fixRoundsApplied >= config.fixRounds;
+    const exhausted = config.fixRounds > 0 && stats.fixRounds >= config.fixRounds;
     if (risk.tier === undefined) noteRisk(["no review round listed the changed files"]);
     if (headSha === null) {
       noteRisk(["the host did not report the head commit"]);
     } else if (risk.tier !== undefined && headSha !== risk.headSha) {
       noteRisk([`the head moved to ${headSha} after its changed files were listed`]);
     }
-    if (exhausted) noteRisk([`${fixRoundsApplied} of ${config.fixRounds} fix rounds used`]);
+    if (exhausted) noteRisk([`${stats.fixRounds} of ${config.fixRounds} fix rounds used`]);
     const finalTier = ratchetRiskTier(
       risk.tier ?? "high",
       headSha === null || headSha !== risk.headSha || exhausted ? "high" : "low",
     );
     const mustAskMerge = finalTier === "high" || config.askMerge || config.mergeNeedsPerson;
     const needsPerson = finalTier === "high" || config.mergeNeedsPerson;
+    if (mustAskMerge) stats.asks++;
     if (
       mustAskMerge &&
       !(yield* mergeApproved(
@@ -620,9 +737,9 @@ const factoryTaskPart = workflow(
             prUrl,
             headSha,
             summary,
-            fixRoundsUsed: fixRoundsApplied,
-            noOpFixRounds: fixRoundsNoOp,
-            lastReviewNotes: lastNotes,
+            fixRoundsUsed: stats.fixRounds,
+            noOpFixRounds: stats.noOpFixRounds,
+            ...latest,
             rulings,
             riskTier: finalTier,
             riskReasons: risk.reasons,
@@ -634,14 +751,14 @@ const factoryTaskPart = workflow(
       return yield* stop("merge held");
     }
     yield* mergePullRequest(pr, headSha, config.mergeMethod);
-    return { outcome: "merged", prUrl } as const;
+    return merged(finalTier);
   }),
 );
 
 const factoryTask = workflow(
   FACTORY_TASK,
   {
-    version: 1,
+    version: FACTORY_TASK_VERSION,
     payload: FactoryTaskRunInput,
     returns: TaskResult,
     asks: { plan: "Approve the plan?" },
@@ -730,8 +847,8 @@ const factoryTask = workflow(
           }),
           (ended) =>
             ended.outcome === "completed"
-              ? { title: part.title, outcome: ended.value.outcome, prUrl: ended.value.prUrl }
-              : { title: part.title, outcome: ended.outcome, prUrl: null },
+              ? { title: part.title, ...ended.value }
+              : { title: part.title, outcome: ended.outcome, prUrl: null, stats: null },
         ),
       ),
       { concurrency: "unbounded" },
@@ -745,7 +862,14 @@ const factoryTask = workflow(
     yield* step(
       "finish",
       { returns: Schema.Void },
-      addNote(input.taskId, note, FACTORY_TASK, capturedKey(run.id, "finish")),
+      finishAttempt({
+        taskId: input.taskId,
+        attempt: input.attempt,
+        runId: run.id,
+        projectId: input.projectId,
+        note,
+        parts,
+      }),
     );
     yield* tags(taskTags(input.taskId, input.projectId, "done"));
     return { parts };

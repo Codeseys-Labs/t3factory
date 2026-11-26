@@ -43,12 +43,14 @@ export const signalFailures = [
 ] as const;
 export type FactorySignalFailure = (typeof signalFailures)[number];
 
-const CONTROL = /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Cn}\p{Variation_Selector}\u115F\u1160\u3164\uFFA0]/gu;
+const CONTROL =
+  /(?![\u200C\u200D])[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Cn}\p{Variation_Selector}\u115F\u1160\u3164\uFFA0]/gu;
 const LONG_MARK_RUN = /(\p{M}{30})\p{M}+/gu;
 export const normalizeText = (raw: string) =>
   raw
     .replace(/[^\S\uFEFF]/g, " ")
     .replace(CONTROL, "")
+    .replace(/([\u200C\u200D])[\u200C\u200D]+/g, "$1")
     .replace(LONG_MARK_RUN, "$1")
     .normalize("NFC")
     .replace(LONG_MARK_RUN, "$1")

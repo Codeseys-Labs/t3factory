@@ -77,13 +77,15 @@ export const signalDigest = ({
 
 const MARK_RUN = /(\p{M}{30})\p{M}+/gu;
 const INVISIBLE =
-  /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Cn}\p{Variation_Selector}\u115F\u1160\u3164\uFFA0]/gu;
+  /(?![\u200C\u200D])[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Cn}\p{Variation_Selector}\u115F\u1160\u3164\uFFA0]/gu;
+const JOINER_RUN = /([\u200C\u200D])[\u200C\u200D]+/g;
 
-/** The contract's text rule: white space to spaces, invisible characters removed, combining-mark runs capped at 30, NFC, the cap again, spaces collapsed, trimmed. */
+/** The contract's text rule: white space (not U+FEFF) to spaces, invisible characters removed except the joiners U+200C and U+200D, joiner runs cut to their first, combining-mark runs capped at 30, NFC, the cap again, spaces collapsed, trimmed. */
 export const normalizeText = (raw: string) =>
   raw
     .replace(/[^\S\uFEFF]/g, " ")
     .replace(INVISIBLE, "")
+    .replace(JOINER_RUN, "$1")
     .replace(MARK_RUN, "$1")
     .normalize("NFC")
     .replace(MARK_RUN, "$1")

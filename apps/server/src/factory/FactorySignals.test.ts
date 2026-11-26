@@ -912,6 +912,7 @@ describe("S14 server", () => {
             "Up\u00ADdate",
             "Update\uFE0F",
             `a${"\u0301".repeat(31)}`,
+            "a\u200D\u200Db",
           ];
           for (const [index, title] of titles.entries()) {
             const content = candidate(feedId, `invisible-${index}`, { title });
@@ -935,6 +936,13 @@ describe("S14 server", () => {
           assert.strictEqual(admitted.task.title, "Update docs");
           assert.strictEqual(admitted.candidate.taskId, admitted.task.id);
           assert.strictEqual(yield* record(seqKey), 8);
+          const joinedContent = candidate(feedId, "joined", { title: "می\u200Cخواهم" });
+          const joined = { ...joinedContent, sha256: digest(joinedContent) };
+          yield* seed(joined);
+          const joinedAdmission = yield* tasks.admitSignal(decision(joined));
+          assert.strictEqual(joinedAdmission.task.title, "می\u200Cخواهم");
+          assert.strictEqual(joinedAdmission.candidate.taskId, joinedAdmission.task.id);
+          assert.strictEqual(yield* record(seqKey), 9);
         }),
       ),
   );

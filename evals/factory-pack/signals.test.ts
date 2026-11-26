@@ -606,8 +606,6 @@ it.each([
 // so it must give `ab`, not `a b`.
 it.each([
   { label: "U+200B", char: "\u200B" },
-  { label: "U+200C", char: "\u200C" },
-  { label: "U+200D", char: "\u200D" },
   { label: "U+2060", char: "\u2060" },
   { label: "U+00AD", char: "\u00AD" },
   { label: "U+061C", char: "\u061C" },
@@ -666,11 +664,18 @@ it.each([
   { label: "a space-wrapped U+200B", text: "a \u200B b", expected: "a b" },
   { label: "three decomposed á", text: "a\u0301".repeat(3), expected: "\u00e1".repeat(3) },
   {
-    // Removing U+200D joins two runs of 20 into 40 marks, which the cap cuts to 30.
+    // 10d keeps the joiner, so two runs of 20 stay apart and nothing is capped.
     label: "two runs of 20 marks joined by U+200D",
     text: `x${"\u0301".repeat(20)}\u200D${"\u0301".repeat(20)}`,
+    expected: `x${"\u0301".repeat(20)}\u200D${"\u0301".repeat(20)}`,
+  },
+  {
+    // Removing U+200B joins two runs of 20 into 40 marks, which the cap cuts to 30.
+    label: "two runs of 20 marks around U+200B",
+    text: `x${"\u0301".repeat(20)}\u200B${"\u0301".repeat(20)}`,
     expected: `x${"\u0301".repeat(30)}`,
   },
+  { label: "a run of three U+200D", text: "a\u200D\u200D\u200Db", expected: "a\u200Db" },
   {
     label: "tag characters around a word",
     text: `${tagged("hi")}word${tagged("bye")}`,
@@ -686,6 +691,30 @@ it.each([
   expect(once).toBe(expected);
   expect(normalizeText(once)).toBe(once);
 });
+
+it.each([
+  { label: "a single U+200C", text: "a\u200Cb", expected: "a\u200Cb" },
+  { label: "a single U+200D", text: "a\u200Db", expected: "a\u200Db" },
+  { label: "a Persian word", text: "می\u200Cخواهم", expected: "می\u200Cخواهم" },
+  {
+    label: "an emoji ZWJ sequence",
+    text: "\u{1F468}\u200D\u{1F4BB}",
+    expected: "\u{1F468}\u200D\u{1F4BB}",
+  },
+  { label: "three U+200D", text: "a\u200D\u200D\u200Db", expected: "a\u200Db" },
+  { label: "U+200C U+200D U+200C", text: "a\u200C\u200D\u200Cb", expected: "a\u200Cb" },
+  {
+    // Removing U+200B joins the two joiners into one run, which keeps its first.
+    label: "two U+200D around U+200B",
+    text: "a\u200D\u200B\u200Db",
+    expected: "a\u200Db",
+  },
+])(
+  "r10d: normalizeText keeps a single joiner and reduces a run to its first: $label",
+  ({ text, expected }) => {
+    expect(normalizeText(text)).toBe(expected);
+  },
+);
 
 it("r10c 2: normalizeText caps a run of combining marks at 30 before NFC", () => {
   const thirty = ("a" + "\u0301".repeat(30)).normalize("NFC");

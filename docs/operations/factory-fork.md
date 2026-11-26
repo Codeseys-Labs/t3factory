@@ -35,17 +35,24 @@ node scripts/factory-pack.ts uninstall --home <dir>
 
 The home must already exist. `install` writes `<dir>/workflows` and records what it wrote in `.factory-pack.json`. Workflows must be on in that home (**Settings → Labs → Workflows**).
 
-`install` copies every workflow file under `factory/workflows/`, including `lib/`, so a new workflow file in the pack ships with no list to update. That is `factory-task`, `factory-intake`, `factory-sync-upstream`, `factory-brief`, `factory-experiment`, `factory-self-repair` and `factory-metrics`, and the helpers `lib/records.ts`, `lib/risk.ts`, `lib/ledger.ts` and `lib/metrics.ts`.
+`install` copies every workflow file under `factory/workflows/`, including `lib/`, so a new workflow file in the pack ships with no list to update. That is `factory-task`, `factory-intake`, `factory-signals`, `factory-sync-upstream`, `factory-brief`, `factory-experiment`, `factory-self-repair` and `factory-metrics`, and the helpers `lib/records.ts`, `lib/risk.ts`, `lib/ledger.ts`, `lib/metrics.ts`, `lib/placement.ts` and `lib/signals.ts`.
 
 The server reloads changed top-level workflow files without a restart, but not the helpers under `lib/`: an update that changes one needs a server restart, and `install` prints a line saying so when it applies.
-
-`factory-task` and `factory-task-part` are at version 2, and the pack no longer ships version 1. The server holds a changed file back while unfinished runs still use a version it would remove, so update a home only when no `factory-task` run is unfinished: let them end, or cancel them on the Workflows page. `t3 workflow list` shows which runs have not ended. This update also changes files under `lib/`, so restart the server after installing it.
 
 - Running `install` again updates the pack files and removes ones the pack no longer ships.
 - A file in `workflows` that is not from the pack and differs from it is a conflict: nothing is written, and the paths are listed. `--force` overwrites them.
 - `status` prints `same`, `changed`, `missing` or `stale` per file and exits 1 unless all are `same`.
 - `uninstall` removes only the files the manifest lists, and prints a restart warning if it removed helpers under `lib/`.
 - The skill is copied by `install` and left alone by `status` and `uninstall`.
+
+`factory-task` and `factory-task-part` are at version 3 and `factory-intake` at version 2, and the pack ships no earlier version of them. The server holds a changed file back while unfinished runs still use a version it would remove, so update a home only when no run of an old version is unfinished. `t3 workflow list` shows which runs have not ended. This update also changes files under `lib/`, so restart the server after installing it.
+
+For `factory-task`, let unfinished runs end, or cancel them on the Workflows page, then install. For `factory-intake`, whose tick starts every five minutes, cut over in this order:
+
+1. Set `enabled` to `false` in every intake binding.
+2. Let the version 1 ticks end, and cancel any that paused.
+3. Start by hand any task that a cancelled tick captured but did not start; it is in **Ready** with no attempt. A cancelled tick can leave such a task, and nothing else starts it.
+4. Install the pack, add `authors` to each binding whose issues should start, and set `enabled` back to `true`. A binding without `authors` captures issues and starts none.
 
 ## Take a new upstream nightly
 
@@ -99,6 +106,31 @@ Write the string in Factory code through `gt-react` as upstream's [translation p
 
 `merge` prunes any overlay key that upstream now defines in `en.json`. `check` fails when a catalog is not upstream's plus Factory's sorted keys, when a Factory key is missing from an overlay, when `source.json` is stale, or when an overlay disagrees with its catalog. A translation must keep every placeholder name and every embedded element of the English; word order and the number of text segments may differ. `--base` defaults to `origin/main`.
 
+## Pinned third-party assets
+
+`factory/vendor/manifest.json` pins CLIProxyAPI and its Management Center by exact version, with the URL, size and SHA-256 of each platform's file and of each licence text. Nothing in Factory runs, unpacks or installs them yet, and the pack installer does not copy them. [`scripts/factory-vendor.ts`](../../scripts/factory-vendor.ts) checks the manifest and downloads the pinned bytes; run it by hand only.
+
+```sh
+node scripts/factory-vendor.ts check
+node scripts/factory-vendor.ts status [--dir <dir>]
+node scripts/factory-vendor.ts fetch --dir <dir>
+```
+
+- `check` validates the manifest without the network. It prints `ok <name> <version>` per component, or one `invalid <problem>` line per problem and exits 1. CI runs the same check through `scripts/factory-vendor.test.ts`.
+- `status` prints `pinned <label> <bytes> <sha256>` for each of the eight files. With `--dir` it compares a folder that `fetch` made and prints `same`, `missing`, `size`, `hash`, `not-file` or `unreadable` per file, exiting 1 unless all are `same`. It only reads.
+- `fetch --dir <dir>` creates `<dir>`, downloads each file into `<dir>/<name>-<version>/`, and writes it only once its size and SHA-256 match. It prints `fetched <label> <file>` per file. On any failure it prints the failing line, removes every file and folder that run created, and exits 1; a removal that fails adds a `cleanup failed <path>` line. A killed process is not cleaned up.
+
+`fetch` refuses, with one `refused:` line and nothing created: a `<dir>` that already exists in any form (a folder, empty or not, a file, a link or junction, a dangling link); one whose parent is not an existing folder; one inside the checkout, `~/.t3` or `~/.t3factory`, with links resolved and, on Windows and macOS, letter case ignored; and on Windows a network or device path, one starting with `\\` or `//`. It follows at most three redirects, each over https with no credentials and no port other than 443, and only to `github.com`, `raw.githubusercontent.com` or `release-assets.githubusercontent.com`. A file larger than 100 MiB fails.
+
+To move a pin:
+
+1. Pick the newest release of each component that is not a draft or prerelease and was published at least 168 hours before you download it. The console has to accept the proxy (its `requires` is `>=8.0.0 <9.0.0`). When no release is old enough, keep the current pin.
+2. Download each file the manifest names, and the `LICENSE` at the tag, and take each one's size and SHA-256. They should match GitHub's asset `digest` and, for the proxy, its `checksums.txt`, but a match is not proof: nothing is signed.
+3. Edit the manifest: `version`, `publishedAt` (GitHub's publication time), `retrievedAt` (when you took the hashes), both UTC to the second as `YYYY-MM-DDTHH:MM:SSZ`, and each file's URL, `bytes` and `sha256`. The licence must still be MIT.
+4. Run `check`, then `fetch --dir` into a new folder outside the checkout to prove the bytes, and commit the manifest.
+
+`check` refuses a version that is not an exact `x.y.z`; a `source` other than the component's repository; a `retrievedAt` less than 168 hours after `publishedAt`; platforms other than `win32-x64`, `darwin-arm64`, `darwin-x64`, `linux-x64` and `linux-arm64` for the proxy, or `any` for the console, in that order; a URL that is not exactly the release download for that version (for a licence, the raw file at the tag), so no `latest`, branch, query, port or upper-case letter in the host; a SHA-256 that is not 64 lower-case hex; a size outside 1 byte to 100 MiB; a licence other than MIT; a URL, hash or platform used twice; and any key it does not know.
+
 ## What Factory CI checks
 
 `.github/workflows/factory.yml` runs on pull requests and pushes to `factory`, and by hand. Upstream's workflows are disabled in the fork. It checks, in order:
@@ -106,7 +138,7 @@ Write the string in Factory code through `gt-react` as upstream's [translation p
 - the lockfile equals the merge base with `origin/main`;
 - `node scripts/factory-seams.ts --base origin/main` (at most twelve seam files, each within its `maxAdded` line cap, and all of them together within `maxAddedTotal`);
 - typecheck of contracts, server, client-runtime, web, mobile, scripts and evals;
-- the server's `factory` tests, all `scripts/factory-*.test.ts` tests, and `evals/factory-pack`, which tests every pack workflow: `run`, `sync`, `brief`, `experiment`, `risk`, `self-repair`, `ledger` and `metrics`;
+- the server's `factory` tests, all `scripts/factory-*.test.ts` tests, and `evals/factory-pack`, which tests every pack workflow: `run`, `sync`, `brief`, `experiment`, `risk`, `self-repair`, `ledger`, `metrics`, `intake`, `signals` and `placement`;
 - upstream seam unit tests (`ws.test.ts`, `RpcAuthorization.test.ts`, `RpcInstrumentation.test.ts`, `rpc.test.ts`, `client.test.ts`);
 - the web `src/factory` unit tests and `CommandPalette.logic.test.ts` (Playwright browser seam tests — `CommandPalette*.browser.test.tsx` and `mainAppLocation.browser.test.tsx` — are not run in `factory.yml` because it does not install browser binaries);
 - `vp run i18n:check`, upstream's catalog check;

@@ -136,7 +136,13 @@ Intake turns labelled tracker issues into tasks every 5 minutes:
 t3 workflow store set factory/v1/intake/<projectId> '{"v":1,"enabled":true,"labels":["factory"],"autoStart":false}'
 ```
 
-Leave `autoStart` false unless the person asks for issues to start on their own.
+`set` replaces the whole binding: read it first (`t3 workflow store list factory/v1/intake/<projectId>`) and set the merged object. Leave `autoStart` false unless the person asks for issues to start on their own. With `autoStart` true, a captured task starts only when a login in `authors` opened the GitHub issue after intake began; other issues are captured and wait in `ready`. `authors` lists GitHub logins, case-insensitive, without `@`, at most 100; one malformed entry makes intake skip the whole project. With `authors` missing or empty nothing starts, including on bindings set before `authors` existed: tell the person, and add only logins they name. Never list a bot, sync or machine account. Never write `factory/v1/intake-since/`.
+
+Before turning on `autoStart`, run the preview. It lists what the next check would capture or start, and why not, and writes nothing. Use a new `<n>` each time:
+
+```bash
+t3 workflow start factory-intake-preview --input '{"projectId":"<projectId>"}' --key intake-preview/<projectId>/<n>
+```
 
 ## Choose models
 

@@ -94,13 +94,68 @@ t3 workflow start factory-start --input '{"taskId":"<taskId>"}' --key start/<tas
 
 ## Turn issues into tasks
 
-`factory-intake` checks a project's tracker every five minutes and adds each new issue with your labels as a task in **Ready**. It adds an issue once. Turn it on per project by storing a binding:
+`factory-intake` checks a project's tracker every five minutes and adds each new open issue with your labels as a task in **Ready**. It adds an issue once. Turn it on per project by storing a binding:
 
 ```sh
 t3 workflow store set factory/v1/intake/<projectId> '{"v":1,"enabled":true,"labels":["factory"],"autoStart":false}'
 ```
 
-With `autoStart` on, each captured task also starts. The project's tracker has to be connected under **Settings → Source control & issues**.
+The project's tracker has to be connected under **Settings → Source control & issues**. Setting the key replaces the whole binding, so read it first (`t3 workflow store list factory/v1/intake/<projectId>`) and write it back whole.
+
+### Start issues automatically
+
+With `autoStart` on, intake also starts a captured task, but only when a GitHub account you listed in `authors` opened the issue after intake began on the project. Any other issue is still captured and waits in **Ready** until you start it.
+
+```sh
+t3 workflow store set factory/v1/intake/<projectId> '{"v":1,"enabled":true,"labels":["factory"],"autoStart":true,"authors":["<github-login>"]}'
+```
+
+- With no `authors`, or an empty list, nothing starts. That includes a binding that had `autoStart` on before `authors` existed: it goes on capturing, and each new task gets a note saying the binding lists no authors, until you add the list.
+- An entry is a GitHub login without `@`: letters, digits and hyphens, at most 39 characters. Case does not matter. A list of more than 100 logins, or one entry of any other form, makes the whole binding invalid, and intake reads none of the project's issues until you fix it.
+- List only accounts whose issues you would start yourself. Never list a bot, or an account that posts text from elsewhere, such as a sync or form account or a machine user. Who opened an issue is checked once, when intake first lists it; later edits to the issue are not checked.
+- Intake begins on a project at the first check that finds its binding on. That time is kept under `factory/v1/intake-since/<projectId>` and does not move when you turn the binding off and on again, so issues that were already open are captured but never started for you; start them yourself. If you delete that key, the next check records a new, later time.
+- Only GitHub issues start: other trackers do not say which account opened an issue in a way intake can rely on. GitHub Enterprise logins that contain `_` cannot be listed.
+
+Each check's result, on the Workflows page or with `t3 workflow show <run>`, lists every captured issue with what happened to it: `started`, `running`, `dropped` or `failed`, or the reason it was not started. With `autoStart` on, the task also gets a note giving that reason. When several reasons apply, the first in this table is the one given:
+
+| Reason               | The issue was not started because                                                |
+| -------------------- | -------------------------------------------------------------------------------- |
+| `tracker-not-github` | it is not a GitHub issue.                                                        |
+| `no-authors`         | the binding lists no `authors`.                                                  |
+| `no-author`          | the tracker did not say who opened it.                                           |
+| `author-not-listed`  | the account that opened it is not in `authors`.                                  |
+| `created-at-invalid` | its creation time is not a valid UTC time, or is later than this server's clock. |
+| `before-since`       | it was opened before intake began on the project, or at that moment.             |
+| `autostart-off`      | it would have started, but `autoStart` is off.                                   |
+
+Two open issues of one project with the same key, which can happen when a project spans several repositories, are neither captured nor started; the result lists each under `failed`. A binding or start time that cannot be read is listed there too, and that project's issues are not read.
+
+### Preview a binding
+
+The preview says what the next check would do and changes nothing: it creates no task, starts nothing, adds no note and records no start time. Give it a new key each time:
+
+```sh
+t3 workflow start factory-intake-preview --input '{"projectId":"<projectId>"}' --key intake-preview/<projectId>/<n>
+t3 workflow show <run>
+```
+
+It lists the project's open issues with your labels once and gives each an outcome: `start`, `capture` with the reason it would not start, `seen` when intake has already captured it, or `refused` when its key is shared. It treats the binding as on even when it is off, and before intake has begun on the project it treats it as beginning now, so no issue shows `start`. A missing or invalid binding gives a `problem` instead. If the tracker cannot be read, the preview pauses with the tracker's reason; resume it on the Workflows page.
+
+## Signals
+
+Signals gathers the items of public RSS 2.0 and Atom 1.0 feeds that this server follows, so you can turn the ones worth doing into tasks. Nothing from a feed starts or creates anything by itself. You decide on each item: **Admit** adds a **Backlog** task that is not started, and **Dismiss** sets the item aside.
+
+Press **Signals** on the Work page and follow a feed from **Feeds**, with its address, a name and, if you like, the project that tasks admitted from it belong to. The server reads it within about 15 minutes, and its new items wait under **Waiting**. What you admitted or dismissed is under **Decided**, where a dismissed item can still be admitted. On a server without Signals the button does not appear.
+
+- An admitted task carries only the item's title. Its description says which feed and item it came from and nothing more; the item's text and link stay in Signals. Write what you want done in the task before you start it, because its agents see only the task.
+- Only public `https` addresses on port 443 can be followed: no other scheme or port, no user name or password, no IP address and no local or private host name. A feed whose host turns out to resolve to a private, local or reserved address is not read.
+- Each feed is read at most once an hour, whether the last read worked or not. The server never opens the links inside items and does not follow redirects; a link shows as text.
+- An item that changes gets a new revision. A waiting item stays waiting, a dismissed one comes back to **Waiting**, and an admitted one stays admitted and is marked **Changed after it was admitted**; its task does not change. While you follow a feed, each of its items is admitted at most once. If an item changed after Signals showed it, **Admit** and **Dismiss** are refused until you read it again.
+- **Stop following** removes the feed's waiting and decided items and keeps the tasks you admitted. Following the same address again starts over, so an item admitted before can be admitted again. To rename a feed or change its project, stop following it and follow it again.
+- Following and unfollowing feeds, admitting and dismissing need a device paired with permission to operate this server.
+- Feeds are read only while workflows are on. Admitting and dismissing work without them.
+
+Limits: a server follows at most 20 feeds. A feed must answer within 5 seconds with at most 256 KB, uncompressed, and only its first 50 items are read. A feed holds at most 100 waiting items; newer ones are picked up by a later read once you have decided some. Beyond 200 dismissed items, the oldest that are no longer in the feed are forgotten, and come back as new if they reappear. Titles are cut at 200 characters and summaries at 2,000. **Waiting** and **Decided** show the newest 200 items each. When a read fails, **Feeds** says when and why.
 
 ## Self-repair
 
@@ -142,8 +197,42 @@ Settings are JSON values in the workflow store. `factory/v1/config` applies to e
 - `mergeNeedsPerson`: a merge goes ahead only on an answer you give in the app. An agent's answer through the command line makes the question come back, and only your answer counts. It also asks the merge question when `askMerge` is off. Default off. It guards against an agent answering by habit; it is not a security boundary.
 - `critiqueModel`, `briefDelivery`: for Knowledge tasks. `critiqueModel` has the same shape as the models above; unset, the brief gets no critique. `briefDelivery` is `none` or `issue-comment`. Default `none`.
 - `protectedPaths`, `lowRiskPaths`: glob lists for pull-request risk routing. Protected paths (workflows, lockfiles, migrations, fork seams, plus any paths you add) always ask for a person's merge approval even when `askMerge` is off.
+- `readOnlyOn`: runs the reading steps of the project's reviews on another linked machine. It is valid only in a project's own key; see [Review on another machine](#review-on-another-machine).
 
 A value that does not decode stops the task at its first step with a message naming the key; it is not ignored. Checks are the pull request's own checks; Work runs no check command of its own.
+
+## Review on another machine
+
+The reading steps of a project's reviews can run on another machine you have linked, while everything else stays on this one. Set `readOnlyOn` in the project's own settings key, merged into what is already there:
+
+```sh
+t3 workflow store set factory/v1/config/<projectId> '{"v":1,"readOnlyOn":{"environment":"<environmentId>","project":"<project id there>","limit":2}}'
+```
+
+- `environment` is the linked machine's id, as `t3 environment list` prints it.
+- `project` is the project's id on that machine, not a folder path.
+- `limit` is how many review agents this server runs there at a time, across all its tasks: 1 to 4, with no default.
+
+All three are required. `null`, or no `readOnlyOn`, turns it off. It is refused in `factory/v1/config`: there it stops every task with a message saying it belongs in a project's key.
+
+In each review round three steps run there: listing the changed files, the review, and the second reviewer of a high-risk change. Each gets a new worktree at the pull request's exact commit and is told to only read. No approval is given there: a Codex agent runs in a read-only sandbox, and a Claude agent asks before anything but reading and gets no answer. An agent that tries more than reading waits until `stepTimeout` and is then stopped. Planning, the worker's changes and fixes, the disprove pass, checks, comments, merges and every question stay on this machine.
+
+It needs:
+
+- A project that is a Git repository, so that its tasks work in worktrees. A task of a project that is worked in directly stops with a message saying so, and so does a task of a project that was never started from the Work page, which is where the server records how a project is worked in; start one of its tasks there once. A task with no project ignores `readOnlyOn`.
+- The pull request's full commit, and a model: `reviewModel`, or the task's model. A round without either runs on this machine, as if `readOnlyOn` were not set.
+- **Linked environments** on for both machines and a working link; see [Link another environment](remote-access.md#link-another-environment).
+- The commit already in that machine's clone. Nothing fetches it there. The changed files are listed against that clone's `origin/<base branch>`, so an out-of-date clone can only make a change look riskier.
+
+Nothing falls back. Once a round runs there, it never moves to this machine or to another one. If that machine cannot be reached, refuses the launch or lacks the commit, the part pauses and the task shows **Failed** under **Needs you**; the run tries again by itself after 5, 20 and 80 minutes, then waits for you. If the changed files cannot be listed there, the pull request is treated as high risk, so its merge asks you. A review whose agent does not report the commit it read is stale, like one whose commit moved (see [How review works](#how-review-works)). To bring a task back to this machine, cancel its run, remove `readOnlyOn` and start the task again.
+
+Limits:
+
+- Keeping writes out is up to that machine's provider; Factory does not enforce it. It is expected of Codex and Claude as described above, and unknown for other providers.
+- This has been tested against a stand-in for the other machine, not yet between two real machines.
+- The model has to exist on that machine. What happens when it does not has not been checked.
+- Each review there leaves its worktree and branch on that machine. Remove them yourself.
+- A run that pauses gives back its place under `limit` while its agent there may still be working, so more than `limit` agents can be at work there at once. Work on that machine that does not come from this server does not count against `limit`.
 
 ## On the page
 
@@ -157,7 +246,7 @@ A value that does not decode stops the task at its first step with a message nam
 
 ## What needs Workflows on
 
-The board itself works without workflows: create, edit, move and annotate tasks. Starting a task, run-driven columns, **Needs you**, intake and the Orchestrator's commands need **Settings → Labs → Workflows** on, and the Factory workflows installed on the server. A note on the page says when workflows are off.
+The board itself works without workflows: create, edit, move and annotate tasks. Starting a task, run-driven columns, **Needs you**, intake, reading followed feeds and the Orchestrator's commands need **Settings → Labs → Workflows** on, and the Factory workflows installed on the server. A note on the page says when workflows are off.
 
 ## Limits
 

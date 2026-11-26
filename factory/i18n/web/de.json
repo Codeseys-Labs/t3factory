@@ -367,5 +367,148 @@
   "fc9df14ea23f45b9": "Versuche",
   "fe0d419a5d3fbfc4": "Aufgabe wird geladen…",
   "fe1661762f04bca8": "Verbinde eine Umgebung, um ihre Aufgaben zu sehen.",
-  "febdde86fbbd2bec": "Nächstes Element, das mich braucht"
+  "febdde86fbbd2bec": "Nächstes Element, das mich braucht",
+  "03833d787c4c8e17": "der Feed ist größer als 256 KB",
+  "06491a5281cc2d5b": "Die neuesten 200 Elemente werden angezeigt.",
+  "114ebd0b99ebb95b": "Feeds",
+  "1bc9734fc0696002": "der Feed verwendet eine Entität, die XML nicht definiert",
+  "1bd9c23390d35939": "der Server hat länger als 5 Sekunden gebraucht",
+  "3bd8b55944df1bf4": "T-{number} öffnen",
+  "4f6fe0c78d4b441a": "https://example.com/feed.xml",
+  "51d78514e4664564": "Nicht mehr folgen",
+  "530fb0a2f5ef2231": "der Hostname konnte nicht aufgelöst werden",
+  "5518fdfcf609d23d": "Feed-Adresse",
+  "57194817096f4a56": "Übernommen",
+  "575baf31cbdf9bab": "der Host wird zu einer privaten, lokalen oder reservierten Adresse aufgelöst",
+  "59a6d461bd74bdd2": "der Server hat mit {status} geantwortet",
+  "5cabe0f3106a1eca": "Dieser Server folgt 20 Feeds, mehr geht nicht.",
+  "5d0933c767afcdfe": "Dieses Element konnte nicht verworfen werden",
+  "5fa5a990abec3975": "Noch nicht gelesen",
+  "60443360213f097d": "Entschieden",
+  "61797b167ce0f4c9": "der Server hat weitergeleitet, was Signale nicht verfolgt",
+  "635ce74b53610864": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "t": "p",
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " Signaleintrag konnte nicht gelesen werden."
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " Signaleinträge konnten nicht gelesen werden."
+          ]
+        }
+      }
+    }
+  },
+  "66372fd8b40675b7": "der Feed ist kein wohlgeformtes XML",
+  "66fc6f5af8b33801": "Nach der Übernahme geändert",
+  "67e0bab89cac2736": "die Adresse ist nicht https",
+  "6a24d37af543b392": "Aus einem verfolgten Feed in Revision {revision} übernommen. Das Element selbst befindet sich in Signale.",
+  "6e96ce482c3d701e": "Verworfen",
+  "6ef815722cc9e485": "{n, plural, one {Signale, {n} Element wartet} other {Signale, {n} Elemente warten}}",
+  "71509d79af0cc5de": "Noch nichts entschieden.",
+  "7180adf1efc1dc6b": "Letztes Lesen fehlgeschlagen {date}: {reason}",
+  "784cc87d53bef4c8": "Gelesen {date}",
+  "7addd33034d8cd76": "sein Eintrag konnte nicht gelesen oder gespeichert werden; entferne den Feed und folge ihm erneut",
+  "7e63a744e9cbb25c": "Dieses Element konnte nicht übernommen werden",
+  "81f42e4fe24fde8b": "Nur öffentliche https-Adressen auf Port 443. Der Server liest jeden Feed höchstens einmal pro Stunde und öffnet die darin enthaltenen Links nie.",
+  "8366df9f0cc4f27c": "Ihr Titel ist der Titel des Elements. Schreibe hinein, was erledigt werden soll, bevor du sie startest.",
+  "83cdea9b8f365bb3": "der Feed verschachtelt Elemente tiefer als 32 Ebenen",
+  "8831bf8b03749675": "der Feed ist kein reines UTF-8",
+  "89b9819e837118f2": "Folge auf dem Tab „Feeds“ einem Feed, um seine Elemente hier zu sehen.",
+  "92265c1181a4bced": "Als T-{number} übernommen",
+  "922d764133c8c427": "der Feed deklariert eine DTD oder Entitäten",
+  "9e666c8df9f25155": "die Adresse benennt einen lokalen Host",
+  "b4b8aded70ec1f9e": "die Adresse ist keine vollständige Webadresse",
+  "b593ac99e1c76997": "Link:",
+  "b609a4988213005b": "Das Folgen dieses Feeds konnte nicht beendet werden",
+  "bbf426541c7a09ce": "Übernehmen",
+  "bd392f2728e0cc81": "Elemente aus öffentlichen Feeds, denen dieser Server folgt. Hier läuft nichts von selbst. „Übernehmen“ legt eine Backlog-Aufgabe mit dem Titel des Elements an, nicht gestartet; Text und Link des Elements bleiben hier.",
+  "bedd76860db784e5": "Workflows sind auf diesem Server deaktiviert, daher werden Feeds nicht gelesen.",
+  "c3c3eee7650ee5b7": "die Adresse verwendet einen anderen Port als 443",
+  "d835a4bb4e0136ce": "die Verbindung ist fehlgeschlagen",
+  "e349d13d69961e52": "die Adresse enthält einen Benutzernamen oder ein Passwort",
+  "f01ee5fb1a1cfbb9": "der Feed ist weder RSS 2.0 noch Atom 1.0",
+  "f2e489303c279848": "Seine wartenden und entschiedenen Elemente verlassen Signale. Bereits übernommene Aufgaben bleiben.",
+  "f384dfd0feb7b59d": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "t": "p",
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " Element wartet"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " Elemente warten"
+          ]
+        }
+      }
+    }
+  },
+  "f4e8335020f33490": "Nichts wartet.",
+  "f94af8e25d3cfb42": "Signale",
+  "fa68afc66d942a21": "Feed folgen",
+  "ff4ede69f61391f6": "T-{number} zum Backlog hinzugefügt",
+  "ff555031b012fdbd": "Diesem Feed konnte nicht gefolgt werden",
+  "24ecbd05716ac96b": [
+    "Folgen von",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " beenden?"
+  ],
+  "eaec74af7e77385a": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "· Revision ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ]
 }

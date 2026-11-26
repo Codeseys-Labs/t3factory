@@ -529,6 +529,14 @@ export function TaskPanel({
               </div>
             </section>
           )}
+          {latest.source._tag === "signal" ? (
+            <p className="text-xs text-muted-foreground">
+              {gt(
+                "Admitted from a followed feed at revision {revision}. The item itself is in Signals.",
+                { revision: latest.source.revision },
+              )}
+            </p>
+          ) : null}
           <form
             className="flex flex-col gap-3"
             onSubmit={(event) => {

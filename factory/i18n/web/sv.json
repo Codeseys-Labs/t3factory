@@ -367,5 +367,148 @@
   "fc9df14ea23f45b9": "Försök",
   "fe0d419a5d3fbfc4": "Läser in uppgiften…",
   "fe1661762f04bca8": "Anslut en miljö för att se dess uppgifter.",
-  "febdde86fbbd2bec": "Nästa objekt som behöver mig"
+  "febdde86fbbd2bec": "Nästa objekt som behöver mig",
+  "03833d787c4c8e17": "flödet är större än 256 KB",
+  "06491a5281cc2d5b": "Visar de 200 senaste objekten.",
+  "114ebd0b99ebb95b": "Flöden",
+  "1bc9734fc0696002": "flödet använder en entitet som XML inte definierar",
+  "1bd9c23390d35939": "servern tog längre tid än 5 sekunder",
+  "3bd8b55944df1bf4": "Öppna T-{number}",
+  "4f6fe0c78d4b441a": "https://example.com/feed.xml",
+  "51d78514e4664564": "Sluta följa",
+  "530fb0a2f5ef2231": "värdnamnet kunde inte slås upp",
+  "5518fdfcf609d23d": "Flödesadress",
+  "57194817096f4a56": "Intaget",
+  "575baf31cbdf9bab": "värden pekar på en privat, lokal eller reserverad adress",
+  "59a6d461bd74bdd2": "servern svarade {status}",
+  "5cabe0f3106a1eca": "Den här servern följer 20 flöden, vilket är max.",
+  "5d0933c767afcdfe": "Kunde inte avfärda det här objektet",
+  "5fa5a990abec3975": "Inte läst än",
+  "60443360213f097d": "Avgjorda",
+  "61797b167ce0f4c9": "servern omdirigerade, vilket Signaler inte följer",
+  "635ce74b53610864": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " signalpost kunde inte läsas."
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " signalposter kunde inte läsas."
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "66372fd8b40675b7": "flödet är inte välformad XML",
+  "66fc6f5af8b33801": "Ändrat efter att det togs in",
+  "67e0bab89cac2736": "adressen är inte https",
+  "6a24d37af543b392": "Intagen från ett följt flöde vid revision {revision}. Själva objektet finns i Signaler.",
+  "6e96ce482c3d701e": "Avfärdat",
+  "6ef815722cc9e485": "{n, plural, one {Signaler, {n} objekt väntar} other {Signaler, {n} objekt väntar}}",
+  "71509d79af0cc5de": "Inget avgjort än.",
+  "7180adf1efc1dc6b": "Senaste läsningen misslyckades {date}: {reason}",
+  "784cc87d53bef4c8": "Läst {date}",
+  "7addd33034d8cd76": "dess post kunde inte läsas eller sparas; ta bort flödet och följ det igen",
+  "7e63a744e9cbb25c": "Kunde inte ta in det här objektet",
+  "81f42e4fe24fde8b": "Endast offentliga https-adresser på port 443. Servern läser varje flöde högst en gång i timmen och öppnar aldrig länkarna i det.",
+  "8366df9f0cc4f27c": "Dess titel är objektets titel. Skriv vad du vill ha gjort i den innan du startar den.",
+  "83cdea9b8f365bb3": "flödet har fler än 32 nivåer av nästlade element",
+  "8831bf8b03749675": "flödet är inte ren UTF-8",
+  "89b9819e837118f2": "Följ ett flöde på fliken Flöden för att se dess objekt här.",
+  "92265c1181a4bced": "Taget in som T-{number}",
+  "922d764133c8c427": "flödet deklarerar en DTD eller entiteter",
+  "eaec74af7e77385a": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "· revision ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ],
+  "9e666c8df9f25155": "adressen anger en lokal värd",
+  "b4b8aded70ec1f9e": "adressen är inte en fullständig webbadress",
+  "b593ac99e1c76997": "Länk:",
+  "b609a4988213005b": "Kunde inte sluta följa det här flödet",
+  "bbf426541c7a09ce": "Ta in",
+  "bd392f2728e0cc81": "Objekt från offentliga flöden som den här servern följer. Inget här körs av sig självt. Ta in lägger till en Backlog-uppgift, inte startad, med objektets titel; objektets text och länk finns kvar här.",
+  "bedd76860db784e5": "Arbetsflöden är avstängda på den här servern, så flödena läses inte.",
+  "c3c3eee7650ee5b7": "adressen använder en annan port än 443",
+  "24ecbd05716ac96b": [
+    "Sluta följa",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "?"
+  ],
+  "d835a4bb4e0136ce": "anslutningen misslyckades",
+  "e349d13d69961e52": "adressen innehåller ett användarnamn eller lösenord",
+  "f01ee5fb1a1cfbb9": "flödet är varken RSS 2.0 eller Atom 1.0",
+  "f2e489303c279848": "Dess väntande och avgjorda objekt lämnar Signaler. Redan intagna uppgifter finns kvar.",
+  "f384dfd0feb7b59d": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " objekt väntar"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " objekt väntar"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "f4e8335020f33490": "Inget väntar.",
+  "f94af8e25d3cfb42": "Signaler",
+  "fa68afc66d942a21": "Följ flöde",
+  "ff4ede69f61391f6": "Lade till T-{number} i Backlog",
+  "ff555031b012fdbd": "Kunde inte följa det här flödet"
 }

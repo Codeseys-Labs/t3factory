@@ -1,11 +1,20 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
   FACTORY_KIND_WORKFLOWS,
+  FACTORY_SIGNAL_FEEDS_MAX,
   FACTORY_WS_METHODS,
   type FactoryAttempt,
   FactoryNote,
   FactoryOrchestrator,
   type FactoryOrchestratorSetInput,
+  type FactorySignalAdmitResult,
+  type FactorySignalCandidate,
+  type FactorySignalDecisionInput,
+  type FactorySignalFeed,
+  type FactorySignalFeedAddInput,
+  type FactorySignalFeedRemoveInput,
+  type FactorySignalsList,
+  type FactorySignalsListInput,
   FactoryTask,
   type FactoryTaskCreateInput,
   type FactoryTaskDetail,
@@ -38,6 +47,7 @@ import * as Stream from "effect/Stream";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as Workflows from "../workflows/Workflows.ts";
+import * as FactorySignals from "./FactorySignals.ts";
 import * as FactoryTaskStore from "./FactoryTaskStore.ts";
 
 export const FACTORY_TASK_WORKFLOW = FACTORY_KIND_WORKFLOWS.software;
@@ -61,6 +71,21 @@ export class FactoryTasks extends Context.Service<
     readonly setOrchestrator: (
       input: FactoryOrchestratorSetInput,
     ) => Effect.Effect<void, FactoryTaskError>;
+    readonly listSignals: (
+      input: FactorySignalsListInput,
+    ) => Effect.Effect<FactorySignalsList, FactoryTaskError>;
+    readonly addSignalFeed: (
+      input: FactorySignalFeedAddInput,
+    ) => Effect.Effect<FactorySignalFeed, FactoryTaskError>;
+    readonly removeSignalFeed: (
+      input: FactorySignalFeedRemoveInput,
+    ) => Effect.Effect<void, FactoryTaskError>;
+    readonly admitSignal: (
+      input: FactorySignalDecisionInput,
+    ) => Effect.Effect<FactorySignalAdmitResult, FactoryTaskError>;
+    readonly dismissSignal: (
+      input: FactorySignalDecisionInput,
+    ) => Effect.Effect<FactorySignalCandidate, FactoryTaskError>;
   }
 >()("t3/factory/FactoryTasks") {}
 
@@ -85,6 +110,11 @@ const disabled = FactoryTasks.of({
   update: refuse,
   start: refuse,
   setOrchestrator: refuse,
+  listSignals: refuse,
+  addSignalFeed: refuse,
+  removeSignalFeed: refuse,
+  admitSignal: refuse,
+  dismissSignal: refuse,
 });
 
 export const orDisabled = Effect.map(
@@ -111,8 +141,18 @@ const compareTasks = (left: FactoryTask, right: FactoryTask) =>
       ? -1
       : 1;
 
+const FEED_URL_REFUSALS = {
+  "not-a-url": "Enter a full web address, such as https://example.com/feed.xml.",
+  scheme: "Only https feed addresses can be followed.",
+  credentials: "A feed address cannot contain a user name or password.",
+  port: "Only feeds on port 443 can be followed.",
+  address: "Feeds on local or private hosts cannot be followed.",
+  hostname: "Feeds on local or private hosts cannot be followed.",
+} as const;
+
 const make = Effect.gen(function* () {
   const store = yield* FactoryTaskStore.make;
+  const signals = yield* FactorySignals.make;
   const workflows = yield* Workflows.Workflows;
   const random = yield* SecureRandom.SecureRandom;
   const projects = Option.getOrUndefined(
@@ -280,40 +320,52 @@ const make = Effect.gen(function* () {
     }
   });
 
+  const insertTask = Effect.fn("FactoryTasks.insertTask")(function* (
+    input: FactoryTaskCreateInput,
+  ) {
+    const now = DateTime.formatIso(yield* DateTime.now);
+    const number = (yield* store.sequence) + 1;
+    const task = yield* validateTask({
+      v: 1,
+      id: yield* random.uuidV4(),
+      number,
+      rev: 1,
+      projectId: input.projectId,
+      ...(input.kind !== undefined ? { kind: input.kind } : {}),
+      title: input.title.trim(),
+      description: input.description ?? "",
+      lane: input.lane ?? "backlog",
+      laneSetAt: now,
+      parentId: input.parentId ?? null,
+      blockedBy: [...new Set(input.blockedBy ?? [])],
+      assignee: input.assignee ?? null,
+      model: input.model ?? null,
+      source: input.source ?? { _tag: "local" },
+      createdAt: now,
+      updatedAt: now,
+    });
+    yield* checkReferences(task.id, task.parentId === null ? [] : [task.parentId], "parentId");
+    yield* checkReferences(task.id, task.blockedBy, "blockedBy");
+    if (task.source._tag === "promoted" && !(yield* store.tasks.get(task.source.fromTaskId))) {
+      return yield* new FactoryTaskError({
+        reason: "invalid",
+        message: "Promoted task not found.",
+      });
+    }
+    yield* store.setSequence(number);
+    yield* store.tasks.set(task.id, task);
+    return task;
+  });
+
   const create = Effect.fn("FactoryTasks.create")(
     function* (input: FactoryTaskCreateInput) {
-      const now = DateTime.formatIso(yield* DateTime.now);
-      const number = (yield* store.sequence) + 1;
-      const task = yield* validateTask({
-        v: 1,
-        id: yield* random.uuidV4(),
-        number,
-        rev: 1,
-        projectId: input.projectId,
-        ...(input.kind !== undefined ? { kind: input.kind } : {}),
-        title: input.title.trim(),
-        description: input.description ?? "",
-        lane: input.lane ?? "backlog",
-        laneSetAt: now,
-        parentId: input.parentId ?? null,
-        blockedBy: [...new Set(input.blockedBy ?? [])],
-        assignee: input.assignee ?? null,
-        model: input.model ?? null,
-        source: input.source ?? { _tag: "local" },
-        createdAt: now,
-        updatedAt: now,
-      });
-      yield* checkReferences(task.id, task.parentId === null ? [] : [task.parentId], "parentId");
-      yield* checkReferences(task.id, task.blockedBy, "blockedBy");
-      if (task.source._tag === "promoted" && !(yield* store.tasks.get(task.source.fromTaskId))) {
+      if (input.source?._tag === "signal") {
         return yield* new FactoryTaskError({
           reason: "invalid",
-          message: "Promoted task not found.",
+          message: "Only Admit can add a task from a feed item.",
         });
       }
-      yield* store.setSequence(number);
-      yield* store.tasks.set(task.id, task);
-      return task;
+      return yield* insertTask(input);
     },
     store.transaction,
     Effect.tap((task) => refreshTarget({ projectId: task.projectId })),
@@ -584,6 +636,210 @@ const make = Effect.gen(function* () {
     Effect.uninterruptible,
   );
 
+  const listSignals = Effect.fn("FactoryTasks.listSignals")(function* (
+    input: FactorySignalsListInput,
+  ) {
+    return yield* signals.list(input.view);
+  }, store.transaction);
+
+  const addSignalFeed = Effect.fn("FactoryTasks.addSignalFeed")(function* (
+    input: FactorySignalFeedAddInput,
+  ) {
+    const checked = FactorySignals.checkFeedUrl(input.url);
+    if (!checked.ok) {
+      return yield* new FactoryTaskError({
+        reason: "invalid",
+        message: FEED_URL_REFUSALS[checked.reason],
+      });
+    }
+    const label = FactorySignals.normalizeText(input.label);
+    if (label.length < 1 || label.length > 100) {
+      return yield* new FactoryTaskError({
+        reason: "invalid",
+        message: "A feed's name is 1 to 100 characters.",
+      });
+    }
+    if ((yield* signals.countFeeds()) >= FACTORY_SIGNAL_FEEDS_MAX) {
+      return yield* new FactoryTaskError({
+        reason: "invalid",
+        message: `This server follows at most ${FACTORY_SIGNAL_FEEDS_MAX} feeds.`,
+      });
+    }
+    if ((yield* signals.listFeeds()).some((feed) => feed.url === checked.url)) {
+      return yield* new FactoryTaskError({
+        reason: "invalid",
+        message: "This feed is already followed.",
+      });
+    }
+    const feed: FactorySignalFeed = {
+      v: 1,
+      id: yield* random.uuidV4(),
+      url: checked.url,
+      label,
+      projectId: input.projectId,
+      addedAt: DateTime.formatIso(yield* DateTime.now),
+    };
+    yield* signals.setFeed(feed);
+    return feed;
+  }, store.transaction);
+
+  const removeSignalFeed = Effect.fn("FactoryTasks.removeSignalFeed")(function* (
+    input: FactorySignalFeedRemoveInput,
+  ) {
+    if ((yield* signals.getFeed(input.feedId)) === undefined) {
+      return yield* new FactoryTaskError({
+        reason: "not-found",
+        message: "This feed is no longer followed.",
+      });
+    }
+    yield* signals.removeFeed(input.feedId);
+  }, store.transaction);
+
+  const requireShownSignal = Effect.fn("FactoryTasks.requireShownSignal")(function* (
+    candidate: FactorySignalCandidate,
+    input: FactorySignalDecisionInput,
+  ) {
+    if (input.revision !== candidate.revision || input.sha256 !== candidate.sha256) {
+      return yield* new FactoryTaskError({
+        reason: "conflict",
+        message: "This item changed since it was shown. Read it again before you decide.",
+        rev: candidate.revision,
+      });
+    }
+  });
+
+  const admitSignal = Effect.fn("FactoryTasks.admitSignal")(
+    function* (input: FactorySignalDecisionInput) {
+      const candidate = yield* signals.getCandidate(input.feedId, input.candidateId);
+      if (candidate === undefined) {
+        return yield* new FactoryTaskError({
+          reason: "not-found",
+          message: "This item is no longer listed.",
+        });
+      }
+      const feed = yield* signals.getFeed(input.feedId);
+      if (feed === undefined) {
+        return yield* new FactoryTaskError({
+          reason: "not-found",
+          message: "This feed is no longer followed.",
+        });
+      }
+      if (candidate.state === "admitted") {
+        if (
+          input.revision !== candidate.decidedRevision ||
+          input.sha256 !== candidate.decidedSha256
+        ) {
+          return yield* new FactoryTaskError({
+            reason: "conflict",
+            message: "This item was already admitted.",
+            rev: candidate.revision,
+          });
+        }
+        const admitted =
+          candidate.taskId === null ? undefined : yield* store.tasks.get(candidate.taskId);
+        if (
+          admitted === undefined ||
+          admitted.id !== candidate.taskId ||
+          admitted.source._tag !== "signal" ||
+          admitted.source.feedId !== candidate.feedId ||
+          admitted.source.candidateId !== candidate.id ||
+          admitted.source.sha256 !== candidate.decidedSha256
+        ) {
+          return yield* new FactoryTaskError({
+            reason: "not-found",
+            message: "The admitted task could not be read.",
+          });
+        }
+        return { candidate, task: admitted, created: false };
+      }
+      yield* requireShownSignal(candidate, input);
+      if (
+        candidate.id !== FactorySignals.signalCandidateId(candidate.feedId, candidate.itemKey) ||
+        candidate.sha256 !== FactorySignals.signalDigest(candidate) ||
+        !FactorySignals.isNormalizedLine(candidate.title)
+      ) {
+        return yield* new FactoryTaskError({
+          reason: "invalid",
+          message: "This item's record is damaged.",
+        });
+      }
+      const task = yield* insertTask({
+        projectId: candidate.projectId,
+        title: candidate.title,
+        description: [
+          `A person admitted this task from a followed feed: ${feed.label}.`,
+          `Candidate ${candidate.id}, revision ${candidate.revision}, sha256 ${candidate.sha256}.`,
+          "Write what you want done here before you start it.",
+        ].join("\n"),
+        lane: "backlog",
+        parentId: null,
+        blockedBy: [],
+        assignee: null,
+        model: null,
+        source: {
+          _tag: "signal",
+          feedId: candidate.feedId,
+          candidateId: candidate.id,
+          revision: candidate.revision,
+          sha256: candidate.sha256,
+        },
+      });
+      const decided: FactorySignalCandidate = {
+        ...candidate,
+        state: "admitted",
+        decidedAt: task.createdAt,
+        decidedRevision: input.revision,
+        decidedSha256: input.sha256,
+        taskId: task.id,
+      };
+      yield* signals.setCandidate(decided);
+      return { candidate: decided, task, created: true };
+    },
+    store.transaction,
+    Effect.tap(({ task, created }) =>
+      created ? refreshTarget({ projectId: task.projectId }) : Effect.void,
+    ),
+    Effect.tap(({ created }) => (created ? notify : Effect.void)),
+    Effect.map(({ candidate, task }): FactorySignalAdmitResult => ({ candidate, task })),
+    Effect.uninterruptible,
+  );
+
+  const dismissSignal = Effect.fn("FactoryTasks.dismissSignal")(function* (
+    input: FactorySignalDecisionInput,
+  ) {
+    const candidate = yield* signals.getCandidate(input.feedId, input.candidateId);
+    if (candidate === undefined) {
+      return yield* new FactoryTaskError({
+        reason: "not-found",
+        message: "This item is no longer listed.",
+      });
+    }
+    if (candidate.state === "admitted") {
+      return yield* new FactoryTaskError({
+        reason: "conflict",
+        message: "This item was already admitted.",
+      });
+    }
+    if (
+      candidate.state === "dismissed" &&
+      input.revision === candidate.decidedRevision &&
+      input.sha256 === candidate.decidedSha256
+    ) {
+      return candidate;
+    }
+    yield* requireShownSignal(candidate, input);
+    const dismissed: FactorySignalCandidate = {
+      ...candidate,
+      state: "dismissed",
+      decidedAt: DateTime.formatIso(yield* DateTime.now),
+      decidedRevision: input.revision,
+      decidedSha256: input.sha256,
+      taskId: null,
+    };
+    yield* signals.setCandidate(dismissed);
+    return dismissed;
+  }, store.transaction);
+
   const readSnapshot = Effect.fn("FactoryTasks.readSnapshot")(function* () {
     const stored = yield* store.tasks.list();
     const tasks = stored.items.map((row) => row.value).sort(compareTasks);
@@ -747,7 +1003,19 @@ const make = Effect.gen(function* () {
     );
   }
 
-  return FactoryTasks.of({ watch, get, create, update, start, setOrchestrator });
+  return FactoryTasks.of({
+    watch,
+    get,
+    create,
+    update,
+    start,
+    setOrchestrator,
+    listSignals,
+    addSignalFeed,
+    removeSignalFeed,
+    admitSignal,
+    dismissSignal,
+  });
 });
 
 export const layer: Layer.Layer<
@@ -765,4 +1033,14 @@ export const wsHandlers = (service: FactoryTasks["Service"]) => ({
     service.start(input, "client"),
   [FACTORY_WS_METHODS.factoryOrchestratorSet]: (input: FactoryOrchestratorSetInput) =>
     service.setOrchestrator(input),
+  [FACTORY_WS_METHODS.factorySignalsList]: (input: FactorySignalsListInput) =>
+    service.listSignals(input),
+  [FACTORY_WS_METHODS.factorySignalFeedsAdd]: (input: FactorySignalFeedAddInput) =>
+    service.addSignalFeed(input),
+  [FACTORY_WS_METHODS.factorySignalFeedsRemove]: (input: FactorySignalFeedRemoveInput) =>
+    service.removeSignalFeed(input),
+  [FACTORY_WS_METHODS.factorySignalsAdmit]: (input: FactorySignalDecisionInput) =>
+    service.admitSignal(input),
+  [FACTORY_WS_METHODS.factorySignalsDismiss]: (input: FactorySignalDecisionInput) =>
+    service.dismissSignal(input),
 });

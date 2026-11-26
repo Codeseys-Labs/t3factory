@@ -12995,9 +12995,11 @@
   "92e129bf413a1220": "återkallad",
   "0094310916298140": "Tavla",
   "02d5fa3cda9e56cd": "Inte klar",
+  "03833d787c4c8e17": "flödet är större än 256 KB",
   "0532ec85f9970a4a": "Programvara",
   "05ac7284b77b849c": "Använd deras",
   "05ce33cc16f8a854": "Förutsättningar",
+  "06491a5281cc2d5b": "Visar de 200 senaste objekten.",
   "069abdf7d6ce5cf5": "Ångra",
   "0822282c37437989": "Öppna arbete",
   "0930858b7d7bdab6": "Projekt",
@@ -13010,6 +13012,7 @@
   "0e7829110b2ebbbf": "Endast dess revision flyttades; inga av dess fält ändrades.",
   "0fe5811407f794ec": "Inga anteckningar än.",
   "1119c65be9b7bcc6": "Granskning",
+  "114ebd0b99ebb95b": "Flöden",
   "121999b234ff2db3": "Blockeras av",
   "16543672eb03378c": "Uppgift",
   "165803dbcb0970a8": "Inga uppgifter än",
@@ -13021,6 +13024,8 @@
   "19c3c1a9ac268e42": "Den här tråden är nu orkestrerare för {project}",
   "1a7d1a75fcf8e90a": "Granskad vid en head som sedan flyttades. Omgångens fynd avgör ingenting.",
   "1bad9d7b05e8f610": "Klar",
+  "1bc9734fc0696002": "flödet använder en entitet som XML inte definierar",
+  "1bd9c23390d35939": "servern tog längre tid än 5 sekunder",
   "1da04a9d790cb95b": "Titel",
   "21254b0cf7488b28": "Avvisad",
   "216c7e223db0c2c3": "Stäng uppgiften",
@@ -13028,6 +13033,16 @@
   "23aa75365aeeaecf": "Startade inte",
   "23c5142879bffe19": "Gå till uppgift...",
   "24a5ed46772567f9": "Läser in arbetsflödeskörningar. Uppgifter med en körning kan fortfarande byta kolumn.",
+  "24ecbd05716ac96b": [
+    "Sluta följa",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "?"
+  ],
   "25ad38609b25c9ba": "{count, plural, one {{count} blockerande fynd} other {{count} blockerande fynd}}",
   "2657b67031e6362c": "Uppgifter",
   "274678b3367dacf0": "Dölj fynd för del {n}",
@@ -13049,6 +13064,7 @@
   "339dae6f825c6866": "Gör den här tråden till projektets orkestrerare",
   "34fabd5b00324ca9": "Typ",
   "3acc2e4803ca995a": "Titel",
+  "3bd8b55944df1bf4": "Öppna T-{number}",
   "3c0f7b24ac041b05": "Lägg till en anteckning",
   "3d08cdd31183989c": "Inget behöver dig just nu.",
   "401acc7606948304": "Projekt",
@@ -13075,18 +13091,66 @@
     },
     " och starta sedan uppgiften igen."
   ],
+  "4f6fe0c78d4b441a": "https://example.com/feed.xml",
   "4fd41cd4bac9af2c": "Arbetar",
   "513b0829d813281c": "Godkänd",
+  "51d78514e4664564": "Sluta följa",
+  "530fb0a2f5ef2231": "värdnamnet kunde inte slås upp",
+  "5518fdfcf609d23d": "Flödesadress",
+  "57194817096f4a56": "Intaget",
+  "575baf31cbdf9bab": "värden pekar på en privat, lokal eller reserverad adress",
   "57b36fa6ad882791": "Den här uppgiften ändrades någon annanstans",
   "5821325e13e8329b": "{count, plural, one {Arbete, {count} objekt behöver dig} other {Arbete, {count} objekt behöver dig}}",
+  "59a6d461bd74bdd2": "servern svarade {status}",
   "5ad462f4acd1df24": "Arbete pågår eller har placerats här manuellt.",
   "5bf5bb285f190ce3": "Planen kan inte visas. Öppna körningen för att se den.",
+  "5cabe0f3106a1eca": "Den här servern följer 20 flöden, vilket är max.",
   "5cb583427721b345": "Kontrollerar dess körning…",
+  "5d0933c767afcdfe": "Kunde inte avfärda det här objektet",
   "5e15635f0c285d0f": "Den här uppgiften ändrades någon annanstans och lästes in igen. Försök igen.",
   "5e4450e1ebf3d038": "Okänd",
+  "5fa5a990abec3975": "Inte läst än",
+  "60443360213f097d": "Avgjorda",
+  "61797b167ce0f4c9": "servern omdirigerade, vilket Signaler inte följer",
   "6243b0090ac24fe0": "Kolumn",
+  "635ce74b53610864": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " signalpost kunde inte läsas."
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " signalposter kunde inte läsas."
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "66372fd8b40675b7": "flödet är inte välformad XML",
   "669fc276c14e6e3b": "Pågår",
   "66a5dbbae70d81ce": "Kunde inte starta uppgiften.",
+  "66fc6f5af8b33801": "Ändrat efter att det togs in",
+  "67e0bab89cac2736": "adressen är inte https",
   "6828296ea374e663": "Behåll min",
   "690a337e8dc06a36": [
     "Det gick inte att läsa in arbetsflödeskörningar, så korten visar inget körningstillstånd. Kontrollera arbetsflöden i",
@@ -13099,30 +13163,43 @@
     "."
   ],
   "6a0656e8e0e14b1b": "Backlog",
+  "6a24d37af543b392": "Intagen från ett följt flöde vid revision {revision}. Själva objektet finns i Signaler.",
   "6a79e70aa91adb5c": "Togs inte upp igen",
   "6af1920a1db1a000": "Ingen",
   "6df6d3f7a704fdc0": "Förseglad",
   "6e854b5468c726ae": "Projekt",
+  "6e96ce482c3d701e": "Avfärdat",
+  "6ef815722cc9e485": "{n, plural, one {Signaler, {n} objekt väntar} other {Signaler, {n} objekt väntar}}",
   "6f7f4e5329bdc6af": "Arbete",
   "6fbd0df6a44c288c": "Olistad artefakt",
   "6fd6d050dbc62587": "Behöver dig",
+  "71509d79af0cc5de": "Inget avgjort än.",
+  "7180adf1efc1dc6b": "Senaste läsningen misslyckades {date}: {reason}",
   "71b118ff5d9edcdb": "Protokoll",
   "735366a7be3e89d3": "Fil",
   "76a46c1775f13048": "Togs upp igen",
+  "784cc87d53bef4c8": "Läst {date}",
   "788c4835f1c28d4e": "{task} avskrevs",
   "790c1653105ddbc3": "Granskning har fastnat",
   "79c2aa22caf69a8e": "Pågår",
+  "7addd33034d8cd76": "dess post kunde inte läsas eller sparas; ta bort flödet och följ det igen",
   "7b2dad70a32ea8b2": "Brief",
   "7d31a6f0c50d539d": "Granskningsfynd",
   "7de39043b87f7cf1": "Plan",
+  "7e63a744e9cbb25c": "Kunde inte ta in det här objektet",
   "7fdb1f8753f3532b": "Bana",
   "8093eaa7292a8a05": "Det här försöket skapade ingen plan.",
   "80b1e0d96c7b16f2": "Tilldelad",
+  "81f42e4fe24fde8b": "Endast offentliga https-adresser på port 443. Servern läser varje flöde högst en gång i timmen och öppnar aldrig länkarna i det.",
   "828fa78ef4e9dbb9": "Brödsmulor för arbete",
   "830c1e7c48367144": "Omgång {at}",
+  "8366df9f0cc4f27c": "Dess titel är objektets titel. Skriv vad du vill ha gjort i den innan du startar den.",
+  "83cdea9b8f365bb3": "flödet har fler än 32 nivåer av nästlade element",
   "85d0ee772919c83e": "Uppdaterad",
   "8722ba26b480af71": "Motbevisat",
+  "8831bf8b03749675": "flödet är inte ren UTF-8",
   "892065b607da928c": "Den här servern har ingen uppgift med den länken.",
+  "89b9819e837118f2": "Följ ett flöde på fliken Flöden för att se dess objekt här.",
   "8b14a12660038932": "Redo",
   "8b31ee36486f3ec1": "Den här servern har inget stöd för Arbete",
   "8c4e70af62cadc27": "Avskriven",
@@ -13134,6 +13211,8 @@
   "8ef6bd7b080d04e5": "Misslyckades",
   "9160bff2a14a7bbf": "Inte startad än.",
   "91fe864350610824": "Avskriven",
+  "92265c1181a4bced": "Taget in som T-{number}",
+  "922d764133c8c427": "flödet deklarerar en DTD eller entiteter",
   "93d697753aca4033": "Petitess",
   "96a6809814dca07e": "Lista",
   "96dfc9f03d480197": "Godkänn plan",
@@ -13175,6 +13254,7 @@
       "t": "p"
     }
   },
+  "9e666c8df9f25155": "adressen anger en lokal värd",
   "9eda62107551fc6d": "Alla projekt",
   "9f5f9a79d7041da4": "Dölj plan",
   "9f62431445e9e436": "{name} är inte ansluten. Skapa uppgiften när den ansluter igen.",
@@ -13191,20 +13271,27 @@
   "adae883fd7189da7": "Läser in uppgifter…",
   "aea8f73a29717a31": "Stäng",
   "b1a18f3ba4bc860c": "Backlog",
+  "b4b8aded70ec1f9e": "adressen är inte en fullständig webbadress",
   "b4fed0b16bdac961": "Blockeras av",
   "b552cd7f582a1b8b": "Lägg till anteckning",
+  "b593ac99e1c76997": "Länk:",
+  "b609a4988213005b": "Kunde inte sluta följa det här flödet",
   "b6221630968b378a": "Dess uppgifter visas igen när den ansluter igen. Välj en annan miljö för att se dess uppgifter.",
   "b6643b9f882a16a0": "Uppgiftskörningen slutfördes eller någon markerade uppgiften som klar.",
   "b91b85035d1be697": "Blockerande",
   "b9755d2c4d7df997": "Startade utan godkännande",
+  "bbf426541c7a09ce": "Ta in",
+  "bd392f2728e0cc81": "Objekt från offentliga flöden som den här servern följer. Inget här körs av sig självt. Ta in lägger till en Backlog-uppgift, inte startad, med objektets titel; objektets text och länk finns kvar här.",
   "bd532ceeb541bb77": "Visa fynd",
   "bdc47e01d7e0b74f": "Projekt",
   "bdc8a79834c2f462": "{task} {title}, {column}, blockeras av {blockers}",
+  "bedd76860db784e5": "Arbetsflöden är avstängda på den här servern, så flödena läses inte.",
   "bf39074b8186ab35": "Öppna körning",
   "bf6a241f0ac4628a": "Resultat",
   "bfc58b00d4441dac": "{task} {title}, {column}",
   "c151f97e7abe8b2c": "Arbete är köat för att starta och kan fortfarande ha hinder.",
   "c1ebc11561c5569e": "{column}, från underordnade",
+  "c3c3eee7650ee5b7": "adressen använder en annan port än 443",
   "c3cf36342aa39f5b": "Öppna körning",
   "c486174a9fcdbd6f": "Belägg",
   "c71e095a16303b19": "Kunde inte skapa uppgiften.",
@@ -13248,6 +13335,7 @@
   "cf75789d434680ab": "Planen kunde inte läsas in. Öppna körningen för att se den.",
   "d35730dea8ec42d4": "Titel",
   "d3d1343241c287e7": "Nästa objekt som behöver mig",
+  "d835a4bb4e0136ce": "anslutningen misslyckades",
   "d88d19c6c85c3d47": "Typ",
   "d9170272700d12c0": "Filtrera efter titel eller T-nummer",
   "d9b1d99e68db555e": "Kasta",
@@ -13301,6 +13389,7 @@
   ],
   "e0639f900bf775e6": "Visa fynd för del {n}",
   "e273272382783e2c": "Accepterad",
+  "e349d13d69961e52": "adressen innehåller ett användarnamn eller lösenord",
   "e727bdbb71e2eb84": "Filtrera uppgifter",
   "e76ca803d5bf3048": "Godkänd",
   "e7c99bd54278936b": "Visa plan",
@@ -13309,6 +13398,20 @@
   "e8e8d87e6fc02fc6": "Redo",
   "e95d0ec70d504f53": "Blockeras av",
   "ea6d2138d955f584": "Överordnad uppgift",
+  "eaec74af7e77385a": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "· revision ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ],
   "eb09e7e08cf2ad4b": "Acceptera",
   "ec15e1b4845411ea": "Ingen",
   "ec5e2edf708466b2": "Öppen",
@@ -13349,11 +13452,49 @@
     }
   },
   "ef007096642f36fe": "Väntar på godkännande",
+  "f01ee5fb1a1cfbb9": "flödet är varken RSS 2.0 eller Atom 1.0",
   "f0df0ef7081848c5": "Dölj fynd",
   "f1883a8babfa2e18": "Kritiskt granskad",
+  "f2e489303c279848": "Dess väntande och avgjorda objekt lämnar Signaler. Redan intagna uppgifter finns kvar.",
+  "f384dfd0feb7b59d": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " objekt väntar"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " objekt väntar"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "f4e8335020f33490": "Inget väntar.",
   "f52f0e92bd12adf4": "Inga fynd.",
   "f937d61c9c85ea86": "Planen registrerar ingen ordning mellan sina delar.",
+  "f94af8e25d3cfb42": "Signaler",
   "f966abe4b6a5d91f": "Stoppad",
+  "fa68afc66d942a21": "Följ flöde",
   "fb90b8e5705ab86c": "Inga uppgifter",
   "fbe9165c6105daaa": "Arbete granskas eller har placerats här för granskning.",
   "fc0e18b3717236be": "Forskning",
@@ -13361,5 +13502,7 @@
   "fc9df14ea23f45b9": "Försök",
   "fe0d419a5d3fbfc4": "Läser in uppgiften…",
   "fe1661762f04bca8": "Anslut en miljö för att se dess uppgifter.",
-  "febdde86fbbd2bec": "Nästa objekt som behöver mig"
+  "febdde86fbbd2bec": "Nästa objekt som behöver mig",
+  "ff4ede69f61391f6": "Lade till T-{number} i Backlog",
+  "ff555031b012fdbd": "Kunde inte följa det här flödet"
 }

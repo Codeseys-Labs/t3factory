@@ -12983,9 +12983,11 @@
   "92e129bf413a1220": "retirada",
   "0094310916298140": "Tablero",
   "02d5fa3cda9e56cd": "Sin terminar",
+  "03833d787c4c8e17": "la fuente pesa más de 256 KB",
   "0532ec85f9970a4a": "Software",
   "05ac7284b77b849c": "Usar los suyos",
   "05ce33cc16f8a854": "Requisitos previos",
+  "06491a5281cc2d5b": "Mostrando los 200 elementos más recientes.",
   "069abdf7d6ce5cf5": "Deshacer",
   "0822282c37437989": "Abrir Trabajo",
   "0930858b7d7bdab6": "Proyecto",
@@ -12998,6 +13000,7 @@
   "0e7829110b2ebbbf": "Solo cambió su revisión; ninguno de sus campos cambió.",
   "0fe5811407f794ec": "Aún no hay notas.",
   "1119c65be9b7bcc6": "Revisión",
+  "114ebd0b99ebb95b": "Fuentes",
   "121999b234ff2db3": "Bloqueada por",
   "16543672eb03378c": "Tarea",
   "165803dbcb0970a8": "Aún no hay tareas",
@@ -13009,6 +13012,8 @@
   "19c3c1a9ac268e42": "Este hilo es ahora el Orquestador de {project}",
   "1a7d1a75fcf8e90a": "Revisada en un head que luego cambió. Los hallazgos de esta ronda no deciden nada.",
   "1bad9d7b05e8f610": "Terminada",
+  "1bc9734fc0696002": "la fuente usa una entidad que XML no define",
+  "1bd9c23390d35939": "el servidor tardó más de 5 segundos",
   "1da04a9d790cb95b": "Título",
   "21254b0cf7488b28": "Rechazado",
   "216c7e223db0c2c3": "Cerrar la tarea",
@@ -13016,6 +13021,16 @@
   "23aa75365aeeaecf": "No se inició",
   "23c5142879bffe19": "Ir a la tarea...",
   "24a5ed46772567f9": "Cargando ejecuciones de flujos de trabajo. Las tareas con una ejecución aún pueden cambiar de columna.",
+  "24ecbd05716ac96b": [
+    "¿Dejar de seguir",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "?"
+  ],
   "25ad38609b25c9ba": "{count, plural, one {{count} hallazgo bloqueante} other {{count} hallazgos bloqueantes}}",
   "2657b67031e6362c": "Tareas",
   "274678b3367dacf0": "Ocultar hallazgos de la parte {n}",
@@ -13037,6 +13052,7 @@
   "339dae6f825c6866": "Convertir este hilo en el Orquestador del proyecto",
   "34fabd5b00324ca9": "Tipo",
   "3acc2e4803ca995a": "Título",
+  "3bd8b55944df1bf4": "Abrir T-{number}",
   "3c0f7b24ac041b05": "Añadir una nota",
   "3d08cdd31183989c": "Ahora nada te necesita.",
   "401acc7606948304": "Proyecto",
@@ -13063,18 +13079,66 @@
     },
     " y luego vuelve a iniciar la tarea."
   ],
+  "4f6fe0c78d4b441a": "https://example.com/feed.xml",
   "4fd41cd4bac9af2c": "Trabajando",
   "513b0829d813281c": "Aprobada",
+  "51d78514e4664564": "Dejar de seguir",
+  "530fb0a2f5ef2231": "no se pudo resolver el nombre del host",
+  "5518fdfcf609d23d": "Dirección de la fuente",
+  "57194817096f4a56": "Admitido",
+  "575baf31cbdf9bab": "el host se resuelve a una dirección privada, local o reservada",
   "57b36fa6ad882791": "Esta tarea cambió en otro lugar",
   "5821325e13e8329b": "{count, plural, one {Trabajo, {count} elemento te necesita} other {Trabajo, {count} elementos te necesitan}}",
+  "59a6d461bd74bdd2": "el servidor respondió {status}",
   "5ad462f4acd1df24": "El trabajo está en curso o se ha colocado aquí manualmente.",
   "5bf5bb285f190ce3": "El plan no se puede mostrar. Abre la ejecución para verlo.",
+  "5cabe0f3106a1eca": "Este servidor sigue 20 fuentes, el máximo posible.",
   "5cb583427721b345": "Comprobando su ejecución…",
+  "5d0933c767afcdfe": "No se pudo descartar este elemento",
   "5e15635f0c285d0f": "Esta tarea cambió en otro lugar y se recargó. Vuelve a intentarlo.",
   "5e4450e1ebf3d038": "Desconocido",
+  "5fa5a990abec3975": "Aún no leído",
+  "60443360213f097d": "Decididos",
+  "61797b167ce0f4c9": "el servidor redirigió, algo que Señales no sigue",
   "6243b0090ac24fe0": "Columna",
+  "635ce74b53610864": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "t": "p",
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " registro de señal no se pudo leer."
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " registros de señales no se pudieron leer."
+          ]
+        }
+      }
+    }
+  },
+  "66372fd8b40675b7": "la fuente no es un XML bien formado",
   "669fc276c14e6e3b": "En curso",
   "66a5dbbae70d81ce": "No se pudo iniciar la tarea.",
+  "66fc6f5af8b33801": "Cambió después de ser admitido",
+  "67e0bab89cac2736": "la dirección no es https",
   "6828296ea374e663": "Conservar los míos",
   "690a337e8dc06a36": [
     "No se pudieron cargar las ejecuciones de flujos de trabajo, por lo que las tarjetas no muestran el estado de ejecución. Revisa los flujos de trabajo en",
@@ -13087,30 +13151,43 @@
     "."
   ],
   "6a0656e8e0e14b1b": "Backlog",
+  "6a24d37af543b392": "Admitida desde una fuente seguida en la revisión {revision}. El elemento en sí está en Señales.",
   "6a79e70aa91adb5c": "No se volvió a plantear",
   "6af1920a1db1a000": "Ninguna",
   "6df6d3f7a704fdc0": "Sellado",
   "6e854b5468c726ae": "Proyecto",
+  "6e96ce482c3d701e": "Descartado",
+  "6ef815722cc9e485": "{n, plural, one {Señales, {n} elemento en espera} other {Señales, {n} elementos en espera}}",
   "6f7f4e5329bdc6af": "Trabajo",
   "6fbd0df6a44c288c": "Artefacto no listado",
   "6fd6d050dbc62587": "Te necesitan",
+  "71509d79af0cc5de": "Aún no se ha decidido nada.",
+  "7180adf1efc1dc6b": "Falló la última lectura {date}: {reason}",
   "71b118ff5d9edcdb": "Protocolo",
   "735366a7be3e89d3": "Archivo",
   "76a46c1775f13048": "Planteado de nuevo",
+  "784cc87d53bef4c8": "Leído {date}",
   "788c4835f1c28d4e": "{task} se descartó",
   "790c1653105ddbc3": "Revisión atascada",
   "79c2aa22caf69a8e": "En curso",
+  "7addd33034d8cd76": "no se pudo leer ni guardar su registro; quita la fuente y vuelve a seguirla",
   "7b2dad70a32ea8b2": "Informe",
   "7d31a6f0c50d539d": "Hallazgos de revisión",
   "7de39043b87f7cf1": "Plan",
+  "7e63a744e9cbb25c": "No se pudo admitir este elemento",
   "7fdb1f8753f3532b": "Carril",
   "8093eaa7292a8a05": "Este intento no creó ningún plan.",
   "80b1e0d96c7b16f2": "Asignado",
+  "81f42e4fe24fde8b": "Solo direcciones https públicas en el puerto 443. El servidor lee cada fuente como máximo una vez por hora y nunca abre los enlaces que contiene.",
   "828fa78ef4e9dbb9": "Ruta de navegación de Trabajo",
   "830c1e7c48367144": "Ronda {at}",
+  "8366df9f0cc4f27c": "Su título es el del elemento. Escribe en él lo que quieres que se haga antes de iniciarla.",
+  "83cdea9b8f365bb3": "la fuente anida elementos a más de 32 niveles de profundidad",
   "85d0ee772919c83e": "Actualizado",
   "8722ba26b480af71": "Refutado",
+  "8831bf8b03749675": "la fuente no es UTF-8 simple",
   "892065b607da928c": "Este servidor no tiene ninguna tarea con ese enlace.",
+  "89b9819e837118f2": "Sigue una fuente en la pestaña Fuentes para ver aquí sus elementos.",
   "8b14a12660038932": "Preparada",
   "8b31ee36486f3ec1": "Este servidor no es compatible con Trabajo",
   "8c4e70af62cadc27": "Descartada",
@@ -13122,6 +13199,8 @@
   "8ef6bd7b080d04e5": "Fallida",
   "9160bff2a14a7bbf": "Aún no iniciada.",
   "91fe864350610824": "Descartada",
+  "92265c1181a4bced": "Admitido como T-{number}",
+  "922d764133c8c427": "la fuente declara un DTD o entidades",
   "93d697753aca4033": "Detalle",
   "96a6809814dca07e": "Lista",
   "96dfc9f03d480197": "Aprobar plan",
@@ -13163,6 +13242,7 @@
       }
     }
   },
+  "9e666c8df9f25155": "la dirección nombra un host local",
   "9eda62107551fc6d": "Todos los proyectos",
   "9f5f9a79d7041da4": "Ocultar plan",
   "9f62431445e9e436": "{name} no está conectado. Crea la tarea cuando se vuelva a conectar.",
@@ -13179,20 +13259,27 @@
   "adae883fd7189da7": "Cargando tareas…",
   "aea8f73a29717a31": "Cerrar",
   "b1a18f3ba4bc860c": "Backlog",
+  "b4b8aded70ec1f9e": "la dirección no es una dirección web completa",
   "b4fed0b16bdac961": "Bloqueada por",
   "b552cd7f582a1b8b": "Añadir nota",
+  "b593ac99e1c76997": "Enlace:",
+  "b609a4988213005b": "No se pudo dejar de seguir esta fuente",
   "b6221630968b378a": "Sus tareas se mostrarán de nuevo cuando se vuelva a conectar. Elige otro entorno para ver sus tareas.",
   "b6643b9f882a16a0": "La ejecución de la tarea se completó o alguien marcó la tarea como terminada.",
   "b91b85035d1be697": "Bloqueante",
   "b9755d2c4d7df997": "Iniciado sin aprobación",
+  "bbf426541c7a09ce": "Admitir",
+  "bd392f2728e0cc81": "Elementos de fuentes públicas que sigue este servidor. Nada aquí se ejecuta solo. Admitir añade una tarea al Backlog, sin iniciar, con el título del elemento; el texto y el enlace del elemento se quedan aquí.",
   "bd532ceeb541bb77": "Mostrar hallazgos",
   "bdc47e01d7e0b74f": "Proyecto",
   "bdc8a79834c2f462": "{task} {title}, {column}, bloqueada por {blockers}",
+  "bedd76860db784e5": "Los flujos de trabajo están desactivados en este servidor, por lo que las fuentes no se leen.",
   "bf39074b8186ab35": "Abrir ejecución",
   "bf6a241f0ac4628a": "Resultados",
   "bfc58b00d4441dac": "{task} {title}, {column}",
   "c151f97e7abe8b2c": "El trabajo está en cola para iniciarse y aún puede tener bloqueos.",
   "c1ebc11561c5569e": "{column}, de subtareas",
+  "c3c3eee7650ee5b7": "la dirección usa un puerto distinto de 443",
   "c3cf36342aa39f5b": "Abrir ejecución",
   "c486174a9fcdbd6f": "Evidencia",
   "c71e095a16303b19": "No se pudo crear la tarea.",
@@ -13236,6 +13323,7 @@
   "cf75789d434680ab": "No se pudo cargar el plan. Abre la ejecución para verlo.",
   "d35730dea8ec42d4": "Título",
   "d3d1343241c287e7": "Siguiente elemento que me necesita",
+  "d835a4bb4e0136ce": "falló la conexión",
   "d88d19c6c85c3d47": "Tipo",
   "d9170272700d12c0": "Filtrar por título o número T",
   "d9b1d99e68db555e": "Descartar",
@@ -13289,6 +13377,7 @@
   ],
   "e0639f900bf775e6": "Mostrar hallazgos de la parte {n}",
   "e273272382783e2c": "Aceptado",
+  "e349d13d69961e52": "la dirección contiene un nombre de usuario o una contraseña",
   "e727bdbb71e2eb84": "Filtrar tareas",
   "e76ca803d5bf3048": "Aprobado",
   "e7c99bd54278936b": "Ver plan",
@@ -13297,6 +13386,20 @@
   "e8e8d87e6fc02fc6": "Preparada",
   "e95d0ec70d504f53": "Bloqueada por",
   "ea6d2138d955f584": "Parte de",
+  "eaec74af7e77385a": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "· revisión ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ],
   "eb09e7e08cf2ad4b": "Aceptar",
   "ec15e1b4845411ea": "Ninguna",
   "ec5e2edf708466b2": "Abierto",
@@ -13337,11 +13440,49 @@
     }
   },
   "ef007096642f36fe": "Esperando aprobación",
+  "f01ee5fb1a1cfbb9": "la fuente no es ni RSS 2.0 ni Atom 1.0",
   "f0df0ef7081848c5": "Ocultar hallazgos",
   "f1883a8babfa2e18": "Revisado",
+  "f2e489303c279848": "Sus elementos en espera y decididos salen de Señales. Las tareas ya admitidas se quedan.",
+  "f384dfd0feb7b59d": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "t": "p",
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " elemento en espera"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " elementos en espera"
+          ]
+        }
+      }
+    }
+  },
+  "f4e8335020f33490": "No hay nada en espera.",
   "f52f0e92bd12adf4": "Sin hallazgos.",
   "f937d61c9c85ea86": "El plan no registra ningún orden entre sus partes.",
+  "f94af8e25d3cfb42": "Señales",
   "f966abe4b6a5d91f": "Detenida",
+  "fa68afc66d942a21": "Seguir fuente",
   "fb90b8e5705ab86c": "Sin tareas",
   "fbe9165c6105daaa": "El trabajo está en revisión o se ha colocado aquí para su revisión.",
   "fc0e18b3717236be": "Investigación",
@@ -13349,5 +13490,7 @@
   "fc9df14ea23f45b9": "Intentos",
   "fe0d419a5d3fbfc4": "Cargando la tarea…",
   "fe1661762f04bca8": "Conecta un entorno para ver sus tareas.",
-  "febdde86fbbd2bec": "Siguiente elemento que me necesita"
+  "febdde86fbbd2bec": "Siguiente elemento que me necesita",
+  "ff4ede69f61391f6": "T-{number} añadida al Backlog",
+  "ff555031b012fdbd": "No se pudo seguir esta fuente"
 }

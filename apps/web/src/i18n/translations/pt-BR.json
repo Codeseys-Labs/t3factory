@@ -12988,9 +12988,11 @@
   "92e129bf413a1220": "retirada",
   "0094310916298140": "Quadro",
   "02d5fa3cda9e56cd": "Não concluída",
+  "03833d787c4c8e17": "o feed tem mais de 256 KB",
   "0532ec85f9970a4a": "Software",
   "05ac7284b77b849c": "Usar a deles",
   "05ce33cc16f8a854": "Pré-requisitos",
+  "06491a5281cc2d5b": "Mostrando os 200 itens mais recentes.",
   "069abdf7d6ce5cf5": "Desfazer",
   "0822282c37437989": "Abrir trabalho",
   "0930858b7d7bdab6": "Projeto",
@@ -13003,6 +13005,7 @@
   "0e7829110b2ebbbf": "Apenas a revisão mudou; nenhum de seus campos foi alterado.",
   "0fe5811407f794ec": "Nenhuma nota ainda.",
   "1119c65be9b7bcc6": "Revisão",
+  "114ebd0b99ebb95b": "Feeds",
   "121999b234ff2db3": "Bloqueada por",
   "16543672eb03378c": "Tarefa",
   "165803dbcb0970a8": "Nenhuma tarefa ainda",
@@ -13014,6 +13017,8 @@
   "19c3c1a9ac268e42": "Esta thread agora é o orquestrador de {project}",
   "1a7d1a75fcf8e90a": "Revisada em um head que depois mudou. Os achados desta rodada não decidem nada.",
   "1bad9d7b05e8f610": "Concluída",
+  "1bc9734fc0696002": "o feed usa uma entidade que o XML não define",
+  "1bd9c23390d35939": "o servidor demorou mais de 5 segundos",
   "1da04a9d790cb95b": "Título",
   "21254b0cf7488b28": "Rejeitado",
   "216c7e223db0c2c3": "Fechar a tarefa",
@@ -13021,6 +13026,16 @@
   "23aa75365aeeaecf": "Não iniciou",
   "23c5142879bffe19": "Ir para a tarefa...",
   "24a5ed46772567f9": "Carregando execuções de workflow. Tarefas com execução ainda podem mudar de coluna.",
+  "24ecbd05716ac96b": [
+    "Deixar de seguir",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "?"
+  ],
   "25ad38609b25c9ba": "{count, plural, one {{count} achado bloqueante} other {{count} achados bloqueantes}}",
   "2657b67031e6362c": "Tarefas",
   "274678b3367dacf0": "Ocultar achados da parte {n}",
@@ -13042,6 +13057,7 @@
   "339dae6f825c6866": "Tornar esta thread o orquestrador do projeto",
   "34fabd5b00324ca9": "Tipo",
   "3acc2e4803ca995a": "Título",
+  "3bd8b55944df1bf4": "Abrir T-{number}",
   "3c0f7b24ac041b05": "Adicionar uma nota",
   "3d08cdd31183989c": "Nada precisa de você agora.",
   "401acc7606948304": "Projeto",
@@ -13068,18 +13084,66 @@
     },
     " e inicie a tarefa novamente."
   ],
+  "4f6fe0c78d4b441a": "https://example.com/feed.xml",
   "4fd41cd4bac9af2c": "Trabalhando",
   "513b0829d813281c": "Aprovada",
+  "51d78514e4664564": "Deixar de seguir",
+  "530fb0a2f5ef2231": "não foi possível resolver o nome do host",
+  "5518fdfcf609d23d": "Endereço do feed",
+  "57194817096f4a56": "Admitido",
+  "575baf31cbdf9bab": "o host resolve para um endereço privado, local ou reservado",
   "57b36fa6ad882791": "Esta tarefa mudou em outro local",
   "5821325e13e8329b": "{count, plural, one {Trabalho, {count} item precisa de você} other {Trabalho, {count} itens precisam de você}}",
+  "59a6d461bd74bdd2": "o servidor respondeu {status}",
   "5ad462f4acd1df24": "O trabalho está em andamento ou foi colocado aqui manualmente.",
   "5bf5bb285f190ce3": "Não é possível mostrar o plano. Abra a execução para vê-lo.",
+  "5cabe0f3106a1eca": "Este servidor segue 20 feeds, o máximo possível.",
   "5cb583427721b345": "Verificando execução…",
+  "5d0933c767afcdfe": "Não foi possível dispensar este item",
   "5e15635f0c285d0f": "Esta tarefa mudou em outro local e foi recarregada. Tente novamente.",
   "5e4450e1ebf3d038": "Desconhecido",
+  "5fa5a990abec3975": "Ainda não lido",
+  "60443360213f097d": "Decididos",
+  "61797b167ce0f4c9": "o servidor redirecionou, e Sinais não segue redirecionamentos",
   "6243b0090ac24fe0": "Coluna",
+  "635ce74b53610864": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " registro de sinal não pôde ser lido."
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " registros de sinais não puderam ser lidos."
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "66372fd8b40675b7": "o feed não é XML bem formado",
   "669fc276c14e6e3b": "Em andamento",
   "66a5dbbae70d81ce": "Não foi possível iniciar a tarefa.",
+  "66fc6f5af8b33801": "Alterado depois de ser admitido",
+  "67e0bab89cac2736": "o endereço não é https",
   "6828296ea374e663": "Manter a minha",
   "690a337e8dc06a36": [
     "Não foi possível carregar as execuções de workflow, então os cartões não mostram o estado da execução. Verifique os workflows em",
@@ -13092,30 +13156,43 @@
     "."
   ],
   "6a0656e8e0e14b1b": "Backlog",
+  "6a24d37af543b392": "Admitida a partir de um feed seguido na revisão {revision}. O item em si está em Sinais.",
   "6a79e70aa91adb5c": "Não apontado de novo",
   "6af1920a1db1a000": "Nenhum",
   "6df6d3f7a704fdc0": "Selado",
   "6e854b5468c726ae": "Projeto",
+  "6e96ce482c3d701e": "Dispensado",
+  "6ef815722cc9e485": "{n, plural, one {Sinais, {n} item aguardando} other {Sinais, {n} itens aguardando}}",
   "6f7f4e5329bdc6af": "Trabalho",
   "6fbd0df6a44c288c": "Artefato não listado",
   "6fd6d050dbc62587": "Precisa de você",
+  "71509d79af0cc5de": "Nada decidido ainda.",
+  "7180adf1efc1dc6b": "Falha na última leitura em {date}: {reason}",
   "71b118ff5d9edcdb": "Protocolo",
   "735366a7be3e89d3": "Arquivo",
   "76a46c1775f13048": "Apontado de novo",
+  "784cc87d53bef4c8": "Lido em {date}",
   "788c4835f1c28d4e": "{task} foi descartada",
   "790c1653105ddbc3": "Revisão travada",
   "79c2aa22caf69a8e": "Em andamento",
+  "7addd33034d8cd76": "seu registro não pôde ser lido nem salvo; remova o feed e siga-o novamente",
   "7b2dad70a32ea8b2": "Briefing",
   "7d31a6f0c50d539d": "Achados da revisão",
   "7de39043b87f7cf1": "Plano",
+  "7e63a744e9cbb25c": "Não foi possível admitir este item",
   "7fdb1f8753f3532b": "Raia",
   "8093eaa7292a8a05": "Esta tentativa não gerou um plano.",
   "80b1e0d96c7b16f2": "Responsável",
+  "81f42e4fe24fde8b": "Somente endereços https públicos na porta 443. O servidor lê cada feed no máximo uma vez por hora e nunca abre os links dentro dele.",
   "828fa78ef4e9dbb9": "Trilha de navegação de trabalho",
   "830c1e7c48367144": "Rodada {at}",
+  "8366df9f0cc4f27c": "O título dela é o título do item. Escreva nele o que você quer que seja feito antes de iniciá-la.",
+  "83cdea9b8f365bb3": "o feed aninha elementos em mais de 32 níveis",
   "85d0ee772919c83e": "Atualizado",
   "8722ba26b480af71": "Refutado",
+  "8831bf8b03749675": "o feed não é UTF-8 simples",
   "892065b607da928c": "Este servidor não tem nenhuma tarefa com esse link.",
+  "89b9819e837118f2": "Siga um feed na aba Feeds para ver os itens dele aqui.",
   "8b14a12660038932": "Pronta",
   "8b31ee36486f3ec1": "Este servidor não tem suporte ao Trabalho",
   "8c4e70af62cadc27": "Descartada",
@@ -13127,6 +13204,8 @@
   "8ef6bd7b080d04e5": "Falhou",
   "9160bff2a14a7bbf": "Ainda não iniciada.",
   "91fe864350610824": "Descartada",
+  "92265c1181a4bced": "Admitido como T-{number}",
+  "922d764133c8c427": "o feed declara um DTD ou entidades",
   "93d697753aca4033": "Detalhe",
   "96a6809814dca07e": "Lista",
   "96dfc9f03d480197": "Aprovar plano",
@@ -13168,6 +13247,7 @@
       "t": "p"
     }
   },
+  "9e666c8df9f25155": "o endereço indica um host local",
   "9eda62107551fc6d": "Todos os projetos",
   "9f5f9a79d7041da4": "Ocultar plano",
   "9f62431445e9e436": "{name} não está conectado. Crie a tarefa quando ele se reconectar.",
@@ -13184,20 +13264,27 @@
   "adae883fd7189da7": "Carregando tarefas…",
   "aea8f73a29717a31": "Fechar",
   "b1a18f3ba4bc860c": "Backlog",
+  "b4b8aded70ec1f9e": "o endereço não é um endereço web completo",
   "b4fed0b16bdac961": "Bloqueada por",
   "b552cd7f582a1b8b": "Adicionar nota",
+  "b593ac99e1c76997": "Link:",
+  "b609a4988213005b": "Não foi possível deixar de seguir este feed",
   "b6221630968b378a": "As tarefas voltam a aparecer quando ele se reconectar. Escolha outro ambiente para ver as tarefas dele.",
   "b6643b9f882a16a0": "A execução da tarefa foi concluída ou alguém marcou a tarefa como concluída.",
   "b91b85035d1be697": "Bloqueante",
   "b9755d2c4d7df997": "Iniciado sem aprovação",
+  "bbf426541c7a09ce": "Admitir",
+  "bd392f2728e0cc81": "Itens de feeds públicos que este servidor segue. Nada aqui é executado sozinho. Admitir adiciona ao Backlog uma tarefa, não iniciada, com o título do item; o texto e o link do item ficam aqui.",
   "bd532ceeb541bb77": "Mostrar achados",
   "bdc47e01d7e0b74f": "Projeto",
   "bdc8a79834c2f462": "{task} {title}, {column}, bloqueada por {blockers}",
+  "bedd76860db784e5": "Os workflows estão desativados neste servidor, então os feeds não são lidos.",
   "bf39074b8186ab35": "Abrir execução",
   "bf6a241f0ac4628a": "Resultados",
   "bfc58b00d4441dac": "{task} {title}, {column}",
   "c151f97e7abe8b2c": "O trabalho está na fila para iniciar e ainda pode ter bloqueios.",
   "c1ebc11561c5569e": "{column}, das tarefas filhas",
+  "c3c3eee7650ee5b7": "o endereço usa uma porta diferente de 443",
   "c3cf36342aa39f5b": "Abrir execução",
   "c486174a9fcdbd6f": "Evidência",
   "c71e095a16303b19": "Não foi possível criar a tarefa.",
@@ -13241,6 +13328,7 @@
   "cf75789d434680ab": "Não foi possível carregar o plano. Abra a execução para vê-lo.",
   "d35730dea8ec42d4": "Título",
   "d3d1343241c287e7": "Próximo item que precisa de mim",
+  "d835a4bb4e0136ce": "a conexão falhou",
   "d88d19c6c85c3d47": "Tipo",
   "d9170272700d12c0": "Filtrar por título ou número T",
   "d9b1d99e68db555e": "Descartar",
@@ -13294,6 +13382,7 @@
   ],
   "e0639f900bf775e6": "Mostrar achados da parte {n}",
   "e273272382783e2c": "Aceito",
+  "e349d13d69961e52": "o endereço contém um nome de usuário ou senha",
   "e727bdbb71e2eb84": "Filtrar tarefas",
   "e76ca803d5bf3048": "Aprovado",
   "e7c99bd54278936b": "Ver plano",
@@ -13302,6 +13391,20 @@
   "e8e8d87e6fc02fc6": "Pronta",
   "e95d0ec70d504f53": "Bloqueada por",
   "ea6d2138d955f584": "Tarefa pai",
+  "eaec74af7e77385a": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "· revisão ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ],
   "eb09e7e08cf2ad4b": "Aceitar",
   "ec15e1b4845411ea": "Nenhum",
   "ec5e2edf708466b2": "Aberto",
@@ -13342,11 +13445,49 @@
     }
   },
   "ef007096642f36fe": "Aguardando aprovação",
+  "f01ee5fb1a1cfbb9": "o feed não é RSS 2.0 nem Atom 1.0",
   "f0df0ef7081848c5": "Ocultar achados",
   "f1883a8babfa2e18": "Criticado",
+  "f2e489303c279848": "Os itens dele que aguardam e os já decididos saem de Sinais. As tarefas já admitidas permanecem.",
+  "f384dfd0feb7b59d": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " item aguardando"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " itens aguardando"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "f4e8335020f33490": "Nada aguardando.",
   "f52f0e92bd12adf4": "Nenhum achado.",
   "f937d61c9c85ea86": "O plano não registra ordem entre suas partes.",
+  "f94af8e25d3cfb42": "Sinais",
   "f966abe4b6a5d91f": "Parada",
+  "fa68afc66d942a21": "Seguir feed",
   "fb90b8e5705ab86c": "Nenhuma tarefa",
   "fbe9165c6105daaa": "O trabalho está em revisão ou foi colocado aqui para revisão.",
   "fc0e18b3717236be": "Pesquisa",
@@ -13354,5 +13495,7 @@
   "fc9df14ea23f45b9": "Tentativas",
   "fe0d419a5d3fbfc4": "Carregando a tarefa…",
   "fe1661762f04bca8": "Conecte um ambiente para ver as tarefas dele.",
-  "febdde86fbbd2bec": "Próximo item que precisa de mim"
+  "febdde86fbbd2bec": "Próximo item que precisa de mim",
+  "ff4ede69f61391f6": "T-{number} adicionada ao Backlog",
+  "ff555031b012fdbd": "Não foi possível seguir este feed"
 }

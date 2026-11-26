@@ -367,5 +367,148 @@
   "fc9df14ea23f45b9": "Tentativas",
   "fe0d419a5d3fbfc4": "Carregando a tarefa…",
   "fe1661762f04bca8": "Conecte um ambiente para ver as tarefas dele.",
-  "febdde86fbbd2bec": "Próximo item que precisa de mim"
+  "febdde86fbbd2bec": "Próximo item que precisa de mim",
+  "03833d787c4c8e17": "o feed tem mais de 256 KB",
+  "06491a5281cc2d5b": "Mostrando os 200 itens mais recentes.",
+  "114ebd0b99ebb95b": "Feeds",
+  "1bc9734fc0696002": "o feed usa uma entidade que o XML não define",
+  "1bd9c23390d35939": "o servidor demorou mais de 5 segundos",
+  "3bd8b55944df1bf4": "Abrir T-{number}",
+  "4f6fe0c78d4b441a": "https://example.com/feed.xml",
+  "51d78514e4664564": "Deixar de seguir",
+  "530fb0a2f5ef2231": "não foi possível resolver o nome do host",
+  "5518fdfcf609d23d": "Endereço do feed",
+  "57194817096f4a56": "Admitido",
+  "575baf31cbdf9bab": "o host resolve para um endereço privado, local ou reservado",
+  "59a6d461bd74bdd2": "o servidor respondeu {status}",
+  "5cabe0f3106a1eca": "Este servidor segue 20 feeds, o máximo possível.",
+  "5d0933c767afcdfe": "Não foi possível dispensar este item",
+  "5fa5a990abec3975": "Ainda não lido",
+  "60443360213f097d": "Decididos",
+  "61797b167ce0f4c9": "o servidor redirecionou, e Sinais não segue redirecionamentos",
+  "635ce74b53610864": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " registro de sinal não pôde ser lido."
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " registros de sinais não puderam ser lidos."
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "66372fd8b40675b7": "o feed não é XML bem formado",
+  "66fc6f5af8b33801": "Alterado depois de ser admitido",
+  "67e0bab89cac2736": "o endereço não é https",
+  "6a24d37af543b392": "Admitida a partir de um feed seguido na revisão {revision}. O item em si está em Sinais.",
+  "6e96ce482c3d701e": "Dispensado",
+  "6ef815722cc9e485": "{n, plural, one {Sinais, {n} item aguardando} other {Sinais, {n} itens aguardando}}",
+  "71509d79af0cc5de": "Nada decidido ainda.",
+  "7180adf1efc1dc6b": "Falha na última leitura em {date}: {reason}",
+  "784cc87d53bef4c8": "Lido em {date}",
+  "7addd33034d8cd76": "seu registro não pôde ser lido nem salvo; remova o feed e siga-o novamente",
+  "7e63a744e9cbb25c": "Não foi possível admitir este item",
+  "81f42e4fe24fde8b": "Somente endereços https públicos na porta 443. O servidor lê cada feed no máximo uma vez por hora e nunca abre os links dentro dele.",
+  "8366df9f0cc4f27c": "O título dela é o título do item. Escreva nele o que você quer que seja feito antes de iniciá-la.",
+  "83cdea9b8f365bb3": "o feed aninha elementos em mais de 32 níveis",
+  "8831bf8b03749675": "o feed não é UTF-8 simples",
+  "89b9819e837118f2": "Siga um feed na aba Feeds para ver os itens dele aqui.",
+  "92265c1181a4bced": "Admitido como T-{number}",
+  "922d764133c8c427": "o feed declara um DTD ou entidades",
+  "eaec74af7e77385a": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "· revisão ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ],
+  "9e666c8df9f25155": "o endereço indica um host local",
+  "b4b8aded70ec1f9e": "o endereço não é um endereço web completo",
+  "b593ac99e1c76997": "Link:",
+  "b609a4988213005b": "Não foi possível deixar de seguir este feed",
+  "bbf426541c7a09ce": "Admitir",
+  "bd392f2728e0cc81": "Itens de feeds públicos que este servidor segue. Nada aqui é executado sozinho. Admitir adiciona ao Backlog uma tarefa, não iniciada, com o título do item; o texto e o link do item ficam aqui.",
+  "bedd76860db784e5": "Os workflows estão desativados neste servidor, então os feeds não são lidos.",
+  "c3c3eee7650ee5b7": "o endereço usa uma porta diferente de 443",
+  "24ecbd05716ac96b": [
+    "Deixar de seguir",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "?"
+  ],
+  "d835a4bb4e0136ce": "a conexão falhou",
+  "e349d13d69961e52": "o endereço contém um nome de usuário ou senha",
+  "f01ee5fb1a1cfbb9": "o feed não é RSS 2.0 nem Atom 1.0",
+  "f2e489303c279848": "Os itens dele que aguardam e os já decididos saem de Sinais. As tarefas já admitidas permanecem.",
+  "f384dfd0feb7b59d": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " item aguardando"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " itens aguardando"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "f4e8335020f33490": "Nada aguardando.",
+  "f94af8e25d3cfb42": "Sinais",
+  "fa68afc66d942a21": "Seguir feed",
+  "ff4ede69f61391f6": "T-{number} adicionada ao Backlog",
+  "ff555031b012fdbd": "Não foi possível seguir este feed"
 }

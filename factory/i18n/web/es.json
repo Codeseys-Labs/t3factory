@@ -367,5 +367,148 @@
   "fc9df14ea23f45b9": "Intentos",
   "fe0d419a5d3fbfc4": "Cargando la tarea…",
   "fe1661762f04bca8": "Conecta un entorno para ver sus tareas.",
-  "febdde86fbbd2bec": "Siguiente elemento que me necesita"
+  "febdde86fbbd2bec": "Siguiente elemento que me necesita",
+  "03833d787c4c8e17": "la fuente pesa más de 256 KB",
+  "06491a5281cc2d5b": "Mostrando los 200 elementos más recientes.",
+  "114ebd0b99ebb95b": "Fuentes",
+  "1bc9734fc0696002": "la fuente usa una entidad que XML no define",
+  "1bd9c23390d35939": "el servidor tardó más de 5 segundos",
+  "3bd8b55944df1bf4": "Abrir T-{number}",
+  "4f6fe0c78d4b441a": "https://example.com/feed.xml",
+  "51d78514e4664564": "Dejar de seguir",
+  "530fb0a2f5ef2231": "no se pudo resolver el nombre del host",
+  "5518fdfcf609d23d": "Dirección de la fuente",
+  "57194817096f4a56": "Admitido",
+  "575baf31cbdf9bab": "el host se resuelve a una dirección privada, local o reservada",
+  "59a6d461bd74bdd2": "el servidor respondió {status}",
+  "5cabe0f3106a1eca": "Este servidor sigue 20 fuentes, el máximo posible.",
+  "5d0933c767afcdfe": "No se pudo descartar este elemento",
+  "5fa5a990abec3975": "Aún no leído",
+  "60443360213f097d": "Decididos",
+  "61797b167ce0f4c9": "el servidor redirigió, algo que Señales no sigue",
+  "635ce74b53610864": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "t": "p",
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " registro de señal no se pudo leer."
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " registros de señales no se pudieron leer."
+          ]
+        }
+      }
+    }
+  },
+  "66372fd8b40675b7": "la fuente no es un XML bien formado",
+  "66fc6f5af8b33801": "Cambió después de ser admitido",
+  "67e0bab89cac2736": "la dirección no es https",
+  "6a24d37af543b392": "Admitida desde una fuente seguida en la revisión {revision}. El elemento en sí está en Señales.",
+  "6e96ce482c3d701e": "Descartado",
+  "6ef815722cc9e485": "{n, plural, one {Señales, {n} elemento en espera} other {Señales, {n} elementos en espera}}",
+  "71509d79af0cc5de": "Aún no se ha decidido nada.",
+  "7180adf1efc1dc6b": "Falló la última lectura {date}: {reason}",
+  "784cc87d53bef4c8": "Leído {date}",
+  "7addd33034d8cd76": "no se pudo leer ni guardar su registro; quita la fuente y vuelve a seguirla",
+  "7e63a744e9cbb25c": "No se pudo admitir este elemento",
+  "81f42e4fe24fde8b": "Solo direcciones https públicas en el puerto 443. El servidor lee cada fuente como máximo una vez por hora y nunca abre los enlaces que contiene.",
+  "8366df9f0cc4f27c": "Su título es el del elemento. Escribe en él lo que quieres que se haga antes de iniciarla.",
+  "83cdea9b8f365bb3": "la fuente anida elementos a más de 32 niveles de profundidad",
+  "8831bf8b03749675": "la fuente no es UTF-8 simple",
+  "89b9819e837118f2": "Sigue una fuente en la pestaña Fuentes para ver aquí sus elementos.",
+  "92265c1181a4bced": "Admitido como T-{number}",
+  "922d764133c8c427": "la fuente declara un DTD o entidades",
+  "9e666c8df9f25155": "la dirección nombra un host local",
+  "b4b8aded70ec1f9e": "la dirección no es una dirección web completa",
+  "b593ac99e1c76997": "Enlace:",
+  "b609a4988213005b": "No se pudo dejar de seguir esta fuente",
+  "bbf426541c7a09ce": "Admitir",
+  "bd392f2728e0cc81": "Elementos de fuentes públicas que sigue este servidor. Nada aquí se ejecuta solo. Admitir añade una tarea al Backlog, sin iniciar, con el título del elemento; el texto y el enlace del elemento se quedan aquí.",
+  "bedd76860db784e5": "Los flujos de trabajo están desactivados en este servidor, por lo que las fuentes no se leen.",
+  "c3c3eee7650ee5b7": "la dirección usa un puerto distinto de 443",
+  "d835a4bb4e0136ce": "falló la conexión",
+  "e349d13d69961e52": "la dirección contiene un nombre de usuario o una contraseña",
+  "f01ee5fb1a1cfbb9": "la fuente no es ni RSS 2.0 ni Atom 1.0",
+  "f2e489303c279848": "Sus elementos en espera y decididos salen de Señales. Las tareas ya admitidas se quedan.",
+  "f384dfd0feb7b59d": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "t": "p",
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " elemento en espera"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " elementos en espera"
+          ]
+        }
+      }
+    }
+  },
+  "f4e8335020f33490": "No hay nada en espera.",
+  "f94af8e25d3cfb42": "Señales",
+  "fa68afc66d942a21": "Seguir fuente",
+  "ff4ede69f61391f6": "T-{number} añadida al Backlog",
+  "ff555031b012fdbd": "No se pudo seguir esta fuente",
+  "24ecbd05716ac96b": [
+    "¿Dejar de seguir",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "?"
+  ],
+  "eaec74af7e77385a": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "· revisión ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ]
 }

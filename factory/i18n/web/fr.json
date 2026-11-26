@@ -367,5 +367,148 @@
   "fc9df14ea23f45b9": "Tentatives",
   "fe0d419a5d3fbfc4": "Chargement de la tâche…",
   "fe1661762f04bca8": "Connectez un environnement pour voir ses tâches.",
-  "febdde86fbbd2bec": "Élément suivant ayant besoin de moi"
+  "febdde86fbbd2bec": "Élément suivant ayant besoin de moi",
+  "03833d787c4c8e17": "le flux dépasse 256 KB",
+  "06491a5281cc2d5b": "Affichage des 200 éléments les plus récents.",
+  "114ebd0b99ebb95b": "Flux",
+  "1bc9734fc0696002": "le flux utilise une entité que XML ne définit pas",
+  "1bd9c23390d35939": "le serveur a mis plus de 5 secondes à répondre",
+  "3bd8b55944df1bf4": "Ouvrir T-{number}",
+  "4f6fe0c78d4b441a": "https://example.com/feed.xml",
+  "51d78514e4664564": "Ne plus suivre",
+  "530fb0a2f5ef2231": "le nom d’hôte n’a pas pu être résolu",
+  "5518fdfcf609d23d": "Adresse du flux",
+  "57194817096f4a56": "Admis",
+  "575baf31cbdf9bab": "l’hôte correspond à une adresse privée, locale ou réservée",
+  "59a6d461bd74bdd2": "le serveur a répondu {status}",
+  "5cabe0f3106a1eca": "Ce serveur suit 20 flux, le maximum possible.",
+  "5d0933c767afcdfe": "Impossible d’écarter cet élément",
+  "5fa5a990abec3975": "Pas encore lu",
+  "60443360213f097d": "Décidés",
+  "61797b167ce0f4c9": "le serveur a redirigé, ce que Signaux ne suit pas",
+  "635ce74b53610864": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "t": "p",
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " enregistrement de signal n’a pas pu être lu."
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " enregistrements de signaux n’ont pas pu être lus."
+          ]
+        }
+      }
+    }
+  },
+  "66372fd8b40675b7": "le flux n’est pas du XML bien formé",
+  "66fc6f5af8b33801": "Modifié après son admission",
+  "67e0bab89cac2736": "l’adresse n’est pas en https",
+  "6a24d37af543b392": "Admise depuis un flux suivi à la révision {revision}. L’élément lui-même se trouve dans Signaux.",
+  "6e96ce482c3d701e": "Écarté",
+  "6ef815722cc9e485": "{n, plural, one {Signaux, {n} élément en attente} other {Signaux, {n} éléments en attente}}",
+  "71509d79af0cc5de": "Rien n’a encore été décidé.",
+  "7180adf1efc1dc6b": "Échec de la dernière lecture {date} : {reason}",
+  "784cc87d53bef4c8": "Lu {date}",
+  "7addd33034d8cd76": "son enregistrement n’a pas pu être lu ou enregistré ; retirez le flux et suivez-le de nouveau",
+  "7e63a744e9cbb25c": "Impossible d’admettre cet élément",
+  "81f42e4fe24fde8b": "Uniquement des adresses https publiques sur le port 443. Le serveur lit chaque flux au plus une fois par heure et n’ouvre jamais les liens qu’il contient.",
+  "8366df9f0cc4f27c": "Son titre est celui de l’élément. Écrivez-y ce que vous voulez faire avant de la démarrer.",
+  "83cdea9b8f365bb3": "le flux imbrique des éléments sur plus de 32 niveaux",
+  "8831bf8b03749675": "le flux n’est pas de l’UTF-8 pur",
+  "89b9819e837118f2": "Suivez un flux dans l’onglet Flux pour voir ses éléments ici.",
+  "92265c1181a4bced": "Admis en tant que T-{number}",
+  "922d764133c8c427": "le flux déclare une DTD ou des entités",
+  "9e666c8df9f25155": "l’adresse désigne un hôte local",
+  "b4b8aded70ec1f9e": "l’adresse n’est pas une adresse web complète",
+  "b593ac99e1c76997": "Lien :",
+  "b609a4988213005b": "Impossible de ne plus suivre ce flux",
+  "bbf426541c7a09ce": "Admettre",
+  "bd392f2728e0cc81": "Éléments des flux publics que ce serveur suit. Rien ici ne s’exécute tout seul. Admettre ajoute une tâche au Backlog, non démarrée, avec le titre de l’élément ; le texte et le lien de l’élément restent ici.",
+  "bedd76860db784e5": "Les workflows sont désactivés sur ce serveur, les flux ne sont donc pas lus.",
+  "c3c3eee7650ee5b7": "l’adresse utilise un port autre que 443",
+  "d835a4bb4e0136ce": "la connexion a échoué",
+  "e349d13d69961e52": "l’adresse contient un nom d’utilisateur ou un mot de passe",
+  "f01ee5fb1a1cfbb9": "le flux n’est ni RSS 2.0 ni Atom 1.0",
+  "f2e489303c279848": "Ses éléments en attente et décidés quittent Signaux. Les tâches déjà admises restent.",
+  "f384dfd0feb7b59d": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "t": "p",
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " élément en attente"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " éléments en attente"
+          ]
+        }
+      }
+    }
+  },
+  "f4e8335020f33490": "Rien n’est en attente.",
+  "f94af8e25d3cfb42": "Signaux",
+  "fa68afc66d942a21": "Suivre le flux",
+  "ff4ede69f61391f6": "T-{number} ajoutée au Backlog",
+  "ff555031b012fdbd": "Impossible de suivre ce flux",
+  "24ecbd05716ac96b": [
+    "Ne plus suivre",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ?"
+  ],
+  "eaec74af7e77385a": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "· révision ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ]
 }

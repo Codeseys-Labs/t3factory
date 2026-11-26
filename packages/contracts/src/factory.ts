@@ -41,10 +41,19 @@ export const FactoryTaskLane = Schema.Literals([
 ]);
 export type FactoryTaskLane = typeof FactoryTaskLane.Type;
 
+export const FactorySignalFeedId = Schema.String;
+export type FactorySignalFeedId = typeof FactorySignalFeedId.Type;
+
 export const FactoryTaskSource = Schema.Union([
   Schema.TaggedStruct("local", {}),
   Schema.TaggedStruct("issue", { url: Schema.String, displayKey: Schema.String }),
   Schema.TaggedStruct("promoted", { fromTaskId: FactoryTaskId, artifactSha256: Sha256 }),
+  Schema.TaggedStruct("signal", {
+    feedId: FactorySignalFeedId,
+    candidateId: Sha256,
+    revision: PositiveInt,
+    sha256: Sha256,
+  }),
 ]);
 export type FactoryTaskSource = typeof FactoryTaskSource.Type;
 
@@ -73,6 +82,123 @@ export const FactoryTask = Schema.Struct({
   updatedAt: IsoDateTime,
 });
 export type FactoryTask = typeof FactoryTask.Type;
+
+export const FACTORY_SIGNAL_FEEDS_MAX = 20;
+export const FACTORY_SIGNAL_LIST_LIMIT = 200;
+
+export const FactorySignalFailure = Schema.Literals([
+  "not-a-url",
+  "scheme",
+  "credentials",
+  "port",
+  "hostname",
+  "address",
+  "dns",
+  "network",
+  "timeout",
+  "redirect",
+  "status",
+  "too-large",
+  "encoding",
+  "dtd",
+  "entity",
+  "malformed",
+  "too-deep",
+  "format",
+  "store",
+]);
+export type FactorySignalFailure = typeof FactorySignalFailure.Type;
+
+const Bounded = (max: number) => Schema.String.check(Schema.isMaxLength(max));
+
+export const FactorySignalFeed = Schema.Struct({
+  v: Schema.Literal(1),
+  id: FactorySignalFeedId,
+  url: Bounded(2_048),
+  label: TrimmedNonEmptyString.check(Schema.isMaxLength(100)),
+  projectId: Schema.NullOr(ProjectId),
+  addedAt: IsoDateTime,
+});
+export type FactorySignalFeed = typeof FactorySignalFeed.Type;
+
+export const FactorySignalFeedState = Schema.Struct({
+  v: Schema.Literal(1),
+  feedId: FactorySignalFeedId,
+  lastPullAt: IsoDateTime,
+  lastOkAt: Schema.NullOr(IsoDateTime),
+  etag: Schema.NullOr(Bounded(200)),
+  lastModified: Schema.NullOr(Bounded(200)),
+  failures: NonNegativeInt,
+  failure: Schema.NullOr(FactorySignalFailure),
+  httpStatus: Schema.NullOr(Schema.Int),
+  items: NonNegativeInt,
+});
+export type FactorySignalFeedState = typeof FactorySignalFeedState.Type;
+
+export const FactorySignalCandidate = Schema.Struct({
+  v: Schema.Literal(1),
+  id: Sha256,
+  feedId: FactorySignalFeedId,
+  projectId: Schema.NullOr(ProjectId),
+  itemKey: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+  revision: PositiveInt,
+  sha256: Sha256,
+  title: TrimmedNonEmptyString.check(Schema.isMaxLength(200)),
+  summary: Bounded(2_000),
+  link: Schema.NullOr(Bounded(2_000)),
+  state: Schema.Literals(["pending", "admitted", "dismissed"]),
+  firstSeenAt: IsoDateTime,
+  changedAt: IsoDateTime,
+  decidedAt: Schema.NullOr(IsoDateTime),
+  decidedRevision: Schema.NullOr(PositiveInt),
+  decidedSha256: Schema.NullOr(Sha256),
+  taskId: Schema.NullOr(FactoryTaskId),
+});
+export type FactorySignalCandidate = typeof FactorySignalCandidate.Type;
+
+export const FactorySignalFeedView = Schema.Struct({
+  feed: FactorySignalFeed,
+  state: Schema.NullOr(FactorySignalFeedState),
+  pending: NonNegativeInt,
+});
+export type FactorySignalFeedView = typeof FactorySignalFeedView.Type;
+
+export const FactorySignalsListInput = Schema.Struct({
+  view: Schema.Literals(["pending", "decided"]),
+});
+export type FactorySignalsListInput = typeof FactorySignalsListInput.Type;
+
+export const FactorySignalsList = Schema.Struct({
+  feeds: Schema.Array(FactorySignalFeedView),
+  candidates: Schema.Array(FactorySignalCandidate),
+  damaged: NonNegativeInt,
+  truncated: Schema.Boolean,
+});
+export type FactorySignalsList = typeof FactorySignalsList.Type;
+
+export const FactorySignalFeedAddInput = Schema.Struct({
+  url: Schema.String,
+  label: Schema.String,
+  projectId: Schema.NullOr(ProjectId),
+});
+export type FactorySignalFeedAddInput = typeof FactorySignalFeedAddInput.Type;
+
+export const FactorySignalFeedRemoveInput = Schema.Struct({ feedId: FactorySignalFeedId });
+export type FactorySignalFeedRemoveInput = typeof FactorySignalFeedRemoveInput.Type;
+
+export const FactorySignalDecisionInput = Schema.Struct({
+  feedId: FactorySignalFeedId,
+  candidateId: Sha256,
+  revision: PositiveInt,
+  sha256: Sha256,
+});
+export type FactorySignalDecisionInput = typeof FactorySignalDecisionInput.Type;
+
+export const FactorySignalAdmitResult = Schema.Struct({
+  candidate: FactorySignalCandidate,
+  task: FactoryTask,
+});
+export type FactorySignalAdmitResult = typeof FactorySignalAdmitResult.Type;
 
 export const FactoryTaskRunInput = Schema.Struct({
   taskId: FactoryTaskId,
@@ -329,6 +455,11 @@ export const FACTORY_WS_METHODS = {
   factoryTasksUpdate: "factory.tasks.update",
   factoryTasksStart: "factory.tasks.start",
   factoryOrchestratorSet: "factory.orchestrator.set",
+  factorySignalsList: "factory.signals.list",
+  factorySignalFeedsAdd: "factory.signals.feeds.add",
+  factorySignalFeedsRemove: "factory.signals.feeds.remove",
+  factorySignalsAdmit: "factory.signals.admit",
+  factorySignalsDismiss: "factory.signals.dismiss",
 } as const;
 
 const FactoryTaskRequestError = Schema.Union([FactoryTaskError, EnvironmentAuthorizationError]);
@@ -369,6 +500,35 @@ const FactoryOrchestratorSetRpc = Rpc.make(FACTORY_WS_METHODS.factoryOrchestrato
   error: FactoryTaskRequestError,
 });
 
+const FactorySignalsListRpc = Rpc.make(FACTORY_WS_METHODS.factorySignalsList, {
+  payload: FactorySignalsListInput,
+  success: FactorySignalsList,
+  error: FactoryTaskRequestError,
+});
+
+const FactorySignalFeedsAddRpc = Rpc.make(FACTORY_WS_METHODS.factorySignalFeedsAdd, {
+  payload: FactorySignalFeedAddInput,
+  success: FactorySignalFeed,
+  error: FactoryTaskRequestError,
+});
+
+const FactorySignalFeedsRemoveRpc = Rpc.make(FACTORY_WS_METHODS.factorySignalFeedsRemove, {
+  payload: FactorySignalFeedRemoveInput,
+  error: FactoryTaskRequestError,
+});
+
+const FactorySignalsAdmitRpc = Rpc.make(FACTORY_WS_METHODS.factorySignalsAdmit, {
+  payload: FactorySignalDecisionInput,
+  success: FactorySignalAdmitResult,
+  error: FactoryTaskRequestError,
+});
+
+const FactorySignalsDismissRpc = Rpc.make(FACTORY_WS_METHODS.factorySignalsDismiss, {
+  payload: FactorySignalDecisionInput,
+  success: FactorySignalCandidate,
+  error: FactoryTaskRequestError,
+});
+
 export const FactoryRpcGroup = RpcGroup.make(
   FactoryTasksSubscribeRpc,
   FactoryTasksGetRpc,
@@ -376,6 +536,11 @@ export const FactoryRpcGroup = RpcGroup.make(
   FactoryTasksUpdateRpc,
   FactoryTasksStartRpc,
   FactoryOrchestratorSetRpc,
+  FactorySignalsListRpc,
+  FactorySignalFeedsAddRpc,
+  FactorySignalFeedsRemoveRpc,
+  FactorySignalsAdmitRpc,
+  FactorySignalsDismissRpc,
 );
 
 export const FACTORY_RPC_AGGREGATES = {
@@ -385,11 +550,17 @@ export const FACTORY_RPC_AGGREGATES = {
   [FACTORY_WS_METHODS.factoryTasksUpdate]: "factory",
   [FACTORY_WS_METHODS.factoryTasksStart]: "factory",
   [FACTORY_WS_METHODS.factoryOrchestratorSet]: "factory",
+  [FACTORY_WS_METHODS.factorySignalsList]: "factory",
+  [FACTORY_WS_METHODS.factorySignalFeedsAdd]: "factory",
+  [FACTORY_WS_METHODS.factorySignalFeedsRemove]: "factory",
+  [FACTORY_WS_METHODS.factorySignalsAdmit]: "factory",
+  [FACTORY_WS_METHODS.factorySignalsDismiss]: "factory",
 } as const;
 
 export const FACTORY_RPC_READ_SCOPES = {
   [FACTORY_WS_METHODS.factoryTasksSubscribe]: AuthOrchestrationReadScope,
   [FACTORY_WS_METHODS.factoryTasksGet]: AuthOrchestrationReadScope,
+  [FACTORY_WS_METHODS.factorySignalsList]: AuthOrchestrationReadScope,
 } as const;
 
 export const FACTORY_CLIENT_GUARDED_RPC_SCOPES = {
@@ -397,4 +568,8 @@ export const FACTORY_CLIENT_GUARDED_RPC_SCOPES = {
   [FACTORY_WS_METHODS.factoryTasksUpdate]: AuthOrchestrationOperateScope,
   [FACTORY_WS_METHODS.factoryTasksStart]: AuthOrchestrationOperateScope,
   [FACTORY_WS_METHODS.factoryOrchestratorSet]: AuthOrchestrationOperateScope,
+  [FACTORY_WS_METHODS.factorySignalFeedsAdd]: AuthOrchestrationOperateScope,
+  [FACTORY_WS_METHODS.factorySignalFeedsRemove]: AuthOrchestrationOperateScope,
+  [FACTORY_WS_METHODS.factorySignalsAdmit]: AuthOrchestrationOperateScope,
+  [FACTORY_WS_METHODS.factorySignalsDismiss]: AuthOrchestrationOperateScope,
 } as const;

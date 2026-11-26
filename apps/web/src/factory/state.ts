@@ -1,7 +1,8 @@
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
+  type AtomCommandResult,
   createEnvironmentRpcCommand,
   createEnvironmentRpcQueryAtomFamily,
   createEnvironmentRpcSubscriptionAtomFamily,
@@ -12,20 +13,24 @@ import {
   applyFactoryTasksUpdate,
   type EnvironmentId,
   FACTORY_WS_METHODS,
+  type FactorySignalCandidate,
   type FactoryTasksSnapshot,
   type ProjectId,
   type ThreadId,
 } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import { AsyncResult, Atom } from "effect/reactivity";
+import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
 import { useGT, useMessages } from "gt-react";
+import { useContext } from "react";
 
 import { toastManager } from "../components/ui/toast";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { useProject } from "../state/entities";
 import { serverEnvironment } from "../state/server";
 import { useAtomCommand } from "../state/use-atom-command";
+import { decisionInput, type SignalDecisionLock, signalDecisionWaits } from "./signals.logic";
 
 export const factoryTasksLive = createEnvironmentRpcSubscriptionAtomFamily(connectionAtomRuntime, {
   label: "environment-data:factory:tasks:live",
@@ -90,6 +95,128 @@ export const startFactoryTask = createEnvironmentRpcCommand(connectionAtomRuntim
     key: ({ environmentId, input }) => JSON.stringify([environmentId, input.taskId]),
   },
 });
+
+// Moved by every successful feed or decision command of an environment. Both list views read it,
+// so one on screen is read again at once and one off screen when it is next shown.
+const signalListsRevision = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make(0).pipe(Atom.keepAlive, Atom.withLabel(`factory:signals:revision:${environmentId}`)),
+);
+
+/** The followed feeds and one view of their candidates, read again each minute while shown. */
+export const factorySignalsList = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+  label: "environment-data:factory:signals:list",
+  tag: FACTORY_WS_METHODS.factorySignalsList,
+  refreshIntervalMs: 60_000,
+  refreshTrigger: ({ environmentId }) => signalListsRevision(environmentId),
+});
+
+// A decision or a feed change moves rows between the views, so both are read again.
+const refreshSignalLists = (
+  { environmentId }: { readonly environmentId: EnvironmentId },
+  registry: AtomRegistry.AtomRegistry,
+) =>
+  Effect.sync(() => {
+    const revision = signalListsRevision(environmentId);
+    registry.set(revision, registry.get(revision) + 1);
+  });
+
+export const addSignalFeed = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:factory:signals:feeds:add",
+  tag: FACTORY_WS_METHODS.factorySignalFeedsAdd,
+  onSuccess: refreshSignalLists,
+});
+
+export const removeSignalFeed = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:factory:signals:feeds:remove",
+  tag: FACTORY_WS_METHODS.factorySignalFeedsRemove,
+  onSuccess: refreshSignalLists,
+});
+
+/** The key of one candidate's decisions, in the command scheduler and in `signalDecisionLocks`. */
+export const signalDecisionKey = (environmentId: EnvironmentId, candidateId: string) =>
+  JSON.stringify([environmentId, candidateId]);
+
+// One decision on a candidate at a time, so a double click sends it once.
+const signalDecision = {
+  mode: "singleFlight",
+  key: ({
+    environmentId,
+    input,
+  }: {
+    readonly environmentId: EnvironmentId;
+    readonly input: { readonly candidateId: string };
+  }) => signalDecisionKey(environmentId, input.candidateId),
+} as const;
+
+export const admitSignal = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:factory:signals:admit",
+  tag: FACTORY_WS_METHODS.factorySignalsAdmit,
+  concurrency: signalDecision,
+  onSuccess: refreshSignalLists,
+});
+
+export const dismissSignal = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:factory:signals:dismiss",
+  tag: FACTORY_WS_METHODS.factorySignalsDismiss,
+  concurrency: signalDecision,
+  onSuccess: refreshSignalLists,
+});
+
+// Kept alive and outside the dialog: a decision outlives the dialog it was made in, and the dialog
+// opened again must not offer the other decision while the first runs or is not yet read back.
+export const signalDecisionLocks = Atom.make<ReadonlyMap<string, SignalDecisionLock>>(
+  new Map(),
+).pipe(Atom.keepAlive, Atom.withLabel("factory:signals:decisions"));
+
+/**
+ * Admit and Dismiss of a candidate, one decision at a time whichever is asked: while one runs, or
+ * once one succeeded and the list still shows the candidate as it was decided on, another sends
+ * nothing and answers null.
+ */
+export function useSignalDecisions() {
+  const registry = useContext(RegistryContext);
+  const admit = useAtomCommand(admitSignal, {
+    label: "factory signal admit",
+    reportFailure: false,
+  });
+  const dismiss = useAtomCommand(dismissSignal, {
+    label: "factory signal dismiss",
+    reportFailure: false,
+  });
+  const decide = async <A, E>(
+    environmentId: EnvironmentId,
+    candidate: FactorySignalCandidate,
+    run: () => Promise<AtomCommandResult<A, E>>,
+  ): Promise<AtomCommandResult<A, E> | null> => {
+    const key = signalDecisionKey(environmentId, candidate.id);
+    const lock = (next: SignalDecisionLock | null) => {
+      const locks = new Map(registry.get(signalDecisionLocks));
+      if (next === null) locks.delete(key);
+      else locks.set(key, next);
+      registry.set(signalDecisionLocks, locks);
+    };
+    if (signalDecisionWaits(registry.get(signalDecisionLocks).get(key), candidate)) return null;
+    lock({ phase: "running" });
+    const result = await run();
+    // A success keeps the buttons waiting until the list shows the candidate as decided.
+    lock(
+      result._tag === "Success"
+        ? { phase: "decided", revision: candidate.revision, state: candidate.state }
+        : null,
+    );
+    return result;
+  };
+  return {
+    admit: (environmentId: EnvironmentId, candidate: FactorySignalCandidate) =>
+      decide(environmentId, candidate, () =>
+        admit({ environmentId, input: decisionInput(candidate) }),
+      ),
+    dismiss: (environmentId: EnvironmentId, candidate: FactorySignalCandidate) =>
+      decide(environmentId, candidate, () =>
+        dismiss({ environmentId, input: decisionInput(candidate) }),
+      ),
+  };
+}
 
 /** The Needs you item a Work panel was opened from, and the item keys then, to return focus to. */
 export interface WorkTriage {

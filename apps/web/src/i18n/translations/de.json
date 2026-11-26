@@ -12988,9 +12988,11 @@
   "92e129bf413a1220": "zurückgezogen",
   "0094310916298140": "Board",
   "02d5fa3cda9e56cd": "Nicht fertig",
+  "03833d787c4c8e17": "der Feed ist größer als 256 KB",
   "0532ec85f9970a4a": "Software",
   "05ac7284b77b849c": "Fremde übernehmen",
   "05ce33cc16f8a854": "Voraussetzungen",
+  "06491a5281cc2d5b": "Die neuesten 200 Elemente werden angezeigt.",
   "069abdf7d6ce5cf5": "Rückgängig",
   "0822282c37437989": "Arbeit öffnen",
   "0930858b7d7bdab6": "Projekt",
@@ -13003,6 +13005,7 @@
   "0e7829110b2ebbbf": "Nur die Revision hat sich geändert; keines der Felder wurde geändert.",
   "0fe5811407f794ec": "Noch keine Notizen.",
   "1119c65be9b7bcc6": "Review",
+  "114ebd0b99ebb95b": "Feeds",
   "121999b234ff2db3": "Blockiert durch",
   "16543672eb03378c": "Aufgabe",
   "165803dbcb0970a8": "Noch keine Aufgaben",
@@ -13014,6 +13017,8 @@
   "19c3c1a9ac268e42": "Dieser Thread ist jetzt der Orchestrator für {project}",
   "1a7d1a75fcf8e90a": "An einem Head geprüft, der sich danach bewegt hat. Die Befunde dieser Runde entscheiden nichts.",
   "1bad9d7b05e8f610": "Fertig",
+  "1bc9734fc0696002": "der Feed verwendet eine Entität, die XML nicht definiert",
+  "1bd9c23390d35939": "der Server hat länger als 5 Sekunden gebraucht",
   "1da04a9d790cb95b": "Titel",
   "21254b0cf7488b28": "Abgelehnt",
   "216c7e223db0c2c3": "Aufgabe schließen",
@@ -13021,6 +13026,16 @@
   "23aa75365aeeaecf": "Nicht gestartet",
   "23c5142879bffe19": "Zu Aufgabe wechseln...",
   "24a5ed46772567f9": "Workflow-Ausführungen werden geladen. Aufgaben mit einer Ausführung können noch die Spalte wechseln.",
+  "24ecbd05716ac96b": [
+    "Folgen von",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " beenden?"
+  ],
   "25ad38609b25c9ba": "{count, plural, one {{count} blockierender Befund} other {{count} blockierende Befunde}}",
   "2657b67031e6362c": "Aufgaben",
   "274678b3367dacf0": "Befunde für Teil {n} ausblenden",
@@ -13042,6 +13057,7 @@
   "339dae6f825c6866": "Diesen Thread zum Orchestrator des Projekts machen",
   "34fabd5b00324ca9": "Art",
   "3acc2e4803ca995a": "Titel",
+  "3bd8b55944df1bf4": "T-{number} öffnen",
   "3c0f7b24ac041b05": "Notiz hinzufügen",
   "3d08cdd31183989c": "Gerade braucht dich nichts.",
   "401acc7606948304": "Projekt",
@@ -13068,18 +13084,66 @@
     },
     " und starte die Aufgabe dann erneut."
   ],
+  "4f6fe0c78d4b441a": "https://example.com/feed.xml",
   "4fd41cd4bac9af2c": "Arbeitet",
   "513b0829d813281c": "Freigegeben",
+  "51d78514e4664564": "Nicht mehr folgen",
+  "530fb0a2f5ef2231": "der Hostname konnte nicht aufgelöst werden",
+  "5518fdfcf609d23d": "Feed-Adresse",
+  "57194817096f4a56": "Übernommen",
+  "575baf31cbdf9bab": "der Host wird zu einer privaten, lokalen oder reservierten Adresse aufgelöst",
   "57b36fa6ad882791": "Diese Aufgabe wurde an anderer Stelle geändert",
   "5821325e13e8329b": "{count, plural, one {Arbeit, {count} Element braucht dich} other {Arbeit, {count} Elemente brauchen dich}}",
+  "59a6d461bd74bdd2": "der Server hat mit {status} geantwortet",
   "5ad462f4acd1df24": "Arbeit ist in Bearbeitung oder wurde manuell hierher verschoben.",
   "5bf5bb285f190ce3": "Der Plan kann nicht angezeigt werden. Öffne die Ausführung, um ihn zu sehen.",
+  "5cabe0f3106a1eca": "Dieser Server folgt 20 Feeds, mehr geht nicht.",
   "5cb583427721b345": "Ausführung wird geprüft…",
+  "5d0933c767afcdfe": "Dieses Element konnte nicht verworfen werden",
   "5e15635f0c285d0f": "Diese Aufgabe wurde an anderer Stelle geändert und neu geladen. Versuche es erneut.",
   "5e4450e1ebf3d038": "Unbekannt",
+  "5fa5a990abec3975": "Noch nicht gelesen",
+  "60443360213f097d": "Entschieden",
+  "61797b167ce0f4c9": "der Server hat weitergeleitet, was Signale nicht verfolgt",
   "6243b0090ac24fe0": "Spalte",
+  "635ce74b53610864": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "t": "p",
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " Signaleintrag konnte nicht gelesen werden."
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " Signaleinträge konnten nicht gelesen werden."
+          ]
+        }
+      }
+    }
+  },
+  "66372fd8b40675b7": "der Feed ist kein wohlgeformtes XML",
   "669fc276c14e6e3b": "In Bearbeitung",
   "66a5dbbae70d81ce": "Die Aufgabe konnte nicht gestartet werden.",
+  "66fc6f5af8b33801": "Nach der Übernahme geändert",
+  "67e0bab89cac2736": "die Adresse ist nicht https",
   "6828296ea374e663": "Eigene behalten",
   "690a337e8dc06a36": [
     "Workflow-Ausführungen konnten nicht geladen werden, daher zeigen Karten keinen Status. Prüfe Workflows unter",
@@ -13092,30 +13156,43 @@
     "."
   ],
   "6a0656e8e0e14b1b": "Backlog",
+  "6a24d37af543b392": "Aus einem verfolgten Feed in Revision {revision} übernommen. Das Element selbst befindet sich in Signale.",
   "6a79e70aa91adb5c": "Nicht erneut gemeldet",
   "6af1920a1db1a000": "Keine",
   "6df6d3f7a704fdc0": "Versiegelt",
   "6e854b5468c726ae": "Projekt",
+  "6e96ce482c3d701e": "Verworfen",
+  "6ef815722cc9e485": "{n, plural, one {Signale, {n} Element wartet} other {Signale, {n} Elemente warten}}",
   "6f7f4e5329bdc6af": "Arbeit",
   "6fbd0df6a44c288c": "Nicht aufgeführtes Artefakt",
   "6fd6d050dbc62587": "Braucht dich",
+  "71509d79af0cc5de": "Noch nichts entschieden.",
+  "7180adf1efc1dc6b": "Letztes Lesen fehlgeschlagen {date}: {reason}",
   "71b118ff5d9edcdb": "Protokoll",
   "735366a7be3e89d3": "Datei",
   "76a46c1775f13048": "Erneut gemeldet",
+  "784cc87d53bef4c8": "Gelesen {date}",
   "788c4835f1c28d4e": "{task} wurde verworfen",
   "790c1653105ddbc3": "Review stockt",
   "79c2aa22caf69a8e": "In Bearbeitung",
+  "7addd33034d8cd76": "sein Eintrag konnte nicht gelesen oder gespeichert werden; entferne den Feed und folge ihm erneut",
   "7b2dad70a32ea8b2": "Briefing",
   "7d31a6f0c50d539d": "Review-Befunde",
   "7de39043b87f7cf1": "Plan",
+  "7e63a744e9cbb25c": "Dieses Element konnte nicht übernommen werden",
   "7fdb1f8753f3532b": "Bahn",
   "8093eaa7292a8a05": "Dieser Versuch hat keinen Plan erstellt.",
   "80b1e0d96c7b16f2": "Zugewiesen an",
+  "81f42e4fe24fde8b": "Nur öffentliche https-Adressen auf Port 443. Der Server liest jeden Feed höchstens einmal pro Stunde und öffnet die darin enthaltenen Links nie.",
   "828fa78ef4e9dbb9": "Navigationspfad der Arbeit",
   "830c1e7c48367144": "Runde {at}",
+  "8366df9f0cc4f27c": "Ihr Titel ist der Titel des Elements. Schreibe hinein, was erledigt werden soll, bevor du sie startest.",
+  "83cdea9b8f365bb3": "der Feed verschachtelt Elemente tiefer als 32 Ebenen",
   "85d0ee772919c83e": "Aktualisiert",
   "8722ba26b480af71": "Widerlegt",
+  "8831bf8b03749675": "der Feed ist kein reines UTF-8",
   "892065b607da928c": "Dieser Server hat keine Aufgabe mit diesem Link.",
+  "89b9819e837118f2": "Folge auf dem Tab „Feeds“ einem Feed, um seine Elemente hier zu sehen.",
   "8b14a12660038932": "Bereit",
   "8b31ee36486f3ec1": "Dieser Server unterstützt Arbeit nicht",
   "8c4e70af62cadc27": "Verworfen",
@@ -13127,6 +13204,8 @@
   "8ef6bd7b080d04e5": "Fehlgeschlagen",
   "9160bff2a14a7bbf": "Noch nicht gestartet.",
   "91fe864350610824": "Verworfen",
+  "92265c1181a4bced": "Als T-{number} übernommen",
+  "922d764133c8c427": "der Feed deklariert eine DTD oder Entitäten",
   "93d697753aca4033": "Kleinigkeit",
   "96a6809814dca07e": "Liste",
   "96dfc9f03d480197": "Plan genehmigen",
@@ -13168,6 +13247,7 @@
       }
     }
   },
+  "9e666c8df9f25155": "die Adresse benennt einen lokalen Host",
   "9eda62107551fc6d": "Alle Projekte",
   "9f5f9a79d7041da4": "Plan ausblenden",
   "9f62431445e9e436": "{name} ist nicht verbunden. Erstelle die Aufgabe, sobald die Verbindung wiederhergestellt ist.",
@@ -13184,20 +13264,27 @@
   "adae883fd7189da7": "Aufgaben werden geladen…",
   "aea8f73a29717a31": "Schließen",
   "b1a18f3ba4bc860c": "Backlog",
+  "b4b8aded70ec1f9e": "die Adresse ist keine vollständige Webadresse",
   "b4fed0b16bdac961": "Blockiert durch",
   "b552cd7f582a1b8b": "Notiz hinzufügen",
+  "b593ac99e1c76997": "Link:",
+  "b609a4988213005b": "Das Folgen dieses Feeds konnte nicht beendet werden",
   "b6221630968b378a": "Ihre Aufgaben werden wieder angezeigt, sobald sie sich neu verbindet. Wähle eine andere Umgebung, um deren Aufgaben zu sehen.",
   "b6643b9f882a16a0": "Die Aufgabenausführung wurde abgeschlossen oder jemand hat die Aufgabe als fertig markiert.",
   "b91b85035d1be697": "Blocker",
   "b9755d2c4d7df997": "Ohne Genehmigung gestartet",
+  "bbf426541c7a09ce": "Übernehmen",
+  "bd392f2728e0cc81": "Elemente aus öffentlichen Feeds, denen dieser Server folgt. Hier läuft nichts von selbst. „Übernehmen“ legt eine Backlog-Aufgabe mit dem Titel des Elements an, nicht gestartet; Text und Link des Elements bleiben hier.",
   "bd532ceeb541bb77": "Befunde zeigen",
   "bdc47e01d7e0b74f": "Projekt",
   "bdc8a79834c2f462": "{task} {title}, {column}, blockiert durch {blockers}",
+  "bedd76860db784e5": "Workflows sind auf diesem Server deaktiviert, daher werden Feeds nicht gelesen.",
   "bf39074b8186ab35": "Ausführung öffnen",
   "bf6a241f0ac4628a": "Ergebnisse",
   "bfc58b00d4441dac": "{task} {title}, {column}",
   "c151f97e7abe8b2c": "Arbeit ist für den Start eingereiht und kann noch Blocker haben.",
   "c1ebc11561c5569e": "{column}, aus Teilaufgaben",
+  "c3c3eee7650ee5b7": "die Adresse verwendet einen anderen Port als 443",
   "c3cf36342aa39f5b": "Ausführung öffnen",
   "c486174a9fcdbd6f": "Beleg",
   "c71e095a16303b19": "Die Aufgabe konnte nicht erstellt werden.",
@@ -13241,6 +13328,7 @@
   "cf75789d434680ab": "Der Plan konnte nicht geladen werden. Öffne die Ausführung, um ihn zu sehen.",
   "d35730dea8ec42d4": "Titel",
   "d3d1343241c287e7": "Nächstes Element, das mich braucht",
+  "d835a4bb4e0136ce": "die Verbindung ist fehlgeschlagen",
   "d88d19c6c85c3d47": "Art",
   "d9170272700d12c0": "Nach Titel oder T-Nummer filtern",
   "d9b1d99e68db555e": "Verwerfen",
@@ -13294,6 +13382,7 @@
   ],
   "e0639f900bf775e6": "Befunde für Teil {n} zeigen",
   "e273272382783e2c": "Akzeptiert",
+  "e349d13d69961e52": "die Adresse enthält einen Benutzernamen oder ein Passwort",
   "e727bdbb71e2eb84": "Aufgaben filtern",
   "e76ca803d5bf3048": "Genehmigt",
   "e7c99bd54278936b": "Plan anzeigen",
@@ -13302,6 +13391,20 @@
   "e8e8d87e6fc02fc6": "Bereit",
   "e95d0ec70d504f53": "Blockiert durch",
   "ea6d2138d955f584": "Teil von",
+  "eaec74af7e77385a": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "· Revision ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ],
   "eb09e7e08cf2ad4b": "Annehmen",
   "ec15e1b4845411ea": "Keine",
   "ec5e2edf708466b2": "Offen",
@@ -13342,11 +13445,49 @@
     }
   },
   "ef007096642f36fe": "Wartet auf Genehmigung",
+  "f01ee5fb1a1cfbb9": "der Feed ist weder RSS 2.0 noch Atom 1.0",
   "f0df0ef7081848c5": "Befunde ausblenden",
   "f1883a8babfa2e18": "Begutachtet",
+  "f2e489303c279848": "Seine wartenden und entschiedenen Elemente verlassen Signale. Bereits übernommene Aufgaben bleiben.",
+  "f384dfd0feb7b59d": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "t": "p",
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " Element wartet"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " Elemente warten"
+          ]
+        }
+      }
+    }
+  },
+  "f4e8335020f33490": "Nichts wartet.",
   "f52f0e92bd12adf4": "Keine Befunde.",
   "f937d61c9c85ea86": "Der Plan sieht keine Reihenfolge zwischen seinen Teilen vor.",
+  "f94af8e25d3cfb42": "Signale",
   "f966abe4b6a5d91f": "Gestoppt",
+  "fa68afc66d942a21": "Feed folgen",
   "fb90b8e5705ab86c": "Keine Aufgaben",
   "fbe9165c6105daaa": "Arbeit ist im Review oder wurde für das Review hierher verschoben.",
   "fc0e18b3717236be": "Forschung",
@@ -13354,5 +13495,7 @@
   "fc9df14ea23f45b9": "Versuche",
   "fe0d419a5d3fbfc4": "Aufgabe wird geladen…",
   "fe1661762f04bca8": "Verbinde eine Umgebung, um ihre Aufgaben zu sehen.",
-  "febdde86fbbd2bec": "Nächstes Element, das mich braucht"
+  "febdde86fbbd2bec": "Nächstes Element, das mich braucht",
+  "ff4ede69f61391f6": "T-{number} zum Backlog hinzugefügt",
+  "ff555031b012fdbd": "Diesem Feed konnte nicht gefolgt werden"
 }

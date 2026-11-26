@@ -9,7 +9,7 @@ import {
 } from "@t3tools/contracts";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Plural, T, useGT, Var } from "gt-react";
-import { BotIcon, KanbanIcon, PlusIcon } from "lucide-react";
+import { BotIcon, KanbanIcon, PlusIcon, RssIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { isElectron } from "~/env";
@@ -25,6 +25,7 @@ import {
 import { useEnvironmentQuery } from "../state/query";
 import { serverEnvironment } from "../state/server";
 import { buildThreadRouteParams } from "../threadRoutes";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
   Empty,
@@ -51,7 +52,9 @@ import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { useWorkflowEnvironmentIds } from "../components/workflows/useWorkflowEnvironmentIds";
 import { useRememberWorkEnvironment } from "./FactoryWorkSidebarItem";
 import { NewTaskDialog } from "./NewTaskDialog";
-import { createFactoryTask, factoryTasksLive, workTriage } from "./state";
+import { SignalsDialog } from "./SignalsDialog";
+import { pendingTotal } from "./signals.logic";
+import { createFactoryTask, factorySignalsList, factoryTasksLive, workTriage } from "./state";
 import { TaskPanel } from "./TaskPanel";
 import { focusAttention, WorkBoard, WorkNeedsYou } from "./WorkBoard";
 import {
@@ -147,6 +150,17 @@ export function WorkPage() {
   const canCreate = useAtomValue(createFactoryTask.permissionAtom(environmentId));
   // The environment New task was opened on: the dialog stays on it whatever the page shows.
   const [creatingOn, setCreatingOn] = useState<EnvironmentId | null>(null);
+  // The environment Signals was opened on, kept the same way.
+  const [signalsOn, setSignalsOn] = useState<EnvironmentId | null>(null);
+  // An older server has no such method: the call fails and the page offers no Signals. The button
+  // follows the latest answer, so a server that loses the method loses the button too.
+  const signals = useEnvironmentQuery(
+    environmentId === null
+      ? null
+      : factorySignalsList({ environmentId, input: { view: "pending" } }),
+  );
+  const signalsList = signals.isSuccess ? signals.data : null;
+  const waitingSignals = signalsList === null ? 0 : pendingTotal(signalsList);
   const [text, setText] = useState("");
   const [rollUp, setRollUp] = useState(false);
   // The Needs you item the open panel came from, here or in the palette, to bring focus back to.
@@ -254,14 +268,16 @@ export function WorkPage() {
       toastManager.add({ type: "error", title: gt("T3 Code could not open a new thread.") }),
     );
   };
-  const openCreated = (createdOn: EnvironmentId, taskId: string) => {
+  // Opens a task of the environment a dialog was opened on, which the page may not be showing.
+  const openFromDialog = (dialogOn: EnvironmentId, taskId: string) => {
     setCreatingOn(null);
+    setSignalsOn(null);
     void navigate({
       to: "/work",
       search: {
-        env: createdOn,
+        env: dialogOn,
         ...(view === "board" ? {} : { view }),
-        ...(createdOn === environmentId && search.project !== undefined
+        ...(dialogOn === environmentId && search.project !== undefined
           ? { project: search.project }
           : {}),
         task: taskId,
@@ -400,7 +416,8 @@ export function WorkPage() {
             </WorkspaceBreadcrumb>
             {(connected.length > 1 && environmentId !== null) ||
             (away !== null && connected.length > 0) ? (
-              <div className="w-44 shrink-0">
+              // The picker gives way first, so both buttons stay in a narrow header.
+              <div className="w-44 min-w-0 shrink">
                 <Select
                   value={environmentId ?? asked}
                   onValueChange={(value) => {
@@ -411,6 +428,7 @@ export function WorkPage() {
                 >
                   <SelectTrigger
                     size="sm"
+                    className="min-w-0"
                     aria-label={gt("Environment", { $context: "a T3 Code server to pick" })}
                   >
                     <SelectValue>
@@ -430,6 +448,31 @@ export function WorkPage() {
                 </Select>
               </div>
             ) : null}
+            {signalsList === null || environmentId === null ? null : (
+              <Button
+                size="sm"
+                variant="outline"
+                aria-label={
+                  waitingSignals > 0
+                    ? gt(
+                        "{n, plural, one {Signals, {n} item waiting} other {Signals, {n} items waiting}}",
+                        { n: waitingSignals },
+                      )
+                    : undefined
+                }
+                onClick={() => setSignalsOn(environmentId)}
+              >
+                <RssIcon />
+                <span className="max-sm:sr-only">
+                  <T context="opens the items found in followed feeds">Signals</T>
+                </span>
+                {waitingSignals > 0 ? (
+                  <Badge aria-hidden size="sm">
+                    {waitingSignals}
+                  </Badge>
+                ) : null}
+              </Button>
+            )}
             <Button
               size="sm"
               disabled={!ready || !canCreate}
@@ -592,7 +635,18 @@ export function WorkPage() {
           )}
           projectId={creatingOn === environmentId ? (listedProject?.id ?? null) : null}
           onClose={() => setCreatingOn(null)}
-          onOpenTask={(taskId) => openCreated(creatingOn, taskId)}
+          onOpenTask={(taskId) => openFromDialog(creatingOn, taskId)}
+        />
+      )}
+      {signalsOn === null ? null : (
+        <SignalsDialog
+          key={signalsOn}
+          environmentId={signalsOn}
+          projects={allProjects.filter((project) => project.environmentId === signalsOn)}
+          projectId={signalsOn === environmentId ? (listedProject?.id ?? null) : null}
+          workflowsOn={workflowIds.includes(signalsOn)}
+          onClose={() => setSignalsOn(null)}
+          onOpenTask={(taskId) => openFromDialog(signalsOn, taskId)}
         />
       )}
     </SidebarInset>

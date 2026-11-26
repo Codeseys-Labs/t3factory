@@ -1,0 +1,77 @@
+{
+  "v": 1,
+  "components": [
+    {
+      "name": "cliproxyapi",
+      "version": "8.0.78",
+      "source": "https://github.com/router-for-me/CLIProxyAPI",
+      "publishedAt": "2026-11-19T00:28:17Z",
+      "retrievedAt": "2026-11-26T04:17:56Z",
+      "license": {
+        "id": "MIT",
+        "url": "https://raw.githubusercontent.com/router-for-me/CLIProxyAPI/v8.0.78/LICENSE",
+        "bytes": 1116,
+        "sha256": "879792e89cf1bdd6a8d446033ec87e30496f97dcafc4656dc53f641509b346a6"
+      },
+      "assets": [
+        {
+          "platform": "win32-x64",
+          "url": "https://github.com/router-for-me/CLIProxyAPI/releases/download/v8.0.78/CLIProxyAPI_8.0.78_windows_amd64.zip",
+          "bytes": 26764848,
+          "sha256": "9b87222ccc4e9705193fcfe6ebb1fcd08154987b30d43e80cd03326bbc875831"
+        },
+        {
+          "platform": "darwin-arm64",
+          "url": "https://github.com/router-for-me/CLIProxyAPI/releases/download/v8.0.78/CLIProxyAPI_8.0.78_darwin_aarch64.tar.gz",
+          "bytes": 24384911,
+          "sha256": "32d3bfb23df6f88615d9bcb0acab65db842182bacd583d73b2f5e280651a26cf"
+        },
+        {
+          "platform": "darwin-x64",
+          "url": "https://github.com/router-for-me/CLIProxyAPI/releases/download/v8.0.78/CLIProxyAPI_8.0.78_darwin_amd64.tar.gz",
+          "bytes": 26442067,
+          "sha256": "18cc73e9da3485824358efd1d1decc550c40c71c3dd84bedd45881ba74da590d"
+        },
+        {
+          "platform": "linux-x64",
+          "url": "https://github.com/router-for-me/CLIProxyAPI/releases/download/v8.0.78/CLIProxyAPI_8.0.78_linux_amd64.tar.gz",
+          "bytes": 26481480,
+          "sha256": "c0267b899095b9f61eaeb627a5a5f1b0926b0683236485c30e35ee56871eeb9f"
+        },
+        {
+          "platform": "linux-arm64",
+          "url": "https://github.com/router-for-me/CLIProxyAPI/releases/download/v8.0.78/CLIProxyAPI_8.0.78_linux_aarch64.tar.gz",
+          "bytes": 23846609,
+          "sha256": "cbece9287e0920cd5601cc3a7127175c61edc0c22f29e4838f49267177b3d18b"
+        }
+      ],
+      "requires": null
+    },
+    {
+      "name": "management-center",
+      "version": "1.28.3",
+      "source": "https://github.com/router-for-me/Cli-Proxy-API-Management-Center",
+      "publishedAt": "2026-11-18T05:37:56Z",
+      "retrievedAt": "2026-11-26T04:17:56Z",
+      "license": {
+        "id": "MIT",
+        "url": "https://raw.githubusercontent.com/router-for-me/Cli-Proxy-API-Management-Center/v1.28.3/LICENSE",
+        "bytes": 1070,
+        "sha256": "48fc0d19e5d0918e7e2a7df2deed33b167d9aad1aebb07891a32a8e6f71f80ee"
+      },
+      "assets": [
+        {
+          "platform": "any",
+          "url": "https://github.com/router-for-me/Cli-Proxy-API-Management-Center/releases/download/v1.28.3/management.html",
+          "bytes": 3906632,
+          "sha256": "6d4e005420ee18899ef115a4e68d61f700ddb372844f2317546a0d0aa4553dfc"
+        }
+      ],
+      "requires": {
+        "component": "cliproxyapi",
+        "min": "8.0.0",
+        "below": "9.0.0"
+      }
+    }
+  ]
+}

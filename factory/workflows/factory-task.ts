@@ -19,6 +19,7 @@ import {
   pullRequestHead,
   readConfig,
   recordAttemptPullRequest,
+  resolvePlacement,
   resolveTarget,
   rootPool,
   startPool,
@@ -39,6 +40,7 @@ import {
   writeReviewRound,
 } from "./lib/ledger.ts";
 import { PartStats, Outcome, finishAttempt } from "./lib/metrics.ts";
+import { isFullSha, remoteLine, remoteScopeLine } from "./lib/placement.ts";
 import { classifyRisk, ratchetRiskTier, type RiskTier } from "./lib/risk.ts";
 
 const { workflow, step, agent, ask, invoke, stop, title, tags, within, pullRequests } = T3;
@@ -167,6 +169,7 @@ const factoryTaskPart = workflow(
     const slot = { limit: config.concurrency };
     yield* tags(taskTags(input.taskId, input.projectId, "doing"));
     const target = input.target ?? (yield* resolveTarget(input.projectId));
+    const placement = yield* resolvePlacement(input.projectId, config.readOnlyOn);
     if ("problem" in target) return yield* stop(target.problem);
     const project = target.projectId;
     const rooted = target.workspace === "root";
@@ -431,22 +434,43 @@ const factoryTaskPart = workflow(
           checks,
         })),
       );
+      const head = snapshot.headSha;
+      const remote =
+        placement.where === "remote" && head !== null && isFullSha(head) && reviewModel !== null;
+      const readOptions = remote
+        ? ({
+            environment: placement.environment,
+            project: placement.project,
+            model: reviewModel,
+            workspace: { type: "worktree", baseRef: head, startFromOrigin: false },
+            runtimeMode: "approval-required",
+            interactionMode: "plan",
+          } as const)
+        : { project, ...(reviewModel === null ? {} : { model: reviewModel }) };
+      const readLines = remote ? [remoteLine(head)] : [];
+      const holdRead = <A, E, R>(body: Parameters<typeof within<A, E, R>>[2]) =>
+        remote
+          ? within(pool, slot, within(placement.pool, { limit: placement.limit }, body))
+          : held(body);
+      let staleScope = false;
       if (
         risk.tier === undefined ||
         (snapshot.headSha !== null && snapshot.headSha !== risk.headSha)
       ) {
-        const scoped = yield* held(
+        const scoped = yield* holdRead(
           agent.try(`scope/${at}`, {
-            project,
+            ...readOptions,
             title: `${label} scope: ${input.title}`,
             brief: [
               `List the files pull request ${prUrl} changes.`,
               "",
               "Change nothing: no edits, commits or pushes.",
-              `Fetch the pull request's head commit${snapshot.headSha === null ? "" : ` \`${snapshot.headSha}\``} and run \`git diff --name-only <base>...<head>\`, where <head> is that commit and <base> is the branch the pull request targets.`,
+              ...readLines,
+              remote
+                ? remoteScopeLine(config.baseRef)
+                : `Fetch the pull request's head commit${snapshot.headSha === null ? "" : ` \`${snapshot.headSha}\``} and run \`git diff --name-only <base>...<head>\`, where <head> is that commit and <base> is the branch the pull request targets.`,
               "Return `headSha`: the full SHA of the commit you listed, and `files`: every path the command printed, exactly as printed.",
             ].join("\n"),
-            ...(reviewModel === null ? {} : { model: reviewModel }),
             timeout: config.stepTimeout,
             returns: ScopeReport,
           }),
@@ -454,6 +478,7 @@ const factoryTaskPart = workflow(
         if (scoped.outcome !== "done") {
           noteRisk([`the changed files could not be listed: ${scoped.reason}`]);
         } else if (snapshot.headSha !== null && scoped.value.headSha !== snapshot.headSha) {
+          staleScope = remote;
           noteRisk([
             `the changed files were listed at ${scoped.value.headSha}, not at the head ${snapshot.headSha}`,
           ]);
@@ -477,7 +502,6 @@ const factoryTaskPart = workflow(
         noteRisk(classified.reasons);
         risk.headSha = snapshot.headSha;
       }
-      const head = snapshot.headSha;
       const commit = head === null ? [] : [`Review commit \`${head}\`.`];
       const rulingLines =
         rulings.length === 0
@@ -498,6 +522,7 @@ const factoryTaskPart = workflow(
               ? [
                   `Review pull request ${prUrl}. It does part ${input.part + 1} of task T-${input.number}: ${input.title}`,
                   ...commit,
+                  ...readLines,
                   "",
                   "Its brief:",
                   "",
@@ -516,17 +541,17 @@ const factoryTaskPart = workflow(
               : [
                   `Review pull request ${prUrl}.`,
                   ...commit,
+                  ...readLines,
                   "What input or state breaks the changed lines? Quote the line. Change nothing.",
                   ...rulingLines,
                   reportInstructions,
                 ];
           return Effect.map(
-            held(
+            holdRead(
               agent(lens === "brief" ? `review/${at}` : `review/${at}/defects`, {
-                project,
+                ...readOptions,
                 title: `${label} ${lens === "brief" ? "review" : "defects"}: ${input.title}`,
                 brief: brief.join("\n"),
-                ...(reviewModel === null ? {} : { model: reviewModel }),
                 timeout: config.stepTimeout,
                 returns: ReviewReport,
               }),
@@ -572,9 +597,11 @@ const factoryTaskPart = workflow(
       );
       const stale =
         head !== null &&
-        ((after !== null && after !== head) ||
+        (staleScope ||
+          (after !== null && after !== head) ||
           reports.some(
-            ({ report }) => report.reviewedHead !== null && report.reviewedHead !== head,
+            ({ report }) =>
+              (remote || report.reviewedHead !== null) && report.reviewedHead !== head,
           ));
       const verdict = stale ? "stale" : deriveVerdict(findings);
       yield* step(
@@ -768,6 +795,7 @@ const factoryTask = workflow(
     yield* tags(taskTags(input.taskId, input.projectId, "planning"));
     const config = yield* step("config", { returns: PackConfig }, readConfig(input.projectId));
     const target = yield* resolveTarget(input.projectId);
+    yield* resolvePlacement(input.projectId, config.readOnlyOn);
     if ("problem" in target) return yield* stop(target.problem);
     const planModel = config.planModel ?? input.model;
     const layout =

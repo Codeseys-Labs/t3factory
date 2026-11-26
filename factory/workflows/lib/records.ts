@@ -5,6 +5,7 @@
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
+import { namesFolder, placementFor } from "./placement.ts";
 
 const { ask, pullRequests, runs, sleep, start, step, stop, store } = T3;
 
@@ -78,6 +79,12 @@ const TaskSource = Schema.Union([
   Schema.TaggedStruct("local", {}),
   Schema.TaggedStruct("issue", { url: Schema.String, displayKey: Schema.String }),
   Schema.TaggedStruct("promoted", { fromTaskId: Schema.String, artifactSha256: Sha256 }),
+  Schema.TaggedStruct("signal", {
+    feedId: Schema.String,
+    candidateId: Sha256,
+    revision: PositiveInt,
+    sha256: Sha256,
+  }),
 ]);
 
 export const FactoryTask = Schema.Struct({
@@ -140,6 +147,11 @@ export const IntakeBinding = Schema.Struct({
   enabled: Schema.Boolean,
   labels: Schema.Array(Schema.String),
   autoStart: Schema.Boolean,
+  authors: Schema.optionalKey(
+    Schema.Array(Schema.String.check(Schema.isPattern(/^[A-Za-z0-9-]{1,39}$/))).check(
+      Schema.isMaxLength(100),
+    ),
+  ),
 });
 
 /** What an intake-seen record and a capture marker hold: the task they name. */
@@ -228,7 +240,7 @@ type TaskWorkflow = Parameters<typeof start<FactoryTaskRunInput>>[0];
 
 // `start` reads only the name and version. A workflow file cannot import another for its
 // definition: the loader would register that file's workflows twice.
-export const FACTORY_TASK_VERSION = 2;
+export const FACTORY_TASK_VERSION = 3;
 const workflowRef = (name: string) =>
   ({ name, version: name === FACTORY_TASK ? FACTORY_TASK_VERSION : 1 }) as unknown as TaskWorkflow;
 
@@ -240,6 +252,22 @@ const DurationText = Schema.String.pipe(
     { expected: 'a duration such as "45 minutes"' },
   ),
 );
+
+const ID_MAX = 200;
+const PlacementId = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(ID_MAX),
+  Schema.makeFilter((value: string) => value === value.trim(), { expected: "an unpadded id" }),
+);
+const ReadOnlyOn = Schema.Struct({
+  environment: PlacementId,
+  project: PlacementId.check(
+    Schema.makeFilter((value: string) => !namesFolder(value), {
+      expected: "a project id, not a folder",
+    }),
+  ),
+  limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 4 })),
+});
 
 const configFields = {
   concurrency: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 4 })),
@@ -258,7 +286,11 @@ const configFields = {
   lowRiskPaths: Schema.Array(Schema.String),
 };
 
-export const PackConfig = Schema.Struct({ v: Schema.Literal(1), ...configFields });
+export const PackConfig = Schema.Struct({
+  v: Schema.Literal(1),
+  ...configFields,
+  readOnlyOn: Schema.optionalKey(ReadOnlyOn),
+});
 export type PackConfig = typeof PackConfig.Type;
 
 const StoredConfig = Schema.Struct({
@@ -277,6 +309,7 @@ const StoredConfig = Schema.Struct({
   mergeMethod: Schema.optionalKey(configFields.mergeMethod),
   protectedPaths: Schema.optionalKey(configFields.protectedPaths),
   lowRiskPaths: Schema.optionalKey(configFields.lowRiskPaths),
+  readOnlyOn: Schema.optionalKey(Schema.NullOr(ReadOnlyOn)),
 });
 
 const DEFAULT_CONFIG: PackConfig = {
@@ -370,19 +403,33 @@ export const listAttempts = (taskId: string) =>
   );
 
 const decodeStoredConfig = Schema.decodeUnknownEffect(StoredConfig);
+const GLOBAL_CONFIG_KEY = `${PREFIX}config`;
+const GLOBAL_ROW_REFUSED =
+  "The Factory config at factory/v1/config is not valid: readOnlyOn names one project on another machine, so it belongs in factory/v1/config/<projectId>.";
 
 /** A config row's fields; a row that is there and does not decode fails, naming its key. */
 const readConfigRow = Effect.fn("factoryPack.readConfigRow")(function* (key: string) {
   const found = yield* store.entry(key, Schema.Json).get;
   if (Option.isNone(found)) return undefined;
-  return yield* decodeStoredConfig(found.value).pipe(
+  const raw = found.value;
+  if (
+    key === GLOBAL_CONFIG_KEY &&
+    raw !== null &&
+    typeof raw === "object" &&
+    "readOnlyOn" in raw &&
+    raw.readOnlyOn !== null
+  ) {
+    return yield* Effect.fail(GLOBAL_ROW_REFUSED);
+  }
+  const { readOnlyOn, ...fields } = yield* decodeStoredConfig(raw).pipe(
     Effect.mapError((error) => `The Factory config at ${key} is not valid: ${error.message}`),
   );
+  return readOnlyOn == null ? fields : { ...fields, readOnlyOn };
 });
 
 /** The global config with the project's fields over it, over the defaults. */
 export const readConfig = Effect.fn("factoryPack.readConfig")(function* (projectId: string | null) {
-  const global = yield* readConfigRow(`${PREFIX}config`);
+  const global = yield* readConfigRow(GLOBAL_CONFIG_KEY);
   const project =
     projectId === null ? undefined : yield* readConfigRow(`${PREFIX}config/${projectId}`);
   const config: PackConfig = { ...DEFAULT_CONFIG, ...global, ...project, v: 1 };
@@ -722,6 +769,31 @@ export const resolveTarget = (projectId: string | null) =>
       },
     ),
   );
+
+const PlacementResult = Schema.Union([
+  Schema.Struct({ where: Schema.Literal("local") }),
+  Schema.Struct({ where: Schema.Literal("refused"), reason: Schema.String }),
+  Schema.Struct({ where: Schema.Literal("remote"), ...ReadOnlyOn.fields, pool: Schema.String }),
+]);
+
+export const resolvePlacement = Effect.fnUntraced(function* (
+  projectId: string | null,
+  readOnlyOn: PackConfig["readOnlyOn"],
+) {
+  if (readOnlyOn === undefined) return { where: "local" } as const;
+  const placement = yield* step(
+    "placement",
+    { returns: PlacementResult },
+    Effect.map(readRecord(targetKey(projectId), FactoryTarget), (row) =>
+      placementFor(
+        readOnlyOn,
+        Option.isSome(row) && row.value.problem === null ? row.value.workspace : null,
+      ),
+    ),
+  );
+  if (placement.where === "refused") return yield* stop(placement.reason);
+  return placement;
+});
 
 export const taskTags = (
   taskId: string,

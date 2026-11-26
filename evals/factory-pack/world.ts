@@ -37,6 +37,7 @@ import {
 import * as Workflows from "../../apps/server/src/workflows/Workflows.ts";
 
 export type AgentTurnInput = Parameters<WorkflowAgents.WorkflowAgents["Service"]["start"]>[0];
+type InterruptTarget = Parameters<WorkflowAgents.WorkflowAgents["Service"]["interrupt"]>[0];
 type Forge = WorkflowForge.WorkflowForge["Service"];
 type Service = Workflows.Workflows["Service"];
 
@@ -44,6 +45,7 @@ export interface World {
   readonly definitions: ReadonlyArray<WorkflowDefinition>;
   readonly turns: ReadonlyArray<AgentTurnInput>;
   readonly startAttempts: ReadonlyArray<AgentTurnInput>;
+  readonly interrupts: ReadonlyArray<InterruptTarget>;
   readonly acts: ReadonlyArray<Parameters<Forge["pullRequests"]["act"]>>;
   readonly readCalls: ReadonlyArray<WorkflowForge.PullRequestAddress>;
   readonly reads: ReadonlyArray<{
@@ -107,6 +109,8 @@ interface Script {
   ) => ReturnType<Forge["pullRequests"]["read"]>;
   readonly holdAgent?: (turn: AgentTurnInput) => boolean;
   readonly startError?: (turn: AgentTurnInput) => string | undefined;
+  readonly resultError?: (turn: AgentTurnInput, read: number) => string | undefined;
+  readonly interrupt?: (target: InterruptTarget) => "stopped" | "ended" | { error: string };
   readonly failFinishAfterCommit?: boolean;
   readonly failStartAfterCommit?: boolean;
   readonly failIssueCapture?: { readonly projectId: string; readonly issueKey: string };
@@ -244,6 +248,8 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
   const definitions: Array<WorkflowDefinition> = [];
   const turns: Array<AgentTurnInput> = [];
   const startAttempts: Array<AgentTurnInput> = [];
+  const interrupts: Array<InterruptTarget> = [];
+  const resultReads = new Map<string, number>();
   const started = new Map<string, AgentTurnInput>();
   const acts: Array<Parameters<Forge["pullRequests"]["act"]>> = [];
   const readCalls: Array<WorkflowForge.PullRequestAddress> = [];
@@ -441,11 +447,18 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
       return yield* Effect.succeed({
         threadId: input.thread ?? `thread-${input.key}`,
         turnId: input.key,
+        ...(input.environment === undefined ? {} : { environment: input.environment }),
       });
     }),
     result: Effect.fn("factoryPack.agents.result")(function* (turn) {
       const input = started.get(turn.turnId);
       if (input === undefined) return yield* Effect.die(new Error(`Unknown turn ${turn.turnId}`));
+      if (script.resultError !== undefined) {
+        const read = resultReads.get(turn.turnId) ?? 0;
+        resultReads.set(turn.turnId, read + 1);
+        const reason = script.resultError(input, read);
+        if (reason !== undefined) return yield* new WorkflowAgents.WorkflowAgentError({ reason });
+      }
       const gate = gates.get(input.key);
       if (gate !== undefined) yield* Deferred.await(gate);
       return yield* Effect.sync(() => {
@@ -467,8 +480,14 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
         ),
       );
     }),
-    interrupt: Effect.fn("factoryPack.agents.interrupt")(function* () {
-      return yield* Effect.succeed("ended" as const);
+    interrupt: Effect.fn("factoryPack.agents.interrupt")(function* (target) {
+      interrupts.push(target);
+      const result = script.interrupt?.(target) ?? "ended";
+      if (typeof result === "object") {
+        return yield* new WorkflowAgents.WorkflowAgentError({ reason: result.error });
+      }
+      if (target.turnId !== undefined) active.delete(target.turnId);
+      return result;
     }),
   });
   const forge = WorkflowForge.WorkflowForge.of({
@@ -521,20 +540,16 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
     use: (workflows: Service) => Effect.Effect<A, E>,
   ) {
     const loaded: Array<WorkflowDefinition> = [];
-    for (const name of [
-      "factory-task.ts",
-      "factory-intake.ts",
-      "factory-sync-upstream.ts",
-      "factory-brief.ts",
-      "factory-experiment.ts",
-      "factory-self-repair.ts",
-      "factory-metrics.ts",
-    ]) {
+    // Every workflow file the pack ships, so a new one is loaded with no list to keep.
+    const directory = path.resolve(import.meta.dirname, "../../factory/workflows");
+    const names = (yield* fileSystem.readDirectory(directory).pipe(Effect.orDie))
+      .filter((name) => name.endsWith(".ts"))
+      .sort();
+    for (const name of names) {
       loaded.push(
-        ...(yield* loadDefinitions(
-          path.resolve(import.meta.dirname, "../../factory/workflows", name),
-          ++loads,
-        ).pipe(Effect.provideService(Path.Path, path))),
+        ...(yield* loadDefinitions(path.resolve(directory, name), ++loads).pipe(
+          Effect.provideService(Path.Path, path),
+        )),
       );
     }
     if (script.failFinishAfterCommit) {
@@ -666,6 +681,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
     definitions,
     turns,
     startAttempts,
+    interrupts,
     acts,
     readCalls,
     reads,

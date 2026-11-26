@@ -995,7 +995,8 @@ it("intake captures two open issues once and skips the next tick", () => {
           autoStart: false,
         });
         const definition = world.definitions.find((entry) => entry.name === "factory-intake");
-        expect(definition?.version).toBe(1);
+        // r10 I7: factory-intake is version 2 only.
+        expect(definition?.version).toBe(2);
         expect(
           definition?.triggers.map((trigger) =>
             trigger.kind === "schedule" ? trigger.schedule : trigger.kind,
@@ -1049,6 +1050,8 @@ it("intake captures two open issues once and skips the next tick", () => {
             number: index + 1,
             projectId: PROJECT,
             issueKey: issues[index]?.key,
+            // r10 I3: the binding lists no authors, so nothing starts.
+            start: "no-authors",
           })),
           failed: [],
         });
@@ -1159,7 +1162,16 @@ it("intake reports a failed binding and still captures the next project's issue"
           });
           expect([task].filter((entry) => entry.projectId === PROJECT)).toEqual([]);
           expect(done.result).toEqual({
-            captured: [{ taskId: task.id, number: 1, projectId: nextProject, issueKey: issue.key }],
+            // r10 I3: the binding lists no authors, so nothing starts.
+            captured: [
+              {
+                taskId: task.id,
+                number: 1,
+                projectId: nextProject,
+                issueKey: issue.key,
+                start: "no-authors",
+              },
+            ],
             failed: [{ projectId: PROJECT, reason: expect.stringContaining(failureReason) }],
           });
           expect(yield* workflows.stored(`factory/v1/intake-seen/${PROJECT}/`)).toEqual([]);
@@ -2003,42 +2015,63 @@ it("P4 concurrent starts with distinct keys serialize one task start", () =>
   ));
 
 it("P4 intake autoStart writes the attempt and starts its task", () =>
-  withWorld(script({ issues: [issueAt("31")] }), (world) =>
-    world.server(
-      Effect.fn("factoryPack.test.autoStart")(function* (workflows) {
-        yield* workflows.storeSet(`factory/v1/intake/${PROJECT}`, {
-          v: 1,
-          enabled: true,
-          labels: [],
-          autoStart: true,
-        });
-        const { runId } = yield* workflows.start(
-          "factory-intake",
-          { scheduledAt: AT },
-          { idempotencyKey: "auto-start" },
-        );
-        const done = yield* world.ended(workflows, runId);
-        expect(done.status).toBe("completed");
-        const attempts = yield* workflows.stored("factory/v1/attempt/");
-        expect(attempts).toHaveLength(1);
-        const attempt = yield* decodeAttempt(attempts[0]?.value).pipe(Effect.orDie);
-        expect(attempt).toMatchObject({
-          n: 1,
-          key: `task/${attempt.taskId}/a1`,
-          workflow: "factory-task",
-        });
-        if (attempt.runId === null) throw new Error("autoStart did not start the task");
-        expect(done.result).toEqual({
-          captured: [{ taskId: attempt.taskId, number: 1, projectId: PROJECT, issueKey: "31" }],
-          failed: [],
-        });
-        expect(yield* taskAt(workflows, attempt.taskId)).toMatchObject({ lane: "doing", rev: 2 });
-        yield* ask(world, workflows, attempt.runId, "approve-plan", "plan", ["Start", "Drop"]);
-        expect((yield* workflows.get(attempt.runId)).run.workflow).toBe("factory-task");
-        yield* workflows.answer(attempt.runId, "approve-plan", { choice: "Drop" });
-        yield* world.ended(workflows, attempt.runId);
-      }),
-    ),
+  // r10 I4: only an issue a listed GitHub author opened after the stamp starts.
+  withWorld(
+    script({
+      issues: [
+        decodeIssue({ ...issueAt("31"), author: { login: "octo", name: null, avatarUrl: null } }),
+      ],
+    }),
+    (world) =>
+      world.server(
+        Effect.fn("factoryPack.test.autoStart")(function* (workflows) {
+          yield* workflows.storeSet(`factory/v1/intake/${PROJECT}`, {
+            v: 1,
+            enabled: true,
+            labels: [],
+            autoStart: true,
+            authors: ["octo"],
+          });
+          yield* workflows.storeSet(`factory/v1/intake-since/${PROJECT}`, {
+            v: 1,
+            since: "2025-01-01T00:00:00.000Z",
+          });
+          const { runId } = yield* workflows.start(
+            "factory-intake",
+            { scheduledAt: AT },
+            { idempotencyKey: "auto-start" },
+          );
+          const done = yield* world.ended(workflows, runId);
+          expect(done.status).toBe("completed");
+          const attempts = yield* workflows.stored("factory/v1/attempt/");
+          expect(attempts).toHaveLength(1);
+          const attempt = yield* decodeAttempt(attempts[0]?.value).pipe(Effect.orDie);
+          expect(attempt).toMatchObject({
+            n: 1,
+            key: `task/${attempt.taskId}/a1`,
+            workflow: "factory-task",
+          });
+          if (attempt.runId === null) throw new Error("autoStart did not start the task");
+          expect(done.result).toEqual({
+            // r10 I4: a started task reports its StartOutcome.
+            captured: [
+              {
+                taskId: attempt.taskId,
+                number: 1,
+                projectId: PROJECT,
+                issueKey: "31",
+                start: "started",
+              },
+            ],
+            failed: [],
+          });
+          expect(yield* taskAt(workflows, attempt.taskId)).toMatchObject({ lane: "doing", rev: 2 });
+          yield* ask(world, workflows, attempt.runId, "approve-plan", "plan", ["Start", "Drop"]);
+          expect((yield* workflows.get(attempt.runId)).run.workflow).toBe("factory-task");
+          yield* workflows.answer(attempt.runId, "approve-plan", { choice: "Drop" });
+          yield* world.ended(workflows, attempt.runId);
+        }),
+      ),
   ));
 
 const invalidCaptures: ReadonlyArray<{ label: string; input: Schema.JsonObject }> = [
@@ -2199,7 +2232,16 @@ it("P7 a blank issue title falls back to its display key", () => {
           displayKey: issue.displayKey,
         });
         expect(done.result).toEqual({
-          captured: [{ taskId: task.id, number: 1, projectId: PROJECT, issueKey: issue.key }],
+          // r10 I3: the binding lists no authors, so nothing starts.
+          captured: [
+            {
+              taskId: task.id,
+              number: 1,
+              projectId: PROJECT,
+              issueKey: issue.key,
+              start: "no-authors",
+            },
+          ],
           failed: [],
         });
       }),
@@ -2231,7 +2273,16 @@ it("P7 captures the first 200 characters of an overlong issue title", () => {
         const task = yield* decodeTask(rows[0]?.value).pipe(Effect.orDie);
         expect(task.title).toBe(title.slice(0, 200));
         expect(done.result).toEqual({
-          captured: [{ taskId: task.id, number: 1, projectId: PROJECT, issueKey: issue.key }],
+          // r10 I3: the binding lists no authors, so nothing starts.
+          captured: [
+            {
+              taskId: task.id,
+              number: 1,
+              projectId: PROJECT,
+              issueKey: issue.key,
+              start: "no-authors",
+            },
+          ],
           failed: [],
         });
       }),
@@ -2283,6 +2334,8 @@ it("P7 a failed issue capture leaves the next issue and next binding runnable", 
               number: index + 1,
               projectId: task.projectId,
               issueKey: index === 0 ? sameBinding.key : nextBinding.key,
+              // r10 I3: the bindings list no authors, so nothing starts.
+              start: "no-authors",
             })),
             failed: [{ projectId: PROJECT, reason: expect.stringMatching(/\S/) }],
           });

@@ -351,7 +351,7 @@ it.layer(NodeServices.layer)("factory sync plan", (it) => {
     }),
   );
 
-  it.effect("does not fetch missing objects in a partial clone", () =>
+  it.effect("fetches missing objects in a partial clone only when requested", () =>
     Effect.gen(function* () {
       const source = yield* makeRepository();
       yield* source.git("config", "uploadpack.allowFilter", "true");
@@ -360,7 +360,7 @@ it.layer(NodeServices.layer)("factory sync plan", (it) => {
       yield* source.write("shared.txt", "one\nupstream\nthree\n");
       yield* source.commit("upstream edit");
       yield* source.git("switch", "main");
-      yield* source.write("shared.txt", "one\ntwo\nlocal\n");
+      yield* source.write("shared.txt", "one\nlocal\nthree\n");
       yield* source.commit("local edit");
 
       const path = yield* Path.Path;
@@ -398,6 +398,10 @@ it.layer(NodeServices.layer)("factory sync plan", (it) => {
       );
       assert.notStrictEqual(Number(exitCode), 0);
       assert.deepStrictEqual(yield* missingObjects(git, "origin/upstream"), before);
+
+      const plan = yield* planUpstreamSync(clone, "origin/upstream", { fetchMissing: true });
+      assert.deepStrictEqual(plan.conflicts, [{ kind: "outside", path: "shared.txt" }]);
+      assert.deepStrictEqual(yield* planUpstreamSync(clone, "origin/upstream"), plan);
     }),
   );
 });

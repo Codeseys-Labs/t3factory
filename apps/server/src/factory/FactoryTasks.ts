@@ -1,5 +1,6 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
+  FACTORY_KIND_WORKFLOWS,
   FACTORY_WS_METHODS,
   type FactoryAttempt,
   FactoryNote,
@@ -24,18 +25,22 @@ import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import type * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 
+import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
+import * as ProjectService from "../project/ProjectService.ts";
 import * as Workflows from "../workflows/Workflows.ts";
 import * as FactoryTaskStore from "./FactoryTaskStore.ts";
 
-export const FACTORY_TASK_WORKFLOW = "factory-task";
+export const FACTORY_TASK_WORKFLOW = FACTORY_KIND_WORKFLOWS.software;
 export const FACTORY_POLL_INTERVAL = "5 seconds";
 
 export class FactoryTasks extends Context.Service<
@@ -110,6 +115,14 @@ const make = Effect.gen(function* () {
   const store = yield* FactoryTaskStore.make;
   const workflows = yield* Workflows.Workflows;
   const random = yield* SecureRandom.SecureRandom;
+  const projects = Option.getOrUndefined(
+    yield* Effect.serviceOption(ProjectService.ProjectService),
+  );
+  const folders = Option.getOrUndefined(
+    yield* Effect.serviceOption(ManagedProjectFolders.ManagedProjectFolders),
+  );
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   const scope = yield* Effect.scope;
   const changes = yield* Effect.acquireRelease(
     PubSub.sliding<FactoryTasksSnapshot>(1),
@@ -117,6 +130,7 @@ const make = Effect.gen(function* () {
   );
   const subscriberLock = yield* Semaphore.make(1);
   const refreshLock = yield* Semaphore.make(1);
+  const scratchLock = yield* Semaphore.make(1);
   const startLocks = new Map<string, { readonly semaphore: Semaphore.Semaphore; users: number }>();
   let subscribers = 0;
   let ownWrites = 0;
@@ -140,6 +154,93 @@ const make = Effect.gen(function* () {
       ),
     );
   });
+
+  const resolveTarget = Effect.fn("FactoryTasks.resolveTarget")(function* (
+    projectId: FactoryTask["projectId"],
+    probeOnly: boolean,
+  ) {
+    if (projectId !== null) {
+      if (projects === undefined) return;
+      const project = yield* projects.getById(projectId);
+      if (Option.isNone(project)) {
+        return {
+          projectId,
+          workspace: "root",
+          workspaceRoot: null,
+          problem: "The task's project no longer exists.",
+        } as const;
+      }
+      const { workspaceRoot } = project.value;
+      const git = yield* fileSystem.exists(path.join(workspaceRoot, ".git"));
+      return {
+        projectId,
+        workspaceRoot,
+        workspace: git ? "worktree" : "root",
+        problem: null,
+      } as const;
+    }
+    if (folders === undefined) return;
+    if (!probeOnly) {
+      const scratch = yield* folders.ensureScratchProject;
+      return {
+        projectId: scratch.projectId,
+        workspaceRoot: Option.getOrNull(yield* folders.scratchRoot),
+        workspace: "scratch",
+        problem: null,
+      } as const;
+    }
+    const workspaceRoot = Option.getOrNull(yield* folders.scratchRoot);
+    const previous = yield* store.readTarget(null);
+    const scratchId =
+      workspaceRoot === null
+        ? null
+        : projects !== undefined
+          ? (Option.getOrNull(yield* projects.getByWorkspaceRoot(workspaceRoot))?.id ?? null)
+          : previous?.workspaceRoot === workspaceRoot
+            ? previous.projectId
+            : null;
+    return {
+      projectId: scratchId,
+      workspaceRoot,
+      workspace: "scratch",
+      problem:
+        scratchId !== null
+          ? null
+          : workspaceRoot === null
+            ? (previous?.problem ??
+              "Threads without a project are not available on this environment.")
+            : "Start this task once from the Work page so the server can set up its scratch folder.",
+    } as const;
+  });
+
+  const refreshTarget = Effect.fn("FactoryTasks.refreshTarget")(
+    function* ({
+      projectId,
+      probeOnly = false,
+    }: {
+      readonly projectId: FactoryTask["projectId"];
+      readonly probeOnly?: boolean;
+    }) {
+      const target = yield* resolveTarget(projectId, probeOnly).pipe(
+        Effect.catch((error) =>
+          Effect.succeed({
+            projectId,
+            workspace: projectId === null ? "scratch" : "root",
+            workspaceRoot: null,
+            problem: error.message,
+          } as const),
+        ),
+      );
+      if (target === undefined) return null;
+      yield* store.writeTarget(projectId, {
+        ...target,
+        v: 1,
+        checkedAt: DateTime.formatIso(yield* DateTime.now),
+      });
+      return target;
+    },
+    (effect, { projectId }) => (projectId === null ? scratchLock.withPermits(1)(effect) : effect),
+  );
 
   const checkReferences = Effect.fn("FactoryTasks.checkReferences")(function* (
     taskId: string,
@@ -189,6 +290,7 @@ const make = Effect.gen(function* () {
         number,
         rev: 1,
         projectId: input.projectId,
+        ...(input.kind !== undefined ? { kind: input.kind } : {}),
         title: input.title.trim(),
         description: input.description ?? "",
         lane: input.lane ?? "backlog",
@@ -203,11 +305,18 @@ const make = Effect.gen(function* () {
       });
       yield* checkReferences(task.id, task.parentId === null ? [] : [task.parentId], "parentId");
       yield* checkReferences(task.id, task.blockedBy, "blockedBy");
+      if (task.source._tag === "promoted" && !(yield* store.tasks.get(task.source.fromTaskId))) {
+        return yield* new FactoryTaskError({
+          reason: "invalid",
+          message: "Promoted task not found.",
+        });
+      }
       yield* store.setSequence(number);
       yield* store.tasks.set(task.id, task);
       return task;
     },
     store.transaction,
+    Effect.tap((task) => refreshTarget({ projectId: task.projectId })),
     Effect.tap(() => notify),
     Effect.uninterruptible,
   );
@@ -292,52 +401,73 @@ const make = Effect.gen(function* () {
             : 1,
       )
       .slice(-200);
-    return { task, attempts, notes };
+    const artifacts = yield* store.listArtifacts(taskId);
+    const receipts = yield* store.listReceipts(taskId);
+    return { task, attempts, notes, artifacts, receipts };
   }, store.transaction);
 
+  const readStartState = Effect.fn("FactoryTasks.readStartState")(function* (taskId: string) {
+    const task = yield* requireTask(taskId);
+    if (task.lane === "dropped") {
+      return yield* new FactoryTaskError({
+        reason: "invalid",
+        message: "A dropped task cannot be started.",
+      });
+    }
+    const attempts = yield* store.attempts.list(`${task.id}/`);
+    let last: FactoryAttempt | undefined;
+    let ran: FactoryAttempt | undefined;
+    for (const { value } of attempts.items) {
+      if (last === undefined || value.n > last.n) last = value;
+      if (value.runId !== null && (ran === undefined || value.n > ran.n)) ran = value;
+    }
+    return { task, last, runId: ran?.runId ?? null };
+  });
+
+  const checkRun = Effect.fn("FactoryTasks.checkRun")(function* (runId: string | null) {
+    if (runId === null) return;
+    const running = yield* workflows.get(runId).pipe(
+      Effect.map(({ run }) => run.endedAt === null),
+      Effect.catchTags({
+        WorkflowInputError: (error) =>
+          error.problem === Workflows.OFF
+            ? Effect.fail(new FactoryTaskError({ reason: "workflows-off", message: error.message }))
+            : Effect.succeed(false),
+        WorkflowRunNotFoundError: () => Effect.succeed(false),
+      }),
+    );
+    if (running) {
+      return yield* new FactoryTaskError({
+        reason: "already-running",
+        message: "Task is already running.",
+      });
+    }
+  });
+
   const prepareAttempt = Effect.fn("FactoryTasks.prepareAttempt")(
-    function* (input: FactoryTaskStartInput, requestedBy: string) {
-      const task = yield* requireTask(input.taskId);
-      if (task.lane === "dropped") {
+    function* (
+      input: FactoryTaskStartInput,
+      requestedBy: string,
+      checkedRunId: string | null,
+      allowsResearch: boolean,
+    ) {
+      // A workflow can write attempts, or the user can change kind, while the folder is resolved.
+      const { task, last, runId } = yield* readStartState(input.taskId);
+      if (runId !== checkedRunId) yield* checkRun(runId);
+      if (task.kind === "research" && !allowsResearch) {
         return yield* new FactoryTaskError({
-          reason: "invalid",
-          message: "A dropped task cannot be started.",
+          reason: "workspace-unavailable",
+          message: "An experiment needs a Git project.",
         });
       }
-      const attempts = yield* store.attempts.list(`${task.id}/`);
-      let last: FactoryAttempt | undefined;
-      let ran: FactoryAttempt | undefined;
-      for (const { value } of attempts.items) {
-        if (last === undefined || value.n > last.n) last = value;
-        if (value.runId !== null && (ran === undefined || value.n > ran.n)) ran = value;
-      }
-      if (ran !== undefined && ran.runId !== null) {
-        const running = yield* workflows.get(ran.runId).pipe(
-          Effect.map(({ run }) => run.endedAt === null),
-          Effect.catchTags({
-            WorkflowInputError: (error) =>
-              error.problem === Workflows.OFF
-                ? Effect.fail(
-                    new FactoryTaskError({ reason: "workflows-off", message: error.message }),
-                  )
-                : Effect.succeed(false),
-            WorkflowRunNotFoundError: () => Effect.succeed(false),
-          }),
-        );
-        if (running) {
-          return yield* new FactoryTaskError({
-            reason: "already-running",
-            message: "Task is already running.",
-          });
-        }
-      }
-      const n = last === undefined ? 1 : last.runId === null ? last.n : last.n + 1;
+      const workflow = FACTORY_KIND_WORKFLOWS[task.kind ?? "software"];
+      const n = last?.runId === null && last.workflow === workflow ? last.n : (last?.n ?? 0) + 1;
       const attempt: FactoryAttempt = {
         v: 1,
         taskId: task.id,
         n,
         key: `task/${task.id}/a${n}`,
-        workflow: FACTORY_TASK_WORKFLOW,
+        workflow,
         runId: null,
         requestedBy,
         startedAt: DateTime.formatIso(yield* DateTime.now),
@@ -374,7 +504,21 @@ const make = Effect.gen(function* () {
 
   const start = Effect.fn("FactoryTasks.start")(
     function* (input: FactoryTaskStartInput, requestedBy: string) {
-      const { task, attempt } = yield* prepareAttempt(input, requestedBy);
+      const initial = yield* readStartState(input.taskId);
+      yield* checkRun(initial.runId);
+      const target = yield* refreshTarget({ projectId: initial.task.projectId });
+      if (target !== null && target.problem !== null) {
+        return yield* new FactoryTaskError({
+          reason: "workspace-unavailable",
+          message: target.problem,
+        });
+      }
+      const { task, attempt } = yield* prepareAttempt(
+        input,
+        requestedBy,
+        initial.runId,
+        target === null || target.workspace === "worktree",
+      );
       const runInput: FactoryTaskRunInput = {
         taskId: task.id,
         number: task.number,
@@ -386,7 +530,7 @@ const make = Effect.gen(function* () {
         issueUrl: task.source._tag === "issue" ? task.source.url : null,
       };
       const { runId } = yield* workflows
-        .start(FACTORY_TASK_WORKFLOW, runInput, {
+        .start(attempt.workflow, runInput, {
           idempotencyKey: attempt.key,
         })
         .pipe(
@@ -571,11 +715,45 @@ const make = Effect.gen(function* () {
     }),
   );
 
+  if (projects !== undefined || folders !== undefined) {
+    yield* Effect.gen(function* () {
+      const ids = new Set<FactoryTask["projectId"]>();
+      for (const { value } of (yield* store.tasks.list()).items) {
+        if (value.lane !== "dropped") ids.add(value.projectId);
+      }
+      yield* Effect.forEach(
+        ids,
+        (id) =>
+          refreshTarget({ projectId: id, probeOnly: true }).pipe(
+            Effect.flatMap((target) =>
+              target === null || target.problem === null
+                ? Effect.void
+                : Effect.logWarning("Factory workspace unavailable", {
+                    projectId: id,
+                    problem: target.problem,
+                  }),
+            ),
+          ),
+        { discard: true },
+      );
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.interrupt
+          : Effect.logWarning("Refreshing Factory targets failed", cause),
+      ),
+      Effect.forkIn(scope),
+    );
+  }
+
   return FactoryTasks.of({ watch, get, create, update, start, setOrchestrator });
 });
 
-export const layer: Layer.Layer<FactoryTasks, never, SqlClient.SqlClient | Workflows.Workflows> =
-  Layer.effect(FactoryTasks, make).pipe(Layer.provide(NodeCrypto.layer));
+export const layer: Layer.Layer<
+  FactoryTasks,
+  never,
+  SqlClient.SqlClient | Workflows.Workflows | FileSystem.FileSystem | Path.Path
+> = Layer.effect(FactoryTasks, make).pipe(Layer.provide(NodeCrypto.layer));
 
 export const wsHandlers = (service: FactoryTasks["Service"]) => ({
   [FACTORY_WS_METHODS.factoryTasksSubscribe]: (_input: FactoryTasksSubscribeInput) => service.watch,

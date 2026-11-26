@@ -21,6 +21,16 @@ import { ModelSelection } from "./modelSelection.ts";
 export const FactoryTaskId = Schema.String;
 export type FactoryTaskId = typeof FactoryTaskId.Type;
 
+export const Sha256 = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/));
+export const FactoryTaskKind = Schema.Literals(["software", "knowledge", "research"]);
+export type FactoryTaskKind = typeof FactoryTaskKind.Type;
+
+export const FACTORY_KIND_WORKFLOWS = {
+  software: "factory-task",
+  knowledge: "factory-brief",
+  research: "factory-experiment",
+} as const satisfies Record<FactoryTaskKind, string>;
+
 export const FactoryTaskLane = Schema.Literals([
   "backlog",
   "ready",
@@ -34,6 +44,7 @@ export type FactoryTaskLane = typeof FactoryTaskLane.Type;
 export const FactoryTaskSource = Schema.Union([
   Schema.TaggedStruct("local", {}),
   Schema.TaggedStruct("issue", { url: Schema.String, displayKey: Schema.String }),
+  Schema.TaggedStruct("promoted", { fromTaskId: FactoryTaskId, artifactSha256: Sha256 }),
 ]);
 export type FactoryTaskSource = typeof FactoryTaskSource.Type;
 
@@ -48,6 +59,7 @@ export const FactoryTask = Schema.Struct({
   number: PositiveInt,
   rev: PositiveInt,
   projectId: Schema.NullOr(ProjectId),
+  kind: Schema.optionalKey(FactoryTaskKind),
   title: FactoryTaskTitle,
   description: FactoryTaskDescription,
   lane: FactoryTaskLane,
@@ -96,6 +108,52 @@ export const FactoryNote = Schema.Struct({
 });
 export type FactoryNote = typeof FactoryNote.Type;
 
+export const FactoryArtifact = Schema.Struct({
+  v: Schema.Literal(1),
+  taskId: FactoryTaskId,
+  attempt: PositiveInt,
+  sha256: Sha256,
+  kind: Schema.Literals(["deliverable", "brief", "protocol", "evaluator", "results", "file"]),
+  location: Schema.Union([
+    Schema.TaggedStruct("file", { path: Schema.String.check(Schema.isMaxLength(1_024)) }),
+    Schema.TaggedStruct("inline", { text: Schema.String.check(Schema.isMaxLength(65_536)) }),
+  ]),
+  bytes: NonNegativeInt,
+  label: Schema.String.check(Schema.isMaxLength(200)),
+  step: Schema.String,
+  runId: Schema.String,
+  at: IsoDateTime,
+});
+export type FactoryArtifact = typeof FactoryArtifact.Type;
+
+export const FactoryReceipt = Schema.Struct({
+  v: Schema.Literal(1),
+  taskId: FactoryTaskId,
+  attempt: PositiveInt,
+  sha256: Sha256,
+  kind: Schema.Literals([
+    "sealed",
+    "critiqued",
+    "accepted",
+    "rejected",
+    "delivered",
+    "uncertain",
+    "promoted",
+  ]),
+  by: Schema.Literals(["person", "agent", "pack"]),
+  runId: Schema.String,
+  at: IsoDateTime,
+  detail: Schema.optionalKey(
+    Schema.Struct({
+      url: Schema.optionalKey(Schema.String),
+      commentId: Schema.optionalKey(Schema.String),
+      reason: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(4_000))),
+      taskId: Schema.optionalKey(FactoryTaskId),
+    }),
+  ),
+});
+export type FactoryReceipt = typeof FactoryReceipt.Type;
+
 export const FactoryTaskSummary = FactoryTask.mapFields(Struct.omit(["description"])).mapFields(
   (fields) => ({
     ...fields,
@@ -109,6 +167,8 @@ export const FactoryTaskDetail = Schema.Struct({
   task: FactoryTask,
   attempts: Schema.Array(FactoryAttempt),
   notes: Schema.Array(FactoryNote),
+  artifacts: Schema.Array(FactoryArtifact),
+  receipts: Schema.Array(FactoryReceipt),
 });
 export type FactoryTaskDetail = typeof FactoryTaskDetail.Type;
 
@@ -144,6 +204,7 @@ export type FactoryTaskGetInput = typeof FactoryTaskGetInput.Type;
 
 export const FactoryTaskCreateInput = Schema.Struct({
   projectId: Schema.NullOr(ProjectId),
+  kind: Schema.optionalKey(FactoryTaskKind),
   title: Schema.String,
   description: Schema.optionalKey(Schema.String),
   lane: Schema.optionalKey(FactoryTaskLane),
@@ -156,6 +217,7 @@ export const FactoryTaskCreateInput = Schema.Struct({
 export type FactoryTaskCreateInput = typeof FactoryTaskCreateInput.Type;
 
 export const FactoryTaskPatch = Schema.Struct({
+  kind: Schema.optionalKey(Schema.String),
   title: Schema.optionalKey(Schema.String),
   description: Schema.optionalKey(Schema.String),
   lane: Schema.optionalKey(FactoryTaskLane),
@@ -189,6 +251,7 @@ export const FactoryTaskErrorReason = Schema.Literals([
   "invalid",
   "workflows-off",
   "workflow-missing",
+  "workspace-unavailable",
   "already-running",
 ]);
 export type FactoryTaskErrorReason = typeof FactoryTaskErrorReason.Type;

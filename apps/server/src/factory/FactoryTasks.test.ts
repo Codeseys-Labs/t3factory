@@ -1,8 +1,12 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
+  CommandId,
+  type FactoryArtifact,
   type FactoryAttempt,
   type FactoryNote,
+  type FactoryReceipt,
   type FactoryTask,
   type FactoryTaskCreateInput,
   type FactoryTaskError,
@@ -21,6 +25,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import type * as Scope from "effect/Scope";
@@ -28,9 +33,24 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
+import * as ServerConfig from "../config.ts";
+import * as GitManager from "../git/GitManager.ts";
+import * as GitWorkflow from "../git/GitWorkflowService.ts";
+import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
 import { runMigrations } from "../persistence/Migrations.ts";
+import * as ProcessRunner from "../processRunner.ts";
+import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
+import * as ProjectEnrichmentService from "../project/ProjectEnrichmentService.ts";
+import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
+import * as ProjectService from "../project/ProjectService.ts";
+import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
+import * as ServerSettings from "../serverSettings.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
+import * as VcsProcess from "../vcs/VcsProcess.ts";
 import { KeyValues, layerKeyValues } from "../workflows/stepServices.ts";
 import * as Workflows from "../workflows/Workflows.ts";
+import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as FactoryTasks from "./FactoryTasks.ts";
 
 const EPOCH = "1970-01-01T00:00:00.000Z";
@@ -42,9 +62,15 @@ const ISSUE = {
 } as const;
 
 const uuid = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
+const sha = (digit: string) => digit.repeat(64);
+const nnnn = (n: number) => String(n).padStart(4, "0");
 const taskKey = (taskId: string) => `factory/v1/task/${taskId}`;
-const attemptKey = (taskId: string, n: number) =>
-  `factory/v1/attempt/${taskId}/${String(n).padStart(4, "0")}`;
+const attemptKey = (taskId: string, n: number) => `factory/v1/attempt/${taskId}/${nnnn(n)}`;
+const artifactKey = (artifact: FactoryArtifact) =>
+  `factory/v1/artifact/${artifact.taskId}/${nnnn(artifact.attempt)}/${artifact.sha256}`;
+const receiptKey = (receipt: FactoryReceipt) =>
+  `factory/v1/receipt/${receipt.taskId}/${nnnn(receipt.attempt)}/${receipt.kind}-${receipt.sha256.slice(0, 16)}`;
+const targetKey = (projectId: string) => `factory/v1/target/${projectId}`;
 const isoNow = Effect.map(DateTime.now, DateTime.formatIso);
 
 /** A task as a workflow step or the CLI writes it, straight into the store. */
@@ -94,6 +120,44 @@ const outsideNote = (taskId: string, index: number): FactoryNote => {
     at,
   };
 };
+
+/** Evidence a pack step writes for an attempt, straight into the store. */
+const outsideArtifact = (
+  taskId: string,
+  attempt: number,
+  sha256: string,
+  fields: Partial<FactoryArtifact> = {},
+): FactoryArtifact => ({
+  v: 1,
+  taskId,
+  attempt,
+  sha256,
+  kind: "file",
+  location: { _tag: "file", path: `/work/report-${attempt}.md` },
+  bytes: 1024,
+  label: `Report ${attempt}`,
+  step: "artifacts",
+  runId: `run-${attempt}`,
+  at: DateTime.formatIso(DateTime.makeUnsafe(attempt * 1000)),
+  ...fields,
+});
+
+const outsideReceipt = (
+  taskId: string,
+  attempt: number,
+  sha256: string,
+  fields: Partial<FactoryReceipt> = {},
+): FactoryReceipt => ({
+  v: 1,
+  taskId,
+  attempt,
+  sha256,
+  kind: "accepted",
+  by: "person",
+  runId: `run-${attempt}`,
+  at: DateTime.formatIso(DateTime.makeUnsafe(attempt * 1000 + 500)),
+  ...fields,
+});
 
 const put = (key: string, value: unknown) =>
   Effect.flatMap(KeyValues, (keyValues) => keyValues.set(key, JSON.stringify(value)));
@@ -246,6 +310,96 @@ const withFactory = <A, E>(
       ),
     );
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped);
+
+const git = (cwd: string, args: ReadonlyArray<string>) =>
+  ProcessRunner.ProcessRunner.pipe(
+    Effect.flatMap((runner) => runner.run({ command: "git", args: ["-C", cwd, ...args] })),
+    Effect.provide(ProcessRunner.layer),
+  );
+
+const layerProjects = (baseDir: string) =>
+  ManagedProjectFolders.layer.pipe(
+    Layer.provideMerge(RuntimeLayer.layerProjectService),
+    Layer.provideMerge(
+      ProjectEnrichmentService.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(RepositoryIdentityResolver.RepositoryIdentityResolver, {
+              resolve: () => Effect.succeed(null),
+            }),
+            Layer.succeed(ProjectFaviconResolver.ProjectFaviconResolver, {
+              invalidate: () => Effect.void,
+              resolvePath: () => Effect.succeed(null),
+            }),
+          ),
+        ),
+      ),
+    ),
+    Layer.provideMerge(WorkspacePaths.layer),
+    Layer.provideMerge(
+      GitWorkflow.layer.pipe(
+        Layer.provide(VcsDriverRegistry.layer.pipe(Layer.provide(VcsProcess.layer))),
+        Layer.provide(Layer.mock(GitManager.GitManager)({})),
+      ),
+    ),
+    Layer.provideMerge(GitVcsDriver.layer.pipe(Layer.provide(VcsProcess.layer))),
+    Layer.provideMerge(ServerSettings.layerTest()),
+    Layer.provideMerge(ServerConfig.layerTest(baseDir, baseDir)),
+  );
+
+/** `withFactory` with real projects and a Scratch folder under a T3 home of its own. */
+const withTargets = <A, E>(
+  use: (
+    workflows: FakeWorkflows,
+  ) => Effect.Effect<
+    A,
+    E,
+    | FactoryTasks.FactoryTasks
+    | KeyValues
+    | ProjectService.ProjectService
+    | ManagedProjectFolders.ManagedProjectFolders
+    | NodeServices.NodeServices
+    | Scope.Scope
+  >,
+  home: "outside-git" | "inside-git" = "outside-git",
+) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-factory-targets-" });
+    const baseDir = home === "inside-git" ? path.join(directory, ".t3") : directory;
+    if (home === "inside-git") {
+      yield* git(directory, ["init", "--quiet"]);
+      yield* fileSystem.makeDirectory(baseDir);
+    }
+    const database = NodeSqliteClient.layer({ filename: path.join(directory, "state.sqlite") });
+    const workflows = fakeWorkflows();
+    return yield* Effect.provide(
+      Effect.scoped(use(workflows)),
+      Layer.merge(FactoryTasks.layer, layerKeyValues).pipe(
+        Layer.provide(Layer.succeed(Workflows.Workflows, workflows.service)),
+        Layer.provideMerge(layerProjects(baseDir)),
+        Layer.provideMerge(Layer.effectDiscard(runMigrations())),
+        Layer.provideMerge(database),
+      ),
+    );
+  }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)), Effect.scoped);
+
+/** A project on a temp folder of its own, which `git init` makes a checkout when asked. */
+const makeProject = (checkout: boolean) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const projects = yield* ProjectService.ProjectService;
+    const folder = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-factory-project-" });
+    if (checkout) yield* git(folder, ["init", "--quiet"]);
+    const name = checkout ? "checkout" : "plain";
+    return yield* projects.create({
+      commandId: CommandId.make(`command:${name}`),
+      projectId: ProjectId.make(`project-${name}`),
+      title: name,
+      workspaceRoot: folder,
+    });
+  });
 
 describe("R1 create", () => {
   // R1: title trimmed, defaults filled, times now, number is seq + 1 and seq is stored.
@@ -804,6 +958,8 @@ describe("R3 start", () => {
             task: { ...task, lane: "doing", laneSetAt: at, updatedAt: at, rev: 2 },
             attempts: [attempt],
             notes: [],
+            artifacts: [],
+            receipts: [],
           });
         }),
       ),
@@ -1055,6 +1211,8 @@ describe("R3 start", () => {
             },
           ],
           notes: [],
+          artifacts: [],
+          receipts: [],
         });
         assert.strictEqual(workflows.starts.length, 1);
       }),
@@ -1093,6 +1251,8 @@ describe("R3 start", () => {
           task: dropped,
           attempts: [attempt],
           notes: [],
+          artifacts: [],
+          receipts: [],
         });
       }),
     ),
@@ -1125,6 +1285,8 @@ describe("R4 get", () => {
           task,
           attempts: [1, 2, 10].map((n) => outsideAttempt(task.id, n)),
           notes: notes.slice(1),
+          artifacts: [],
+          receipts: [],
         });
       }),
     ),
@@ -1491,6 +1653,295 @@ describe("R8 isolation", () => {
             .map((row) => row.key),
           [],
         );
+      }),
+    ),
+  );
+});
+
+describe("#212 kind dispatch", () => {
+  // §1.4: start runs the workflow of the task's kind, software when absent, and records it.
+  it.effect.each([
+    { kind: undefined, workflow: "factory-task" },
+    { kind: "software", workflow: "factory-task" },
+    { kind: "knowledge", workflow: "factory-brief" },
+    { kind: "research", workflow: "factory-experiment" },
+  ] as const)(
+    "a task of kind $kind starts $workflow and records it on the attempt",
+    ({ kind, workflow }) =>
+      withFactory((workflows) =>
+        Effect.gen(function* () {
+          const tasks = yield* FactoryTasks.FactoryTasks;
+          const task = yield* tasks.create({
+            projectId: null,
+            title: "Kinded",
+            ...(kind === undefined ? {} : { kind }),
+          });
+          assert.strictEqual(task.kind, kind);
+          assert.deepStrictEqual(yield* record(taskKey(task.id)), task);
+          const at = yield* isoNow;
+          const key = `task/${task.id}/a1`;
+
+          const attempt = yield* tasks.start({ taskId: task.id }, "tester");
+          assert.deepStrictEqual(attempt, {
+            v: 1,
+            taskId: task.id,
+            n: 1,
+            key,
+            workflow,
+            runId: "run-1",
+            requestedBy: "tester",
+            startedAt: at,
+          });
+          assert.deepStrictEqual(
+            workflows.starts.map((call) => [call.workflow, call.idempotencyKey]),
+            [[workflow, key]],
+          );
+          assert.deepStrictEqual(yield* record(attemptKey(task.id, 1)), attempt);
+        }),
+      ),
+  );
+
+  // §1.4: a kind patch is checked like the other patched fields; a refused one writes nothing.
+  it.effect("a patch to an unknown kind is invalid, and a known kind is stored", () =>
+    withFactory(() =>
+      Effect.gen(function* () {
+        const tasks = yield* FactoryTasks.FactoryTasks;
+        const task = yield* tasks.create({ projectId: null, title: "Task" });
+        yield* TestClock.adjust("1 minute");
+        const before = yield* storeRows;
+        assert.deepStrictEqual(
+          yield* Effect.forEach(["poetry", "", "Software"], (kind) =>
+            reasonOf(tasks.update({ taskId: task.id, rev: 1, patch: { kind } })),
+          ),
+          ["invalid", "invalid", "invalid"],
+        );
+        assert.deepStrictEqual(yield* storeRows, before);
+
+        const at = yield* isoNow;
+        const patched = yield* tasks.update({
+          taskId: task.id,
+          rev: 1,
+          patch: { kind: "research" },
+        });
+        assert.deepStrictEqual(patched, { ...task, kind: "research", rev: 2, updatedAt: at });
+        assert.deepStrictEqual(yield* record(taskKey(task.id)), patched);
+      }),
+    ),
+  );
+
+  // §1.4: an attempt without a run is reused only by a start of the workflow it was written for.
+  it.effect.each([
+    { kind: "knowledge", workflow: "factory-brief", n: 2 },
+    { kind: "software", workflow: "factory-task", n: 1 },
+  ] as const)(
+    "after a patch to $kind, a factory-task attempt without a run leaves $workflow attempt $n",
+    ({ kind, workflow, n }) =>
+      withFactory((workflows) =>
+        Effect.gen(function* () {
+          const tasks = yield* FactoryTasks.FactoryTasks;
+          const task = yield* tasks.create({ projectId: null, title: "Changed kind" });
+          const pending: FactoryAttempt = { ...outsideAttempt(task.id, 1), runId: null };
+          yield* put(attemptKey(task.id, 1), pending);
+          yield* tasks.update({ taskId: task.id, rev: 1, patch: { kind } });
+          const key = `task/${task.id}/a${n}`;
+
+          const attempt = yield* tasks.start({ taskId: task.id }, "tester");
+          assert.deepStrictEqual(
+            [attempt.n, attempt.key, attempt.workflow, attempt.runId],
+            [n, key, workflow, "run-1"],
+          );
+          assert.deepStrictEqual(
+            workflows.starts.map((call) => [call.workflow, call.idempotencyKey]),
+            [[workflow, key]],
+          );
+          assert.deepStrictEqual(workflows.gets, []);
+          assert.deepStrictEqual(
+            (yield* tasks.get(task.id)).attempts,
+            n === 1 ? [attempt] : [pending, attempt],
+          );
+        }),
+      ),
+  );
+});
+
+describe("#212 promoted source", () => {
+  // §1.4 R1: promoted.fromTaskId must name a stored task; otherwise invalid, using no number.
+  it.effect("a promoted task must come from a task that exists", () =>
+    withFactory(() =>
+      Effect.gen(function* () {
+        const tasks = yield* FactoryTasks.FactoryTasks;
+        const keyValues = yield* KeyValues;
+        const from = yield* tasks.create({ projectId: null, title: "Experiment" });
+        const promotedFrom = (fromTaskId: string) =>
+          ({ _tag: "promoted", fromTaskId, artifactSha256: sha("a") }) as const;
+        assert.deepStrictEqual(
+          yield* Effect.forEach([uuid(99), "not/a task"], (fromTaskId) =>
+            reasonOf(
+              tasks.create({ projectId: null, title: "Orphan", source: promotedFrom(fromTaskId) }),
+            ),
+          ),
+          ["invalid", "invalid"],
+        );
+        assert.deepStrictEqual(
+          (yield* keyValues.list("factory/v1/task/")).map((row) => row.key),
+          [taskKey(from.id)],
+        );
+
+        const promoted = yield* tasks.create({
+          projectId: null,
+          title: "Follow-up",
+          source: promotedFrom(from.id),
+        });
+        assert.deepStrictEqual([promoted.number, promoted.source], [2, promotedFrom(from.id)]);
+        assert.deepStrictEqual(yield* record(taskKey(promoted.id)), promoted);
+      }),
+    ),
+  );
+});
+
+describe("#212 targets", () => {
+  // §1.3: a project's target is worktree when its folder holds .git, otherwise root.
+  it.effect.each([
+    { folder: "a Git checkout", checkout: true, workspace: "worktree" },
+    { folder: "a plain folder", checkout: false, workspace: "root" },
+  ] as const)("creating a task on $folder records a $workspace target", ({ checkout, workspace }) =>
+    withTargets(() =>
+      Effect.gen(function* () {
+        const tasks = yield* FactoryTasks.FactoryTasks;
+        const project = yield* makeProject(checkout);
+        const at = yield* isoNow;
+        yield* tasks.create({ projectId: project.id, title: "Targeted" });
+        assert.deepStrictEqual(yield* record(targetKey(project.id)), {
+          v: 1,
+          projectId: project.id,
+          workspace,
+          workspaceRoot: project.workspaceRoot,
+          problem: null,
+          checkedAt: at,
+        });
+      }),
+    ),
+  );
+
+  // §1.3: a task without a project targets the Scratch project, which start then uses.
+  it.effect("a task without a project records the Scratch project as its target, and starts", () =>
+    withTargets((workflows) =>
+      Effect.gen(function* () {
+        const tasks = yield* FactoryTasks.FactoryTasks;
+        const scratch = yield* ManagedProjectFolders.ManagedProjectFolders;
+        const at = yield* isoNow;
+        const task = yield* tasks.create({ projectId: null, title: "Loose" });
+        const { projectId } = yield* scratch.ensureScratchProject;
+        const target = {
+          v: 1,
+          projectId,
+          workspace: "scratch",
+          workspaceRoot: Option.getOrNull(yield* scratch.scratchRoot),
+          problem: null,
+          checkedAt: at,
+        };
+        assert.isNotNull(target.workspaceRoot);
+        assert.deepStrictEqual(yield* record(targetKey("scratch")), target);
+
+        const attempt = yield* tasks.start({ taskId: task.id }, "tester");
+        assert.deepStrictEqual(
+          [attempt.n, attempt.workflow, attempt.runId],
+          [1, "factory-task", "run-1"],
+        );
+        assert.strictEqual(workflows.starts.length, 1);
+        assert.deepStrictEqual(yield* record(targetKey("scratch")), target);
+      }),
+    ),
+  );
+
+  // §1.3: a Scratch problem goes into the target, and start refuses before writing an attempt.
+  it.effect(
+    "a task without a project cannot start while the T3 home is inside a Git checkout",
+    () =>
+      withTargets(
+        (workflows) =>
+          Effect.gen(function* () {
+            const tasks = yield* FactoryTasks.FactoryTasks;
+            const keyValues = yield* KeyValues;
+            const scratch = yield* ManagedProjectFolders.ManagedProjectFolders;
+            const at = yield* isoNow;
+            const task = yield* tasks.create({ projectId: null, title: "Homeless" });
+
+            assert.strictEqual(
+              yield* reasonOf(tasks.start({ taskId: task.id }, "tester")),
+              "workspace-unavailable",
+            );
+            assert.deepStrictEqual(yield* keyValues.list("factory/v1/attempt/"), []);
+            assert.deepStrictEqual(workflows.starts, []);
+            assert.deepStrictEqual(yield* record(taskKey(task.id)), task);
+            const unavailable = yield* Effect.flip(scratch.ensureScratchProject);
+            assert.strictEqual(unavailable._tag, "ScratchUnavailableError");
+            assert.deepStrictEqual(yield* record(targetKey("scratch")), {
+              v: 1,
+              projectId: null,
+              workspace: "scratch",
+              workspaceRoot: null,
+              problem: unavailable.message,
+              checkedAt: at,
+            });
+          }),
+        "inside-git",
+      ),
+  );
+});
+
+describe("#212 evidence", () => {
+  // §1.1: get lists the task's artifacts and receipts oldest first and skips damaged rows.
+  it.effect("get lists the task's artifacts and receipts oldest first, past damaged rows", () =>
+    withFactory(() =>
+      Effect.gen(function* () {
+        const tasks = yield* FactoryTasks.FactoryTasks;
+        const keyValues = yield* KeyValues;
+        const task = yield* tasks.create({ projectId: null, title: "Evidenced" });
+        const other = yield* tasks.create({ projectId: null, title: "Other" });
+        const artifacts = [
+          outsideArtifact(task.id, 1, sha("a")),
+          outsideArtifact(task.id, 2, sha("e"), {
+            kind: "brief",
+            location: { _tag: "inline", text: "The frozen brief" },
+          }),
+        ];
+        const receipts = [
+          outsideReceipt(task.id, 1, sha("a")),
+          outsideReceipt(task.id, 2, sha("e"), {
+            kind: "delivered",
+            by: "pack",
+            detail: { url: `${ISSUE.url}#issuecomment-1`, commentId: "IC_1" },
+          }),
+        ];
+        const elsewhere = outsideArtifact(other.id, 1, sha("f"));
+        yield* Effect.forEach(
+          [...artifacts, elsewhere].reverse(),
+          (artifact) => put(artifactKey(artifact), artifact),
+          { discard: true },
+        );
+        yield* Effect.forEach(
+          [...receipts].reverse(),
+          (receipt) => put(receiptKey(receipt), receipt),
+          { discard: true },
+        );
+        yield* keyValues.set(`factory/v1/artifact/${task.id}/0001/${sha("b")}`, "not json");
+        yield* put(`factory/v1/artifact/${task.id}/0001/${sha("c")}`, { v: 1, taskId: task.id });
+
+        assert.deepStrictEqual(yield* tasks.get(task.id), {
+          task,
+          attempts: [],
+          notes: [],
+          artifacts,
+          receipts,
+        });
+        assert.deepStrictEqual(yield* tasks.get(other.id), {
+          task: other,
+          attempts: [],
+          notes: [],
+          artifacts: [elsewhere],
+          receipts: [],
+        });
       }),
     ),
   );

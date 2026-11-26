@@ -443,7 +443,9 @@ export const layerProduction = Layer.mergeAll(
   layerThreadLaunchProvided,
   layerScheduledTaskProvided,
   layerWorkflowsProvided,
-  FactoryTasks.layer.pipe(Layer.provide(layerWorkflowsProvided)),
+  FactoryTasks.layer.pipe(
+    Layer.provide(Layer.merge(layerWorkflowsProvided, layerManagedProjectFoldersProvided)),
+  ),
   layerScratchThreadPromotionProvided,
   layerSecretRequestsProvided,
   layerFeedbackStoreProvided,

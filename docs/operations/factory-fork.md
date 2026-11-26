@@ -65,18 +65,22 @@ To have an agent do the merge, start the workflow `factory-sync-upstream` on the
 t3 workflow start factory-sync-upstream --input '{"projectId":"<projectId>","ref":"<tag>"}' --key sync/<tag>
 ```
 
-An agent does the manual steps in a worktree and opens a pull request. When its checks pass, the workflow asks before merging it, always with a merge commit. Read the conflicts it reports in that question before you answer.
+An agent does the manual steps in a worktree and opens a pull request. When its checks pass, the workflow asks before merging it, always with a merge commit. When the pull request ran no checks at all, only an answer given in the app merges it. Read the conflicts it reports in that question before you answer.
 
 By hand:
 
 1. Fetch the tags and pick the newest nightly, `<tag>`.
 2. `git switch -c sync/upstream factory`, then `git merge <tag>`.
-3. Resolve conflicts. They should only be in the files listed under `seams` in `factory/seams.json`; keep both sides' lines. For a generated file, take upstream's version; the next step rebuilds it.
-4. Regenerate the generated files: the route tree (the web build or dev server rewrites it) and, with `vp run i18n:generate` in `apps/web`, `apps/mobile` and `apps/desktop`, the translation catalogs.
-5. `node scripts/factory-i18n.ts merge --base <tag>` rebuilds every catalog as upstream's plus Factory's keys with their translations.
-6. `node scripts/factory-i18n.ts check --base <tag>`, then `node scripts/factory-seams.ts --base <tag>`. If a seam no longer differs from upstream, it is stale: remove it from `factory/seams.json`.
-7. Run the checks the [CI](#what-factory-ci-checks) runs, below, and fix what broke.
-8. `git switch factory`, then `git merge --ff-only sync/upstream`.
+3. Resolve conflicts. They should only be in the files listed under `seams` in `factory/seams.json`; keep both sides' lines. For a generated file, take upstream's version; a later step rebuilds it. Commit the merge before going on: the two Factory tools compare against the merge base of `HEAD`, so run before the commit they treat every new upstream string as Factory's.
+4. `vp i --frozen-lockfile`, so the generators and checks run on upstream's new dependencies.
+5. Regenerate the generated files: the route tree (the web build or dev server rewrites it) and, with `vp run i18n:generate` in `apps/web`, `apps/mobile` and `apps/desktop`, the translation catalogs.
+6. `node scripts/factory-i18n.ts merge --base <tag>` rebuilds every catalog as upstream's plus Factory's keys with their translations.
+7. `node scripts/factory-i18n.ts check --base <tag>`, then `node scripts/factory-seams.ts --base <tag>`. If a seam no longer differs from upstream, it is stale: remove it from `factory/seams.json`.
+8. Run the checks the [CI](#what-factory-ci-checks) runs, below, and fix what broke.
+9. `git switch factory`, then `git merge --ff-only sync/upstream`, or a plain `git merge sync/upstream` when `factory` moved in the meantime; after a plain merge repeat steps 6 to 8 on `factory`.
+10. Push the tag's commit to `origin/main` first, then `factory`. CI compares against `origin/main`, so it must already be the tag.
+
+How often: run the plan against the newest nightly every day, and merge on Monday and Thursday, or sooner when the plan predicts seam conflicts. Keep one sync open at a time. After a sync that needed more than one round of fixes, merge daily until two go through clean. The first real sync, 102 upstream commits that touched 6 of the 11 seam files, merged with no conflict.
 
 Do not hand-merge `pnpm-lock.yaml`; Factory adds no dependencies, so it must equal upstream's.
 

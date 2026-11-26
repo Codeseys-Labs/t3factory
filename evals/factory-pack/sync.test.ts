@@ -91,7 +91,13 @@ const askMerge = Effect.fn("factoryPack.test.askMerge")(function* (
   expect(question.request).toMatchObject({
     title: "Merge the upstream sync?",
     choices: ["Merge", "Hold"],
-    data: { prUrl: PR_URL, ref: REF, conflicts: SYNCED.conflicts, summary: SYNCED.summary },
+    data: {
+      prUrl: PR_URL,
+      ref: REF,
+      conflicts: SYNCED.conflicts,
+      summary: SYNCED.summary,
+      checks: "passing",
+    },
   });
   return question;
 });

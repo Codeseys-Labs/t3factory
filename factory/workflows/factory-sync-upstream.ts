@@ -91,19 +91,21 @@ export default workflow(
     if (Option.isNone(standing)) return yield* stop("checks did not finish");
     if (standing.value.state === "closed") return yield* stop("pull request closed");
     if (standing.value.state !== "merged") {
-      if (standing.value.checks !== "passing" && standing.value.checks !== "none") {
+      const { checks } = standing.value;
+      if (checks !== "passing" && checks !== "none") {
         return yield* stop("checks are not passing");
       }
       const headSha = yield* pullRequestHead(pr);
+      // No check ran, so nothing vouches for the merge: only a person's answer in the app counts.
       const approved = yield* mergeApproved(
         {
           title: "Merge the upstream sync?",
           kind: "merge",
-          data: { prUrl, ref, conflicts, summary },
+          data: { prUrl, ref, conflicts, summary, checks },
           links: [{ label: "Pull request", url: prUrl }],
           timeout: "7 days",
         },
-        config.mergeNeedsPerson,
+        config.mergeNeedsPerson || checks === "none",
       );
       if (!approved) return yield* stop("merge held");
       yield* mergePullRequest(pr, headSha, "merge");

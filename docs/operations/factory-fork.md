@@ -35,9 +35,11 @@ node scripts/factory-pack.ts uninstall --home <dir>
 
 The home must already exist. `install` writes `<dir>/workflows` and records what it wrote in `.factory-pack.json`. Workflows must be on in that home (**Settings → Labs → Workflows**).
 
-`install` copies every workflow file under `factory/workflows/`, including `lib/`, so a new workflow file in the pack ships with no list to update. That is `factory-task`, `factory-intake`, `factory-sync-upstream`, `factory-brief`, `factory-experiment` and `factory-self-repair`, and the helpers `lib/records.ts` and `lib/risk.ts`.
+`install` copies every workflow file under `factory/workflows/`, including `lib/`, so a new workflow file in the pack ships with no list to update. That is `factory-task`, `factory-intake`, `factory-sync-upstream`, `factory-brief`, `factory-experiment`, `factory-self-repair` and `factory-metrics`, and the helpers `lib/records.ts`, `lib/risk.ts`, `lib/ledger.ts` and `lib/metrics.ts`.
 
 The server reloads changed top-level workflow files without a restart, but not the helpers under `lib/`: an update that changes one needs a server restart, and `install` prints a line saying so when it applies.
+
+`factory-task` and `factory-task-part` are at version 2, and the pack no longer ships version 1. The server holds a changed file back while unfinished runs still use a version it would remove, so update a home only when no `factory-task` run is unfinished: let them end, or cancel them on the Workflows page. `t3 workflow list` shows which runs have not ended. This update also changes files under `lib/`, so restart the server after installing it.
 
 - Running `install` again updates the pack files and removes ones the pack no longer ships.
 - A file in `workflows` that is not from the pack and differs from it is a conflict: nothing is written, and the paths are listed. `--force` overwrites them.
@@ -98,9 +100,9 @@ Write the string in Factory code through `gt-react` as upstream's [translation p
 `.github/workflows/factory.yml` runs on pull requests and pushes to `factory`, and by hand. Upstream's workflows are disabled in the fork. It checks, in order:
 
 - the lockfile equals the merge base with `origin/main`;
-- `node scripts/factory-seams.ts --base origin/main` (including per-seam `maxAdded` line caps);
+- `node scripts/factory-seams.ts --base origin/main` (at most twelve seam files, each within its `maxAdded` line cap, and all of them together within `maxAddedTotal`);
 - typecheck of contracts, server, client-runtime, web, mobile, scripts and evals;
-- the server's `factory` tests, all `scripts/factory-*.test.ts` tests, and `evals/factory-pack`, which tests every pack workflow: `run`, `sync`, `brief`, `experiment`, `risk` and `self-repair`;
+- the server's `factory` tests, all `scripts/factory-*.test.ts` tests, and `evals/factory-pack`, which tests every pack workflow: `run`, `sync`, `brief`, `experiment`, `risk`, `self-repair`, `ledger` and `metrics`;
 - upstream seam unit tests (`ws.test.ts`, `RpcAuthorization.test.ts`, `RpcInstrumentation.test.ts`, `rpc.test.ts`, `client.test.ts`);
 - the web `src/factory` unit tests and `CommandPalette.logic.test.ts` (Playwright browser seam tests — `CommandPalette*.browser.test.tsx` and `mainAppLocation.browser.test.tsx` — are not run in `factory.yml` because it does not install browser binaries);
 - `vp run i18n:check`, upstream's catalog check;

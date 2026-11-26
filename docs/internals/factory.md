@@ -28,6 +28,18 @@ A deliverable and the decisions made about it are records of their own: `factory
 
 [`risk.ts`](../../factory/workflows/lib/risk.ts) classifies a pull request as `low`, `standard` or `high` by the first rule that fits, from facts the host and the `scope` agent reported; a missing, duplicate or mismatched fact is `high`. `factory-task-part` ratchets the tier across fix rounds (never downgrading) and forces a person-answered merge gate whenever the tier is `high`, even with `askMerge` off. `risk.ts` has no imports, so a workflow and a plain test can both load it. The pack cannot read `factory/seams.json` at run time, so `FORK_SEAM_PATHS` copies its paths into `DEFAULT_PROTECTED_PATHS`, and `evals/factory-pack/risk.test.ts` fails when the two differ. Changing a seam in the manifest means changing that list too.
 
+## Review ledger and outcomes
+
+A reviewer returns findings, never a verdict. The verdict is derived from them by `deriveVerdict` in [`ledger.ts`](../../factory/workflows/lib/ledger.ts): changes are asked for exactly when a finding with a blocking severity is open. A field that lets an agent state the verdict brings back what this replaced, an approval that survives an open blocker. A stored round's verdict is derived the same way, or is `stale`.
+
+A failed disprove never weakens the gate. A finding stops blocking only when the disprove agent returns a result for its id that says `refuted`. A missing result, an unknown id, and a step that failed or timed out all leave the finding open as `not-run`. Do not treat an unanswered finding as refuted.
+
+Round records are write-once, like artifacts and receipts. The key is the round's address, so a replayed `ledger/<at>` step finds it held and writes nothing, and the first record keeps its first time. A stale round is stored too, as `stale`, and its one retry writes under `<at>/again`; neither is overwritten or pruned, because the Work page compares a part's rounds to say whether a finding came back. A finding's id hashes its normalised path, category and claim, so changing that normalisation breaks the comparison against every stored round. The pack cannot import the wire schema, so what it writes has to keep decoding under `FactoryReviewRound`; change one and change the other. `factory.tasks.get` leaves out a record that does not decode, as it does a damaged artifact, and returns rounds in the task detail only, never in the board stream.
+
+An attempt's outcome record is written in the `finish` transaction with the note and its marker. It holds counts and facts, never rates, scores or thresholds: a stored rate would freeze a policy, such as what counts as a clean part, into history, and a reader can divide. Only `factory-task` writes outcomes.
+
+`factory-task` and `factory-task-part` are at version 2, and version 1 is removed. A run carries on at the version it started, and upstream's loader refuses a file that removes a version with unfinished runs, so the new pack is held back until runs of the old one end. Keeping version 1 would keep a reviewer whose verdict decides the gate. Finish or cancel unfinished runs before updating a home; [the runbook](../operations/factory-fork.md#install-only-the-pack) has the steps.
+
 ## Invariants
 
 - Task numbers are never reused. A counter hands them out inside the transaction that creates the task. Tasks are dropped, never deleted, and if the counter is unreadable the highest stored number takes its place.
@@ -49,7 +61,7 @@ An agent in a thread cannot call the `t3_workflow` tool; it is hidden there. An 
 
 ## Replay safety in the pack
 
-A workflow step can run again after a restart, so a step that creates or starts a task must not do it twice. `createTask` and `startTask` write markers (`factory/v1/captured/<runId>/<slot>`) in the same transaction as the task or attempt `runId`, and return what the first execution stored on replay. The `finish` step writes its note and `captured/<runId>/finish` the same way. Before merging, `pullRequestHead` records the reviewed `headSha`, and `mergePullRequest` rereads the pull request so a second run never merges twice and a push after review stops the merge (`pull request head changed after review`).
+A workflow step can run again after a restart, so a step that creates or starts a task must not do it twice. `createTask` and `startTask` write markers (`factory/v1/captured/<runId>/<slot>`) in the same transaction as the task or attempt `runId`, and return what the first execution stored on replay. The `finish` step writes its note, the attempt's outcome record and `captured/<runId>/finish` the same way. Before merging, `pullRequestHead` records the reviewed `headSha`, and `mergePullRequest` rereads the pull request so a second run never merges twice and a push after review stops the merge (`pull request head changed after review`).
 
 The trap: upstream's loader ([`WorkflowRuntime.ts`](../../apps/server/src/workflows/WorkflowRuntime.ts), `loadDefinitions`) reloads a changed workflow file by importing it under a new address, but a module it imports by relative path, such as `lib/records.ts`, keeps its address and Node returns the first copy. After a change under `factory/workflows/lib/` a running server fails to load the workflow or runs it against the old helper until it restarts. That includes the dev server: restart `vp run dev` after editing `lib/`.
 
@@ -58,6 +70,8 @@ The pack's rules for checking that a pull request is the project's, binding merg
 ## Keeping up with upstream
 
 Every edit to an upstream file is a possible conflict on every merge, so each is counted and capped. [`factory/seams.json`](../../factory/seams.json) lists the files Factory owns, the upstream files it may edit by hand (the seams, at most twelve, each with a `maxAdded` line budget), and the generated files. [`scripts/factory-seams.ts`](../../scripts/factory-seams.ts) compares `HEAD` with its merge base and fails on any other change, on a deleted or renamed upstream file, on a seam exceeding `maxAdded`, and on a seam that no longer differs. A seam edit is small and mechanical: an import, a registration, an entry in a list; anything larger belongs in a Factory-owned file that the seam calls. The service is read in `ws.ts` through `FactoryTasks.orDisabled`, which needs no context, so upstream's own tests of that file stay untouched.
+
+The seams together also have one budget, `maxAddedTotal` in `seams.json`. A twelfth seam, or a larger cap, is admitted only when a zero-seam design fails on a named missing upstream API, the seam adds registration lines only, and it says when it can be removed.
 
 Generated files are regenerated after a merge, never merged by hand. Translation catalogs are the exception that needs a tool. Taking upstream's catalogs and running the generator resets every Factory string to English, and upstream's `i18n:check` still passes. So Factory's translations live in overlay files and [`factory-i18n.ts`](../../scripts/factory-i18n.ts) rebuilds each catalog as upstream's plus the fork's keys.
 

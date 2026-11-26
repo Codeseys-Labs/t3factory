@@ -75,12 +75,20 @@ export const signalDigest = ({
     .update(JSON.stringify([1, "feed", feedId, itemKey, title, summary, link]), "utf8")
     .digest("hex");
 
-const CONTROL =
-  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+const MARK_RUN = /(\p{M}{30})\p{M}+/gu;
+const INVISIBLE =
+  /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Cn}\p{Variation_Selector}\u115F\u1160\u3164\uFFA0]/gu;
 
-/** The contract's text rule: NFC, control and bidirectional characters removed, white space collapsed, trimmed. */
+/** The contract's text rule: white space to spaces, invisible characters removed, combining-mark runs capped at 30, NFC, the cap again, spaces collapsed, trimmed. */
 export const normalizeText = (raw: string) =>
-  raw.normalize("NFC").replace(CONTROL, "").replace(/\s+/g, " ").trim();
+  raw
+    .replace(/[^\S\uFEFF]/g, " ")
+    .replace(INVISIBLE, "")
+    .replace(MARK_RUN, "$1")
+    .normalize("NFC")
+    .replace(MARK_RUN, "$1")
+    .replace(/ +/g, " ")
+    .trim();
 
 /** One normalized line of 1 to 200 characters; the digest binds the title, so it is never rewritten. */
 export const isNormalizedLine = (title: string) =>

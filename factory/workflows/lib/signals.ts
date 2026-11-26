@@ -43,10 +43,17 @@ export const signalFailures = [
 ] as const;
 export type FactorySignalFailure = (typeof signalFailures)[number];
 
-const CONTROL =
-  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+const CONTROL = /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Cn}\p{Variation_Selector}\u115F\u1160\u3164\uFFA0]/gu;
+const LONG_MARK_RUN = /(\p{M}{30})\p{M}+/gu;
 export const normalizeText = (raw: string) =>
-  raw.normalize("NFC").replace(CONTROL, "").replace(/\s+/g, " ").trim();
+  raw
+    .replace(/[^\S\uFEFF]/g, " ")
+    .replace(CONTROL, "")
+    .replace(LONG_MARK_RUN, "$1")
+    .normalize("NFC")
+    .replace(LONG_MARK_RUN, "$1")
+    .replace(/ +/g, " ")
+    .trim();
 export function cutText(text: string, max: number) {
   if (text.length <= max) return text;
   const unit = text.charCodeAt(max - 1);
@@ -494,9 +501,25 @@ export function htmlText(s: string) {
   return out + s.slice(literal);
 }
 
+// Special-scheme URLs also accept missing slashes and backslashes before the authority.
+const linkAuthority = /^https?:[\\/]*([^/\\?#]*)/i;
+function hostTooLong(authority: string) {
+  const start = authority.lastIndexOf("@") + 1;
+  const port = authority.indexOf(
+    ":",
+    authority[start] === "[" ? authority.indexOf("]", start) + 1 : start,
+  );
+  return (port < 0 ? authority.length : port) - start > 253;
+}
+
 export function linkValue(raw: string) {
+  if (raw.length > 2000) return null;
+  const text = normalizeText(raw);
+  const authority = linkAuthority.exec(text)?.[1];
+  if (authority === undefined || hostTooLong(authority)) return null;
+  if (text !== raw && hostTooLong(linkAuthority.exec(raw.trim())?.[1] ?? "")) return null;
   try {
-    const url = new URL(normalizeText(raw));
+    const url = new URL(text);
     if (
       (url.protocol === "https:" || url.protocol === "http:") &&
       !url.username &&
@@ -553,12 +576,15 @@ export function parseFeed(text: string): ParseResult {
     return text.slice(start, i);
   }
   function append(source: string, start: number, end: number) {
-    if (active && active.text.length < SIGNAL_FIELD_TEXT_MAX) {
-      active.text += source.slice(
-        start,
-        Math.min(end, start + SIGNAL_FIELD_TEXT_MAX - active.text.length),
-      );
+    if (!active) return;
+    const limit = start + SIGNAL_FIELD_TEXT_MAX - active.text.length;
+    if (end < limit) {
+      active.text += source.slice(start, end);
+      return;
     }
+    const last = source.charCodeAt(limit - 1);
+    active.text += source.slice(start, last >= 0xd800 && last <= 0xdbff ? limit - 1 : limit);
+    active = undefined;
   }
   function characters(quote: string | null) {
     let attribute = "";
@@ -683,18 +709,18 @@ export function parseFeed(text: string): ParseResult {
           quote = "";
           encodingAt = -1;
         }
-      } else if (xmlSpace(text.charCodeAt(i))) {
+      } else if (
+        text.startsWith("encoding", i) &&
+        (i === 5 || /[ \t\r\n'"]/.test(text.charAt(i - 1)))
+      ) {
+        i += 8;
         space();
-        if (text.startsWith("encoding", i)) {
-          i += 8;
+        if (text[i] === "=") {
+          i++;
           space();
-          if (text[i] === "=") {
-            i++;
-            space();
-            if (text[i] === '"' || text[i] === "'") {
-              quote = text.charAt(i++);
-              encodingAt = i;
-            }
+          if (text[i] === '"' || text[i] === "'") {
+            quote = text.charAt(i++);
+            encodingAt = i;
           }
         }
         continue;

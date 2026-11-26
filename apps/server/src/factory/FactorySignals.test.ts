@@ -896,4 +896,72 @@ describe("S14 server", () => {
       }),
     ),
   );
+
+  it.effect(
+    "r10c S4 stored titles with invisible characters or excess combining marks are refused",
+    () =>
+      withFactory(() =>
+        Effect.gen(function* () {
+          const tasks = yield* FactoryTasks.FactoryTasks;
+          const feedId = uuid(1);
+          yield* put(feedKey(feedId), feed(feedId));
+          yield* put(seqKey, 7);
+          const titles = [
+            "Update docs\u{E0069}\u{E0067}\u{E006E}",
+            "Up\u200Bdate",
+            "Up\u00ADdate",
+            "Update\uFE0F",
+            `a${"\u0301".repeat(31)}`,
+          ];
+          for (const [index, title] of titles.entries()) {
+            const content = candidate(feedId, `invisible-${index}`, { title });
+            const item = { ...content, sha256: digest(content) };
+            yield* seed(item);
+            const before = yield* rows;
+            const error = yield* failure(tasks.admitSignal(decision(item)));
+            assert.strictEqual(error.reason, "invalid");
+            assert.strictEqual(error.message, "This item's record is damaged.");
+            assert.strictEqual(yield* record(seqKey), 7);
+            assert.deepStrictEqual(yield* rows, before);
+            assert.strictEqual(
+              (yield* rows).filter((row) => row.key.startsWith("factory/v1/task/")).length,
+              0,
+            );
+          }
+          const content = candidate(feedId, "visible", { title: "Update docs" });
+          const visible = { ...content, sha256: digest(content) };
+          yield* seed(visible);
+          const admitted = yield* tasks.admitSignal(decision(visible));
+          assert.strictEqual(admitted.task.title, "Update docs");
+          assert.strictEqual(admitted.candidate.taskId, admitted.task.id);
+          assert.strictEqual(yield* record(seqKey), 8);
+        }),
+      ),
+  );
+
+  it.effect("r10c S4 feed names discard invisible characters before validation", () =>
+    withFactory(() =>
+      Effect.gen(function* () {
+        const tasks = yield* FactoryTasks.FactoryTasks;
+        const added = yield* tasks.addSignalFeed({
+          url: "https://example.com/releases",
+          label: "Rel\u200Beases\u{E0041}",
+          projectId: null,
+        });
+        assert.strictEqual(added.label, "Releases");
+        assert.deepStrictEqual(yield* record(feedKey(added.id)), added);
+        const before = yield* rows;
+        const error = yield* failure(
+          tasks.addSignalFeed({
+            url: "https://example.com/empty",
+            label: "\u200B\u00AD\uFE0F\u{E0041}",
+            projectId: null,
+          }),
+        );
+        assert.strictEqual(error.reason, "invalid");
+        assert.strictEqual(error.message, "A feed's name is 1 to 100 characters.");
+        assert.deepStrictEqual(yield* rows, before);
+      }),
+    ),
+  );
 });

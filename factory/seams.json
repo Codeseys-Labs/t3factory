@@ -12,7 +12,8 @@
     ".github/workflows/factory.yml",
     "docs/user/factory.md",
     "docs/internals/factory.md",
-    "docs/operations/factory-fork.md"
+    "docs/operations/factory-fork.md",
+    "docs/two-env-test/notes.md"
   ],
   "seams": [
     { "path": "packages/contracts/src/index.ts", "maxAdded": 3 },

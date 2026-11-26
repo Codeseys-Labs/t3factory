@@ -14,7 +14,7 @@ import {
   REMOTE_NEEDS_WORKTREE,
   remoteLine,
   remotePool,
-  remoteScopeLine,
+  remoteScopeBase,
 } from "../../factory/workflows/lib/placement.ts";
 import { type AgentTurnInput, type World, withWorld } from "./world.ts";
 
@@ -174,6 +174,7 @@ const scenario = (
     readonly head?: (pushes: number) => string | undefined;
     readonly parts?: ReadonlyArray<typeof PART>;
     readonly noPullRequest?: boolean;
+    readonly baseBranch?: string;
   } = {},
 ) => {
   const state: HeadState = { pushes: 0 };
@@ -199,7 +200,11 @@ const scenario = (
       mergeability: "mergeable",
     }),
     readPullRequest: (_address: WorkflowForge.PullRequestAddress, detail: PullRequestDetail) =>
-      Effect.succeed({ ...detail, headSha: head(state.pushes) }),
+      Effect.succeed({
+        ...detail,
+        headSha: head(state.pushes),
+        baseBranch: options.baseBranch ?? detail.baseBranch,
+      }),
     agent: (turn: AgentTurnInput): Partial<AgentResult> => {
       const answer = respond(turn, state);
       if (answer !== undefined) return answer;
@@ -384,13 +389,19 @@ const optionsOf = (turn: AgentTurnInput, runIds: ReadonlyArray<string>) => ({
 // One task with one part through review and merge, with no question on the way.
 const standard = (
   readOnlyOn: typeof READ_ONLY_ON | undefined,
-  options: { readonly baseRef?: string | null; readonly die?: boolean } = {},
+  options: {
+    readonly baseRef?: string | null;
+    readonly baseBranch?: string;
+    readonly die?: boolean;
+  } = {},
 ) =>
   withWorld(
-    scenario((turn) =>
-      options.die === true && /^(?:scope|review)\/0$/.test(turn.origin.step) && firstRound(turn)
-        ? DEAD
-        : undefined,
+    scenario(
+      (turn) =>
+        options.die === true && /^(?:scope|review)\/0$/.test(turn.origin.step) && firstRound(turn)
+          ? DEAD
+          : undefined,
+      options.baseBranch === undefined ? {} : { baseBranch: options.baseBranch },
     ),
     (world) =>
       world.server(
@@ -479,15 +490,18 @@ it("T2 a remote round starts scope/0 and review/0 on E at the pinned head, and p
 });
 
 it.each([
-  { baseRef: "origin/factory", remoteBase: "origin/factory" },
-  { baseRef: "refs/heads/release", remoteBase: "origin/release" },
-  { baseRef: null, remoteBase: "origin/HEAD" },
+  { baseBranch: "factory", remoteBase: "origin/factory" },
+  { baseBranch: "origin/release", remoteBase: "origin/origin/release" },
 ] as const)(
-  "T7 every launch on E carries the remote line once, scope its own diff line, and no launch here either (baseRef $baseRef)",
-  async ({ baseRef, remoteBase }) => {
+  "T7 every launch on E carries the remote line once, scope its own diff line, and no launch here either (baseBranch $baseBranch)",
+  async ({ baseBranch, remoteBase }) => {
     // Each round's first scope/0 and review/0 turn dies, so each step has a replacement launch.
-    const here = await standard(undefined, { baseRef, die: true });
-    const there = await standard(READ_ONLY_ON, { baseRef, die: true });
+    const here = await standard(undefined, { baseRef: "not-the-host-base", baseBranch, die: true });
+    const there = await standard(READ_ONLY_ON, {
+      baseRef: "not-the-host-base",
+      baseBranch,
+      die: true,
+    });
     const line = remoteLineOf(H);
     for (const step of ["scope/0", "review/0"]) {
       const remote = launches(there.startAttempts, there.partRunId, step);
@@ -1668,7 +1682,7 @@ it("T19 a remote step whose launch was never acknowledged has no thread and no e
       ),
   ));
 
-it("T20 both task workflows are registered at version 3 only, and factory-start runs version 3", () =>
+it("T20 both task workflows are registered at version 4 only, and factory-start runs version 4", () =>
   withWorld(scenario(), (world) =>
     world.server(
       Effect.fn("factoryPack.placement.versions")(function* (workflows) {
@@ -1677,7 +1691,7 @@ it("T20 both task workflows are registered at version 3 only, and factory-start 
             world.definitions
               .filter((definition) => definition.name === name)
               .map((definition) => definition.version),
-          ).toEqual([3]);
+          ).toEqual([4]);
         }
         yield* seedTask(workflows, { global: { askPlan: true } });
         const started = yield* workflows.start(
@@ -1688,7 +1702,7 @@ it("T20 both task workflows are registered at version 3 only, and factory-start 
         const { runId } = decodeStarted((yield* world.ended(workflows, started.runId)).result);
         expect((yield* workflows.get(runId)).run).toMatchObject({
           workflow: "factory-task",
-          version: 3,
+          version: 4,
         });
         yield* asked(world, workflows, runId, "approve-plan");
         yield* workflows.answer(runId, "approve-plan", { choice: "Drop" });
@@ -1757,17 +1771,16 @@ it("T20 remoteLine fills in the commit", () => {
   expect(remoteLine(HEAD_9)).toBe(remoteLineOf(HEAD_9));
 });
 
-// `<remoteBase>` is origin/ and baseRef without a leading origin/ or refs/heads/ (P11).
+// F2 fills the remote base with origin/ and the host's literal branch name.
 it.each([
-  { baseRef: null, remoteBase: "origin/HEAD" },
-  { baseRef: "origin/main", remoteBase: "origin/main" },
-  { baseRef: "refs/heads/release", remoteBase: "origin/release" },
-  { baseRef: "main", remoteBase: "origin/main" },
-  { baseRef: "origin/feature/x", remoteBase: "origin/feature/x" },
+  { baseBranch: "main", remoteBase: "origin/main" },
+  { baseBranch: "release", remoteBase: "origin/release" },
+  { baseBranch: "refs/heads/release", remoteBase: "origin/refs/heads/release" },
+  { baseBranch: "origin/feature/x", remoteBase: "origin/origin/feature/x" },
 ] as const)(
-  "T20 remoteScopeLine($baseRef) diffs against $remoteBase",
-  ({ baseRef, remoteBase }) => {
-    expect(remoteScopeLine(baseRef)).toBe(scopeLineOf(remoteBase));
+  "T20 remoteScopeBase($baseBranch) diffs against $remoteBase",
+  ({ baseBranch, remoteBase }) => {
+    expect(remoteScopeBase(baseBranch)).toBe(scopeLineOf(remoteBase));
   },
 );
 

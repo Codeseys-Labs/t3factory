@@ -2,10 +2,26 @@
 // The records the pack shares with the server's FactoryTasks service, the store work both
 // workflow files do with them, and the review gates every workflow that merges goes through.
 // Everything here that touches the store is for inside a `step`.
+import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
-import { namesFolder, placementFor } from "./placement.ts";
+import * as NodeUtil from "node:util";
+import {
+  GLOBAL_WRITE_ROW_REFUSED,
+  WRITE_NEEDS_BASE,
+  WRITE_NEEDS_MODEL,
+  baseFromLsRemote,
+  baseUnread,
+  headUnusable,
+  isFullSha,
+  mergeMark,
+  namesFolder,
+  placementFor,
+  placementsAgree,
+  placementsDiffer,
+  writePlacementFor,
+} from "./placement.ts";
 
 const { ask, pullRequests, runs, sleep, start, step, stop, store } = T3;
 
@@ -240,7 +256,7 @@ type TaskWorkflow = Parameters<typeof start<FactoryTaskRunInput>>[0];
 
 // `start` reads only the name and version. A workflow file cannot import another for its
 // definition: the loader would register that file's workflows twice.
-export const FACTORY_TASK_VERSION = 3;
+export const FACTORY_TASK_VERSION = 4;
 const workflowRef = (name: string) =>
   ({ name, version: name === FACTORY_TASK ? FACTORY_TASK_VERSION : 1 }) as unknown as TaskWorkflow;
 
@@ -268,6 +284,7 @@ const ReadOnlyOn = Schema.Struct({
   ),
   limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 4 })),
 });
+const WriteOn = ReadOnlyOn;
 
 const configFields = {
   concurrency: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 4 })),
@@ -290,6 +307,7 @@ export const PackConfig = Schema.Struct({
   v: Schema.Literal(1),
   ...configFields,
   readOnlyOn: Schema.optionalKey(ReadOnlyOn),
+  writeOn: Schema.optionalKey(WriteOn),
 });
 export type PackConfig = typeof PackConfig.Type;
 
@@ -310,6 +328,7 @@ const StoredConfig = Schema.Struct({
   protectedPaths: Schema.optionalKey(configFields.protectedPaths),
   lowRiskPaths: Schema.optionalKey(configFields.lowRiskPaths),
   readOnlyOn: Schema.optionalKey(Schema.NullOr(ReadOnlyOn)),
+  writeOn: Schema.optionalKey(Schema.NullOr(WriteOn)),
 });
 
 const DEFAULT_CONFIG: PackConfig = {
@@ -412,19 +431,25 @@ const readConfigRow = Effect.fn("factoryPack.readConfigRow")(function* (key: str
   const found = yield* store.entry(key, Schema.Json).get;
   if (Option.isNone(found)) return undefined;
   const raw = found.value;
-  if (
-    key === GLOBAL_CONFIG_KEY &&
-    raw !== null &&
-    typeof raw === "object" &&
-    "readOnlyOn" in raw &&
-    raw.readOnlyOn !== null
-  ) {
-    return yield* Effect.fail(GLOBAL_ROW_REFUSED);
+  if (key === GLOBAL_CONFIG_KEY && raw !== null && typeof raw === "object") {
+    if ("readOnlyOn" in raw && raw.readOnlyOn !== null) {
+      return yield* Effect.fail(GLOBAL_ROW_REFUSED);
+    }
+    if ("writeOn" in raw && raw.writeOn !== null) {
+      return yield* Effect.fail(GLOBAL_WRITE_ROW_REFUSED);
+    }
   }
-  const { readOnlyOn, ...fields } = yield* decodeStoredConfig(raw).pipe(
+  const { readOnlyOn, writeOn, ...fields } = yield* decodeStoredConfig(raw).pipe(
     Effect.mapError((error) => `The Factory config at ${key} is not valid: ${error.message}`),
   );
-  return readOnlyOn == null ? fields : { ...fields, readOnlyOn };
+  if (!placementsAgree(readOnlyOn ?? undefined, writeOn ?? undefined)) {
+    return yield* Effect.fail(placementsDiffer(key));
+  }
+  return {
+    ...fields,
+    ...(readOnlyOn == null ? {} : { readOnlyOn }),
+    ...(writeOn == null ? {} : { writeOn }),
+  };
 });
 
 /** The global config with the project's fields over it, over the defaults. */
@@ -795,6 +820,64 @@ export const resolvePlacement = Effect.fnUntraced(function* (
   return placement;
 });
 
+const WritePlacementResult = Schema.Union([
+  Schema.Struct({ where: Schema.Literal("local") }),
+  Schema.Struct({ where: Schema.Literal("refused"), reason: Schema.String }),
+  Schema.Struct({
+    where: Schema.Literal("remote"),
+    ...WriteOn.fields,
+    pool: Schema.String,
+    folder: Schema.String,
+  }),
+]);
+
+export const resolveWritePlacement = Effect.fnUntraced(function* (
+  projectId: string | null,
+  config: PackConfig,
+  model: ModelChoice | null,
+) {
+  const { writeOn, baseRef } = config;
+  if (writeOn === undefined) return { where: "local" } as const;
+  const placement = yield* step(
+    "write-placement",
+    { returns: WritePlacementResult },
+    Effect.map(readRecord(targetKey(projectId), FactoryTarget), (row) =>
+      writePlacementFor(
+        writeOn,
+        Option.isSome(row) && row.value.problem === null ? row.value : null,
+        baseRef,
+        model !== null,
+      ),
+    ),
+  );
+  if (placement.where === "refused") return yield* stop(placement.reason);
+  if (placement.where === "local") return placement;
+  if (baseRef === null) return yield* stop(WRITE_NEEDS_BASE);
+  if (model === null) return yield* stop(WRITE_NEEDS_MODEL);
+  return { ...placement, baseRef, model };
+});
+
+const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
+export const writerBase = Effect.fnUntraced(function* (folder: string, target: string) {
+  const base = yield* step(
+    "writer-base",
+    { returns: HeadSha },
+    Effect.tryPromise({
+      try: () =>
+        execFile("git", ["-C", folder, "ls-remote", "--", "origin", `refs/heads/${target}`], {
+          encoding: "utf8",
+        }),
+      catch: (cause) => ({
+        _tag: "WriterBaseReadError" as const,
+        message: "An error occurred in Effect.tryPromise",
+        cause,
+      }),
+    }).pipe(Effect.map(({ stdout }) => baseFromLsRemote(stdout, target))),
+  );
+  if (base === null) return yield* stop(baseUnread(target));
+  return base;
+});
+
 export const taskTags = (
   taskId: string,
   projectId: string | null,
@@ -943,4 +1026,34 @@ export const mergePullRequest = Effect.fn("factoryPack.mergePullRequest")(functi
     }),
   );
   if (merged === "head-changed") return yield* stop("pull request head changed after review");
+});
+
+const MergeAtHeadOutcome = Schema.Literals([
+  "requested",
+  "already-merged",
+  "unusable",
+  "head-changed",
+]);
+
+export const mergeAtHead = Effect.fn("factoryPack.mergeAtHead")(function* (
+  pr: PullRequestAddress,
+  expected: string,
+  mergeMethod: PackConfig["mergeMethod"],
+) {
+  const outcome = yield* step(
+    "merge",
+    { returns: MergeAtHeadOutcome },
+    Effect.gen(function* () {
+      yield* pullRequests.comment(pr, mergeMark(expected));
+      const detail = yield* pullRequests.read(pr);
+      if (!isFullSha(detail.headSha ?? null)) return "unusable" as const;
+      if (detail.state === "merged") return "already-merged" as const;
+      if (detail.headSha !== expected) return "head-changed" as const;
+      yield* pullRequests.act(pr, "merge", { mergeMethod });
+      return "requested" as const;
+    }),
+  );
+  if (outcome === "unusable") return yield* stop(headUnusable("merge"));
+  if (outcome === "head-changed") return yield* stop("pull request head changed after review");
+  return outcome;
 });

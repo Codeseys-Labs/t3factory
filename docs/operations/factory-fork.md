@@ -111,3 +111,5 @@ Write the string in Factory code through `gt-react` as upstream's [translation p
 - the web `src/factory` unit tests and `CommandPalette.logic.test.ts` (Playwright browser seam tests — `CommandPalette*.browser.test.tsx` and `mainAppLocation.browser.test.tsx` — are not run in `factory.yml` because it does not install browser binaries);
 - `vp run i18n:check`, upstream's catalog check;
 - `node scripts/factory-i18n.ts check`, the fork's translations.
+
+One of those script tests, `scripts/factory-ci.test.ts`, holds every `factory*.yml` workflow to one rule. A workflow that can start by itself (a pull request or a push) names its permissions and may only read, and none may start from a timer, a tag, a release or another workflow. A workflow that builds or publishes starts by hand, on an exact commit, and by nothing else; only then may one of its jobs write.

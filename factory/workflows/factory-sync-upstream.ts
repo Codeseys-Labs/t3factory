@@ -9,6 +9,7 @@ import {
   readConfig,
   taskTags,
 } from "./lib/records.ts";
+import { syncMergeGate } from "./lib/risk.ts";
 
 const { workflow, step, agent, stop, title, tags, pullRequests } = T3;
 
@@ -92,11 +93,9 @@ export default workflow(
     if (standing.value.state === "closed") return yield* stop("pull request closed");
     if (standing.value.state !== "merged") {
       const { checks } = standing.value;
-      if (checks !== "passing" && checks !== "none") {
-        return yield* stop("checks are not passing");
-      }
+      const gate = syncMergeGate(checks, config.mergeNeedsPerson);
+      if (gate === "stop") return yield* stop("checks are not passing");
       const headSha = yield* pullRequestHead(pr);
-      // No check ran, so nothing vouches for the merge: only a person's answer in the app counts.
       const approved = yield* mergeApproved(
         {
           title: "Merge the upstream sync?",
@@ -105,7 +104,7 @@ export default workflow(
           links: [{ label: "Pull request", url: prUrl }],
           timeout: "7 days",
         },
-        config.mergeNeedsPerson || checks === "none",
+        gate === "person",
       );
       if (!approved) return yield* stop("merge held");
       yield* mergePullRequest(pr, headSha, "merge");

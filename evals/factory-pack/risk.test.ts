@@ -11,6 +11,7 @@ import {
   FORK_SEAM_PATHS,
   matchesRiskGlob,
   ratchetRiskTier,
+  syncMergeGate,
   type RiskInput,
   type RiskTier,
 } from "../../factory/workflows/lib/risk.ts";
@@ -157,4 +158,19 @@ it.effect.each(ratchetCases)(
   "ratchets $previous and $next to $expected",
   ({ previous, next, expected }) =>
     Effect.sync(() => expect(ratchetRiskTier(previous, next)).toBe(expected)),
+);
+
+it.effect.each([
+  { checks: "passing", needsPerson: false, expected: "ask" },
+  { checks: "passing", needsPerson: true, expected: "person" },
+  { checks: "none", needsPerson: false, expected: "person" },
+  { checks: "none", needsPerson: true, expected: "person" },
+  { checks: "failing", needsPerson: false, expected: "stop" },
+  { checks: "failing", needsPerson: true, expected: "stop" },
+  { checks: "pending", needsPerson: false, expected: "stop" },
+  { checks: "pending", needsPerson: true, expected: "stop" },
+] as const)(
+  "an upstream sync with $checks checks and mergeNeedsPerson $needsPerson gets $expected",
+  ({ checks, needsPerson, expected }) =>
+    Effect.sync(() => expect(syncMergeGate(checks, needsPerson)).toBe(expected)),
 );

@@ -155,3 +155,16 @@ const RANK: Readonly<Record<RiskTier, number>> = { low: 0, standard: 1, high: 2 
 /** `next`, unless `previous` is higher: a part's tier only goes up. */
 export const ratchetRiskTier = (previous: RiskTier | null, next: RiskTier): RiskTier =>
   previous !== null && RANK[previous] > RANK[next] ? previous : next;
+
+/**
+ * What an upstream sync does once its checks have settled: stop, ask, or take only a person's
+ * answer in the app. Where no check ran, nothing vouches for the merge.
+ */
+export const syncMergeGate = (
+  checks: RiskInput["checks"],
+  mergeNeedsPerson: boolean,
+): "stop" | "ask" | "person" => {
+  if (checks === "none") return "person";
+  if (checks !== "passing") return "stop";
+  return mergeNeedsPerson ? "person" : "ask";
+};

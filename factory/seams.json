@@ -1,5 +1,6 @@
 {
   "base": "origin/main",
+  "maxAddedTotal": 60,
   "owned": [
     "factory/**",
     "packages/contracts/src/factory.ts",

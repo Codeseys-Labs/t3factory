@@ -18,6 +18,7 @@ export const SeamConfig = Schema.Struct({
   seams: Schema.Array(
     Schema.Union([Schema.String, Schema.Struct({ path: Schema.String, maxAdded: Schema.Number })]),
   ),
+  maxAddedTotal: Schema.optionalKey(Schema.Number),
   generated: Schema.Array(Schema.String),
 });
 export type SeamConfig = typeof SeamConfig.Type;
@@ -36,7 +37,8 @@ export type SeamOffenceReason =
   | "upstream-rename"
   | "too-many-seams"
   | "stale-seam"
-  | "too-many-added-lines";
+  | "too-many-added-lines"
+  | "too-many-added-lines-in-total";
 
 export interface SeamOffence {
   readonly path: string;
@@ -223,6 +225,21 @@ export const classifySeamChanges = (
     }
   }
 
+  if (config.maxAddedTotal !== undefined) {
+    let total = 0;
+    for (const seam of config.seams) {
+      total += addedLines.get(typeof seam === "string" ? seam : seam.path) ?? 0;
+    }
+    if (total > config.maxAddedTotal) {
+      offences.push({
+        path: "factory/seams.json",
+        reason: "too-many-added-lines-in-total",
+        added: total,
+        maxAdded: config.maxAddedTotal,
+      });
+    }
+  }
+
   return { ok: offences.length === 0, offences };
 };
 
@@ -378,21 +395,21 @@ export const checkFactorySeams = Effect.fn("factorySeams.checkFactorySeams")(fun
 
   const addedLines = new Map<string, number>();
   for (const seam of config.seams) {
-    if (typeof seam === "string") continue;
+    const path = typeof seam === "string" ? seam : seam.path;
     const numstat = yield* runGit(repositoryRoot, [
       "diff",
       "--numstat",
       mergeBase,
       "HEAD",
       "--",
-      seam.path,
+      path,
     ]);
     if (!numstat) continue;
     const added = numstat.split("\t")[0];
     if (added === undefined || !/^\d+$/.test(added)) {
       return yield* new FactorySeamsDiffParseError({ line: numstat.trim() });
     }
-    addedLines.set(seam.path, Number(added));
+    addedLines.set(path, Number(added));
   }
   return { changes, classification: classifySeamChanges(changes, config, addedLines) };
 });
@@ -403,7 +420,8 @@ const reportClassification = Effect.fn("factorySeams.reportClassification")(func
 }) {
   for (const offence of input.classification.offences) {
     yield* Console.log(
-      offence.reason === "too-many-added-lines"
+      offence.reason === "too-many-added-lines" ||
+        offence.reason === "too-many-added-lines-in-total"
         ? `${offence.reason}\t${offence.path}: ${offence.added} added lines exceeds cap ${offence.maxAdded}`
         : `${offence.reason}\t${offence.path}`,
     );

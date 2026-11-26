@@ -119,6 +119,41 @@ it.effect.each([
   }),
 );
 
+it.effect.each([
+  { added: [30, 30], expected: { ok: true, offences: [] } },
+  {
+    added: [30, 31],
+    expected: {
+      ok: false,
+      offences: [
+        {
+          path: "factory/seams.json",
+          reason: "too-many-added-lines-in-total" as const,
+          added: 61,
+          maxAdded: 60,
+        },
+      ],
+    },
+  },
+])("enforces the total cap with $added added lines", ({ added, expected }) =>
+  Effect.sync(() => {
+    assert.deepStrictEqual(
+      classifySeamChanges(
+        [
+          { status: "M", path: "a.ts" },
+          { status: "M", path: "b.ts" },
+        ],
+        { ...baseConfig, seams: ["a.ts", { path: "b.ts", maxAdded: 40 }], maxAddedTotal: 60 },
+        new Map([
+          ["a.ts", added[0] ?? 0],
+          ["b.ts", added[1] ?? 0],
+        ]),
+      ),
+      expected,
+    );
+  }),
+);
+
 const globCases: ReadonlyArray<{
   readonly glob: string;
   readonly path: string;

@@ -45,8 +45,9 @@ export const factoryTasksLive = createEnvironmentRpcSubscriptionAtomFamily(conne
 export const factoryTaskDetail = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
   label: "environment-data:factory:tasks:get",
   tag: FACTORY_WS_METHODS.factoryTasksGet,
-  // Read again when the task's entry changes, or its latest run moves: a run that ends writes
-  // only a note, which changes neither.
+  // Read again when the task's entry changes, or its latest run or one of that run's parts moves:
+  // a run that ends writes only a note, and a part's review round only its record, neither of
+  // which changes the entry.
   refreshTrigger: ({ environmentId, input }) => {
     const live = factoryTasksLive({ environmentId, input: {} });
     const config = serverEnvironment.configValueAtom(environmentId);
@@ -57,13 +58,15 @@ export const factoryTaskDetail = createEnvironmentRpcQueryAtomFamily(connectionA
       );
       if (task === undefined) return undefined;
       const runId = task.attempt?.runId ?? null;
-      const run =
+      const runs =
         runId === null || get(config)?.settings.workflowsEnabled !== true
-          ? undefined
-          : Option.getOrUndefined(AsyncResult.value(get(workflows)))?.runs.find(
-              (candidate) => candidate.runId === runId,
-            );
-      return `${task.rev} ${task.updatedAt} ${run?.status ?? ""} ${run?.updatedAt ?? ""}`;
+          ? []
+          : (Option.getOrUndefined(AsyncResult.value(get(workflows)))?.runs ?? []);
+      const moved = runs
+        .filter((candidate) => candidate.runId === runId || candidate.parentRunId === runId)
+        .map((candidate) => `${candidate.runId} ${candidate.status} ${candidate.updatedAt}`)
+        .join(" ");
+      return `${task.rev} ${task.updatedAt} ${moved}`;
     });
   },
 });
@@ -87,6 +90,20 @@ export const startFactoryTask = createEnvironmentRpcCommand(connectionAtomRuntim
     key: ({ environmentId, input }) => JSON.stringify([environmentId, input.taskId]),
   },
 });
+
+/** The Needs you item a Work panel was opened from, and the item keys then, to return focus to. */
+export interface WorkTriage {
+  readonly environmentId: EnvironmentId;
+  readonly taskId: string;
+  readonly key: string;
+  readonly keys: ReadonlyArray<string>;
+}
+
+// Kept alive: the command palette sets it before Work has mounted to read it.
+export const workTriage = Atom.make<WorkTriage | null>(null).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("factory:work:triage"),
+);
 
 const setFactoryOrchestrator = createEnvironmentRpcCommand(connectionAtomRuntime, {
   label: "environment-data:factory:orchestrator:set",

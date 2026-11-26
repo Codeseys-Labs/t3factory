@@ -1,4 +1,4 @@
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   EnvironmentId,
@@ -51,10 +51,16 @@ import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { useWorkflowEnvironmentIds } from "../components/workflows/useWorkflowEnvironmentIds";
 import { useRememberWorkEnvironment } from "./FactoryWorkSidebarItem";
 import { NewTaskDialog } from "./NewTaskDialog";
-import { createFactoryTask, factoryTasksLive } from "./state";
+import { createFactoryTask, factoryTasksLive, workTriage } from "./state";
 import { TaskPanel } from "./TaskPanel";
-import { WorkBoard, WorkNeedsYou } from "./WorkBoard";
-import { deriveWorkCards, filterWorkCards, selectAttentionItems } from "./workBoard.logic";
+import { focusAttention, WorkBoard, WorkNeedsYou } from "./WorkBoard";
+import {
+  type AttentionItem,
+  deriveWorkCards,
+  filterWorkCards,
+  selectAttentionItems,
+} from "./workBoard.logic";
+import { nextAttentionFocus } from "./workDetail.logic";
 import { WorkGraph } from "./WorkGraph";
 import { WorkList } from "./WorkList";
 
@@ -143,6 +149,9 @@ export function WorkPage() {
   const [creatingOn, setCreatingOn] = useState<EnvironmentId | null>(null);
   const [text, setText] = useState("");
   const [rollUp, setRollUp] = useState(false);
+  // The Needs you item the open panel came from, here or in the palette, to bring focus back to.
+  const triage = useAtomValue(workTriage);
+  const setTriage = useAtomSet(workTriage);
 
   const pinned = environmentId ?? search.env;
   const env = pinned === undefined ? {} : { env: pinned };
@@ -152,21 +161,21 @@ export function WorkPage() {
     project: search.project ?? null,
     task: search.task ?? null,
   };
+  const searchFor = (next: typeof shown): WorkSearch => ({
+    ...env,
+    ...(next.view === "board" ? {} : { view: next.view }),
+    ...(next.project === null ? {} : { project: next.project }),
+    ...(next.task === null ? {} : { task: next.task }),
+  });
   const show = (next: typeof shown) =>
-    void navigate({
-      to: "/work",
-      search: {
-        ...env,
-        ...(next.view === "board" ? {} : { view: next.view }),
-        ...(next.project === null ? {} : { project: next.project }),
-        ...(next.task === null ? {} : { task: next.task }),
-      },
-      replace: true,
-    });
+    void navigate({ to: "/work", search: searchFor(next), replace: true });
   const openRun = (runId: string) =>
     void navigate({ to: "/workflows", search: { ...env, run: runId } });
   // Cards are memoised on what they show, so the handler they hold keeps one identity.
-  const openTask = useStableCallback((taskId: string) => show({ ...shown, task: taskId }));
+  const openTask = useStableCallback((taskId: string) => {
+    setTriage(null);
+    show({ ...shown, task: taskId });
+  });
 
   const snapshot = live.data;
   // A failing or switched-off workflows list leaves the board as the tasks say.
@@ -196,6 +205,34 @@ export function WorkPage() {
   const ready = environmentId !== null && live.error === null && snapshot !== null;
   const openTaskId = environmentId === null || live.error !== null ? null : shown.task;
   const panelOpen = openTaskId !== null;
+  // Prerequisites read each task's own column, as blockers do, not the one rolled up from children.
+  const relationCards =
+    rollUp && complete && openTaskId !== null ? deriveWorkCards({ tasks, runs, questions }) : cards;
+  const openAttention = useStableCallback((item: AttentionItem) => {
+    if (environmentId !== null) {
+      setTriage({
+        environmentId,
+        taskId: item.taskId,
+        key: item.key,
+        keys: attention.map((entry) => entry.key),
+      });
+    }
+    show({ ...shown, task: item.taskId });
+  });
+  // Closing a panel opened from Needs you returns to that item's row, or the next one still there.
+  const returnFocus = useStableCallback((closedTaskId: string) => {
+    if (triage === null || triage.taskId !== closedTaskId) return false;
+    // The item's panel is gone, whatever replaced it, so the item no longer steers focus.
+    setTriage(null);
+    if (triage.environmentId !== environmentId || openTaskId !== null) return false;
+    return focusAttention(
+      nextAttentionFocus(
+        triage.keys,
+        attention.map((item) => item.key),
+        triage.key,
+      ),
+    );
+  });
   const listedProject =
     projectFilter === undefined || projectFilter === null
       ? null
@@ -403,7 +440,16 @@ export function WorkPage() {
             </Button>
           </WorkspacePageHeader>
           {ready ? (
-            <WorkNeedsYou items={attention} onOpenTask={openTask} onOpenRun={openRun} />
+            <WorkNeedsYou
+              items={attention}
+              held={
+                triage !== null &&
+                triage.environmentId === environmentId &&
+                (openTaskId === null || openTaskId === triage.taskId)
+              }
+              onOpenItem={openAttention}
+              onOpenRun={openRun}
+            />
           ) : null}
           {ready ? (
             <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
@@ -520,11 +566,14 @@ export function WorkPage() {
               environmentId={environmentId}
               taskId={openTaskId}
               card={cards.find((card) => card.task.id === openTaskId) ?? null}
+              cards={relationCards}
               tasks={tasks}
               runs={runs}
               questions={questions}
+              taskSearch={(taskId) => searchFor({ ...shown, task: taskId })}
               onOpenTask={openTask}
               onOpenRun={openRun}
+              returnFocus={returnFocus}
               onClose={() => show({ ...shown, task: null })}
             />
           </aside>

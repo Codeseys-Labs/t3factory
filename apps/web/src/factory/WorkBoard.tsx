@@ -1,7 +1,7 @@
 import type { FactoryTaskKind } from "@t3tools/contracts";
 import { formatModelSlugName } from "@t3tools/shared/model";
 import { msg, Plural, T, useGT, useMessages, Var } from "gt-react";
-import { memo, useId, useState } from "react";
+import { memo, useEffect, useId, useRef, useState } from "react";
 
 import { cn } from "../lib/utils";
 import { Badge } from "../components/ui/badge";
@@ -18,6 +18,7 @@ import {
   type WorkCard,
   type WorkColumn,
 } from "./workBoard.logic";
+import { nextAttentionFocus } from "./workDetail.logic";
 
 export const WORK_COLUMN_LABELS: Record<WorkColumn, string> = {
   backlog: msg("Backlog", { $context: "work board column: tasks not yet ready" }),
@@ -138,62 +139,139 @@ export function WorkKind({ kind }: { readonly kind: FactoryTaskKind | undefined 
 /** Every item the shown tasks wait on a person for, oldest first, above any of their layouts. */
 export function WorkNeedsYou({
   items,
-  onOpenTask,
+  held,
+  onOpenItem,
   onOpenRun,
 }: {
   readonly items: ReadonlyArray<AttentionItem>;
-  readonly onOpenTask: (taskId: string) => void;
+  /** Stays shown with no items, so focus has its heading to come back to. */
+  readonly held: boolean;
+  readonly onOpenItem: (item: AttentionItem) => void;
   readonly onOpenRun: (runId: string) => void;
 }) {
   const m = useMessages();
   // The item opened last from here, so "Next item needing me" moves on past it.
   const [lastOpened, setLastOpened] = useState<string | null>(null);
-  if (items.length === 0) return null;
+  // Focus is in the strip, so an emptied strip stays for it to land on.
+  const [ownsFocus, setOwnsFocus] = useState(false);
+  // The row holding focus, and the keys as last shown, to move focus on when that row's item goes.
+  const focusedKey = useRef<string | null>(null);
+  const shownKeys = useRef<ReadonlyArray<string>>([]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the browser drops DOM focus to the page when the focused row's item goes; this moves it to the next row or the heading
+  useEffect(() => {
+    const before = shownKeys.current;
+    const after = items.map((item) => item.key);
+    shownKeys.current = after;
+    const current = focusedKey.current;
+    if (current === null || after.includes(current)) return;
+    const active = document.activeElement;
+    if (active !== null && active !== document.body) {
+      focusedKey.current = null;
+      return;
+    }
+    const next = nextAttentionFocus(before, after, current);
+    focusedKey.current = next;
+    focusAttention(next);
+  }, [items]);
+  if (items.length === 0 && !held && !ownsFocus) return null;
   const open = (item: AttentionItem) => {
     setLastOpened(item.key);
-    onOpenTask(item.taskId);
+    onOpenItem(item);
   };
-  const next = items[(items.findIndex((item) => item.key === lastOpened) + 1) % items.length]!;
+  const next =
+    items.length === 0
+      ? null
+      : items[(items.findIndex((item) => item.key === lastOpened) + 1) % items.length]!;
   return (
-    <section className="shrink-0 border-b">
+    <section
+      className="shrink-0 border-b"
+      onFocus={() => setOwnsFocus(true)}
+      onBlur={(event) => {
+        const to = event.relatedTarget;
+        if (to instanceof Node && event.currentTarget.contains(to)) return;
+        // Another window took focus; it comes back here.
+        if (to === null && !document.hasFocus()) return;
+        setOwnsFocus(false);
+        // Toward nothing can be a focused row whose item went; the effect needs its key.
+        if (to !== null) focusedKey.current = null;
+      }}
+    >
       <div className="flex items-center gap-2 px-4 pt-2 pb-1">
-        <h2 className="flex min-w-0 flex-1 items-center gap-2 text-xs font-medium text-muted-foreground">
+        <h2
+          data-work-attention-heading
+          tabIndex={-1}
+          className="flex min-w-0 flex-1 items-center gap-2 text-xs font-medium text-muted-foreground outline-none"
+          onFocus={() => {
+            focusedKey.current = null;
+          }}
+        >
           <T context="the items whose tasks wait on the user">Needs you</T>
           <span className="tabular-nums">{items.length}</span>
         </h2>
-        <Button size="xs" variant="outline" onClick={() => open(next)}>
-          <T>Next item needing me</T>
-        </Button>
+        {next === null ? null : (
+          <Button
+            size="xs"
+            variant="outline"
+            onFocus={() => {
+              focusedKey.current = null;
+            }}
+            onClick={() => open(next)}
+          >
+            <T>Next item needing me</T>
+          </Button>
+        )}
       </div>
-      <ul className="flex max-h-36 flex-col gap-1 overflow-y-auto px-4 pb-2">
-        {items.map((item) => (
-          <li key={item.key} className="flex min-w-0 items-center gap-2 text-sm">
-            <Badge size="sm" variant={item.kind === "failed" ? "error" : "warning"}>
-              {m(ATTENTION_LABELS[item.kind])}
-            </Badge>
-            <button
-              type="button"
-              className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-left hover:underline focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:outline-none focus-visible:ring-inset"
-              onClick={() => open(item)}
+      {items.length === 0 ? (
+        <p className="px-4 pb-2 text-xs text-muted-foreground">
+          <T>Nothing needs you now.</T>
+        </p>
+      ) : (
+        <ul className="flex max-h-36 flex-col gap-1 overflow-y-auto px-4 pb-2">
+          {items.map((item) => (
+            <li
+              key={item.key}
+              className="flex min-w-0 items-center gap-2 text-sm"
+              onFocus={() => {
+                focusedKey.current = item.key;
+              }}
             >
-              <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                {taskNumber({ number: item.taskNumber })}
-              </span>
-              <span className="min-w-0 max-w-64 truncate">{item.taskTitle}</span>
-              {item.detail === null ? null : (
-                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                  {item.detail}
+              <Badge size="sm" variant={item.kind === "failed" ? "error" : "warning"}>
+                {m(ATTENTION_LABELS[item.kind])}
+              </Badge>
+              <button
+                type="button"
+                data-work-attention={item.key}
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-left hover:underline focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:outline-none focus-visible:ring-inset"
+                onClick={() => open(item)}
+              >
+                <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                  {taskNumber({ number: item.taskNumber })}
                 </span>
-              )}
-            </button>
-            <Button size="xs" variant="ghost" onClick={() => onOpenRun(item.runId)}>
-              <T context="verb, opens the workflow run that waits on the user">Open run</T>
-            </Button>
-          </li>
-        ))}
-      </ul>
+                <span className="min-w-0 max-w-64 truncate">{item.taskTitle}</span>
+                {item.detail === null ? null : (
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                    {item.detail}
+                  </span>
+                )}
+              </button>
+              <Button size="xs" variant="ghost" onClick={() => onOpenRun(item.runId)}>
+                <T context="verb, opens the workflow run that waits on the user">Open run</T>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
+}
+
+/** Moves focus to the Needs you row with that key, or to the strip's heading for null. */
+export function focusAttention(key: string | null): boolean {
+  const target = document.querySelector<HTMLElement>(
+    key === null ? "[data-work-attention-heading]" : `[data-work-attention="${CSS.escape(key)}"]`,
+  );
+  target?.focus();
+  return target !== null;
 }
 
 /** The five columns, each with its count and what it means. */

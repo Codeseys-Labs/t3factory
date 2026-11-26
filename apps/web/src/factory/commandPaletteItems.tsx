@@ -1,4 +1,4 @@
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
 import { KanbanIcon } from "lucide-react";
@@ -10,7 +10,7 @@ import {
   type CommandPaletteSubmenuItem,
 } from "../components/CommandPalette.logic";
 import { useWorkAttentionAtom } from "./FactoryWorkSidebarItem";
-import { useMakeThreadOrchestrator } from "./state";
+import { useMakeThreadOrchestrator, workTriage } from "./state";
 
 /**
  * Factory palette rows: open the work board, and make the open thread its project's Orchestrator.
@@ -25,6 +25,7 @@ export function useFactoryCommandPaletteItems(
   const makeThreadOrchestrator = useMakeThreadOrchestrator(activeThread);
   const attentionAtom = useWorkAttentionAtom();
   const attention = useAtomValue(attentionAtom);
+  const setTriage = useAtomSet(workTriage);
   const items: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [
     {
       kind: "action",
@@ -51,7 +52,16 @@ export function useFactoryCommandPaletteItems(
         title: gt("Next item needing me"),
         description: `T-${next.taskNumber} ${next.taskTitle}`,
         icon: <KanbanIcon className={ITEM_ICON_CLASS} />,
-        run: () => openTask(next.taskId),
+        run: () => {
+          // Closing the task's panel then returns focus to this item's row in Needs you.
+          setTriage({
+            environmentId,
+            taskId: next.taskId,
+            key: next.key,
+            keys: attention.items.map((item) => item.key),
+          });
+          return openTask(next.taskId);
+        },
       });
     }
     if (attention.tasks.length > 0) {

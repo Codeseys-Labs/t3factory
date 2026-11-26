@@ -52,6 +52,8 @@ import { Textarea } from "../components/ui/textarea";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { RelativeLabel, WorkflowStateWord } from "../components/workflows/WorkflowRunFeed";
 import { factoryTaskDetail, startFactoryTask, updateFactoryTask } from "./state";
+import { TaskPrerequisites } from "./TaskPrerequisites";
+import { AttemptReviews } from "./TaskReviews";
 import {
   currentDraft,
   draftAfterSave,
@@ -70,6 +72,8 @@ import {
 } from "./taskDraft.logic";
 import { shownActivity, TASK_KIND_LABELS, taskNumber, WorkActivity, WorkBadges } from "./WorkBoard";
 import type { WorkCard } from "./workBoard.logic";
+import { type PartReviewView, selectDirectRelations, selectReviewParts } from "./workDetail.logic";
+import type { WorkSearch } from "./WorkPage";
 
 const isFactoryTaskError = Schema.is(FactoryTaskError);
 
@@ -175,22 +179,31 @@ export function TaskPanel({
   environmentId,
   taskId,
   card,
+  cards,
   tasks,
   runs,
   questions,
+  taskSearch,
   onOpenTask,
   onOpenRun,
+  returnFocus,
   onClose,
 }: {
   readonly environmentId: EnvironmentId;
   readonly taskId: string;
   /** The task's card on the board; null while the live list does not have it. */
   readonly card: WorkCard | null;
+  /** Every card of the board, each in its own column, for what this task hangs on. */
+  readonly cards: ReadonlyArray<WorkCard>;
   readonly tasks: ReadonlyArray<FactoryTaskSummary>;
   readonly runs: ReadonlyArray<WorkflowRun>;
   readonly questions: ReadonlyArray<WorkflowQuestion>;
+  /** The Work address that selects a task, for links to related tasks. */
+  readonly taskSearch: (taskId: string) => WorkSearch;
   readonly onOpenTask: (taskId: string) => void;
   readonly onOpenRun: (runId: string) => void;
+  /** Moves focus where the page wants it once this panel closes; false leaves it to the panel. */
+  readonly returnFocus: (taskId: string) => boolean;
   readonly onClose: () => void;
 }) {
   const gt = useGT();
@@ -226,13 +239,14 @@ export function TaskPanel({
   useEffect(() => {
     heading.current?.focus();
     return () => {
+      if (returnFocus(taskId)) return;
       const back =
         opener !== null && opener !== document.body && opener.isConnected
           ? opener
           : document.querySelector<HTMLElement>(`[data-work-task="${CSS.escape(taskId)}"]`);
       back?.focus();
     };
-  }, [opener, taskId]);
+  }, [opener, returnFocus, taskId]);
   const store = (next: TaskDraft) => {
     savedDrafts.set(draftKey, next);
     setStored(next);
@@ -304,6 +318,7 @@ export function TaskPanel({
   const unlisted = [
     ...new Set([...(base.parentId === null ? [] : [base.parentId]), ...blockers]),
   ].filter((otherId) => !others.some((candidate) => candidate.id === otherId));
+  const relations = selectDirectRelations(taskId, tasks, cards);
   const nodes = allWorkflowRunNodes(groupWorkflowRuns([], runs, questions));
   const latestAttempt = loaded.attempts.at(-1) ?? null;
   const latestRun =
@@ -714,6 +729,13 @@ export function TaskPanel({
             </div>
           </section>
 
+          {relations.blockers.length === 0 &&
+          relations.children.length === 0 &&
+          relations.omitted.blockers === 0 &&
+          relations.omitted.children === 0 ? null : (
+            <TaskPrerequisites task={base} relations={relations} taskSearch={taskSearch} />
+          )}
+
           <section className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <h3 className="min-w-0 flex-1 text-xs font-medium text-muted-foreground">
@@ -749,6 +771,7 @@ export function TaskPanel({
                     activity={attempt.n === latestAttempt?.n ? latestActivity : null}
                     failed={attempt.n === latestAttempt?.n && latestFailed}
                     liveParts={attempt.n === latestAttempt?.n ? (card?.liveParts ?? 0) : 0}
+                    reviews={selectReviewParts(loaded.reviews, attempt.n)}
                     onOpenRun={onOpenRun}
                   />
                 ))}
@@ -931,6 +954,7 @@ function AttemptRow({
   activity,
   liveParts,
   failed,
+  reviews,
   onOpenRun,
 }: {
   readonly environmentId: EnvironmentId;
@@ -942,6 +966,8 @@ function AttemptRow({
   readonly liveParts: number;
   /** The run, or a part below it, is paused by a failing step. */
   readonly failed: boolean;
+  /** What the reviews of the attempt's parts found; empty when none ran or the server has none. */
+  readonly reviews: ReadonlyArray<PartReviewView>;
   readonly onOpenRun: (runId: string) => void;
 }) {
   const { runId } = attempt;
@@ -1008,6 +1034,7 @@ function AttemptRow({
         )}
       </div>
       {plannable && planOpen ? <AttemptPlan environmentId={environmentId} runId={runId} /> : null}
+      {reviews.length === 0 ? null : <AttemptReviews parts={reviews} />}
     </li>
   );
 }

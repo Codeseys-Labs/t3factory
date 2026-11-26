@@ -51,7 +51,7 @@ The server reloads changed top-level workflow files without a restart, but not t
 
 `origin/main` mirrors upstream. The steps keep upstream's history intact and move `factory` only when everything passes. Two tools shorten the work; the manual steps below remain the reference.
 
-Start with the plan. It changes nothing:
+Start with the plan. It leaves the worktree and refs unchanged. In a partial clone it stays offline by default; add `--fetch-missing` to let Git download blobs needed to predict conflicts.
 
 ```sh
 node scripts/factory-sync.ts plan --ref <tag>

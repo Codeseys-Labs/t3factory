@@ -47,7 +47,7 @@ export class FactorySyncGitError extends Schema.TaggedError<FactorySyncGitError>
   override get message(): string {
     const detail = this.stderr ? `: ${this.stderr.trim()}` : "";
     const hint = this.command.includes("merge-tree")
-      ? " (merge-tree --write-tree needs git 2.38 or later; objects missing from a partial clone are never fetched, so fetch them first)"
+      ? " (merge-tree --write-tree needs git 2.38 or later; for missing partial-clone objects, pass --fetch-missing)"
       : "";
     return `factory-sync: git ${this.command} failed during ${this.operation}${detail}${hint}`;
   }
@@ -144,15 +144,17 @@ export const gitNoFetchEnv = {
 const runGit = Effect.fn("factorySync.runGit")(function* (
   cwd: string,
   args: ReadonlyArray<string>,
+  fetchMissing = false,
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const env = fetchMissing ? {} : gitNoFetchEnv;
   const command = args.join(" ");
   const context = { cwd, command };
 
   return yield* Effect.scoped(
     Effect.gen(function* () {
       const child = yield* spawner
-        .spawn(ChildProcess.make("git", args, { cwd, env: gitNoFetchEnv, extendEnv: true }))
+        .spawn(ChildProcess.make("git", args, { cwd, env, extendEnv: true }))
         .pipe(
           Effect.mapError(
             (cause) => new FactorySyncGitError({ ...context, operation: "spawn", cause }),
@@ -189,8 +191,9 @@ const runGitExpecting = Effect.fn("factorySync.runGitExpecting")(function* (
   cwd: string,
   args: ReadonlyArray<string>,
   accepted: ReadonlyArray<number>,
+  fetchMissing = false,
 ) {
-  const result = yield* runGit(cwd, args);
+  const result = yield* runGit(cwd, args, fetchMissing);
   if (!accepted.includes(result.exitCode)) {
     return yield* new FactorySyncGitError({
       cwd,
@@ -225,6 +228,7 @@ const readSeamConfig = Effect.fn("factorySync.readSeamConfig")(function* (reposi
 export const planUpstreamSync = Effect.fn("factorySync.planUpstreamSync")(function* (
   cwd: string,
   ref: string,
+  { fetchMissing = false }: { readonly fetchMissing?: boolean } = {},
 ) {
   const repositoryRoot = (yield* runGitExpecting(
     cwd,
@@ -278,6 +282,7 @@ export const planUpstreamSync = Effect.fn("factorySync.planUpstreamSync")(functi
     repositoryRoot,
     ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", "HEAD", sha],
     [0, 1],
+    fetchMissing,
   );
   const conflicts = parseMergeTreeConflicts(merge.stdout, merge.exitCode).map(
     (path): UpstreamConflict => ({
@@ -296,7 +301,7 @@ export const planUpstreamSync = Effect.fn("factorySync.planUpstreamSync")(functi
 });
 
 const command = Command.make("factory-sync").pipe(
-  Command.withDescription("Plan an upstream sync without changing the repository."),
+  Command.withDescription("Plan an upstream sync without changing the worktree or refs."),
   Command.withSubcommands([
     Command.make(
       "plan",
@@ -304,10 +309,14 @@ const command = Command.make("factory-sync").pipe(
         ref: Flag.String("ref").pipe(
           Flag.withDescription("Upstream ref to merge into HEAD, for example a nightly tag."),
         ),
+        fetchMissing: Flag.Boolean("fetch-missing").pipe(
+          Flag.withDescription("Let git fetch missing blobs when planning in a partial clone."),
+          Flag.withDefault(false),
+        ),
       },
-      ({ ref }) =>
+      ({ ref, fetchMissing }) =>
         Effect.gen(function* () {
-          const plan = yield* planUpstreamSync(process.cwd(), ref);
+          const plan = yield* planUpstreamSync(process.cwd(), ref, { fetchMissing });
           for (const line of formatPlan(plan)) yield* Console.log(line);
           if (planExitCode(plan) !== 0) process.exitCode = 1;
         }),

@@ -16,6 +16,18 @@ The browser never gets a storage key. It has six typed methods, defined in [`fac
 
 The pack cannot import server code, and the server cannot import workflow files, so the create and start rules exist twice: in [`FactoryTasks.ts`](../../apps/server/src/factory/FactoryTasks.ts) and in [`records.ts`](../../factory/workflows/lib/records.ts). Change one and change the other; tests on both sides (the service tests and `evals/factory-pack`) check them.
 
+## What workflows cannot see
+
+A workflow cannot inspect the machine's folders. So each time it starts a task, `FactoryTasks.start` looks at the task's project (a Git repository gets a `worktree`, any other folder `root`; no project means the server's scratch project) and writes the answer to `factory/v1/target/<projectId>` (`target/scratch` for no project). Only the service writes these rows. `resolveTarget` in [`records.ts`](../../factory/workflows/lib/records.ts) reads them and returns either where to work or a `problem`, which stops the run before an agent launches. A project the service has not looked at yet is taken as a worktree; a scratch task with no row stops with a message asking for a start from the Work page. If the target cannot be resolved, `start` refuses with `workspace-unavailable` and writes the same message into the row. Agents that work in a `root` folder do so under a per-project lock (`rootPool`), because they share that folder.
+
+## Artifacts and receipts
+
+A deliverable and the decisions made about it are records of their own: `factory/v1/artifact/<taskId>/<attempt>/<sha256>` and `factory/v1/receipt/<taskId>/<attempt>/<kind>-<sha256 prefix>`. They are not fields of `FactoryAttempt`, because a start writes that record twice (before the run starts, then again with its `runId`), so a field there would be overwritten by the second write. Both are write-once: `writeArtifact` and `writeReceipt` in `records.ts` do nothing when the key is already held, so a replayed step leaves the first record, with its first time, in place. A key holds a content hash, so a changed file is a new artifact and never edits the old one. Receipts say what was done to a hash (`sealed`, `critiqued`, `accepted`, `rejected`, `delivered`, `uncertain`, `promoted`) and by whom: `person`, `agent` or `pack`. A person's answer is told from an agent's by the session the server stamps on it, as for the merge.
+
+## Risk tiers
+
+[`risk.ts`](../../factory/workflows/lib/risk.ts) classifies a pull request as `low`, `standard` or `high` by the first rule that fits, from facts the host and the `scope` agent reported; a missing, duplicate or mismatched fact is `high`. `factory-task-part` ratchets the tier across fix rounds (never downgrading) and forces a person-answered merge gate whenever the tier is `high`, even with `askMerge` off. `risk.ts` has no imports, so a workflow and a plain test can both load it. The pack cannot read `factory/seams.json` at run time, so `FORK_SEAM_PATHS` copies its paths into `DEFAULT_PROTECTED_PATHS`, and `evals/factory-pack/risk.test.ts` fails when the two differ. Changing a seam in the manifest means changing that list too.
+
 ## Invariants
 
 - Task numbers are never reused. A counter hands them out inside the transaction that creates the task. Tasks are dropped, never deleted, and if the counter is unreadable the highest stored number takes its place.

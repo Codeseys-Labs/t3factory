@@ -12,6 +12,7 @@ import {
   WORK_COLUMN_LABELS,
   WorkActivity,
   WorkBadges,
+  WorkKind,
 } from "./WorkBoard";
 import { deriveWorkGraph, type WorkCard } from "./workBoard.logic";
 import { layoutWorkGraph } from "./workGraph.logic";
@@ -69,7 +70,11 @@ export function WorkGraph({
               ))}
             </svg>
             {layout.nodes.map((node) => {
-              const column = m(WORK_COLUMN_LABELS[node.card.column]);
+              const ownLabel = m(WORK_COLUMN_LABELS[node.card.column]);
+              const column =
+                node.card.rolledUp === true
+                  ? gt("{column}, from children", { column: ownLabel })
+                  : ownLabel;
               const blockers = node.card.openBlockers
                 .map((id) => numbers.get(id))
                 .filter((number) => number !== undefined);
@@ -152,6 +157,7 @@ const GraphNode = memo(
       >
         <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
           <span className="shrink-0 font-mono">{taskNumber(task)}</span>
+          <WorkKind kind={task.kind} />
           <span className="min-w-0 flex-1 truncate">
             {runPending ? (
               <T context="a task's column waits on its workflow run to load">Checking its run…</T>

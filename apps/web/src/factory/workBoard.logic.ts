@@ -1,4 +1,11 @@
-import type { FactoryTaskSummary, WorkflowQuestion, WorkflowRun } from "@t3tools/contracts";
+import { readWorkflowQuestion } from "@t3tools/client-runtime/workflows";
+import {
+  type FactoryTaskSummary,
+  type WorkflowQuestion,
+  type WorkflowRun,
+  workflowQuestionKey,
+} from "@t3tools/contracts";
+import { msg } from "gt-react";
 
 export type WorkColumn = "backlog" | "ready" | "doing" | "review" | "done";
 
@@ -9,6 +16,15 @@ export const WORK_COLUMNS: ReadonlyArray<WorkColumn> = [
   "review",
   "done",
 ];
+
+/** What each column means, in the words the Orchestrator skill uses. */
+export const WORK_COLUMN_DEFINITIONS: Readonly<Record<WorkColumn, string>> = {
+  backlog: msg("Work is recorded for later."),
+  ready: msg("Work is queued to start and may still have blockers."),
+  doing: msg("Work is under way or has been placed here manually."),
+  review: msg("Work is in review or has been placed here for review."),
+  done: msg("The task run completed or someone marked the task done."),
+};
 
 export type WorkBadge = "needs-you" | "failed" | "blocked" | "stopped";
 
@@ -24,6 +40,8 @@ export interface WorkCard {
   readonly activity: "working" | "waiting" | null;
   /** Runs directly below the card's run that have not ended. */
   readonly liveParts: number;
+  /** The column comes from the task's children, not its own lane; see `rollUpParents`. */
+  readonly rolledUp?: boolean;
 }
 
 function resolveColumn(task: FactoryTaskSummary, run: WorkflowRun | null): WorkColumn | null {
@@ -34,6 +52,26 @@ function resolveColumn(task: FactoryTaskSummary, run: WorkflowRun | null): WorkC
   }
   if (task.laneSetAt > run.endedAt) return task.lane;
   return run.status === "completed" ? "done" : task.lane;
+}
+
+/** The column a never-started parent shows from its children's own columns. */
+function rolledUpColumn(children: ReadonlyArray<WorkColumn>): WorkColumn {
+  if (children.every((column) => column === "done")) return "done";
+  for (const column of ["doing", "review", "ready"] as const) {
+    if (children.includes(column)) return column;
+  }
+  return "backlog";
+}
+
+function isOnParentCycle(taskId: string, parentOf: ReadonlyMap<string, string | null>): boolean {
+  const seen = new Set<string>();
+  let current = parentOf.get(taskId) ?? null;
+  while (current !== null && !seen.has(current)) {
+    if (current === taskId) return true;
+    seen.add(current);
+    current = parentOf.get(current) ?? null;
+  }
+  return false;
 }
 
 function readRunActivity(
@@ -83,6 +121,11 @@ export function deriveWorkCards(input: {
   readonly tasks: ReadonlyArray<FactoryTaskSummary>;
   readonly runs: ReadonlyArray<WorkflowRun>;
   readonly questions: ReadonlyArray<WorkflowQuestion>;
+  /**
+   * Shows a never-started parent with children in the column its children add up to. Display
+   * only: blockers still read each task's own column. Pass it only for a complete task list.
+   */
+  readonly rollUpParents?: boolean;
 }): ReadonlyArray<WorkCard> {
   const runsById = new Map<string, WorkflowRun>();
   for (const run of input.runs) runsById.set(run.runId, run);
@@ -108,20 +151,33 @@ export function deriveWorkCards(input: {
   const childCounts = new Map<string, number>();
   const columns = new Map<string, WorkColumn | null>();
   const runOf = new Map<string, WorkflowRun | null>();
+  const childColumns = new Map<string, WorkColumn[]>();
+  const parentOf = new Map<string, string | null>();
   for (const task of input.tasks) {
     const runId = task.attempt?.runId;
     const run = runId === null || runId === undefined ? null : (runsById.get(runId) ?? null);
     runOf.set(task.id, run);
-    columns.set(task.id, resolveColumn(task, run));
+    const column = resolveColumn(task, run);
+    columns.set(task.id, column);
+    parentOf.set(task.id, task.parentId);
     if (task.lane !== "dropped" && task.parentId !== null) {
       childCounts.set(task.parentId, (childCounts.get(task.parentId) ?? 0) + 1);
+    }
+    if (input.rollUpParents === true && column !== null && task.parentId !== null) {
+      const siblings = childColumns.get(task.parentId);
+      if (siblings === undefined) childColumns.set(task.parentId, [column]);
+      else siblings.push(column);
     }
   }
 
   const cards: WorkCard[] = [];
   for (const task of [...input.tasks].toSorted(compareTasks)) {
-    const column = columns.get(task.id) ?? null;
-    if (column === null) continue;
+    const ownColumn = columns.get(task.id) ?? null;
+    if (ownColumn === null) continue;
+    const children = childColumns.get(task.id);
+    const rolledUp =
+      children !== undefined && task.attempt === null && !isOnParentCycle(task.id, parentOf);
+    const column = rolledUp ? rolledUpColumn(children) : ownColumn;
     const run = runOf.get(task.id) ?? null;
     const openBlockers = task.blockedBy.filter((id) => {
       const blockerColumn = columns.get(id);
@@ -150,9 +206,141 @@ export function deriveWorkCards(input: {
       openBlockers,
       activity,
       liveParts,
+      rolledUp,
     });
   }
   return cards;
+}
+
+export type AttentionKind =
+  | "approve-plan"
+  | "approve-merge"
+  | "accept"
+  | "stuck"
+  | "failed"
+  | "question";
+
+/** One thing a task waits on a person for: an open question, or a run a failing step paused. */
+export interface AttentionItem {
+  readonly key: string;
+  readonly taskId: string;
+  readonly taskNumber: number;
+  readonly taskTitle: string;
+  /** The run that asks or is paused: the task's own run or a part below it. */
+  readonly runId: string;
+  readonly kind: AttentionKind;
+  /** The question's title, or why the run paused. */
+  readonly detail: string | null;
+  /** When it started waiting on the person. */
+  readonly askedAt: string;
+}
+
+/** The item a question is, by the kinds the Factory pack declares. */
+function questionAttentionKind(kind: string | undefined): AttentionKind {
+  switch (kind) {
+    case "plan":
+      return "approve-plan";
+    case "merge":
+      return "approve-merge";
+    case "accept":
+    case "stuck":
+      return kind;
+    default:
+      return "question";
+  }
+}
+
+/**
+ * Every item the cards' runs wait on a person for, oldest first: each open question, and each
+ * paused run, on a card's run or a run below it, while every run from it up to the card's is live.
+ */
+export function selectAttentionItems(input: {
+  readonly cards: ReadonlyArray<WorkCard>;
+  readonly runs: ReadonlyArray<WorkflowRun>;
+  readonly questions: ReadonlyArray<WorkflowQuestion>;
+}): ReadonlyArray<AttentionItem> {
+  const cardOfRun = new Map<string, WorkCard>();
+  for (const card of input.cards) {
+    if (card.run !== null) cardOfRun.set(card.run.runId, card);
+  }
+  if (cardOfRun.size === 0) return [];
+  const runsById = new Map<string, WorkflowRun>();
+  for (const run of input.runs) runsById.set(run.runId, run);
+
+  // The card a run belongs to up its parent chain, or null when a run on the way has ended or
+  // the chain loops. Memoised, so each run is walked once.
+  const owners = new Map<string, WorkCard | null>();
+  const ownerOf = (runId: string): WorkCard | null => {
+    const path: string[] = [];
+    const onPath = new Set<string>();
+    let owner: WorkCard | null = null;
+    let current: string | null = runId;
+    while (current !== null && !onPath.has(current)) {
+      const known = owners.get(current);
+      if (known !== undefined) {
+        owner = known;
+        break;
+      }
+      const card = cardOfRun.get(current);
+      if (card !== undefined) {
+        owner = card.run?.endedAt === null ? card : null;
+        owners.set(current, owner);
+        break;
+      }
+      onPath.add(current);
+      path.push(current);
+      current = runsById.get(current)?.parentRunId ?? null;
+    }
+    // From the run nearest the card down to the asking one: an ended run cuts off all below it.
+    for (let index = path.length - 1; index >= 0; index -= 1) {
+      const id = path[index]!;
+      if (owner !== null && runsById.get(id)?.endedAt !== null) owner = null;
+      owners.set(id, owner);
+    }
+    return owner;
+  };
+
+  const items: AttentionItem[] = [];
+  for (const question of input.questions) {
+    const card = ownerOf(question.runId);
+    if (card === null) continue;
+    items.push({
+      key: `question ${workflowQuestionKey(question)}`,
+      taskId: card.task.id,
+      taskNumber: card.task.number,
+      taskTitle: card.task.title,
+      runId: question.runId,
+      kind: questionAttentionKind(question.kind),
+      detail: readWorkflowQuestion(question).title,
+      askedAt: question.askedAt,
+    });
+  }
+  for (const run of input.runs) {
+    if (run.status !== "paused" || run.endedAt !== null) continue;
+    const card = ownerOf(run.runId);
+    if (card === null) continue;
+    items.push({
+      key: `failed ${JSON.stringify([run.runId, run.pauses])}`,
+      taskId: card.task.id,
+      taskNumber: card.task.number,
+      taskTitle: card.task.title,
+      runId: run.runId,
+      kind: "failed",
+      detail: run.detail,
+      askedAt: run.updatedAt,
+    });
+  }
+  return items.toSorted((left, right) =>
+    left.askedAt !== right.askedAt
+      ? left.askedAt < right.askedAt
+        ? -1
+        : 1
+      : left.key === right.key
+        ? 0
+        : left.key < right.key
+          ? -1
+          : 1,
+  );
 }
 
 export interface WorkFilter {

@@ -35,6 +35,8 @@ node scripts/factory-pack.ts uninstall --home <dir>
 
 The home must already exist. `install` writes `<dir>/workflows` and records what it wrote in `.factory-pack.json`. Workflows must be on in that home (**Settings → Labs → Workflows**).
 
+`install` copies every workflow file under `factory/workflows/`, including `lib/`, so a new workflow file in the pack ships with no list to update. That is `factory-task`, `factory-intake`, `factory-sync-upstream`, `factory-brief`, `factory-experiment` and `factory-self-repair`, and the helpers `lib/records.ts` and `lib/risk.ts`.
+
 The server reloads changed top-level workflow files without a restart, but not the helpers under `lib/`: an update that changes one needs a server restart, and `install` prints a line saying so when it applies.
 
 - Running `install` again updates the pack files and removes ones the pack no longer ships.
@@ -98,7 +100,7 @@ Write the string in Factory code through `gt-react` as upstream's [translation p
 - the lockfile equals the merge base with `origin/main`;
 - `node scripts/factory-seams.ts --base origin/main` (including per-seam `maxAdded` line caps);
 - typecheck of contracts, server, client-runtime, web, mobile, scripts and evals;
-- the server's `factory` tests, all `scripts/factory-*.test.ts` tests, and `evals/factory-pack`;
+- the server's `factory` tests, all `scripts/factory-*.test.ts` tests, and `evals/factory-pack`, which tests every pack workflow: `run`, `sync`, `brief`, `experiment`, `risk` and `self-repair`;
 - upstream seam unit tests (`ws.test.ts`, `RpcAuthorization.test.ts`, `RpcInstrumentation.test.ts`, `rpc.test.ts`, `client.test.ts`);
 - the web `src/factory` unit tests and `CommandPalette.logic.test.ts` (Playwright browser seam tests — `CommandPalette*.browser.test.tsx` and `mainAppLocation.browser.test.tsx` — are not run in `factory.yml` because it does not install browser binaries);
 - `vp run i18n:check`, upstream's catalog check;

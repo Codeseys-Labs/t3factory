@@ -5,7 +5,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { type EnvironmentId, FactoryTaskKind, type ProjectId } from "@t3tools/contracts";
 import { T, useGT, useMessages } from "gt-react";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -32,6 +32,7 @@ import {
 import { Textarea } from "../components/ui/textarea";
 import { createFactoryTask, startFactoryTask } from "./state";
 import { StartFailure } from "./TaskPanel";
+import { TASK_KIND_LABELS } from "./WorkBoard";
 
 const NO_PROJECT = "";
 
@@ -74,6 +75,7 @@ export function NewTaskDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [project, setProject] = useState(projectId);
+  const [kind, setKind] = useState<FactoryTaskKind>("software");
   const [startNow, setStartNow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -101,6 +103,7 @@ export function NewTaskDialog({
         input: {
           projectId: picked?.id ?? null,
           title: trimmed,
+          ...(kind === "software" ? {} : { kind }),
           ...(description.trim() === "" ? {} : { description }),
         },
       },
@@ -176,6 +179,36 @@ export function NewTaskDialog({
                   disabled={busy || created !== null}
                   onChange={(event) => setDescription(event.currentTarget.value)}
                 />
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium">
+                  <T context="field: what kind of work a task is">Kind</T>
+                </span>
+                <Select
+                  value={kind}
+                  disabled={busy || created !== null}
+                  onValueChange={(value) =>
+                    setKind(
+                      FactoryTaskKind.literals.find((candidate) => candidate === value) ??
+                        "software",
+                    )
+                  }
+                >
+                  <SelectTrigger
+                    aria-label={gt("Kind", {
+                      $context: "picker for what kind of work a new task is",
+                    })}
+                  >
+                    <SelectValue>{m(TASK_KIND_LABELS[kind])}</SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup>
+                    {FactoryTaskKind.literals.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {m(TASK_KIND_LABELS[value])}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
               </div>
               <div className="flex flex-col gap-2">
                 <span className="text-sm font-medium">

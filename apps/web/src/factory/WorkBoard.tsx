@@ -1,13 +1,18 @@
+import type { FactoryTaskKind } from "@t3tools/contracts";
 import { formatModelSlugName } from "@t3tools/shared/model";
 import { msg, Plural, T, useGT, useMessages, Var } from "gt-react";
-import { memo, useState } from "react";
+import { memo, useId, useState } from "react";
 
 import { cn } from "../lib/utils";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { ScrollArea } from "../components/ui/scroll-area";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip";
 import {
+  type AttentionItem,
+  type AttentionKind,
   groupWorkCards,
+  WORK_COLUMN_DEFINITIONS,
   WORK_COLUMNS,
   type WorkBadge,
   type WorkCard,
@@ -36,6 +41,27 @@ const BADGE_VARIANTS = {
   stopped: "outline",
 } as const satisfies Record<WorkBadge, string>;
 
+export const TASK_KIND_LABELS: Record<FactoryTaskKind, string> = {
+  software: msg("Software", { $context: "kind of task: work that changes code" }),
+  knowledge: msg("Knowledge", { $context: "kind of task: work that produces a written brief" }),
+  research: msg("Research", { $context: "kind of task: work that runs an experiment" }),
+};
+
+const ATTENTION_LABELS: Record<AttentionKind, string> = {
+  "approve-plan": msg("Approve plan", {
+    $context: "a task's plan waits on the user to approve it",
+  }),
+  "approve-merge": msg("Merge", {
+    $context: "a task's pull request waits on the user to approve merging it",
+  }),
+  accept: msg("Accept", { $context: "a task's result waits on the user to accept it" }),
+  stuck: msg("Review stuck", {
+    $context: "a task's review did not pass, so it waits on the user",
+  }),
+  failed: msg("Failed", { $context: "a failing step paused a task's run" }),
+  question: msg("Question", { $context: "a task's run asks the user something" }),
+};
+
 /** How many cards a column, or rows the list, shows at first and adds each time. */
 export const WORK_PAGE_SIZE = 50;
 
@@ -46,7 +72,9 @@ export const taskNumber = (task: { readonly number: number }) => `T-${task.numbe
 export const sameWorkCard = (left: WorkCard, right: WorkCard) =>
   left.task.rev === right.task.rev &&
   left.task.updatedAt === right.task.updatedAt &&
+  left.task.kind === right.task.kind &&
   left.column === right.column &&
+  left.rolledUp === right.rolledUp &&
   left.badges.join() === right.badges.join() &&
   left.run?.status === right.run?.status &&
   left.childCount === right.childCount &&
@@ -96,14 +124,85 @@ export function WorkBadges({
   );
 }
 
-/** What waits on a person above the five columns, each column with its count. */
+/** A chip naming a task's kind, shown for every kind but the default, software. */
+export function WorkKind({ kind }: { readonly kind: FactoryTaskKind | undefined }) {
+  const m = useMessages();
+  if (kind === undefined || kind === "software") return null;
+  return (
+    <Badge size="sm" variant="outline">
+      {m(TASK_KIND_LABELS[kind])}
+    </Badge>
+  );
+}
+
+/** Every item the shown tasks wait on a person for, oldest first, above any of their layouts. */
+export function WorkNeedsYou({
+  items,
+  onOpenTask,
+  onOpenRun,
+}: {
+  readonly items: ReadonlyArray<AttentionItem>;
+  readonly onOpenTask: (taskId: string) => void;
+  readonly onOpenRun: (runId: string) => void;
+}) {
+  const m = useMessages();
+  // The item opened last from here, so "Next item needing me" moves on past it.
+  const [lastOpened, setLastOpened] = useState<string | null>(null);
+  if (items.length === 0) return null;
+  const open = (item: AttentionItem) => {
+    setLastOpened(item.key);
+    onOpenTask(item.taskId);
+  };
+  const next = items[(items.findIndex((item) => item.key === lastOpened) + 1) % items.length]!;
+  return (
+    <section className="shrink-0 border-b">
+      <div className="flex items-center gap-2 px-4 pt-2 pb-1">
+        <h2 className="flex min-w-0 flex-1 items-center gap-2 text-xs font-medium text-muted-foreground">
+          <T context="the items whose tasks wait on the user">Needs you</T>
+          <span className="tabular-nums">{items.length}</span>
+        </h2>
+        <Button size="xs" variant="outline" onClick={() => open(next)}>
+          <T>Next item needing me</T>
+        </Button>
+      </div>
+      <ul className="flex max-h-36 flex-col gap-1 overflow-y-auto px-4 pb-2">
+        {items.map((item) => (
+          <li key={item.key} className="flex min-w-0 items-center gap-2 text-sm">
+            <Badge size="sm" variant={item.kind === "failed" ? "error" : "warning"}>
+              {m(ATTENTION_LABELS[item.kind])}
+            </Badge>
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-left hover:underline focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:outline-none focus-visible:ring-inset"
+              onClick={() => open(item)}
+            >
+              <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                {taskNumber({ number: item.taskNumber })}
+              </span>
+              <span className="min-w-0 max-w-64 truncate">{item.taskTitle}</span>
+              {item.detail === null ? null : (
+                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  {item.detail}
+                </span>
+              )}
+            </button>
+            <Button size="xs" variant="ghost" onClick={() => onOpenRun(item.runId)}>
+              <T context="verb, opens the workflow run that waits on the user">Open run</T>
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** The five columns, each with its count and what it means. */
 export function WorkBoard({
   cards,
   projectNames,
   selectedTaskId,
   runsPending,
   onOpenTask,
-  onOpenRun,
 }: {
   readonly cards: ReadonlyArray<WorkCard>;
   readonly projectNames: ReadonlyMap<string, string>;
@@ -111,29 +210,14 @@ export function WorkBoard({
   /** Workflows are on and their runs have not arrived, so run-derived columns are not final. */
   readonly runsPending: boolean;
   readonly onOpenTask: (taskId: string) => void;
-  readonly onOpenRun: (runId: string) => void;
 }) {
   const gt = useGT();
   const m = useMessages();
+  const id = useId();
   const [limits, setLimits] = useState<Partial<Record<WorkColumn, number>>>({});
-  const needsYou = cards.filter((card) =>
-    card.badges.some((badge) => badge === "needs-you" || badge === "failed"),
-  );
   const columns = groupWorkCards(cards);
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {needsYou.length === 0 ? null : (
-        <section className="shrink-0 border-b">
-          <h2 className="px-4 pt-2 pb-1 text-xs font-medium text-muted-foreground">
-            <T context="tasks whose runs wait on the user">Needs you</T>
-          </h2>
-          <ul className="flex max-h-36 flex-col gap-1 overflow-y-auto px-4 pb-2">
-            {needsYou.map((card) => (
-              <NeedsYouRow key={card.task.id} card={card} onOpenRun={onOpenRun} />
-            ))}
-          </ul>
-        </section>
-      )}
       <div className="min-h-0 flex-1">
         <ScrollArea>
           {/* 60rem is five 11rem columns with their gaps and padding; narrower, the row scrolls. */}
@@ -142,15 +226,33 @@ export function WorkBoard({
               const all = columns[column];
               const limit = limits[column] ?? WORK_PAGE_SIZE;
               const hidden = all.length - limit;
+              const label = m(WORK_COLUMN_LABELS[column]);
+              const definition = m(WORK_COLUMN_DEFINITIONS[column]);
               return (
                 <section
                   key={column}
-                  aria-label={m(WORK_COLUMN_LABELS[column])}
+                  aria-label={label}
+                  aria-describedby={`${id}-${column}`}
                   className="flex min-w-44 flex-1 basis-0 flex-col gap-2"
                 >
                   <h2 className="flex items-center gap-2 px-1 text-xs font-medium text-muted-foreground">
-                    <span>{m(WORK_COLUMN_LABELS[column])}</span>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span
+                            tabIndex={0}
+                            className="rounded-sm focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:outline-none focus-visible:ring-inset"
+                          />
+                        }
+                      >
+                        {label}
+                      </TooltipTrigger>
+                      <TooltipPopup side="top">{definition}</TooltipPopup>
+                    </Tooltip>
                     <span className="tabular-nums">{all.length}</span>
+                    <span id={`${id}-${column}`} hidden>
+                      {definition}
+                    </span>
                   </h2>
                   {all.length === 0 ? (
                     <p className="px-1 text-xs text-muted-foreground">
@@ -195,30 +297,6 @@ export function WorkBoard({
   );
 }
 
-function NeedsYouRow({
-  card,
-  onOpenRun,
-}: {
-  readonly card: WorkCard;
-  readonly onOpenRun: (runId: string) => void;
-}) {
-  const { run, task } = card;
-  return (
-    <li className="flex min-w-0 items-center gap-2 text-sm">
-      <WorkBadges
-        badges={card.badges.filter((badge) => badge === "needs-you" || badge === "failed")}
-      />
-      <span className="shrink-0 font-mono text-xs text-muted-foreground">{taskNumber(task)}</span>
-      <span className="min-w-0 flex-1 truncate">{task.title}</span>
-      {run === null ? null : (
-        <Button size="xs" variant="outline" onClick={() => onOpenRun(run.runId)}>
-          <T context="verb, opens the task's workflow run">Open</T>
-        </Button>
-      )}
-    </li>
-  );
-}
-
 interface WorkCardItemProps {
   readonly card: WorkCard;
   readonly projectName: string | null;
@@ -245,13 +323,25 @@ const WorkCardItem = memo(
         >
           <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <span className="shrink-0 font-mono">{taskNumber(task)}</span>
+            <WorkKind kind={task.kind} />
             <span className="min-w-0 flex-1 truncate">{projectName}</span>
             <WorkActivity activity={shownActivity(card)} />
           </span>
           <span className="text-sm wrap-anywhere text-foreground">{task.title}</span>
           <WorkBadges badges={card.badges} wrap />
-          {task.model === null && card.childCount === 0 && blockers === 0 && !runPending ? null : (
+          {task.model === null &&
+          card.childCount === 0 &&
+          blockers === 0 &&
+          !runPending &&
+          card.rolledUp !== true ? null : (
             <span className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+              {card.rolledUp === true ? (
+                <span className="shrink-0">
+                  <T context="a parent task's column comes from its subtasks' columns">
+                    From children
+                  </T>
+                </span>
+              ) : null}
               {runPending ? (
                 <span className="shrink-0">
                   <T context="a task's column waits on its workflow run to load">

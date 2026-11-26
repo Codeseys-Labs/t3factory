@@ -6,6 +6,8 @@ import {
   deriveWorkGraph,
   filterWorkCards,
   groupWorkCards,
+  selectAttentionItems,
+  WORK_COLUMN_DEFINITIONS,
   WORK_COLUMNS,
 } from "./workBoard.logic";
 
@@ -507,6 +509,284 @@ describe("deriveWorkCards", () => {
       const [card] = cardsFor([entry.task], entry.runs, questions);
       expect(card?.badges).toEqual(entry.badges);
     }
+  });
+});
+
+describe("parent column rollup", () => {
+  it("leaves rollup disabled by default and when explicitly disabled", () => {
+    const tasks = [task("parent"), task("child", { parentId: "parent", lane: "doing" })];
+
+    expect(
+      deriveWorkCards({ tasks, runs: [], questions: [] }).find((card) => card.task.id === "parent")
+        ?.column,
+    ).toBe("backlog");
+    expect(
+      deriveWorkCards({ tasks, runs: [], questions: [], rollUpParents: false }).find(
+        (card) => card.task.id === "parent",
+      )?.column,
+    ).toBe("backlog");
+  });
+
+  it.each([
+    { lanes: ["done", "doing"] as const, expected: "doing" },
+    { lanes: ["done", "review"] as const, expected: "review" },
+    { lanes: ["done", "done"] as const, expected: "done" },
+    { lanes: ["ready", "backlog"] as const, expected: "ready" },
+    { lanes: ["done", "dropped"] as const, expected: "done" },
+    { lanes: ["dropped", "dropped"] as const, expected: "backlog" },
+  ])("derives $expected from children in $lanes", ({ lanes, expected }) => {
+    const cards = deriveWorkCards({
+      tasks: [
+        task("parent"),
+        task("first", { parentId: "parent", lane: lanes[0] }),
+        task("second", { parentId: "parent", lane: lanes[1] }),
+      ],
+      runs: [],
+      questions: [],
+      rollUpParents: true,
+    });
+    const parent = cards.find((card) => card.task.id === "parent");
+
+    expect(parent?.column).toBe(expected);
+    expect(parent?.rolledUp).toBe(lanes[0] !== "dropped" || lanes[1] !== "dropped");
+  });
+
+  it("uses a parent's own live run rather than its children's columns", () => {
+    const cards = deriveWorkCards({
+      tasks: [
+        task("parent", { attempt: taskRun("parent-run") }),
+        task("child", { parentId: "parent", lane: "done" }),
+      ],
+      runs: [run("parent-run")],
+      questions: [],
+      rollUpParents: true,
+    });
+    const parent = cards.find((card) => card.task.id === "parent");
+
+    expect(parent?.column).toBe("doing");
+    expect(parent?.rolledUp).toBe(false);
+  });
+});
+
+describe("selectAttentionItems", () => {
+  it("maps root and child questions to their task and preserves the question details", () => {
+    const tasks = [task("task-a", { number: 42, title: "Ship feature", attempt: taskRun("root") })];
+    const runs = [
+      run("root", { status: "waiting" }),
+      run("child", { status: "waiting", parentRunId: "root" }),
+    ];
+    const questions: WorkflowQuestion[] = [
+      {
+        ...question("root", "approve-plan"),
+        kind: "plan",
+        request: { title: "Start plan?" },
+        askedAt: at(1),
+      },
+      {
+        ...question("child", "approve-merge"),
+        kind: "merge",
+        request: { title: "Merge part?" },
+        askedAt: at(2),
+      },
+      {
+        ...question("child", "accept"),
+        kind: "accept",
+        request: { title: "Accept part?" },
+        askedAt: at(3),
+      },
+      {
+        ...question("child", "stuck/x1"),
+        kind: "stuck",
+        request: { title: "Resolve review?" },
+        askedAt: at(4),
+      },
+      {
+        ...question("child", "approve-merge/person"),
+        kind: "merge",
+        request: { title: "Person merge?" },
+        askedAt: at(5),
+      },
+    ];
+    const items = selectAttentionItems({
+      cards: cardsFor(tasks, runs, questions),
+      runs,
+      questions,
+    });
+
+    expect(items).toHaveLength(5);
+    expect(
+      items.map(({ taskId, taskNumber, taskTitle, runId, kind, detail, askedAt }) => ({
+        taskId,
+        taskNumber,
+        taskTitle,
+        runId,
+        kind,
+        detail,
+        askedAt,
+      })),
+    ).toEqual([
+      {
+        taskId: "task-a",
+        taskNumber: 42,
+        taskTitle: "Ship feature",
+        runId: "root",
+        kind: "approve-plan",
+        detail: "Start plan?",
+        askedAt: at(1),
+      },
+      {
+        taskId: "task-a",
+        taskNumber: 42,
+        taskTitle: "Ship feature",
+        runId: "child",
+        kind: "approve-merge",
+        detail: "Merge part?",
+        askedAt: at(2),
+      },
+      {
+        taskId: "task-a",
+        taskNumber: 42,
+        taskTitle: "Ship feature",
+        runId: "child",
+        kind: "accept",
+        detail: "Accept part?",
+        askedAt: at(3),
+      },
+      {
+        taskId: "task-a",
+        taskNumber: 42,
+        taskTitle: "Ship feature",
+        runId: "child",
+        kind: "stuck",
+        detail: "Resolve review?",
+        askedAt: at(4),
+      },
+      {
+        taskId: "task-a",
+        taskNumber: 42,
+        taskTitle: "Ship feature",
+        runId: "child",
+        kind: "approve-merge",
+        detail: "Person merge?",
+        askedAt: at(5),
+      },
+    ]);
+    expect(new Set(items.map((item) => item.key)).size).toBe(5);
+  });
+
+  it("emits one failure per paused root or child using that run's detail", () => {
+    const tasks = [task("task-a", { attempt: taskRun("root") })];
+    const runs = [
+      run("root", { status: "paused", detail: "Planner failed", updatedAt: at(4) }),
+      run("child", {
+        status: "paused",
+        detail: "Checks failed",
+        updatedAt: at(3),
+        parentRunId: "root",
+      }),
+    ];
+    const items = selectAttentionItems({ cards: cardsFor(tasks, runs), runs, questions: [] });
+
+    expect(items).toHaveLength(2);
+    expect(
+      items.map(({ kind, runId, detail, askedAt }) => ({ kind, runId, detail, askedAt })),
+    ).toEqual([
+      { kind: "failed", runId: "child", detail: "Checks failed", askedAt: at(3) },
+      { kind: "failed", runId: "root", detail: "Planner failed", askedAt: at(4) },
+    ]);
+  });
+
+  it("sorts by event time then key regardless of input order", () => {
+    const tasks = [task("task-a", { attempt: taskRun("root") })];
+    const runs = [run("root", { status: "waiting" })];
+    const questions = [
+      { ...question("root", "z"), askedAt: at(5) },
+      { ...question("root", "later"), askedAt: at(6) },
+      { ...question("root", "a"), askedAt: at(5) },
+    ];
+    const cards = cardsFor(tasks, runs, questions);
+    const items = selectAttentionItems({ cards, runs, questions });
+    const reversed = selectAttentionItems({ cards, runs, questions: [...questions].reverse() });
+
+    expect(items.map((item) => item.askedAt)).toEqual([at(5), at(5), at(6)]);
+    expect(items[0]!.key < items[1]!.key).toBe(true);
+    expect(reversed.map((item) => item.key)).toEqual(items.map((item) => item.key));
+  });
+
+  it("ignores unrelated cyclic ancestry without losing a valid question", () => {
+    const tasks = [task("task-a", { attempt: taskRun("root") })];
+    const runs = [
+      run("root", { status: "waiting" }),
+      run("cycle-a", { parentRunId: "cycle-b" }),
+      run("cycle-b", { parentRunId: "cycle-a", status: "paused" }),
+    ];
+    const questions = [question("cycle-a"), question("root")];
+    const items = selectAttentionItems({
+      cards: cardsFor(tasks, runs, questions),
+      runs,
+      questions,
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.runId).toBe("root");
+  });
+
+  it("excludes questions and failures from ended runs and dropped tasks", () => {
+    const tasks = [
+      task("ended", { attempt: taskRun("ended-root") }),
+      task("active", { attempt: taskRun("active-root") }),
+      task("dropped", { lane: "dropped", attempt: taskRun("dropped-root") }),
+    ];
+    const runs = [
+      run("ended-root", { status: "completed", endedAt: at(20) }),
+      run("ended-child", { parentRunId: "ended-root", status: "paused" }),
+      run("active-root"),
+      run("ended-part", { parentRunId: "active-root", status: "paused", endedAt: at(20) }),
+      run("dropped-root", { status: "paused" }),
+    ];
+    const questions = [
+      question("ended-root"),
+      question("ended-child"),
+      question("ended-part"),
+      question("dropped-root"),
+    ];
+
+    expect(
+      selectAttentionItems({ cards: cardsFor(tasks, runs, questions), runs, questions }),
+    ).toEqual([]);
+  });
+});
+
+describe("WORK_COLUMN_DEFINITIONS", () => {
+  it("defines all board columns", () => {
+    expect(Object.keys(WORK_COLUMN_DEFINITIONS).sort()).toEqual([
+      "backlog",
+      "doing",
+      "done",
+      "ready",
+      "review",
+    ]);
+    expect(WORK_COLUMN_DEFINITIONS.backlog.startsWith("Work is recorded for later.")).toBe(true);
+    expect(
+      WORK_COLUMN_DEFINITIONS.ready.startsWith(
+        "Work is queued to start and may still have blockers.",
+      ),
+    ).toBe(true);
+    expect(
+      WORK_COLUMN_DEFINITIONS.doing.startsWith(
+        "Work is under way or has been placed here manually.",
+      ),
+    ).toBe(true);
+    expect(
+      WORK_COLUMN_DEFINITIONS.review.startsWith(
+        "Work is in review or has been placed here for review.",
+      ),
+    ).toBe(true);
+    expect(
+      WORK_COLUMN_DEFINITIONS.done.startsWith(
+        "The task run completed or someone marked the task done.",
+      ),
+    ).toBe(true);
   });
 });
 

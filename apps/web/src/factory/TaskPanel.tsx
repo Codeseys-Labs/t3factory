@@ -7,13 +7,18 @@ import {
 import {
   allWorkflowRunNodes,
   groupWorkflowRuns,
+  workflowAnswer,
   type WorkflowRunNode,
 } from "@t3tools/client-runtime/workflows";
 import {
   type EnvironmentId,
-  FactoryTaskError,
+  FACTORY_KIND_WORKFLOWS,
+  type FactoryArtifact,
   type FactoryAttempt,
+  type FactoryReceipt,
   type FactoryTask,
+  FactoryTaskError,
+  FactoryTaskKind,
   type FactoryTaskLane,
   type FactoryTaskPatch,
   type FactoryTaskSummary,
@@ -21,12 +26,15 @@ import {
   type WorkflowRun,
 } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { msg, Plural, T, useGT, useMessages, Var } from "gt-react";
 import { PlayIcon, XIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
+import { formatBytes } from "../lib/formatBytes";
 import { useEnvironmentQuery } from "../state/query";
+import { serverEnvironment } from "../state/server";
 import { useAtomCommand } from "../state/use-atom-command";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -60,10 +68,50 @@ import {
   type TaskDraftField,
   type TaskDraftSent,
 } from "./taskDraft.logic";
-import { shownActivity, taskNumber, WorkActivity, WorkBadges } from "./WorkBoard";
+import { shownActivity, TASK_KIND_LABELS, taskNumber, WorkActivity, WorkBadges } from "./WorkBoard";
 import type { WorkCard } from "./workBoard.logic";
 
 const isFactoryTaskError = Schema.is(FactoryTaskError);
+
+// The Factory pack's planner result and config, as far as the plan view reads them.
+const decodePlan = Schema.decodeUnknownOption(
+  Schema.Struct({
+    summary: Schema.String,
+    parts: Schema.Array(Schema.Struct({ title: Schema.String, brief: Schema.String })),
+  }),
+);
+const decodePlanConfig = Schema.decodeUnknownOption(Schema.Struct({ askPlan: Schema.Boolean }));
+
+const ARTIFACT_KIND_LABELS: Record<FactoryArtifact["kind"], string> = {
+  deliverable: msg("Deliverable", { $context: "kind of artifact: what a task hands over" }),
+  brief: msg("Brief", { $context: "kind of artifact: a written brief" }),
+  protocol: msg("Protocol", { $context: "kind of artifact: how an experiment is run" }),
+  evaluator: msg("Evaluator", { $context: "kind of artifact: what scores an experiment" }),
+  results: msg("Results", { $context: "kind of artifact: what an experiment found" }),
+  file: msg("File", { $context: "kind of artifact: a file a task produced" }),
+};
+
+const RECEIPT_LABELS: Record<FactoryReceipt["kind"], string> = {
+  sealed: msg("Sealed", { $context: "receipt: an artifact's content was fixed by its hash" }),
+  critiqued: msg("Critiqued", { $context: "receipt: an artifact was reviewed critically" }),
+  accepted: msg("Accepted", { $context: "receipt: an artifact was accepted" }),
+  rejected: msg("Rejected", { $context: "receipt: an artifact was rejected" }),
+  delivered: msg("Delivered", { $context: "receipt: an artifact was delivered to its issue" }),
+  uncertain: msg("Uncertain", {
+    $context: "receipt: whether an artifact was delivered is unknown",
+  }),
+  promoted: msg("Promoted", { $context: "receipt: an artifact became a new task" }),
+};
+
+const RECEIPT_VARIANTS = {
+  sealed: "outline",
+  critiqued: "secondary",
+  accepted: "success",
+  rejected: "error",
+  delivered: "info",
+  uncertain: "warning",
+  promoted: "secondary",
+} as const satisfies Record<FactoryReceipt["kind"], string>;
 
 const LANES: ReadonlyArray<{ readonly value: FactoryTaskLane; readonly label: string }> = [
   { value: "backlog", label: msg("Backlog", { $context: "task lane: not yet ready" }) },
@@ -94,7 +142,7 @@ const NO_PARENT = "";
 const savedDrafts = new Map<string, TaskDraft>();
 
 /** Which control a failed save belongs beside. */
-type TaskControl = "fields" | "lane" | "parent" | "blockers" | "note";
+type TaskControl = "fields" | "kind" | "lane" | "parent" | "blockers" | "note";
 
 /** Why a task did not start, with the way to fix it where there is one. */
 export function StartFailure({ error }: { readonly error: unknown }) {
@@ -112,6 +160,9 @@ export function StartFailure({ error }: { readonly error: unknown }) {
         </T>
       ) : isFactoryTaskError(error) && error.reason === "workflow-missing" ? (
         <T>The Factory workflow pack is not installed on this server.</T>
+      ) : isFactoryTaskError(error) && error.reason === "workspace-unavailable" ? (
+        // The server names the folder and what to do about it.
+        error.message
       ) : (
         (errorDisplayMessage(error, m) ?? gt("Could not start the task."))
       )}
@@ -188,7 +239,16 @@ export function TaskPanel({
   };
   const loaded = detail.data;
   const shell = (label: ReactNode, body: ReactNode) => (
-    <div className="flex h-full min-h-0 flex-col">
+    <div
+      className="flex h-full min-h-0 flex-col"
+      onKeyDown={(event) => {
+        // Escape in a popup portalled out of the panel, such as an open select, is that popup's.
+        if (event.key !== "Escape" || event.defaultPrevented) return;
+        if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return;
+        event.preventDefault();
+        onClose();
+      }}
+    >
       <div className="flex h-(--workspace-topbar-height) shrink-0 items-center gap-2 border-b ps-4 pe-2">
         <h2
           ref={heading}
@@ -234,6 +294,7 @@ export function TaskPanel({
   const description = draftFieldText(draft, "description");
   const assignee = draftFieldText(draft, "assignee");
   const laneLabel = LANES.find((candidate) => candidate.value === base.lane)?.label;
+  const kind = base.kind ?? "software";
   const others = tasks.filter((candidate) => candidate.id !== taskId);
   const nameOf = (otherId: string) => {
     const other = tasks.find((candidate) => candidate.id === otherId);
@@ -351,6 +412,11 @@ export function TaskPanel({
     const parentId = value === null || value === NO_PARENT ? null : value;
     if (parentId === base.parentId) return;
     void send("parent", { rev: base.rev, fields: {} }, { parentId });
+  };
+  const changeKind = (value: string | null) => {
+    const next = FactoryTaskKind.literals.find((candidate) => candidate === value);
+    if (next === undefined || next === kind) return;
+    void send("kind", { rev: base.rev, fields: {} }, { kind: next });
   };
   const commitBlockers = (open: boolean) => {
     if (open || blockerPick === null) return;
@@ -514,6 +580,26 @@ export function TaskPanel({
           <section className="flex flex-col gap-3">
             <div className="flex flex-col gap-2">
               <span className="text-sm font-medium">
+                <T context="field: what kind of work a task is">Kind</T>
+              </span>
+              <Select value={kind} onValueChange={changeKind} disabled={locked}>
+                <SelectTrigger
+                  aria-label={gt("Kind", { $context: "picker for what kind of work a task is" })}
+                >
+                  <SelectValue>{m(TASK_KIND_LABELS[kind])}</SelectValue>
+                </SelectTrigger>
+                <SelectPopup>
+                  {FactoryTaskKind.literals.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {m(TASK_KIND_LABELS[value])}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+              {problemFor("kind")}
+            </div>
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium">
                 <T context="field: the lane a task is in">Lane</T>
               </span>
               <Select
@@ -653,6 +739,7 @@ export function TaskPanel({
                 {[...loaded.attempts].reverse().map((attempt) => (
                   <AttemptRow
                     key={attempt.n}
+                    environmentId={environmentId}
                     attempt={attempt}
                     node={
                       attempt.runId === null
@@ -668,6 +755,10 @@ export function TaskPanel({
               </ul>
             )}
           </section>
+
+          {loaded.artifacts.length === 0 && loaded.receipts.length === 0 ? null : (
+            <TaskArtifacts artifacts={loaded.artifacts} receipts={loaded.receipts} />
+          )}
 
           <section className="flex flex-col gap-2">
             <h3 className="text-xs font-medium text-muted-foreground">
@@ -753,7 +844,88 @@ function TaskChip({
   );
 }
 
+/** What a task's attempts produced, by content hash, each with what was done with it. */
+function TaskArtifacts({
+  artifacts,
+  receipts,
+}: {
+  readonly artifacts: ReadonlyArray<FactoryArtifact>;
+  readonly receipts: ReadonlyArray<FactoryReceipt>;
+}) {
+  const m = useMessages();
+  // Receipts name their artifact by attempt and hash, as the store keys artifacts.
+  const receiptsOf = new Map<string, FactoryReceipt[]>();
+  for (const receipt of receipts) {
+    const key = `${receipt.attempt} ${receipt.sha256}`;
+    const entries = receiptsOf.get(key);
+    if (entries === undefined) receiptsOf.set(key, [receipt]);
+    else entries.push(receipt);
+  }
+  const rows: Array<{
+    readonly key: string;
+    readonly attempt: number;
+    readonly sha256: string;
+    readonly artifact: FactoryArtifact | null;
+  }> = artifacts.map((artifact) => ({
+    key: `${artifact.attempt} ${artifact.sha256}`,
+    attempt: artifact.attempt,
+    sha256: artifact.sha256,
+    artifact,
+  }));
+  const listed = new Set(rows.map((row) => row.key));
+  for (const [key, list] of receiptsOf) {
+    const first = list[0];
+    if (first !== undefined && !listed.has(key)) {
+      rows.push({ key, attempt: first.attempt, sha256: first.sha256, artifact: null });
+    }
+  }
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-xs font-medium text-muted-foreground">
+        <T context="what a task's runs produced, and what was done with each">
+          Artifacts and receipts
+        </T>
+      </h3>
+      <ul className="flex flex-col gap-2">
+        {rows.map((row) => (
+          <li key={row.key} className="flex flex-col gap-1 rounded-lg border px-3 py-2">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-sm">
+                {row.artifact === null ? (
+                  <T context="receipts for an artifact the task does not list">Unlisted artifact</T>
+                ) : row.artifact.label.trim() === "" ? (
+                  m(ARTIFACT_KIND_LABELS[row.artifact.kind])
+                ) : (
+                  row.artifact.label
+                )}
+              </span>
+              <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                #{row.attempt}
+              </span>
+            </span>
+            <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              {row.artifact === null ? null : (
+                <>
+                  <span>{m(ARTIFACT_KIND_LABELS[row.artifact.kind])}</span>
+                  <span className="tabular-nums">{formatBytes(row.artifact.bytes)}</span>
+                </>
+              )}
+              <span className="font-mono">{row.sha256.slice(0, 10)}</span>
+              {(receiptsOf.get(row.key) ?? []).map((receipt) => (
+                <Badge key={receipt.kind} size="sm" variant={RECEIPT_VARIANTS[receipt.kind]}>
+                  {m(RECEIPT_LABELS[receipt.kind])}
+                </Badge>
+              ))}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function AttemptRow({
+  environmentId,
   attempt,
   node,
   activity,
@@ -761,6 +933,7 @@ function AttemptRow({
   failed,
   onOpenRun,
 }: {
+  readonly environmentId: EnvironmentId;
   readonly attempt: FactoryAttempt;
   /** Its run as the live list has it; null when the list does not have it. */
   readonly node: WorkflowRunNode | null;
@@ -772,49 +945,169 @@ function AttemptRow({
   readonly onOpenRun: (runId: string) => void;
 }) {
   const { runId } = attempt;
+  const [planOpen, setPlanOpen] = useState(false);
+  // Only the software workflow plans; the plan is read when asked for, not with the panel.
+  const plannable = runId !== null && attempt.workflow === FACTORY_KIND_WORKFLOWS.software;
   return (
-    <li className="flex min-w-0 items-center gap-2 text-sm">
-      <span className="shrink-0 font-mono text-xs text-muted-foreground">#{attempt.n}</span>
-      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-        <RelativeLabel value={attempt.startedAt} />
-      </span>
-      {failed ? (
-        <WorkBadges badges={["failed"]} />
-      ) : activity !== null ? (
-        <>
-          <WorkActivity activity={activity} />
-          {liveParts === 0 ? null : (
-            <span className="shrink-0 text-xs text-muted-foreground">
-              <T>
-                <Plural
-                  n={liveParts}
-                  one={
-                    <>
-                      <Var>{liveParts}</Var> part under way
-                    </>
-                  }
-                  other={
-                    <>
-                      <Var>{liveParts}</Var> parts under way
-                    </>
-                  }
-                />
-              </T>
-            </span>
-          )}
-        </>
-      ) : node !== null ? (
-        <WorkflowStateWord node={node} />
-      ) : runId === null ? (
-        <span className="text-xs text-muted-foreground">
-          <T context="an attempt whose run never started">Did not start</T>
+    <li className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex min-w-0 items-center gap-2 text-sm">
+        <span className="shrink-0 font-mono text-xs text-muted-foreground">#{attempt.n}</span>
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          <RelativeLabel value={attempt.startedAt} />
         </span>
-      ) : null}
-      {runId === null ? null : (
-        <Button size="xs" variant="ghost" onClick={() => onOpenRun(runId)}>
-          <T context="verb, opens the attempt's workflow run">Open run</T>
-        </Button>
-      )}
+        {failed ? (
+          <WorkBadges badges={["failed"]} />
+        ) : activity !== null ? (
+          <>
+            <WorkActivity activity={activity} />
+            {liveParts === 0 ? null : (
+              <span className="shrink-0 text-xs text-muted-foreground">
+                <T>
+                  <Plural
+                    n={liveParts}
+                    one={
+                      <>
+                        <Var>{liveParts}</Var> part under way
+                      </>
+                    }
+                    other={
+                      <>
+                        <Var>{liveParts}</Var> parts under way
+                      </>
+                    }
+                  />
+                </T>
+              </span>
+            )}
+          </>
+        ) : node !== null ? (
+          <WorkflowStateWord node={node} />
+        ) : runId === null ? (
+          <span className="text-xs text-muted-foreground">
+            <T context="an attempt whose run never started">Did not start</T>
+          </span>
+        ) : null}
+        {plannable ? (
+          <Button
+            size="xs"
+            variant="ghost"
+            aria-expanded={planOpen}
+            onClick={() => setPlanOpen(!planOpen)}
+          >
+            {planOpen ? (
+              <T context="verb, hides the plan an attempt made">Hide plan</T>
+            ) : (
+              <T context="verb, shows the plan an attempt made">View plan</T>
+            )}
+          </Button>
+        ) : null}
+        {runId === null ? null : (
+          <Button size="xs" variant="ghost" onClick={() => onOpenRun(runId)}>
+            <T context="verb, opens the attempt's workflow run">Open run</T>
+          </Button>
+        )}
+      </div>
+      {plannable && planOpen ? <AttemptPlan environmentId={environmentId} runId={runId} /> : null}
     </li>
+  );
+}
+
+/** The plan an attempt's run made, its parts, and whether a person approved it. */
+function AttemptPlan({
+  environmentId,
+  runId,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly runId: string;
+}) {
+  const detail = useEnvironmentQuery(
+    serverEnvironment.workflowRun({ environmentId, input: { runId } }),
+  );
+  const found = detail.data;
+  if (found === null) {
+    return (
+      <p
+        role={detail.error === null ? "status" : "alert"}
+        className="ps-6 text-xs text-muted-foreground"
+      >
+        {detail.error === null ? (
+          <T>Loading the plan…</T>
+        ) : (
+          <T>The plan could not load. Open the run to see it.</T>
+        )}
+      </p>
+    );
+  }
+  const stepNamed = (name: string) => found.steps.find((step) => step.name === name);
+  const planStep = stepNamed("plan");
+  const plan =
+    planStep?.status === "completed" ? Option.getOrNull(decodePlan(planStep.result)) : null;
+  const approval = stepNamed("approve-plan");
+  const config = stepNamed("config");
+  const askPlan =
+    config?.status === "completed"
+      ? Option.getOrNull(decodePlanConfig(config.result))?.askPlan
+      : undefined;
+  const state: ReactNode =
+    planStep === undefined || planStep.status === "running" ? (
+      found.run.endedAt === null ? (
+        <T context="a task's run is making its plan">Planning…</T>
+      ) : (
+        <T>This attempt made no plan.</T>
+      )
+    ) : planStep.status === "failed" ? (
+      <T>Planning failed.</T>
+    ) : plan === null ? (
+      <T>The plan cannot be shown. Open the run to see it.</T>
+    ) : approval?.status === "running" ? (
+      <Badge size="sm" variant="warning">
+        <T context="a plan waits on the user to approve it">Waiting for approval</T>
+      </Badge>
+    ) : approval !== undefined ? (
+      approval.status === "completed" && workflowAnswer(approval.result)?.choice === "Start" ? (
+        <Badge size="sm" variant="success">
+          <T context="a person approved the plan">Approved</T>
+        </Badge>
+      ) : (
+        <Badge size="sm" variant="error">
+          <T context="the plan was declined or never answered">Not approved</T>
+        </Badge>
+      )
+    ) : askPlan === false ? (
+      <Badge size="sm" variant="secondary">
+        <T context="the plan started without asking a person">Started without approval</T>
+      </Badge>
+    ) : null;
+  const parts = plan?.parts.map((part, index) => ({ ...part, n: index + 1 })) ?? [];
+  return (
+    <div className="ms-6 flex flex-col gap-1.5 rounded-lg border px-3 py-2 text-xs">
+      <span className="flex min-w-0 flex-wrap items-center gap-2 text-muted-foreground">
+        <span className="font-medium text-foreground">
+          <T context="the plan a task's run made">Plan</T>
+        </span>
+        {state}
+      </span>
+      {plan === null ? null : (
+        <>
+          <p className="text-sm whitespace-pre-wrap wrap-anywhere">{plan.summary}</p>
+          <ol className="flex flex-col gap-1">
+            {parts.map((part) => (
+              <li key={part.n} className="flex min-w-0 gap-2">
+                <span className="shrink-0 font-mono text-muted-foreground">{part.n}.</span>
+                <span className="flex min-w-0 flex-col">
+                  <span className="font-medium text-foreground wrap-anywhere">{part.title}</span>
+                  <span className="line-clamp-2 text-muted-foreground wrap-anywhere">
+                    {part.brief}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ol>
+          <p className="text-muted-foreground">
+            <T>The plan records no order between its parts.</T>
+          </p>
+        </>
+      )}
+    </div>
   );
 }

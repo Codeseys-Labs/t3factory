@@ -22,6 +22,16 @@ A task that has a run follows the run instead of its lane:
 
 Notes are a log on the task. You can add one at any time; the workflow adds one when a run ends, saying what each part came to.
 
+## Kind
+
+A task has a **Kind**, set in the task panel. It decides which workflow **Start** runs:
+
+- **Software** (the default) runs `factory-task`: plan, parts, pull requests, merge.
+- **Knowledge** runs `factory-brief`: an agent writes a brief, a Markdown file.
+- **Research** runs `factory-experiment`: a bounded experiment on a Git project.
+
+Cards show a chip for Knowledge and Research; Software shows none. The two newer kinds are described under [Knowledge and Research tasks](#knowledge-and-research-tasks).
+
 ## Start a task
 
 Press **Start** on a task, or tick the start option when you create it. A task needs a project to run. Then:
@@ -39,7 +49,17 @@ If an agent runs out of time (`stepTimeout`), its thread is continued once from 
 
 Starting again after a run stops makes a new attempt; the task lists its attempts. A task that is already running cannot be started, and neither can a dropped one, from the page or the command line.
 
-Questions appear in two places. On the board, the **Needs you** strip lists every task whose run waits on you or has paused; **Open** takes you to the run on the Workflows page, where you answer. If a part's agent asks you something of its own, that question shows in the agent's thread as usual.
+Questions appear in two places. The **Needs you** strip sits above **Board**, **List** and **Graph** and lists every task whose run waits on you or has paused. Each item has a badge for what it waits on (**Approve plan**, **Merge**, **Accept**, **Review stuck**, **Failed** or **Question**), the task number and title, and **Open run**, which takes you to the run on the Workflows page, where you answer. **Next item needing me** opens the task of the oldest item, then the next one on each press; the command palette has the same command. If a part's agent asks you something of its own, that question shows in the agent's thread as usual.
+
+### Where agents work
+
+A project that is a Git repository gets a worktree per part. A project folder that is not a Git repository is worked in directly (the `root` workspace), so only one run at a time works in it; other runs on the same project wait their turn. A task with **No project** works in a scratch folder that the server keeps. Start refuses with `workspace-unavailable`, and says why, when that folder cannot be set up. One cause: the T3 home sits inside a Git repository, which turns projectless threads off until the home is moved outside it.
+
+## Knowledge and Research tasks
+
+**Knowledge** (`factory-brief`). An agent writes one Markdown brief of at most 5 MiB, citing its sources, and changes no Git state. The request is frozen when the attempt begins, so later edits to the task do not move it. If `critiqueModel` is set, a second agent reviews the brief and the writer revises it, up to `fixRounds`. Then you **Accept**, ask to **Revise** (with a reason) or **Drop**. Acceptance is of the exact file by its SHA-256; a file that changed after review is refused and recorded. When the task came from an issue and `briefDelivery` is `issue-comment`, the brief is posted as a comment on it. The post carries a marker, so a repeat finds the comment instead of posting twice, and when the tracker's listing cannot show whether it landed, you are asked whether to post again.
+
+**Research** (`factory-experiment`). Git projects only. An agent proposes a protocol: a hypothesis, one metric and its direction, an existing evaluator command, which paths may be edited, which are sealed, and a budget (1 to 20 iterations, a wall clock, a per-measurement timeout). You approve it with **Seal** or drop it, and the evaluator's SHA-256 is fixed. A baseline is measured. Each iteration then has an agent make one commit inside the allowed paths; a commit that touches anything else, or that changes the evaluator, is invalid. Otherwise it is measured and kept only if it beats the best metric by at least the minimum improvement; a discarded commit is reset away. Three crashes in a row, the wall clock or the iteration limit end the loop. Every trial, kept or not, is a row of `results.tsv`, so negative results stay on record. You then choose **Promote to task**, **Promote to brief** or **Keep as result**; promotion adds a Backlog task and starts nothing.
 
 ## The Orchestrator
 
@@ -68,6 +88,10 @@ t3 workflow store set factory/v1/intake/<projectId> '{"v":1,"enabled":true,"labe
 
 With `autoStart` on, each captured task also starts. The project's tracker has to be connected under **Settings → Source control & issues**.
 
+## Self-repair
+
+`factory-self-repair` runs daily at 04:00. It looks for Factory runs that ended or paused for the same reason at least twice (stopped runs from the last seven days; paused runs whenever they paused) and adds one **Backlog** task per reason, naming the workflow, the reason and the runs. A run that ended on your own choice, such as a plan you did not approve, does not count. It never starts the task: you decide whether a repair is worth a run. A reason already turned into a task is not added again.
+
 ## Settings per project
 
 Settings are JSON values in the workflow store. `factory/v1/config` applies to every project, and `factory/v1/config/<projectId>` overrides it field by field. Setting a key replaces the whole value, so read it first (`t3 workflow store list factory/v1/config`) and write the merged object with `"v":1`. Every field is optional:
@@ -80,8 +104,18 @@ Settings are JSON values in the workflow store. `factory/v1/config` applies to e
 - `stepTimeout`, `checksTimeout`: how long an agent step and the wait for checks may take. Defaults `"2 hours"` and `"1 hour"`.
 - `mergeMethod`: `merge`, `squash`, `rebase` or `fast-forward`. Default `squash`.
 - `mergeNeedsPerson`: a merge goes ahead only on an answer you give in the app. An agent's answer through the command line makes the question come back, and only your answer counts. It also asks the merge question when `askMerge` is off. Default off. It guards against an agent answering by habit; it is not a security boundary.
+- `critiqueModel`, `briefDelivery`: for Knowledge tasks. `critiqueModel` has the same shape as the models above; unset, the brief gets no critique. `briefDelivery` is `none` or `issue-comment`. Default `none`.
+- `protectedPaths`, `lowRiskPaths`: glob lists for pull-request risk routing. Protected paths (workflows, lockfiles, migrations, fork seams, plus any paths you add) always ask for a person's merge approval even when `askMerge` is off.
 
 A value that does not decode stops the task at its first step with a message naming the key; it is not ignored. Checks are the pull request's own checks; Work runs no check command of its own.
+
+## On the page
+
+- Each column heading has a tooltip saying what the column holds.
+- **Roll up parents** places a parent in the column its parts add up to. It is available once every task has loaded.
+- A task's panel lists **Artifacts and receipts**: the files a run recorded (a brief, an experiment's evaluator and results) with their SHA-256, and receipts such as accepted, delivered or promoted, with who gave each. Records are never overwritten.
+- Each attempt has **View plan**, which shows the plan that attempt made.
+- The command palette has **Next item needing me** and **Go to task...**, which lists tasks by number and title.
 
 ## What needs Workflows on
 

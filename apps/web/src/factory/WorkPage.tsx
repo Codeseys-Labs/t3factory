@@ -34,6 +34,7 @@ import {
   EmptyTitle,
 } from "../components/ui/empty";
 import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import {
   Select,
   SelectItem,
@@ -42,16 +43,18 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { SidebarInset } from "../components/ui/sidebar";
+import { Switch } from "../components/ui/switch";
 import { toastManager } from "../components/ui/toast";
 import { Toggle, ToggleGroup } from "../components/ui/toggle-group";
 import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "../components/WorkspaceBreadcrumb";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { useWorkflowEnvironmentIds } from "../components/workflows/useWorkflowEnvironmentIds";
+import { useRememberWorkEnvironment } from "./FactoryWorkSidebarItem";
 import { NewTaskDialog } from "./NewTaskDialog";
 import { createFactoryTask, factoryTasksLive } from "./state";
 import { TaskPanel } from "./TaskPanel";
-import { WorkBoard } from "./WorkBoard";
-import { deriveWorkCards, filterWorkCards } from "./workBoard.logic";
+import { WorkBoard, WorkNeedsYou } from "./WorkBoard";
+import { deriveWorkCards, filterWorkCards, selectAttentionItems } from "./workBoard.logic";
 import { WorkGraph } from "./WorkGraph";
 import { WorkList } from "./WorkList";
 
@@ -126,6 +129,7 @@ export function WorkPage() {
   const live = useEnvironmentQuery(
     environmentId === null ? null : factoryTasksLive({ environmentId, input: {} }),
   );
+  useRememberWorkEnvironment(environmentId);
   const workflowsOn = environmentId !== null && workflowIds.includes(environmentId);
   const workflows = useEnvironmentQuery(
     environmentId !== null && workflowIds.includes(environmentId)
@@ -138,6 +142,7 @@ export function WorkPage() {
   // The environment New task was opened on: the dialog stays on it whatever the page shows.
   const [creatingOn, setCreatingOn] = useState<EnvironmentId | null>(null);
   const [text, setText] = useState("");
+  const [rollUp, setRollUp] = useState(false);
 
   const pinned = environmentId ?? search.env;
   const env = pinned === undefined ? {} : { env: pinned };
@@ -170,7 +175,9 @@ export function WorkPage() {
   const runs = runsSnapshot?.runs ?? NO_RUNS;
   const questions = runsSnapshot?.questions ?? NO_QUESTIONS;
   const tasks = snapshot?.tasks ?? NO_TASKS;
-  const cards = deriveWorkCards({ tasks, runs, questions });
+  // Rolling up needs every child: a cut-off or unreadable list could be missing some.
+  const complete = snapshot !== null && !snapshot.truncated && snapshot.damaged === 0;
+  const cards = deriveWorkCards({ tasks, runs, questions, rollUpParents: rollUp && complete });
   const projectFilter =
     search.project === undefined
       ? undefined
@@ -182,6 +189,7 @@ export function WorkPage() {
     ...(projectFilter === undefined ? {} : { projectId: projectFilter }),
     ...(query === "" ? {} : { text: query }),
   });
+  const attention = selectAttentionItems({ cards: visible, runs, questions });
   const projectNames: ReadonlyMap<string, string> = new Map(
     projects.map((project) => [project.id, project.title] as const),
   );
@@ -328,7 +336,6 @@ export function WorkPage() {
         selectedTaskId={openTaskId}
         runsPending={runsPending}
         onOpenTask={openTask}
-        onOpenRun={openRun}
       />
     );
 
@@ -395,6 +402,9 @@ export function WorkPage() {
               <T>New task</T>
             </Button>
           </WorkspacePageHeader>
+          {ready ? (
+            <WorkNeedsYou items={attention} onOpenTask={openTask} onOpenRun={openRun} />
+          ) : null}
           {ready ? (
             <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
               <ToggleGroup
@@ -464,6 +474,17 @@ export function WorkPage() {
                   onChange={(event) => setText(event.currentTarget.value)}
                 />
               </div>
+              <Label>
+                <Switch
+                  size="sm"
+                  checked={rollUp && complete}
+                  disabled={!complete}
+                  onCheckedChange={(checked) => setRollUp(checked)}
+                />
+                <T context="view setting: show a parent task in the column its subtasks add up to">
+                  Roll up parents
+                </T>
+              </Label>
               {listedProject === null ? null : (
                 <Button
                   size="sm"

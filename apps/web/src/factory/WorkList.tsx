@@ -21,6 +21,7 @@ import {
   WORK_PAGE_SIZE,
   WorkActivity,
   WorkBadges,
+  WorkKind,
   shownActivity,
 } from "./WorkBoard";
 import type { WorkCard } from "./workBoard.logic";
@@ -130,6 +131,7 @@ const WorkRow = memo(
             >
               {task.title}
             </button>
+            <WorkKind kind={task.kind} />
             <WorkBadges badges={badges} />
             <WorkActivity activity={shownActivity(card)} />
           </span>
@@ -138,6 +140,15 @@ const WorkRow = memo(
           {runPending ? (
             <span className="text-muted-foreground">
               <T context="a task's column waits on its workflow run to load">Checking its run…</T>
+            </span>
+          ) : card.rolledUp === true ? (
+            <span className="flex items-center gap-1.5">
+              {m(WORK_COLUMN_LABELS[column])}
+              <span className="text-xs text-muted-foreground">
+                <T context="a parent task's column comes from its subtasks' columns">
+                  From children
+                </T>
+              </span>
             </span>
           ) : (
             m(WORK_COLUMN_LABELS[column])

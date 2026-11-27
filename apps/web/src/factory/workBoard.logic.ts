@@ -44,11 +44,41 @@ export interface WorkCard {
   readonly rolledUp?: boolean;
 }
 
-function resolveColumn(task: FactoryTaskSummary, run: WorkflowRun | null): WorkColumn | null {
+const isTaggedReview = (run: WorkflowRun) => run.tags?.includes("stage:review") === true;
+
+// WorkflowStore.runs caps ordinary runs separately from skipped roots and retains questions and pauses.
+const RECENT_WORKFLOW_RUN_LIMIT = 500;
+
+/** Review requires at least one live part and enough of the snapshot to rule out missing siblings. */
+function isLiveRunInReview(
+  run: WorkflowRun,
+  childrenOf: ReadonlyMap<string, ReadonlyArray<WorkflowRun>>,
+  partsMayBeMissing: boolean,
+): boolean {
+  if (run.workflow !== "factory-task") return isTaggedReview(run);
+  if (partsMayBeMissing) return false;
+
+  const children = childrenOf.get(run.runId);
+  if (children === undefined) return false;
+  let hasLivePart = false;
+  for (const child of children) {
+    if (child.workflow !== "factory-task-part" || child.endedAt !== null) continue;
+    if (!isTaggedReview(child)) return false;
+    hasLivePart = true;
+  }
+  return hasLivePart;
+}
+
+function resolveColumn(
+  task: FactoryTaskSummary,
+  run: WorkflowRun | null,
+  childrenOf: ReadonlyMap<string, ReadonlyArray<WorkflowRun>>,
+  partsMayBeMissing: boolean,
+): WorkColumn | null {
   if (task.lane === "dropped") return null;
   if (run === null) return task.lane;
   if (run.endedAt === null) {
-    return run.tags?.includes("stage:review") === true ? "review" : "doing";
+    return isLiveRunInReview(run, childrenOf, partsMayBeMissing) ? "review" : "doing";
   }
   if (task.laneSetAt > run.endedAt) return task.lane;
   return run.status === "completed" ? "done" : task.lane;
@@ -119,6 +149,7 @@ function compareTasks(a: FactoryTaskSummary, b: FactoryTaskSummary): number {
 
 export function deriveWorkCards(input: {
   readonly tasks: ReadonlyArray<FactoryTaskSummary>;
+  /** The workflow snapshot's runs, newest first. */
   readonly runs: ReadonlyArray<WorkflowRun>;
   readonly questions: ReadonlyArray<WorkflowQuestion>;
   /**
@@ -128,24 +159,37 @@ export function deriveWorkCards(input: {
   readonly rollUpParents?: boolean;
 }): ReadonlyArray<WorkCard> {
   const runsById = new Map<string, WorkflowRun>();
-  for (const run of input.runs) runsById.set(run.runId, run);
+  const childrenOf = new Map<string, WorkflowRun[]>();
+  let recentRuns = 0;
+  let recentRunsCutoff: string | undefined;
+  let cutoffHasOverflow = false;
+  for (const run of input.runs) {
+    runsById.set(run.runId, run);
+    if (!(run.status === "skipped" && run.parentRunId === null)) {
+      if (recentRunsCutoff === undefined) {
+        recentRuns += 1;
+        if (recentRuns === RECENT_WORKFLOW_RUN_LIMIT) recentRunsCutoff = run.startedAt;
+      } else if (run.startedAt === recentRunsCutoff) {
+        cutoffHasOverflow = true;
+      }
+    }
+    if (run.parentRunId === null) continue;
+    const siblings = childrenOf.get(run.parentRunId);
+    if (siblings === undefined) childrenOf.set(run.parentRunId, [run]);
+    else siblings.push(run);
+  }
 
+  // At a tied cutoff, only paused or directly asking runs could have survived outside the window.
+  const directQuestionRuns = cutoffHasOverflow ? new Set<string>() : undefined;
   // Every run on the parent chain of an asking run, the asking run included.
   const askingRuns = new Set<string>();
   for (const question of input.questions) {
+    directQuestionRuns?.add(question.runId);
     let runId: string | null = question.runId;
     while (runId !== null && !askingRuns.has(runId)) {
       askingRuns.add(runId);
       runId = runsById.get(runId)?.parentRunId ?? null;
     }
-  }
-
-  const childrenOf = new Map<string, WorkflowRun[]>();
-  for (const run of input.runs) {
-    if (run.parentRunId === null) continue;
-    const siblings = childrenOf.get(run.parentRunId);
-    if (siblings === undefined) childrenOf.set(run.parentRunId, [run]);
-    else siblings.push(run);
   }
 
   const childCounts = new Map<string, number>();
@@ -157,7 +201,14 @@ export function deriveWorkCards(input: {
     const runId = task.attempt?.runId;
     const run = runId === null || runId === undefined ? null : (runsById.get(runId) ?? null);
     runOf.set(task.id, run);
-    const column = resolveColumn(task, run);
+    const partsMayBeMissing =
+      run !== null &&
+      recentRunsCutoff !== undefined &&
+      (run.startedAt < recentRunsCutoff ||
+        (run.startedAt === recentRunsCutoff &&
+          cutoffHasOverflow &&
+          (run.status === "paused" || directQuestionRuns?.has(run.runId) === true)));
+    const column = resolveColumn(task, run, childrenOf, partsMayBeMissing);
     columns.set(task.id, column);
     parentOf.set(task.id, task.parentId);
     if (task.lane !== "dropped" && task.parentId !== null) {

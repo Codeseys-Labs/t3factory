@@ -134,10 +134,91 @@ describe("deriveWorkCards", () => {
       const runId = `active-${index}`;
       const [card] = cardsFor(
         [task(`task-${index}`, { lane: "done", attempt: taskRun(runId) })],
-        [run(runId, { status: entry.status, tags: entry.tags })],
+        [run(runId, { workflow: "other", status: entry.status, tags: entry.tags })],
       );
       expect(card?.column).toBe(entry.expected);
     }
+  });
+
+  // B4a: a live factory-task is in review only when it has live parts and all of them are.
+  it("derives a live factory-task's column from its live parts' review stage", () => {
+    const review = { tags: ["stage:review"] };
+    const doing = { tags: ["stage:doing"] };
+    const ended = { status: "completed" as const, endedAt: at(5) };
+    const cases: ReadonlyArray<{
+      readonly parts: ReadonlyArray<Partial<WorkflowRun>>;
+      readonly expected: "doing" | "review";
+    }> = [
+      { parts: [review, review], expected: "review" },
+      { parts: [review, doing], expected: "doing" },
+      { parts: [review, {}], expected: "doing" },
+      { parts: [{ ...review, ...ended }, doing], expected: "doing" },
+      { parts: [{ ...doing, ...ended }, review, review], expected: "review" },
+      { parts: [], expected: "doing" },
+      { parts: [{ ...review, ...ended }], expected: "doing" },
+      // Only direct factory-task-part children count.
+      { parts: [{ ...review, workflow: "other" }], expected: "doing" },
+      { parts: [review, { ...doing, workflow: "other" }], expected: "review" },
+    ];
+
+    for (const entry of cases) {
+      const [card] = cardsFor(
+        [task("task", { attempt: taskRun("root") })],
+        [
+          run("root", review),
+          ...entry.parts.map((fields, index) =>
+            run(`part-${index}`, { workflow: "factory-task-part", parentRunId: "root", ...fields }),
+          ),
+        ],
+      );
+      expect(card?.column, JSON.stringify(entry.parts)).toBe(entry.expected);
+    }
+  });
+
+  it("keeps older tasks in Doing only when the snapshot can have omitted live parts", () => {
+    const root = run("root", { status: "paused" });
+    const part = run("reviewing", {
+      workflow: "factory-task-part",
+      parentRunId: root.runId,
+      status: "waiting",
+      startedAt: at(1),
+      tags: ["stage:review"],
+    });
+    const recent = Array.from({ length: 500 }, (_, i) =>
+      run(`recent-${i}`, { startedAt: at(2), status: "completed", endedAt: at(3) }),
+    );
+    const tasks = [task("task", { attempt: taskRun(root.runId) })];
+
+    // The old root is retained because it's paused, and the old part because it's asking.
+    const [truncated] = cardsFor(tasks, [...recent, part, root], [question(part.runId)]);
+    expect(truncated?.column).toBe("doing");
+
+    const skipped = recent.map((entry) => ({ ...entry, status: "skipped" as const }));
+    const [complete] = cardsFor(tasks, [...skipped, part, root], [question(part.runId)]);
+    expect(complete?.column).toBe("review");
+
+    const [recentTask] = cardsFor(tasks, [
+      { ...part, startedAt: at(5) },
+      { ...root, startedAt: at(4) },
+      ...recent.slice(0, 498),
+    ]);
+    expect(recentTask?.column).toBe("review");
+
+    const boundary = [{ ...part, startedAt: at(5) }, ...recent.slice(0, 498)];
+    const [atCutoff] = cardsFor(tasks, [...boundary, root]);
+    expect(atCutoff?.column).toBe("review");
+
+    const cutoffPeer = run("same-start", { status: "paused", startedAt: root.startedAt });
+    const [ambiguous] = cardsFor(tasks, [...boundary, cutoffPeer, root]);
+    expect(ambiguous?.column).toBe("doing");
+
+    const liveRoot = { ...root, status: "running" as const };
+    const tied = [...boundary, cutoffPeer, liveRoot];
+    const [askingRoot] = cardsFor(tasks, tied, [question(root.runId)]);
+    expect(askingRoot?.column).toBe("doing");
+
+    const [ordinaryRoot] = cardsFor(tasks, tied, [question(part.runId)]);
+    expect(ordinaryRoot?.column).toBe("review");
   });
 
   // B5: ended completed runs finish only when the lane was not changed afterward; other ended statuses keep the lane.

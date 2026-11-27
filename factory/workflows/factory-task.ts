@@ -15,6 +15,7 @@ import {
   hashFile,
   listAttempts,
   localGitHasRemote,
+  localWriterBranches,
   localWriterHead,
   mergeApproved,
   mergeAtHead,
@@ -102,6 +103,29 @@ const matchesLocalWriterBranch = (branch: string, requested: string) =>
   branch === requested ||
   (branch.startsWith(`${requested}-`) &&
     /^(?:[2-9]|[1-9]\d+)$/.test(branch.slice(requested.length + 1)));
+
+const terminalPr = ({ state }: { readonly state: string }) =>
+  state === "merged" || state === "closed";
+
+const checksOnHead = (
+  checks: ReadonlyArray<{
+    readonly placeholder?: boolean | undefined;
+    readonly required?: boolean | undefined;
+    readonly status: string;
+  }>,
+) => {
+  const listed = checks.filter((check) => check.placeholder !== true);
+  const counted = listed.some((check) => check.required === true)
+    ? listed.filter((check) => check.required === true)
+    : listed;
+  if (counted.length === 0) return "none";
+  if (counted.some((check) => check.status === "pending")) return "pending";
+  return counted.some(
+    ({ status }) => status === "failure" || status === "cancelled" || status === "action-required",
+  )
+    ? "failing"
+    : "passing";
+};
 
 const Plan = Schema.Struct({
   summary: Schema.String,
@@ -283,8 +307,22 @@ const factoryTaskPart = workflow(
         : null;
     const localFolder =
       writer === null && target.workspace === "worktree" ? target.workspaceRoot : null;
-    const hasRemote = input.localHasRemote === undefined ? false : input.localHasRemote;
-    const localBranch = hasRemote === true ? writerBranch(input.taskId, attempt, input.part) : null;
+    if (input.localHasRemote === null) {
+      return yield* stop(`${LOCAL_DELIVERY_FAILED}: could not determine the project's Git remotes`);
+    }
+    const localBranch =
+      input.localHasRemote === true ? writerBranch(input.taskId, attempt, input.part) : null;
+    const previousBranches =
+      localFolder !== null && localBranch !== null
+        ? yield* step(
+            "deliver/branches",
+            { returns: Schema.NullOr(Schema.Array(Schema.String)) },
+            localWriterBranches(localFolder, localBranch),
+          )
+        : [];
+    if (previousBranches === null) {
+      return yield* stop(`${LOCAL_DELIVERY_FAILED}: could not read the launch branch namespace`);
+    }
     const where =
       writer !== null || target.workspace === "worktree" ? "this worktree" : "this folder";
     // A folder agents work in directly is shared by every task on its project. The task's place
@@ -429,12 +467,7 @@ const factoryTaskPart = workflow(
         ? againBranch(localBranch)
         : localBranch;
     let recovered = false;
-    if (done.value.prUrl === null && localFolder !== null && hasRemote !== false) {
-      if (assignedLocalBranch === null) {
-        return yield* stop(
-          `${LOCAL_DELIVERY_FAILED}: could not determine the project's Git remotes`,
-        );
-      }
+    if (done.value.prUrl === null && localFolder !== null && assignedLocalBranch !== null) {
       const delivery = yield* holdWrite(
         agent.try("do/deliver", {
           thread: done.thread,
@@ -585,9 +618,11 @@ const factoryTaskPart = workflow(
     const prUrl = yield* projectPullRequest(project, reported);
     if (prUrl === null) return yield* stop("pull request is not this project's");
     const pr = { project, url: prUrl };
+    const recordDelivery = recordAttemptPullRequest(input.taskId, attempt, prUrl);
     let localWriter: {
       readonly branch: string;
       readonly target: string;
+      readonly state: "open" | "merged";
       expectedHead: string;
     } | null = null;
     if (localFolder !== null && assignedLocalBranch !== null) {
@@ -596,10 +631,11 @@ const factoryTaskPart = workflow(
         "deliver/verify",
         {
           returns: Schema.Union([
-            Schema.Literals(["unverified", "mismatch"]),
+            Schema.Literals(["unverified", "mismatch", "unreadable"]),
             Schema.Struct({
               branch: Schema.String,
               target: Schema.String,
+              state: Schema.Literals(["open", "merged"]),
               expectedHead: Schema.String,
             }),
           ]),
@@ -616,19 +652,28 @@ const factoryTaskPart = workflow(
             (matchesLocalWriterBranch(branch, priorBranch) ||
               matchesLocalWriterBranch(branch, againBranch(priorBranch)));
           if (
-            detail.state !== "open" ||
+            (detail.state !== "open" && detail.state !== "merged") ||
             detail.headRepositoryNameWithOwner?.toLowerCase() !== detail.repository.toLowerCase() ||
             (base !== null && detail.baseBranch !== base) ||
-            (!matchesLocalWriterBranch(branch, assignedLocalBranch) && !reusesOwnPart)
+            ((!matchesLocalWriterBranch(branch, assignedLocalBranch) ||
+              previousBranches.includes(branch)) &&
+              !reusesOwnPart)
           ) {
             return "mismatch" as const;
           }
           const head = yield* localWriterHead(localFolder, branch);
+          if (head === null && detail.state === "open") return "unreadable" as const;
           return head !== null && detail.headSha === head
-            ? { branch, target: detail.baseBranch, expectedHead: head }
+            ? { branch, target: detail.baseBranch, state: detail.state, expectedHead: head }
             : ("mismatch" as const);
         }),
       );
+      if (verified === "unreadable") {
+        yield* step("pr-record", { returns: Schema.Void }, recordDelivery);
+        return yield* stop(
+          `${LOCAL_DELIVERY_FAILED}: could not read the local branch tip; the pull request was recorded for a retry`,
+        );
+      }
       if (verified === "mismatch") {
         return yield* stop(
           `${LOCAL_DELIVERY_FAILED}: no open pull request matches the writer's repository, branch, commit, and target`,
@@ -654,6 +699,7 @@ const factoryTaskPart = workflow(
         readonly expected?: string;
         readonly refresh?: true;
         readonly invalid?: (value: A) => string | undefined;
+        readonly terminal?: (value: A) => boolean;
         readonly moved?: (seen: string) => string;
       } = {},
     ) {
@@ -667,6 +713,7 @@ const factoryTaskPart = workflow(
             ? Effect.andThen(pullRequests.comment(pr, headCheck(expected)), read)
             : read,
         );
+        if (options.terminal?.(snapshot)) return snapshot;
         const refusal = options.invalid?.(snapshot);
         if (refusal !== undefined) return yield* stop(refusal);
         if (expected === undefined) return snapshot;
@@ -717,11 +764,7 @@ const factoryTaskPart = workflow(
         },
       );
     }
-    yield* step(
-      "pr-record",
-      { returns: Schema.Void },
-      recordAttemptPullRequest(input.taskId, attempt, prUrl),
-    );
+    yield* step("pr-record", { returns: Schema.Void }, recordDelivery);
 
     if (issueUrl !== null) {
       yield* step(
@@ -805,6 +848,7 @@ const factoryTaskPart = workflow(
       }
       return { outcome: "merged", prUrl, stats: { ...stats, tier } } as const;
     });
+    if (localWriter?.state === "merged") return yield* merged();
     const noteRisk = (reasons: ReadonlyArray<string>) => {
       for (const reason of reasons) {
         if (!risk.reasons.includes(reason)) risk.reasons.push(reason);
@@ -827,7 +871,11 @@ const factoryTaskPart = workflow(
           notes: null,
         };
       }
-      if (standing.value.checks !== "passing" && standing.value.checks !== "none") {
+      if (
+        localWriter === null &&
+        standing.value.checks !== "passing" &&
+        standing.value.checks !== "none"
+      ) {
         return {
           problem: "Its checks are failing: read them on the pull request to find out why.",
           notes: null,
@@ -842,10 +890,11 @@ const factoryTaskPart = workflow(
           headSha: detail.headSha ?? null,
           baseBranch: detail.baseBranch,
           changedFiles: detail.changedFiles,
-          checks,
+          checks: localWriter === null ? checks : checksOnHead(detail.checks),
         })),
         (value) => value.headSha,
         {
+          ...(localWriter === null ? {} : { terminal: terminalPr }),
           invalid: ({ baseBranch }) =>
             expectedTarget !== undefined && baseBranch !== expectedTarget
               ? wrongBase(baseBranch, expectedTarget)
@@ -855,6 +904,12 @@ const factoryTaskPart = workflow(
       if (localWriter !== null) {
         if (snapshot.state === "merged") return "merged" as const;
         if (snapshot.state === "closed") return yield* stop("pull request closed");
+        if (snapshot.checks !== "passing" && !(snapshot.checks === "none" && checks === "none")) {
+          return {
+            problem: "Its checks have not passed on the writer's verified commit.",
+            notes: null,
+          };
+        }
       }
       const head = snapshot.headSha;
       const reviewBase =
@@ -1076,7 +1131,7 @@ const factoryTaskPart = workflow(
           readPrPosition,
           (value) => value.headSha,
           // A merge can leave the cached head unchanged while the open state is stale.
-          { refresh: true },
+          { refresh: true, terminal: terminalPr },
         );
         if (position.state === "merged") return "merged" as const;
         if (position.state === "closed") return yield* stop("pull request closed");
@@ -1413,6 +1468,9 @@ const factoryTask = workflow(
             localGitHasRemote(target.workspaceRoot),
           )
         : false;
+    if (localHasRemote === null) {
+      return yield* stop(`${LOCAL_DELIVERY_FAILED}: could not determine the project's Git remotes`);
+    }
     const priorPrUrls =
       input.attempt >= 2 && target.workspace === "worktree"
         ? yield* step(

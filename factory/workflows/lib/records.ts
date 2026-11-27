@@ -886,6 +886,12 @@ const readLocalGit = Effect.fn("factoryPack.readLocalGit")(function* (
 export const localGitHasRemote = (folder: string) =>
   Effect.map(readLocalGit(folder, ["remote"]), (names) => (names === null ? null : names !== ""));
 
+export const localWriterBranches = (folder: string, branch: string) =>
+  Effect.map(
+    readLocalGit(folder, ["for-each-ref", "--format=%(refname:lstrip=2)", `refs/heads/${branch}*`]),
+    (names) => (names === null ? null : names === "" ? [] : names.split(/\r?\n/)),
+  );
+
 export const localWriterHead = (folder: string, branch: string) =>
   Effect.map(
     readLocalGit(folder, [

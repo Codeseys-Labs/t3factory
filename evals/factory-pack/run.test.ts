@@ -3959,12 +3959,16 @@ it.each([
   "verified",
   "previous PR",
   "launcher suffix",
+  "pre-existing branch",
   "sibling PR",
   "head moved",
   "queued",
   "externally merged",
+  "merged at delivery",
   "merged before review",
   "merged during review",
+  "different head merged during review",
+  "checks passed on a different head",
   "unknown review head",
   "wrong head",
   "wrong branch",
@@ -3974,6 +3978,8 @@ it.each([
   "held",
   "retargeted",
   "missing",
+  "unreadable head",
+  "unknown remotes",
   "no remote",
 ] as const)(
   "handles %s PR delivery on the same local worker before any acceptance or merge",
@@ -3993,10 +3999,19 @@ it.each([
             : delivery === "launcher suffix"
               ? `${branch}-2`
               : branch;
+      const mergedDuringReview =
+        delivery === "merged during review" || delivery === "different head merged during review";
+      const warnsUnreviewed =
+        delivery === "externally merged" ||
+        delivery === "merged at delivery" ||
+        delivery === "merged before review" ||
+        mergedDuringReview;
       git("init", "-q");
       if (delivery !== "no remote") {
         git("remote", "add", "origin", "https://github.com/factory/pack.git");
       }
+      const hooks = NodePath.join(folder, "hooks");
+      NodeFS.mkdirSync(hooks);
       git(
         "-c",
         "user.name=Factory",
@@ -4004,12 +4019,15 @@ it.each([
         "user.email=factory@example.test",
         "-c",
         "commit.gpgsign=false",
+        "-c",
+        `core.hooksPath=${hooks}`,
         "commit",
         "-qm",
         "Work",
         "--allow-empty",
       );
-      git("branch", publishedBranch);
+      if (isRetry || delivery === "pre-existing branch") git("branch", publishedBranch);
+      if (delivery === "launcher suffix") git("branch", branch);
       const head = git("rev-parse", "HEAD");
       const url = "https://github.com/factory/pack/pull/17";
       let baseBranch = delivery === "wrong base" ? "other-base" : "main";
@@ -4023,6 +4041,9 @@ it.each([
           ...baseline,
           agent: (turn) => {
             const step = turn.origin.step;
+            if (step === "do" && !isRetry && delivery !== "unreadable head") {
+              git("branch", delivery === "pre-existing branch" ? `${branch}-2` : publishedBranch);
+            }
             if (step.startsWith("review/")) {
               sawReviewer = true;
               const { output } = reviewReport([]);
@@ -4047,9 +4068,10 @@ it.each([
             reads += 1;
             const merged =
               (acts.length > 0 && delivery !== "queued") ||
+              delivery === "merged at delivery" ||
               (delivery === "externally merged" && reads > 1) ||
               (delivery === "merged before review" && reads > 2) ||
-              (delivery === "merged during review" && sawReviewer && prComments.length > 0);
+              (mergedDuringReview && sawReviewer && prComments.length > 0);
             return Effect.succeed({
               ...detail,
               state: merged ? "merged" : detail.state,
@@ -4060,8 +4082,15 @@ it.each([
                   ? "other-part"
                   : publishedBranch,
               baseBranch,
+              checks:
+                delivery === "checks passed on a different head" && reads > 2
+                  ? detail.checks.map((check) => ({ ...check, status: "failure" as const }))
+                  : detail.checks,
               headSha:
-                delivery === "wrong head" || (delivery === "head moved" && reads > 1)
+                delivery === "wrong head" ||
+                (delivery === "head moved" && reads > 1) ||
+                (delivery === "checks passed on a different head" && reads === 2) ||
+                (delivery === "different head merged during review" && merged)
                   ? "a".repeat(40)
                   : head,
             });
@@ -4075,15 +4104,17 @@ it.each([
               yield* seedTarget(workflows, PROJECT, {
                 projectId: PROJECT,
                 workspace: "worktree",
-                workspaceRoot: folder,
+                workspaceRoot:
+                  delivery === "unknown remotes" ? NodePath.join(folder, "missing") : folder,
                 problem: null,
               });
               yield* workflows.storeSet("factory/v1/config", {
                 v: 1,
                 baseRef: delivery === "previous PR" ? "refs/remotes/origin/main" : "origin/main",
                 mergeNeedsPerson: true,
+                ...(delivery === "checks passed on a different head" ? { fixRounds: 0 } : {}),
               });
-              if (isRetry) {
+              if (isRetry || delivery === "unreadable head") {
                 yield* workflows.storeSet(`factory/v1/attempt/${TASK_ID}/0001`, {
                   v: 1,
                   taskId: TASK_ID,
@@ -4093,11 +4124,19 @@ it.each([
                   runId: null,
                   requestedBy: "operator",
                   startedAt: AT,
-                  prUrls: [url],
+                  prUrls: isRetry ? [url] : [],
                 });
               }
               const { runId } = yield* startTask(workflows, null, PROJECT, attempt);
               yield* approvePlan(world, workflows, runId);
+              if (delivery === "unknown remotes") {
+                expect(yield* world.ended(workflows, runId, true)).toMatchObject({
+                  status: "stopped",
+                  detail: expect.stringContaining("could not determine the project's Git remotes"),
+                });
+                expect(world.turns.map((turn) => turn.origin.step)).toEqual(["plan"]);
+                return;
+              }
               const child = yield* world.child(workflows, runId, 0);
               if (
                 delivery === "verified" ||
@@ -4125,8 +4164,12 @@ it.each([
                   status: "completed",
                   result: { parts: [{ outcome: "merged", prUrl: url }] },
                 });
-              } else if (delivery === "unknown review head") {
+              } else if (
+                delivery === "unknown review head" ||
+                delivery === "checks passed on a different head"
+              ) {
                 yield* askStuck(world, workflows, child.runId);
+                expect(sawReviewer).toBe(delivery === "unknown review head");
                 yield* workflows.answer(child.runId, "stuck", { choice: "Stop" });
                 expect(yield* world.ended(workflows, runId)).toMatchObject({ status: "stopped" });
                 expect(world.acts).toEqual([]);
@@ -4134,15 +4177,9 @@ it.each([
                 delivery === "held" ||
                 delivery === "retargeted" ||
                 delivery === "queued" ||
-                delivery === "externally merged" ||
-                delivery === "merged before review" ||
-                delivery === "merged during review"
+                warnsUnreviewed
               ) {
-                if (
-                  delivery === "externally merged" ||
-                  delivery === "merged before review" ||
-                  delivery === "merged during review"
-                ) {
+                if (warnsUnreviewed) {
                   const warning = yield* ask(
                     world,
                     workflows,
@@ -4153,8 +4190,13 @@ it.each([
                   );
                   expect(warning.request).toMatchObject({
                     title: expect.stringContaining("no accepted review"),
+                    data: {
+                      mergedHead:
+                        delivery === "different head merged during review" ? "a".repeat(40) : head,
+                      expectedHead: head,
+                    },
                   });
-                  expect(sawReviewer).toBe(delivery === "merged during review");
+                  expect(sawReviewer).toBe(mergedDuringReview);
                   yield* workflows.answer(child.runId, "unreviewed", { choice: "Seen" });
                   expect(yield* world.ended(workflows, runId)).toMatchObject({ status: "stopped" });
                   expect(world.acts).toEqual([]);
@@ -4212,6 +4254,10 @@ it.each([
                   ),
                 });
                 expect(world.acts).toEqual([]);
+                if (delivery === "unreadable head") {
+                  const [record] = yield* workflows.stored(`factory/v1/attempt/${TASK_ID}/`);
+                  expect(record?.value).toMatchObject({ prUrls: [url] });
+                }
               }
               const writers = world.turns.filter(
                 (turn) => turn.origin.runId === child.runId && turn.origin.step.startsWith("do"),

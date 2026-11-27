@@ -258,7 +258,7 @@ type TaskWorkflow = Parameters<typeof start<FactoryTaskRunInput>>[0];
 
 // `start` reads only the name and version. A workflow file cannot import another for its
 // definition: the loader would register that file's workflows twice.
-export const FACTORY_TASK_VERSION = 4;
+export const FACTORY_TASK_VERSION = 5;
 const workflowRef = (name: string) =>
   ({ name, version: name === FACTORY_TASK ? FACTORY_TASK_VERSION : 1 }) as unknown as TaskWorkflow;
 
@@ -865,6 +865,38 @@ type RunGit = (
   options: NodeChildProcess.ExecFileOptionsWithStringEncoding,
 ) => Promise<{ readonly stdout: string }>;
 const execFile: RunGit = NodeUtil.promisify(NodeChildProcess.execFile);
+
+const readLocalGit = Effect.fn("factoryPack.readLocalGit")(function* (
+  folder: string,
+  args: ReadonlyArray<string>,
+) {
+  return yield* Effect.tryPromise({
+    try: async (signal) => {
+      const { stdout } = await execFile("git", ["-C", folder, ...args], {
+        encoding: "utf8",
+        signal,
+        timeout: 10_000,
+      });
+      return stdout.trim();
+    },
+    catch: () => null,
+  }).pipe(Effect.orElseSucceed(() => null));
+});
+
+export const localGitHasRemote = (folder: string) =>
+  Effect.map(readLocalGit(folder, ["remote"]), (names) => (names === null ? null : names !== ""));
+
+export const localWriterHead = (folder: string, branch: string) =>
+  Effect.map(
+    readLocalGit(folder, [
+      "rev-parse",
+      "--verify",
+      "--end-of-options",
+      `refs/heads/${branch}^{commit}`,
+    ]),
+    (head) => (isFullSha(head) ? head : null),
+  );
+
 export const readOriginHead = (folder: string, target: string, runGit = execFile) =>
   Effect.tryPromise({
     try: (signal) =>
@@ -998,7 +1030,10 @@ export const mergeApproved = Effect.fn("factoryPack.mergeApproved")(function* (
 type PullRequestAddress = Parameters<typeof pullRequests.read>[0];
 
 const HeadSha = Schema.NullOr(Schema.String);
-const MergeOutcome = Schema.Literals(["merged", "head-changed"]);
+const MergeOutcome = Schema.Union([
+  Schema.Literals(["merged", "head-changed", "closed"]),
+  Schema.Struct({ wrongBase: Schema.String, expectedBase: Schema.String }),
+]);
 
 /** The commit `pr`'s head is on now, for `mergePullRequest`; null when the host does not say. */
 export const pullRequestHead = (pr: PullRequestAddress) =>
@@ -1016,12 +1051,29 @@ export const mergePullRequest = Effect.fn("factoryPack.mergePullRequest")(functi
   pr: PullRequestAddress,
   expectedHeadSha: string | null,
   mergeMethod: PackConfig["mergeMethod"],
+  expectedTarget?: string,
 ) {
+  if (expectedTarget !== undefined && (expectedHeadSha === null || !isFullSha(expectedHeadSha))) {
+    return yield* stop(headUnusable("merge"));
+  }
   const merged = yield* step(
     "merge",
     { returns: MergeOutcome },
     Effect.gen(function* () {
+      if (expectedTarget !== undefined && expectedHeadSha !== null) {
+        yield* pullRequests.comment(
+          pr,
+          `Factory is rechecking head ${expectedHeadSha} and target ${expectedTarget} before merge.`,
+        );
+      }
       const detail = yield* pullRequests.read(pr);
+      if (expectedTarget !== undefined) {
+        if (detail.baseBranch !== expectedTarget) {
+          return { wrongBase: detail.baseBranch, expectedBase: expectedTarget };
+        }
+        if (detail.headSha !== expectedHeadSha) return "head-changed" as const;
+        if (detail.state === "closed") return "closed" as const;
+      }
       if (detail.state === "merged") return "merged" as const;
       if (
         expectedHeadSha !== null &&
@@ -1034,6 +1086,10 @@ export const mergePullRequest = Effect.fn("factoryPack.mergePullRequest")(functi
       return "merged" as const;
     }),
   );
+  if (typeof merged !== "string") {
+    return yield* stop(wrongBase(merged.wrongBase, merged.expectedBase));
+  }
+  if (merged === "closed") return yield* stop("pull request closed");
   if (merged === "head-changed") return yield* stop("pull request head changed after review");
 });
 

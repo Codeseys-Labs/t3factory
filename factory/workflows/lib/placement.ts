@@ -93,7 +93,8 @@ export const writePlacementFor = (
 export const writerBranch = (taskId: string, attempt: number, part: number) =>
   `factory-task/${taskId}/a${attempt}-p${part + 1}`;
 export const againBranch = (branch: string) => `${branch}-again`;
-export const baseTarget = (baseRef: string) => baseRef.replace(/^(?:origin\/|refs\/heads\/)/, "");
+export const baseTarget = (baseRef: string) =>
+  baseRef.replace(/^(?:refs\/remotes\/origin\/|origin\/|refs\/heads\/)/, "");
 export const remoteBase = (baseRef: string) => `origin/${baseTarget(baseRef)}`;
 export const baseFromLsRemote = (output: string, target: string): string | null => {
   const ref = `refs/heads/${target}`;

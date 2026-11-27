@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -264,6 +265,7 @@ const startTask = Effect.fn("factoryPack.test.startTask")(function* (
   workflows: Service,
   issueUrl: string | null = null,
   projectId: string | null = PROJECT,
+  attempt = 1,
 ) {
   yield* workflows.storeSet("factory/v1/seq", TASK.number);
   yield* workflows.storeSet(`factory/v1/task/${TASK_ID}`, { ...TASK, projectId });
@@ -272,14 +274,14 @@ const startTask = Effect.fn("factoryPack.test.startTask")(function* (
     {
       taskId: TASK_ID,
       number: TASK.number,
-      attempt: 1,
+      attempt,
       title: TASK.title,
       description: TASK.description,
       projectId,
       model: MODEL,
       issueUrl,
     },
-    { idempotencyKey: `task/${TASK_ID}/a1` },
+    { idempotencyKey: `task/${TASK_ID}/a${attempt}` },
   );
 });
 
@@ -3952,6 +3954,185 @@ const seedTarget = (
     readonly problem: string | null;
   },
 ) => workflows.storeSet(`factory/v1/target/${key}`, { v: 1, ...target, checkedAt: AT });
+
+it.each([
+  "verified",
+  "previous PR",
+  "wrong head",
+  "wrong branch",
+  "wrong fork",
+  "wrong base",
+  "wrong first PR",
+  "held",
+  "retargeted",
+  "missing",
+  "no remote",
+] as const)(
+  "handles %s PR delivery on the same local worker before any acceptance or merge",
+  async (delivery) => {
+    const folder = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "factory-delivery-"));
+    try {
+      const git = (...args: string[]) =>
+        NodeChildProcess.execFileSync("git", args, { cwd: folder, encoding: "utf8" }).trim();
+      const attempt = delivery === "previous PR" ? 2 : 1;
+      const branch = `factory-task/${TASK_ID}/a${attempt}-p1`;
+      const publishedBranch = delivery === "previous PR" ? `factory-task/${TASK_ID}/a1-p1` : branch;
+      git("init", "-q");
+      if (delivery !== "no remote") {
+        git("remote", "add", "origin", "https://github.com/factory/pack.git");
+      }
+      git(
+        "-c",
+        "user.name=Factory",
+        "-c",
+        "user.email=factory@example.test",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-qm",
+        "Work",
+        "--allow-empty",
+      );
+      git("branch", publishedBranch);
+      const head = git("rev-parse", "HEAD");
+      const url = "https://github.com/factory/pack/pull/17";
+      let baseBranch = delivery === "wrong base" ? "other-base" : "main";
+      const baseline = script({ noPullRequest: true });
+      await withWorld(
+        {
+          ...baseline,
+          agent: (turn) =>
+            turn.origin.step === "do/deliver" ||
+            (delivery === "wrong first PR" && turn.origin.step === "do")
+              ? {
+                  output: {
+                    summary: "Finished publishing.",
+                    prUrl: delivery === "missing" ? null : url,
+                  },
+                }
+              : baseline.agent(turn),
+          readPullRequest: (_address, detail) =>
+            Effect.succeed({
+              ...detail,
+              headRepositoryNameWithOwner:
+                delivery === "wrong fork" ? "someone/pack" : "factory/pack",
+              headBranch:
+                delivery === "wrong branch" || delivery === "wrong first PR"
+                  ? "other-part"
+                  : publishedBranch,
+              baseBranch,
+              headSha: delivery === "wrong head" ? "a".repeat(40) : head,
+            }),
+        },
+        (world) =>
+          world.server(
+            Effect.fn("factoryPack.test.recoverLocalDelivery")(function* (workflows) {
+              yield* seedTarget(workflows, PROJECT, {
+                projectId: PROJECT,
+                workspace: "worktree",
+                workspaceRoot: folder,
+                problem: null,
+              });
+              yield* workflows.storeSet("factory/v1/config", {
+                v: 1,
+                baseRef: delivery === "previous PR" ? "refs/remotes/origin/main" : "origin/main",
+                mergeNeedsPerson: true,
+              });
+              if (delivery === "previous PR") {
+                yield* workflows.storeSet(`factory/v1/attempt/${TASK_ID}/0001`, {
+                  v: 1,
+                  taskId: TASK_ID,
+                  n: 1,
+                  key: `task/${TASK_ID}/a1`,
+                  workflow: "factory-task",
+                  runId: null,
+                  requestedBy: "operator",
+                  startedAt: AT,
+                  prUrls: [url],
+                });
+              }
+              const { runId } = yield* startTask(workflows, null, PROJECT, attempt);
+              yield* approvePlan(world, workflows, runId);
+              const child = yield* world.child(workflows, runId, 0);
+              if (delivery === "verified" || delivery === "previous PR") {
+                const gate = yield* ask(world, workflows, child.runId, "approve-merge", "merge", [
+                  "Merge",
+                  "Hold",
+                ]);
+                expect(gate.request).toMatchObject({ data: { prUrl: url, headSha: head } });
+                yield* workflows.answer(child.runId, "approve-merge", { choice: "Merge" });
+                yield* ask(world, workflows, child.runId, "approve-merge/person", "merge", [
+                  "Merge",
+                  "Hold",
+                ]);
+                expect(world.acts).toEqual([]);
+                yield* workflows.answer(
+                  child.runId,
+                  "approve-merge/person",
+                  { choice: "Merge" },
+                  { label: "Test person", sessionId: "test-person" },
+                );
+                expect(yield* world.ended(workflows, runId)).toMatchObject({
+                  status: "completed",
+                  result: { parts: [{ outcome: "merged", prUrl: url }] },
+                });
+              } else if (delivery === "held" || delivery === "retargeted") {
+                const gate = yield* ask(world, workflows, child.runId, "approve-merge", "merge", [
+                  "Merge",
+                  "Hold",
+                ]);
+                expect(gate.request).toMatchObject({ data: { prUrl: url, headSha: head } });
+                if (delivery === "retargeted") baseBranch = "retargeted";
+                yield* workflows.answer(
+                  child.runId,
+                  "approve-merge",
+                  { choice: delivery === "held" ? "Hold" : "Merge" },
+                  { label: "Test person", sessionId: "test-person" },
+                );
+                expect(yield* world.ended(workflows, runId)).toMatchObject({
+                  status: "stopped",
+                  detail: expect.stringContaining(
+                    delivery === "held" ? "merge held" : "retargeted",
+                  ),
+                });
+                expect(world.acts).toEqual([]);
+              } else if (delivery === "no remote") {
+                yield* ask(world, workflows, child.runId, "accept", "accept", ["Accept", "Redo"]);
+                yield* workflows.answer(child.runId, "accept", { choice: "Accept" });
+                expect(yield* world.ended(workflows, runId)).toMatchObject({
+                  status: "completed",
+                  result: { parts: [{ outcome: "accepted", prUrl: null }] },
+                });
+                expect(world.acts).toEqual([]);
+              } else {
+                expect(yield* world.ended(workflows, runId, true)).toMatchObject({
+                  status: "stopped",
+                  detail: expect.stringContaining(
+                    "a part could not deliver a verified pull request",
+                  ),
+                });
+                expect(world.acts).toEqual([]);
+              }
+              const writers = world.turns.filter(
+                (turn) => turn.origin.runId === child.runId && turn.origin.step.startsWith("do"),
+              );
+              expect(writers.map((turn) => turn.origin.step)).toEqual(
+                delivery === "no remote" || delivery === "wrong first PR"
+                  ? ["do"]
+                  : ["do", "do/deliver"],
+              );
+              if (delivery !== "no remote" && delivery !== "wrong first PR") {
+                expect(writers[1]?.thread).toBe(`thread-${writers[0]?.key}`);
+                expect(writers[0]?.launch?.workspace).toMatchObject({ branch });
+              }
+            }),
+          ),
+      );
+    } finally {
+      NodeFS.rmSync(folder, { recursive: true, force: true });
+    }
+  },
+);
 
 const withReportFile = async (use: (file: string) => Promise<void>) => {
   const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "factory-artifact-"));

@@ -1732,7 +1732,7 @@ it("WT16 a missing pinned base stops remote review before any lens or merge over
     ),
   ));
 
-it("WT18 only version 4 is registered and factory-start dispatches it", () =>
+it("WT18 only version 5 is registered and factory-start dispatches it", () =>
   scenario(
     H,
     {},
@@ -1742,7 +1742,7 @@ it("WT18 only version 4 is registered and factory-start dispatches it", () =>
           world.definitions
             .filter((definition) => definition.name === name)
             .map((definition) => definition.version),
-        ).toEqual([4]);
+        ).toEqual([5]);
       }
       expect(
         world.definitions.find((definition) => definition.name === "factory-task-part")?.asks
@@ -1757,7 +1757,7 @@ it("WT18 only version 4 is registered and factory-start dispatches it", () =>
       const { runId } = decodeStarted((yield* world.ended(workflows, started.runId)).result);
       expect((yield* workflows.get(runId)).run).toMatchObject({
         workflow: "factory-task",
-        version: 4,
+        version: 5,
       });
       expect(yield* world.ended(workflows, runId, true)).toMatchObject({ status: "completed" });
     }),

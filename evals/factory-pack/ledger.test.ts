@@ -669,13 +669,12 @@ it("L1 L3 L4 M1 a review with no findings approves, is recorded, and merges a cl
           const child = yield* world.child(workflows, runId, 0);
           const part = yield* world.ended(workflows, child.runId, true);
           const done = yield* world.ended(workflows, runId, true);
-          // r11 W11: both task workflows are version 4, and version 3 is gone.
           for (const name of ["factory-task", "factory-task-part"]) {
             expect(
               world.definitions
                 .filter((definition) => definition.name === name)
                 .map((definition) => definition.version),
-            ).toEqual([4]);
+            ).toEqual([5]);
           }
           // L4.4: a standard tier runs the brief lens only; L4.5: nothing blocks, no disprove.
           expect(turnSteps(world, child.runId)).toEqual(["do", "scope/0", "review/0"]);

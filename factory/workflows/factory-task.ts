@@ -14,6 +14,8 @@ import {
   createTask,
   hashFile,
   listAttempts,
+  localGitHasRemote,
+  localWriterHead,
   mergeApproved,
   mergeAtHead,
   mergePullRequest,
@@ -94,6 +96,7 @@ const NOT_STOPPED = "could not be stopped";
 const STILL_AT_WORK = "may still be at work";
 const STALE_RETRIES = 1;
 const HEAD_KEPT_CHANGING = "The pull request's head kept changing while it was reviewed.";
+const LOCAL_DELIVERY_FAILED = "a part could not deliver a verified pull request";
 
 const Plan = Schema.Struct({
   summary: Schema.String,
@@ -116,6 +119,7 @@ const PartPayload = Schema.Struct({
   target: Schema.optionalKey(RunTarget),
   issueUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
   priorPrUrls: Schema.optional(PullRequestUrls),
+  localHasRemote: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
   model: Schema.NullOr(ModelChoice),
   config: PackConfig,
 });
@@ -271,6 +275,10 @@ const factoryTaskPart = workflow(
             branch: writerBranch(input.taskId, attempt, input.part),
           }
         : null;
+    const localFolder =
+      writer === null && target.workspace === "worktree" ? target.workspaceRoot : null;
+    const hasRemote = input.localHasRemote === undefined ? false : input.localHasRemote;
+    const localBranch = hasRemote === true ? writerBranch(input.taskId, attempt, input.part) : null;
     const where =
       writer !== null || target.workspace === "worktree" ? "this worktree" : "this folder";
     // A folder agents work in directly is shared by every task on its project. The task's place
@@ -313,8 +321,14 @@ const factoryTaskPart = workflow(
             continuing ? continueReturnLine(writer.base) : WRITER_RETURN_LINE,
           ]
         : [
-            "If the project is a Git repository with a remote, commit, push a branch, open a pull request and return its URL as `prUrl`. Otherwise return `prUrl: null`.",
-            "If there is no pull request and you left files a person should look at, return them as `artifacts`: at most 10, each with its absolute `path` and a short `label`.",
+            ...(localBranch === null
+              ? [
+                  "If the project is a Git repository with a remote, commit, push a branch, open a pull request and return its URL as `prUrl`. Otherwise return `prUrl: null`.",
+                  "If there is no pull request and you left files a person should look at, return them as `artifacts`: at most 10, each with its absolute `path` and a short `label`.",
+                ]
+              : [
+                  "Commit on this worktree's branch and push it under its own name. Do not create, switch or rename branches unless you are updating one of the earlier pull requests listed above. Return `prUrl` after the pull request is open, not while publication is still in flight.",
+                ]),
             ...(config.baseRef === null
               ? []
               : [`Open the pull request against the branch \`${baseTarget(config.baseRef)}\`.`]),
@@ -328,7 +342,14 @@ const factoryTaskPart = workflow(
     const doOptions = (again: boolean) =>
       ({
         ...(writer === null
-          ? { project, workspace, ...(workerModel === null ? {} : { model: workerModel }) }
+          ? {
+              project,
+              workspace:
+                workspace.type === "worktree" && localBranch !== null
+                  ? { ...workspace, branch: again ? againBranch(localBranch) : localBranch }
+                  : workspace,
+              ...(workerModel === null ? {} : { model: workerModel }),
+            }
           : {
               environment: writer.environment,
               project: writer.project,
@@ -376,7 +397,7 @@ const factoryTaskPart = workflow(
       return yield* stop(`worker stopped: ${tried.reason}`);
     }
     // A turn cut off cleanly at its time limit leaves its work where it was: carry on there.
-    const done =
+    let done =
       tried.outcome === "done"
         ? tried
         : yield* holdWrite(
@@ -397,6 +418,42 @@ const factoryTaskPart = workflow(
                   returns,
                 }),
           );
+    let recovered = false;
+    if (done.value.prUrl === null && localFolder !== null && hasRemote !== false) {
+      if (localBranch === null) {
+        return yield* stop(
+          `${LOCAL_DELIVERY_FAILED}: could not determine the project's Git remotes`,
+        );
+      }
+      const branch =
+        tried.outcome === "failed" && tried.thread === undefined
+          ? againBranch(localBranch)
+          : localBranch;
+      const delivery = yield* holdWrite(
+        agent.try("do/deliver", {
+          thread: done.thread,
+          brief: [
+            `Finish publishing part ${input.part + 1} of task T-${input.number}; its last result did not include a pull request.`,
+            priorPrs.length === 0
+              ? `Stay on \`${branch}\` in this worktree. Do not start over or switch branches.`
+              : `Stay on the branch you already used in this worktree: \`${branch}\` or the branch of the earlier pull request you are updating. Do not switch branches or open a duplicate.`,
+            "Finish the requested checks, commit and push this branch if needed without force, and return the existing pull request URL if one is already open for it. Otherwise open one. Do not merge.",
+            ...(config.baseRef === null
+              ? []
+              : [`The pull request must target \`${baseTarget(config.baseRef)}\`.`]),
+            ...issueLine,
+            "Return `prUrl` only once the pull request is open, and include a short summary of the change.",
+          ].join("\n"),
+          timeout: config.stepTimeout,
+          returns: Done,
+        }),
+      );
+      if (delivery.outcome === "failed" || delivery.value.prUrl === null) {
+        return yield* stop(`${LOCAL_DELIVERY_FAILED}: the writer did not return a pull request`);
+      }
+      recovered = true;
+      done = delivery;
+    }
     const remoteWriter = yield* Effect.gen(function* () {
       if (writer === null) return null;
       const name =
@@ -424,7 +481,7 @@ const factoryTaskPart = workflow(
       tier: null,
       fixRounds: 0,
       noOpFixRounds: 0,
-      continued: tried.outcome !== "done",
+      continued: tried.outcome !== "done" || recovered,
       asks: 0,
       rulings: 0,
       mergedAnyway: false,
@@ -524,6 +581,53 @@ const factoryTaskPart = workflow(
     const prUrl = yield* projectPullRequest(project, reported);
     if (prUrl === null) return yield* stop("pull request is not this project's");
     const pr = { project, url: prUrl };
+    let localTarget: string | undefined;
+    if (localFolder !== null && localBranch !== null) {
+      const branch =
+        tried.outcome === "failed" && tried.thread === undefined
+          ? againBranch(localBranch)
+          : localBranch;
+      const base = config.baseRef === null ? null : baseTarget(config.baseRef);
+      const verified = yield* step(
+        "deliver/verify",
+        {
+          returns: Schema.Union([
+            Schema.Literals(["unverified", "mismatch"]),
+            Schema.Struct({ target: Schema.String }),
+          ]),
+        },
+        Effect.gen(function* () {
+          const detail = yield* pullRequests.read(pr);
+          if (detail.provider !== "github") return "unverified" as const;
+          if (
+            detail.state !== "open" ||
+            detail.headRepositoryNameWithOwner?.toLowerCase() !== detail.repository.toLowerCase() ||
+            (base !== null && detail.baseBranch !== base) ||
+            (detail.headBranch !== branch && !priorPrUrls.includes(prUrl))
+          ) {
+            return "mismatch" as const;
+          }
+          const head = yield* localWriterHead(localFolder, detail.headBranch);
+          return head !== null && detail.headSha === head
+            ? { target: detail.baseBranch }
+            : ("mismatch" as const);
+        }),
+      );
+      if (verified === "mismatch") {
+        return yield* stop(
+          `${LOCAL_DELIVERY_FAILED}: no open pull request matches the writer's repository, branch, commit, and target`,
+        );
+      }
+      if (verified === "unverified") {
+        if (recovered) {
+          return yield* stop(
+            `${LOCAL_DELIVERY_FAILED}: the forge cannot verify the source repository of the recovered pull request`,
+          );
+        }
+      } else {
+        localTarget = verified.target;
+      }
+    }
     const checkedRead = Effect.fnUntraced(function* <A, I, E>(
       name: string,
       returns: Parameters<typeof step<A, I, E>>[1]["returns"],
@@ -614,6 +718,7 @@ const factoryTaskPart = workflow(
     }
     const links = [{ label: "Pull request", url: prUrl }];
     const reviewModel = config.reviewModel ?? input.model;
+    const expectedTarget = remoteWriter?.target ?? localTarget;
     const rulings: Array<string> = [];
     let latest = questionEvidence(null);
     // The tier a part's changes earn only goes up: a later round can raise it, never lower it.
@@ -721,8 +826,8 @@ const factoryTaskPart = workflow(
         (value) => value.headSha,
         {
           invalid: ({ baseBranch }) =>
-            remoteWriter !== null && baseBranch !== remoteWriter.target
-              ? wrongBase(baseBranch, remoteWriter.target)
+            expectedTarget !== undefined && baseBranch !== expectedTarget
+              ? wrongBase(baseBranch, expectedTarget)
               : undefined,
         },
       );
@@ -1138,7 +1243,11 @@ const factoryTaskPart = workflow(
           data: {
             prUrl,
             headSha,
-            ...(needsAuthorization ? { baseBranch: remoteWriter.target } : {}),
+            ...(localTarget === undefined
+              ? needsAuthorization
+                ? { baseBranch: remoteWriter.target }
+                : {}
+              : { baseBranch: localTarget }),
             summary,
             fixRoundsUsed: stats.fixRounds,
             noOpFixRounds: stats.noOpFixRounds,
@@ -1155,7 +1264,7 @@ const factoryTaskPart = workflow(
     }
     const authorizedHead = needsAuthorization ? headSha : null;
     if (remoteWriter === null) {
-      yield* mergePullRequest(pr, headSha, config.mergeMethod);
+      yield* mergePullRequest(pr, headSha, config.mergeMethod, localTarget);
     } else {
       const outcome = yield* mergeAtHead(
         pr,
@@ -1188,7 +1297,11 @@ const factoryTask = workflow(
     const config = yield* step("config", { returns: PackConfig }, readConfig(input.projectId));
     const target = yield* resolveTarget(input.projectId);
     yield* resolvePlacement(input.projectId, config.readOnlyOn);
-    yield* resolveWritePlacement(input.projectId, config, config.workerModel ?? input.model);
+    const writePlacement = yield* resolveWritePlacement(
+      input.projectId,
+      config,
+      config.workerModel ?? input.model,
+    );
     if ("problem" in target) return yield* stop(target.problem);
     const planModel = config.planModel ?? input.model;
     const layout =
@@ -1233,6 +1346,16 @@ const factoryTask = workflow(
     }
 
     yield* tags(taskTags(input.taskId, input.projectId, "doing"));
+    const localHasRemote =
+      writePlacement.where === "local" &&
+      target.workspace === "worktree" &&
+      target.workspaceRoot !== null
+        ? yield* step(
+            "local-delivery",
+            { returns: Schema.NullOr(Schema.Boolean) },
+            localGitHasRemote(target.workspaceRoot),
+          )
+        : false;
     const priorPrUrls =
       input.attempt >= 2 && target.workspace === "worktree"
         ? yield* step(
@@ -1270,6 +1393,7 @@ const factoryTask = workflow(
             issueUrl: input.issueUrl,
             model: input.model,
             config,
+            localHasRemote,
             ...(priorPrUrls.length === 0 ? {} : { priorPrUrls }),
           }),
           (ended) => ({ title: part.title, ended }),
@@ -1298,6 +1422,17 @@ const factoryTask = workflow(
         parts,
       }),
     );
+    for (const { title, ended } of children) {
+      if (
+        ended.outcome !== "completed" &&
+        (localHasRemote === true ||
+          (ended.outcome === "stopped" && ended.reason?.startsWith(LOCAL_DELIVERY_FAILED)))
+      ) {
+        return yield* stop(
+          `${title}: ${ended.outcome === "stopped" ? (ended.reason ?? "stopped") : ended.outcome}`,
+        );
+      }
+    }
     const notAccepted = partLines.filter((_, i) => {
       const ended = children[i]?.ended;
       return ended?.outcome === "stopped" && ended.reason === "not accepted";

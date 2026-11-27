@@ -104,6 +104,8 @@ const matchesLocalWriterBranch = (branch: string, requested: string) =>
   (branch.startsWith(`${requested}-`) &&
     /^(?:[2-9]|[1-9]\d+)$/.test(branch.slice(requested.length + 1)));
 
+const FAILED_CHECKS = "Its checks are failing: read them on the pull request to find out why.";
+
 const terminalPr = ({ state }: { readonly state: string }) =>
   state === "merged" || state === "closed";
 
@@ -872,12 +874,12 @@ const factoryTaskPart = workflow(
         };
       }
       if (
-        localWriter === null &&
+        verifiedWriter === null &&
         standing.value.checks !== "passing" &&
         standing.value.checks !== "none"
       ) {
         return {
-          problem: "Its checks are failing: read them on the pull request to find out why.",
+          problem: FAILED_CHECKS,
           notes: null,
         };
       }
@@ -890,7 +892,7 @@ const factoryTaskPart = workflow(
           headSha: detail.headSha ?? null,
           baseBranch: detail.baseBranch,
           changedFiles: detail.changedFiles,
-          checks: localWriter === null ? checks : checksOnHead(detail.checks),
+          checks: verifiedWriter === null ? checks : checksOnHead(detail.checks),
         })),
         (value) => value.headSha,
         {
@@ -904,12 +906,19 @@ const factoryTaskPart = workflow(
       if (localWriter !== null) {
         if (snapshot.state === "merged") return "merged" as const;
         if (snapshot.state === "closed") return yield* stop("pull request closed");
-        if (snapshot.checks !== "passing" && !(snapshot.checks === "none" && checks === "none")) {
-          return {
-            problem: "Its checks have not passed on the writer's verified commit.",
-            notes: null,
-          };
-        }
+      }
+      if (
+        verifiedWriter !== null &&
+        snapshot.checks !== "passing" &&
+        !(snapshot.checks === "none" && checks === "none")
+      ) {
+        return {
+          problem:
+            snapshot.checks === "failing"
+              ? FAILED_CHECKS
+              : "Its checks have not passed on the writer's verified commit.",
+          notes: null,
+        };
       }
       const head = snapshot.headSha;
       const reviewBase =

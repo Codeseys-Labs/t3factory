@@ -903,17 +903,28 @@ it.each(rejected)("WT7 $label stops before any record, check, review, question o
   ),
 );
 
-it.each(["head moved", "head restored", "retarget before scope"] as const)(
+it.each(["head moved", "head restored", "retarget before scope", "checks stale"] as const)(
   "WT8 risk-pr/0 checks the review target and confirms a head mismatch: %s",
   (mode) =>
     withOrigin(({ folder, X }) => {
       const returns = mode === "head restored";
+      const differentHeadPassed = mode === "checks stale";
       const freshReads: number[] = [];
       return scenario(
         X,
         {
           read: ({ detail, count, world }) => {
             // W6.1, L4: writer-pr, checks/0, then risk-pr/0 and its confirming read.
+            if (differentHeadPassed) {
+              if (count === 1) return { ...detail, headSha: H2 };
+              if (count === 2) {
+                return {
+                  ...detail,
+                  checks: detail.checks.map((check) => ({ ...check, status: "failure" as const })),
+                };
+              }
+              return detail;
+            }
             if (mode === "retarget before scope") {
               return count === 2 ? { ...detail, baseBranch: "release" } : detail;
             }
@@ -926,8 +937,21 @@ it.each(["head moved", "head restored", "retarget before scope"] as const)(
           },
         },
         Effect.fn(function* (world, workflows) {
-          const { runId } = yield* start(workflows, remote(folder));
+          const { runId } = yield* start(
+            workflows,
+            remote(folder, differentHeadPassed ? { fixRounds: 0 } : {}),
+          );
           const child = yield* world.child(workflows, runId, 0);
+          if (differentHeadPassed) {
+            yield* ask(world, workflows, child.runId, "stuck");
+            yield* workflows.answer(child.runId, "stuck", { choice: "Stop" });
+            expect(yield* world.ended(workflows, child.runId)).toMatchObject(
+              stopped("review did not pass"),
+            );
+            expect(world.turns.map((turn) => turn.origin.step)).toEqual(["plan", "do"]);
+            expect(world.acts).toEqual([]);
+            return;
+          }
           const result = yield* world.ended(workflows, child.runId, true);
           const names = named((yield* workflows.get(child.runId)).steps);
           if (mode === "retarget before scope") {

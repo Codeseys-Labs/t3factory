@@ -28,6 +28,8 @@ A deliverable and the decisions made about it are records of their own: `factory
 
 [`risk.ts`](../../factory/workflows/lib/risk.ts) classifies a pull request as `low`, `standard` or `high` by the first rule that fits, from facts the host and the `scope` agent reported; a missing, duplicate or mismatched fact is `high`. `factory-task-part` ratchets the tier across fix rounds (never downgrading) and forces a person-answered merge gate whenever the tier is `high`, even with `askMerge` off. `risk.ts` has no imports, so a workflow and a plain test can both load it. The pack cannot read `factory/seams.json` at run time, so `FORK_SEAM_PATHS` copies its paths into `DEFAULT_PROTECTED_PATHS`, and `evals/factory-pack/risk.test.ts` fails when the two differ. Changing a seam in the manifest means changing that list too.
 
+For a verified writer, the wait only settles checks. Check evidence comes from the same host read as the writer's verified head: the wait may have settled at a different commit.
+
 ## Review ledger and outcomes
 
 A reviewer returns findings, never a verdict. The verdict is derived from them by `deriveVerdict` in [`ledger.ts`](../../factory/workflows/lib/ledger.ts): changes are asked for exactly when a finding with a blocking severity is open. A field that lets an agent state the verdict brings back what this replaced, an approval that survives an open blocker. A stored round's verdict is derived the same way, or is `stale`.

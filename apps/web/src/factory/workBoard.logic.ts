@@ -46,26 +46,40 @@ export interface WorkCard {
 
 const isTaggedReview = (run: WorkflowRun) => run.tags?.includes("stage:review") === true;
 
-/** A `factory-task` run is in review only when every one of its live parts is. */
+// WorkflowStore.runs caps ordinary runs separately from skipped roots and retains questions and pauses.
+const RECENT_WORKFLOW_RUN_LIMIT = 500;
+
+/** Review requires at least one live part and enough of the snapshot to rule out missing siblings. */
 function isLiveRunInReview(
   run: WorkflowRun,
   childrenOf: ReadonlyMap<string, ReadonlyArray<WorkflowRun>>,
+  recentRunsCutoff: string | undefined,
 ): boolean {
   if (run.workflow !== "factory-task") return isTaggedReview(run);
-  const liveParts = (childrenOf.get(run.runId) ?? []).filter(
-    (child) => child.workflow === "factory-task-part" && child.endedAt === null,
-  );
-  return liveParts.length > 0 && liveParts.every(isTaggedReview);
+  if (recentRunsCutoff !== undefined && run.startedAt <= recentRunsCutoff) return false;
+
+  const children = childrenOf.get(run.runId);
+  if (children === undefined) return false;
+  let hasLivePart = false;
+  for (const child of children) {
+    if (child.workflow !== "factory-task-part" || child.endedAt !== null) continue;
+    if (!isTaggedReview(child)) return false;
+    hasLivePart = true;
+  }
+  return hasLivePart;
 }
 
 function resolveColumn(
   task: FactoryTaskSummary,
   run: WorkflowRun | null,
   childrenOf: ReadonlyMap<string, ReadonlyArray<WorkflowRun>>,
+  recentRunsCutoff: string | undefined,
 ): WorkColumn | null {
   if (task.lane === "dropped") return null;
   if (run === null) return task.lane;
-  if (run.endedAt === null) return isLiveRunInReview(run, childrenOf) ? "review" : "doing";
+  if (run.endedAt === null) {
+    return isLiveRunInReview(run, childrenOf, recentRunsCutoff) ? "review" : "doing";
+  }
   if (task.laneSetAt > run.endedAt) return task.lane;
   return run.status === "completed" ? "done" : task.lane;
 }
@@ -135,6 +149,7 @@ function compareTasks(a: FactoryTaskSummary, b: FactoryTaskSummary): number {
 
 export function deriveWorkCards(input: {
   readonly tasks: ReadonlyArray<FactoryTaskSummary>;
+  /** The workflow snapshot's runs, newest first. */
   readonly runs: ReadonlyArray<WorkflowRun>;
   readonly questions: ReadonlyArray<WorkflowQuestion>;
   /**
@@ -157,7 +172,13 @@ export function deriveWorkCards(input: {
   }
 
   const childrenOf = new Map<string, WorkflowRun[]>();
+  let recentRuns = 0;
+  let recentRunsCutoff: string | undefined;
   for (const run of input.runs) {
+    if (recentRunsCutoff === undefined && !(run.status === "skipped" && run.parentRunId === null)) {
+      recentRuns += 1;
+      if (recentRuns === RECENT_WORKFLOW_RUN_LIMIT) recentRunsCutoff = run.startedAt;
+    }
     if (run.parentRunId === null) continue;
     const siblings = childrenOf.get(run.parentRunId);
     if (siblings === undefined) childrenOf.set(run.parentRunId, [run]);
@@ -173,7 +194,7 @@ export function deriveWorkCards(input: {
     const runId = task.attempt?.runId;
     const run = runId === null || runId === undefined ? null : (runsById.get(runId) ?? null);
     runOf.set(task.id, run);
-    const column = resolveColumn(task, run, childrenOf);
+    const column = resolveColumn(task, run, childrenOf, recentRunsCutoff);
     columns.set(task.id, column);
     parentOf.set(task.id, task.parentId);
     if (task.lane !== "dropped" && task.parentId !== null) {

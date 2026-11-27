@@ -175,6 +175,36 @@ describe("deriveWorkCards", () => {
     }
   });
 
+  it("keeps retained older tasks in Doing when the snapshot can have omitted live parts", () => {
+    const root = run("root", { status: "paused" });
+    const part = run("reviewing", {
+      workflow: "factory-task-part",
+      parentRunId: root.runId,
+      status: "waiting",
+      startedAt: at(1),
+      tags: ["stage:review"],
+    });
+    const recent = Array.from({ length: 500 }, (_, i) =>
+      run(`recent-${i}`, { startedAt: at(2), status: "completed", endedAt: at(3) }),
+    );
+    const tasks = [task("task", { attempt: taskRun(root.runId) })];
+
+    // The old root is retained because it's paused, and the old part because it's asking.
+    const [truncated] = cardsFor(tasks, [...recent, part, root], [question(part.runId)]);
+    expect(truncated?.column).toBe("doing");
+
+    const skipped = recent.map((entry) => ({ ...entry, status: "skipped" as const }));
+    const [complete] = cardsFor(tasks, [...skipped, part, root], [question(part.runId)]);
+    expect(complete?.column).toBe("review");
+
+    const [recentTask] = cardsFor(tasks, [
+      { ...part, startedAt: at(5) },
+      { ...root, startedAt: at(4) },
+      ...recent.slice(0, 498),
+    ]);
+    expect(recentTask?.column).toBe("review");
+  });
+
   // B5: ended completed runs finish only when the lane was not changed afterward; other ended statuses keep the lane.
   it("uses each ended status and compares laneSetAt with endedAt", () => {
     const cases = [

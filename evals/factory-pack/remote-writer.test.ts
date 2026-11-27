@@ -203,6 +203,7 @@ type Scenario = {
   readonly parts?: ReadonlyArray<typeof PART>;
   readonly done?: (value: Done, turn: AgentTurnInput) => Done;
   readonly respond?: (turn: AgentTurnInput, pr: Pr | undefined) => Partial<AgentResult> | undefined;
+  readonly publishLocal?: (branch: string) => string;
   readonly read?: (input: HostRead) => PullRequestDetail;
   readonly needsFix?: boolean;
   readonly starts?: Pick<
@@ -287,10 +288,15 @@ const scenario = <A, Err>(
         if (step === "plan")
           return { output: { summary: "One change per part.", parts: options.parts ?? [PART] } };
         if (step === "do" || step === "do/continue" || step === "do/again") {
+          const branch = turnBranch(turn) ?? B;
+          const head =
+            options.publishLocal !== undefined && turn.environment == null
+              ? options.publishLocal(branch)
+              : H;
           const pr = {
             url: `https://github.com/${REPOSITORY}/pull/${41 + prs.size}`,
-            branch: turnBranch(turn) ?? B,
-            head: H,
+            branch,
+            head,
             runId,
           };
           prs.set(runId, pr);
@@ -299,7 +305,7 @@ const scenario = <A, Err>(
             prUrl: pr.url,
             branch: pr.branch,
             baseSha: X,
-            headSha: H,
+            headSha: head,
           };
           return { output: options.done?.(done, turn) ?? done };
         }
@@ -1565,6 +1571,10 @@ it("WT16 a writer and another task's reader share the environment's one admissio
     scenario(
       X,
       {
+        publishLocal: (branch) => {
+          git(folder, "branch", branch, X);
+          return X;
+        },
         starts: {
           holdAgent: (turn) =>
             turn.environment === E && (turn.origin.step === "scope/0" || turn.origin.step === "do"),

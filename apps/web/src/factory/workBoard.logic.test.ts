@@ -134,9 +134,44 @@ describe("deriveWorkCards", () => {
       const runId = `active-${index}`;
       const [card] = cardsFor(
         [task(`task-${index}`, { lane: "done", attempt: taskRun(runId) })],
-        [run(runId, { status: entry.status, tags: entry.tags })],
+        [run(runId, { workflow: "other", status: entry.status, tags: entry.tags })],
       );
       expect(card?.column).toBe(entry.expected);
+    }
+  });
+
+  // B4a: a live factory-task is in review only when it has live parts and all of them are.
+  it("derives a live factory-task's column from its live parts' review stage", () => {
+    const review = { tags: ["stage:review"] };
+    const doing = { tags: ["stage:doing"] };
+    const ended = { status: "completed" as const, endedAt: at(5) };
+    const cases: ReadonlyArray<{
+      readonly parts: ReadonlyArray<Partial<WorkflowRun>>;
+      readonly expected: "doing" | "review";
+    }> = [
+      { parts: [review, review], expected: "review" },
+      { parts: [review, doing], expected: "doing" },
+      { parts: [review, {}], expected: "doing" },
+      { parts: [{ ...review, ...ended }, doing], expected: "doing" },
+      { parts: [{ ...doing, ...ended }, review, review], expected: "review" },
+      { parts: [], expected: "doing" },
+      { parts: [{ ...review, ...ended }], expected: "doing" },
+      // Only direct factory-task-part children count.
+      { parts: [{ ...review, workflow: "other" }], expected: "doing" },
+      { parts: [review, { ...doing, workflow: "other" }], expected: "review" },
+    ];
+
+    for (const entry of cases) {
+      const [card] = cardsFor(
+        [task("task", { attempt: taskRun("root") })],
+        [
+          run("root", review),
+          ...entry.parts.map((fields, index) =>
+            run(`part-${index}`, { workflow: "factory-task-part", parentRunId: "root", ...fields }),
+          ),
+        ],
+      );
+      expect(card?.column, JSON.stringify(entry.parts)).toBe(entry.expected);
     }
   });
 

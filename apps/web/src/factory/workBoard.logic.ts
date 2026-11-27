@@ -44,12 +44,28 @@ export interface WorkCard {
   readonly rolledUp?: boolean;
 }
 
-function resolveColumn(task: FactoryTaskSummary, run: WorkflowRun | null): WorkColumn | null {
+const isTaggedReview = (run: WorkflowRun) => run.tags?.includes("stage:review") === true;
+
+/** A `factory-task` run is in review only when every one of its live parts is. */
+function isLiveRunInReview(
+  run: WorkflowRun,
+  childrenOf: ReadonlyMap<string, ReadonlyArray<WorkflowRun>>,
+): boolean {
+  if (run.workflow !== "factory-task") return isTaggedReview(run);
+  const liveParts = (childrenOf.get(run.runId) ?? []).filter(
+    (child) => child.workflow === "factory-task-part" && child.endedAt === null,
+  );
+  return liveParts.length > 0 && liveParts.every(isTaggedReview);
+}
+
+function resolveColumn(
+  task: FactoryTaskSummary,
+  run: WorkflowRun | null,
+  childrenOf: ReadonlyMap<string, ReadonlyArray<WorkflowRun>>,
+): WorkColumn | null {
   if (task.lane === "dropped") return null;
   if (run === null) return task.lane;
-  if (run.endedAt === null) {
-    return run.tags?.includes("stage:review") === true ? "review" : "doing";
-  }
+  if (run.endedAt === null) return isLiveRunInReview(run, childrenOf) ? "review" : "doing";
   if (task.laneSetAt > run.endedAt) return task.lane;
   return run.status === "completed" ? "done" : task.lane;
 }
@@ -157,7 +173,7 @@ export function deriveWorkCards(input: {
     const runId = task.attempt?.runId;
     const run = runId === null || runId === undefined ? null : (runsById.get(runId) ?? null);
     runOf.set(task.id, run);
-    const column = resolveColumn(task, run);
+    const column = resolveColumn(task, run, childrenOf);
     columns.set(task.id, column);
     parentOf.set(task.id, task.parentId);
     if (task.lane !== "dropped" && task.parentId !== null) {

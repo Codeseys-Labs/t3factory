@@ -109,6 +109,7 @@ interface Script {
   ) => ReturnType<Forge["pullRequests"]["read"]>;
   readonly holdAgent?: (turn: AgentTurnInput) => boolean;
   readonly startError?: (turn: AgentTurnInput) => string | undefined;
+  readonly startedIn?: (turn: AgentTurnInput) => string | null;
   readonly resultError?: (turn: AgentTurnInput, read: number) => string | undefined;
   readonly interrupt?: (target: InterruptTarget) => "stopped" | "ended" | { error: string };
   readonly failFinishAfterCommit?: boolean;
@@ -444,10 +445,12 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
       activeCounts.push(active.size);
       if (script.holdAgent?.(input)) gates.set(input.key, yield* Deferred.make<void>());
       yield* Queue.offer(turnStarts, input);
+      const environment =
+        script.startedIn === undefined ? input.environment : script.startedIn(input);
       return yield* Effect.succeed({
         threadId: input.thread ?? `thread-${input.key}`,
         turnId: input.key,
-        ...(input.environment === undefined ? {} : { environment: input.environment }),
+        ...(environment == null ? {} : { environment }),
       });
     }),
     result: Effect.fn("factoryPack.agents.result")(function* (turn) {
@@ -469,7 +472,11 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
           reply: "Fixed checks and review feedback.",
           ...result,
           ...(input.origin.step.startsWith("scope/") && result.output === undefined
-            ? { output: { headSha: latestHeadSha ?? "sha-default", files: ["src/part.ts"] } }
+            ? {
+                output: {
+                  report: { headSha: latestHeadSha ?? "sha-default", files: ["src/part.ts"] },
+                },
+              }
             : {}),
         };
       }).pipe(
@@ -588,7 +595,8 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
             yield* Deferred.succeed(ready, undefined);
             const waiting = snapshot.runs.filter(
               (run) =>
-                run.status === "waiting" && /^checks\/x?\d+(?:\/again)?$/.test(run.detail ?? ""),
+                run.status === "waiting" &&
+                /^(?:checks\/x?\d+(?:\/again)?|merge-wait)$/.test(run.detail ?? ""),
             );
             for (const run of waiting) {
               const key = yield* encodeKey([run.runId, run.detail]).pipe(Effect.orDie);

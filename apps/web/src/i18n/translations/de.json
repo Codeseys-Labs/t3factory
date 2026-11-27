@@ -12990,10 +12990,28 @@
   "02d5fa3cda9e56cd": "Nicht fertig",
   "03833d787c4c8e17": "der Feed ist größer als 256 KB",
   "0532ec85f9970a4a": "Software",
+  "05a4585797d30e34": [
+    "Angepinnt: CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", Konsole",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
   "05ac7284b77b849c": "Fremde übernehmen",
   "05ce33cc16f8a854": "Voraussetzungen",
   "06491a5281cc2d5b": "Die neuesten 200 Elemente werden angezeigt.",
   "069abdf7d6ce5cf5": "Rückgängig",
+  "073a25ded88a125a": "Usage ist nicht mit diesem Proxy verbunden.",
   "0822282c37437989": "Arbeit öffnen",
   "0930858b7d7bdab6": "Projekt",
   "0a8bcf0e5974e640": "Frage",
@@ -13003,10 +13021,14 @@
   "0d567a0fbe503c02": "Arbeit ist für später erfasst.",
   "0ddb69435fb951d8": "Projekt",
   "0e7829110b2ebbbf": "Nur die Revision hat sich geändert; keines der Felder wurde geändert.",
+  "0f30543ecf6fd3bc": "Für die angepinnte Version gibt es keinen Build des Proxys für diesen Rechner.",
   "0fe5811407f794ec": "Noch keine Notizen.",
+  "1009946ef341665a": "Eine Installation oder Deinstallation wurde unterbrochen. Deinstalliere, um aufzuräumen, und installiere dann erneut.",
   "1119c65be9b7bcc6": "Review",
   "114ebd0b99ebb95b": "Feeds",
+  "1188438b8ba6c36d": "Anmeldungen einer früheren Installation bleiben auf diesem Rechner erhalten.",
   "121999b234ff2db3": "Blockiert durch",
+  "161ce3bef64dc505": "Um den Proxy zu ändern, wird ein gekoppeltes Gerät mit der Berechtigung benötigt, Provider auf dieser Umgebung zu verwalten.",
   "16543672eb03378c": "Aufgabe",
   "165803dbcb0970a8": "Noch keine Aufgaben",
   "166dd770f23756a1": "Schwer",
@@ -13019,9 +13041,21 @@
   "1bad9d7b05e8f610": "Fertig",
   "1bc9734fc0696002": "der Feed verwendet eine Entität, die XML nicht definiert",
   "1bd9c23390d35939": "der Server hat länger als 5 Sekunden gebraucht",
+  "1d555a5abc4e2167": [
+    "Läuft auf Port",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
   "1da04a9d790cb95b": "Titel",
+  "211b165f3075a095": "Der Modell-Proxy ist mit einer anderen Änderung beschäftigt. Versuche es erneut, wenn er fertig ist.",
   "21254b0cf7488b28": "Abgelehnt",
   "216c7e223db0c2c3": "Aufgabe schließen",
+  "223f08b8db5c65f4": "Das Programm des Proxys konnte nicht gestartet werden.",
   "22a0c5d5c5121355": "Mergen",
   "23aa75365aeeaecf": "Nicht gestartet",
   "23c5142879bffe19": "Zu Aufgabe wechseln...",
@@ -13041,28 +13075,45 @@
   "274678b3367dacf0": "Befunde für Teil {n} ausblenden",
   "2782905be91e0179": "Niemand",
   "28e1ddaf54c703d5": "Fertig",
+  "2955125548dfef17": "Öffne es in einem Browser auf diesem Rechner.",
   "29f578cc41aa9f45": "{task} konnte nicht zurückgelegt werden",
   "2a6452bf54cd9476": "Teil von",
   "2abf58f8384fe4a8": "Zugewiesen an",
   "2b895ef0b0e9ad8c": "Nummer",
   "2c0aa5ba4eebc412": "Speichern",
+  "2c87759394b65c15": "Deinstallieren",
+  "2d171b3f2bfb1d88": "Dieser Server läuft nicht aus einem Factory-Checkout, daher hat er kein angepinntes Manifest.",
   "2d566d79a5dfada8": "Modell",
   "2d82b077c1a79f9e": "Fertig",
   "2da5e7fcc81de0f6": "Gering",
   "2dbd7dd181026a38": "Starten",
   "2e1f42066eed2aa5": "Blockiert",
+  "2f004248af316101": "Das angepinnte Manifest fehlt oder ist ungültig, daher wurde nichts geladen.",
   "3034167b1fed95ab": "Die Aufgabe wurde erstellt, aber nicht gestartet.",
   "31938a4e8e21636b": "{count}+",
   "33544dea21c9d7c9": "Head verschoben",
   "339dae6f825c6866": "Diesen Thread zum Orchestrator des Projekts machen",
   "34fabd5b00324ca9": "Art",
   "3acc2e4803ca995a": "Titel",
+  "3ace5eff11c0f9f9": "Ermittle auf dem ausgewählten Rechner, welcher Prozess diesen Port verwendet, bevor du etwas beendest. Wähle Starten, sobald der Port frei ist.",
   "3bd8b55944df1bf4": "T-{number} öffnen",
   "3c0f7b24ac041b05": "Notiz hinzufügen",
   "3d08cdd31183989c": "Gerade braucht dich nichts.",
+  "3fc29e62ef7cb9af": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "ist nicht verbunden"
+  ],
+  "3fe1ef14bc3e5dc0": "Das Archiv des Proxys enthielt nicht genau die fünf erwarteten Dateien. Es wurde nichts installiert.",
   "401acc7606948304": "Projekt",
   "410a433c8f7c9a69": "Zugewiesen an",
+  "4334b45d7d7d146f": "Der Hub des Proxys konnte nicht aus den Einstellungen dieses Servers entfernt werden. Es wurde nichts deinstalliert. Versuche es erneut.",
   "43b7f004759517c6": "Bahn",
+  "443c6b0f4bd5c6ab": "Die Einstellungsdatei des Proxys kann nicht gelesen werden, daher wurde der Proxy nicht gestartet. Deinstalliere unter Beibehaltung der Anmeldungen und installiere dann erneut.",
   "443df25339924a1a": "Graph",
   "4601d8c6cfb99f21": "Arbeit",
   "46fddc20d2f63b4c": "Versucht:",
@@ -13088,13 +13139,25 @@
   "4fd41cd4bac9af2c": "Arbeitet",
   "513b0829d813281c": "Freigegeben",
   "51d78514e4664564": "Nicht mehr folgen",
+  "51edd50ae2724586": "Eine angepinnte Datei konnte nicht heruntergeladen werden. Es wurde nichts installiert.",
+  "526095bfb6c23988": "Modell-Proxy deinstallieren?",
   "530fb0a2f5ef2231": "der Hostname konnte nicht aufgelöst werden",
+  "5358695254685d38": [
+    "Für die angepinnte Version gibt es keinen Build für diesen Rechner (",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ")."
+  ],
   "5518fdfcf609d23d": "Feed-Adresse",
   "57194817096f4a56": "Übernommen",
   "575baf31cbdf9bab": "der Host wird zu einer privaten, lokalen oder reservierten Adresse aufgelöst",
   "57b36fa6ad882791": "Diese Aufgabe wurde an anderer Stelle geändert",
   "5821325e13e8329b": "{count, plural, one {Arbeit, {count} Element braucht dich} other {Arbeit, {count} Elemente brauchen dich}}",
   "59a6d461bd74bdd2": "der Server hat mit {status} geantwortet",
+  "5a7b57a94fd37f07": "Der Modell-Proxy ist auf diesem Server bereits installiert.",
   "5ad462f4acd1df24": "Arbeit ist in Bearbeitung oder wurde manuell hierher verschoben.",
   "5bf5bb285f190ce3": "Der Plan kann nicht angezeigt werden. Öffne die Ausführung, um ihn zu sehen.",
   "5cabe0f3106a1eca": "Dieser Server folgt 20 Feeds, mehr geht nicht.",
@@ -13105,6 +13168,16 @@
   "5fa5a990abec3975": "Noch nicht gelesen",
   "60443360213f097d": "Entschieden",
   "61797b167ce0f4c9": "der Server hat weitergeleitet, was Signale nicht verfolgt",
+  "619fbf565fe5931c": "Ein Verwaltungsschlüssel besteht aus 16 bis 64 druckbaren Zeichen ohne Leerzeichen.",
+  "61d02659d26642aa": [
+    "Modell-Proxy auf",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
   "6243b0090ac24fe0": "Spalte",
   "635ce74b53610864": {
     "t": "Plural",
@@ -13144,7 +13217,9 @@
   "66a5dbbae70d81ce": "Die Aufgabe konnte nicht gestartet werden.",
   "66fc6f5af8b33801": "Nach der Übernahme geändert",
   "67e0bab89cac2736": "die Adresse ist nicht https",
+  "681ef78e5c4a2fce": "Dieser Server hat kein lesbares angepinntes Manifest. Den Proxy kann nur ein Server installieren, der aus einem Factory-Checkout läuft.",
   "6828296ea374e663": "Eigene behalten",
+  "689cbadd9c78ab60": "Installiert und gestoppt.",
   "690a337e8dc06a36": [
     "Workflow-Ausführungen konnten nicht geladen werden, daher zeigen Karten keinen Status. Prüfe Workflows unter",
     " ",
@@ -13158,8 +13233,11 @@
   "6a0656e8e0e14b1b": "Backlog",
   "6a24d37af543b392": "Aus einem verfolgten Feed in Revision {revision} übernommen. Das Element selbst befindet sich in Signale.",
   "6a79e70aa91adb5c": "Nicht erneut gemeldet",
+  "6ab05d286639293e": "Wird installiert…",
   "6af1920a1db1a000": "Keine",
   "6df6d3f7a704fdc0": "Versiegelt",
+  "6e1321d322cc310f": "Der Proxy wurde fünfmal gestartet, ohne seine Verwaltungs-API zu beantworten, und nicht erneut gestartet.",
+  "6e584fc66511e1f6": "Usage liest diesen Proxy als Hub mit dem Namen Factory proxy.",
   "6e854b5468c726ae": "Projekt",
   "6e96ce482c3d701e": "Verworfen",
   "6ef815722cc9e485": "{n, plural, one {Signale, {n} Element wartet} other {Signale, {n} Elemente warten}}",
@@ -13167,10 +13245,44 @@
   "6fbd0df6a44c288c": "Nicht aufgeführtes Artefakt",
   "6fd6d050dbc62587": "Braucht dich",
   "71509d79af0cc5de": "Noch nichts entschieden.",
+  "717e4da671441925": [
+    "Die angepinnte Version ist jetzt CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", Konsole",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    ". Deinstalliere unter Beibehaltung der Anmeldungen und installiere dann erneut, um zu wechseln."
+  ],
   "7180adf1efc1dc6b": "Letztes Lesen fehlgeschlagen {date}: {reason}",
   "71b118ff5d9edcdb": "Protokoll",
+  "7228aeee9ad7fd66": "Eine heruntergeladene Datei stimmte nicht mit der angepinnten Größe oder dem angepinnten SHA-256 überein. Es wurde nichts installiert.",
+  "728f745345c6b7e2": [
+    "Port ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ist belegt. Die zuletzt erfasste Prozess-ID des Proxys war ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
   "735366a7be3e89d3": "Datei",
   "76a46c1775f13048": "Erneut gemeldet",
+  "777e492521fb5acd": "Modell-Proxy",
   "784cc87d53bef4c8": "Gelesen {date}",
   "788c4835f1c28d4e": "{task} wurde verworfen",
   "790c1653105ddbc3": "Review stockt",
@@ -13183,16 +13295,22 @@
   "7fdb1f8753f3532b": "Bahn",
   "8093eaa7292a8a05": "Dieser Versuch hat keinen Plan erstellt.",
   "80b1e0d96c7b16f2": "Zugewiesen an",
+  "80f417f89cc031bb": "Der Modell-Proxy ist auf diesem Server nicht installiert.",
+  "814d81c5aa5972ee": "Möglicherweise läuft noch ein früherer Proxy. Ermittle auf dem ausgewählten Rechner, welcher Prozess den Proxy-Port verwendet, bevor du etwas beendest. Versuche es dann erneut.",
   "81f42e4fe24fde8b": "Nur öffentliche https-Adressen auf Port 443. Der Server liest jeden Feed höchstens einmal pro Stunde und öffnet die darin enthaltenen Links nie.",
+  "8272831b240c3588": "Auch die enthaltenen Anmeldungen entfernen",
   "828fa78ef4e9dbb9": "Navigationspfad der Arbeit",
   "830c1e7c48367144": "Runde {at}",
   "8366df9f0cc4f27c": "Ihr Titel ist der Titel des Elements. Schreibe hinein, was erledigt werden soll, bevor du sie startest.",
   "83cdea9b8f365bb3": "der Feed verschachtelt Elemente tiefer als 32 Ebenen",
+  "842fde6f13ecd74d": "Die Einstellungsdatei des Modell-Proxys kann nicht gelesen werden. Deinstalliere unter Beibehaltung der Anmeldungen und installiere dann erneut.",
+  "85b817ff89412d77": "Der Hub des Proxys konnte in den Einstellungen dieses Servers nicht ausgeschaltet werden.",
   "85d0ee772919c83e": "Aktualisiert",
   "8722ba26b480af71": "Widerlegt",
   "8831bf8b03749675": "der Feed ist kein reines UTF-8",
   "892065b607da928c": "Dieser Server hat keine Aufgabe mit diesem Link.",
   "89b9819e837118f2": "Folge auf dem Tab „Feeds“ einem Feed, um seine Elemente hier zu sehen.",
+  "8a4dae605368b6a0": "Der Modell-Proxy ist auf diesem Server nicht verfügbar.",
   "8b14a12660038932": "Bereit",
   "8b31ee36486f3ec1": "Dieser Server unterstützt Arbeit nicht",
   "8c4e70af62cadc27": "Verworfen",
@@ -13202,14 +13320,28 @@
   "8ecb6aaa21d7a77c": "Wissen",
   "8ed7ebb992529278": "Du",
   "8ef6bd7b080d04e5": "Fehlgeschlagen",
+  "90f6200d64701328": "Diese Installation erzeugt ihren Schlüssel, der nie angezeigt wird, daher kann die Konsole nicht benutzt werden. Um sie zu benutzen, deinstalliere unter Beibehaltung der Anmeldungen und installiere dann mit einem Schlüssel, den du eingibst.",
   "9160bff2a14a7bbf": "Noch nicht gestartet.",
   "91fe864350610824": "Verworfen",
   "92265c1181a4bced": "Als T-{number} übernommen",
   "922d764133c8c427": "der Feed deklariert eine DTD oder Entitäten",
+  "9318b94feca01612": "Installiert die angepinnte CLIProxyAPI auf dem Rechner dieser Umgebung, führt sie neben dem Server aus und verbindet Usage damit. Sie lauscht nur auf diesem Rechner.",
   "93d697753aca4033": "Kleinigkeit",
+  "95e902781dfaab8f": [
+    "Neustart nach dem Stopp, Versuch",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "von 5…"
+  ],
   "96a6809814dca07e": "Liste",
   "96dfc9f03d480197": "Plan genehmigen",
   "97e74d10555a5e2b": "Übergeordnete Aufgaben zusammenfassen",
+  "98d4d87d8f20aa5c": "Verwaltungsschlüssel (optional)",
   "9922804e4af97f5b": "Keine",
   "9a081baf4574cff9": "Art",
   "9b7329363a9a50b0": "Braucht dich",
@@ -13252,14 +13384,28 @@
   "9f5f9a79d7041da4": "Plan ausblenden",
   "9f62431445e9e436": "{name} ist nicht verbunden. Erstelle die Aufgabe, sobald die Verbindung wiederhergestellt ist.",
   "9fca94148b0130b4": "Hochgestuft",
+  "a0e1faa6b01b4f41": [
+    "Der Proxy ist gestoppt, sein Programm, seine Einstellungen und seine Schlüssel werden von",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "gelöscht und sein Hub wird aus Usage entfernt."
+  ],
   "a0f7d217daefa9db": "Review",
   "a11a289f43a92f17": "Beschreibung",
   "a1fd8b8c39d2e390": "Hat den Widerlegungsschritt überstanden",
   "a26c1d48b7de6b24": "Artefakte und Belege",
+  "a38cf2c6ea18b77f": "Fehlgeschlagen.",
   "a3a54668bf39c221": "Nicht genehmigt",
   "a58a2368e460fc8b": "Die neuesten 2.000 Aufgaben werden angezeigt.",
+  "a5ec8ea5b94f845a": "Der Proxy läuft, aber sein Hub konnte nicht in den Einstellungen dieses Servers gespeichert werden.",
   "a7be4068ae6036da": "Aufgaben anzeigen als",
   "a918f97d604bd414": "Bei {head} geprüft, einem Head, der sich danach bewegt hat. Die Befunde dieser Runde entscheiden nichts.",
+  "aab68a46808ee916": "Anmeldungen bleiben erhalten und werden von der nächsten Installation wieder verwendet.",
   "ad62b2323babbed2": "{count, plural, one {{count} widerlegt} other {{count} widerlegt}}",
   "adae883fd7189da7": "Aufgaben werden geladen…",
   "aea8f73a29717a31": "Schließen",
@@ -13271,13 +13417,17 @@
   "b609a4988213005b": "Das Folgen dieses Feeds konnte nicht beendet werden",
   "b6221630968b378a": "Ihre Aufgaben werden wieder angezeigt, sobald sie sich neu verbindet. Wähle eine andere Umgebung, um deren Aufgaben zu sehen.",
   "b6643b9f882a16a0": "Die Aufgabenausführung wurde abgeschlossen oder jemand hat die Aufgabe als fertig markiert.",
+  "b6df2dbde5ec3d78": "Konsole:",
   "b91b85035d1be697": "Blocker",
   "b9755d2c4d7df997": "Ohne Genehmigung gestartet",
+  "bba1e3a22505b87f": "Wird gestartet…",
   "bbf426541c7a09ce": "Übernehmen",
+  "bcc9a4b1c42d2680": "Starten",
   "bd392f2728e0cc81": "Elemente aus öffentlichen Feeds, denen dieser Server folgt. Hier läuft nichts von selbst. „Übernehmen“ legt eine Backlog-Aufgabe mit dem Titel des Elements an, nicht gestartet; Text und Link des Elements bleiben hier.",
   "bd532ceeb541bb77": "Befunde zeigen",
   "bdc47e01d7e0b74f": "Projekt",
   "bdc8a79834c2f462": "{task} {title}, {column}, blockiert durch {blockers}",
+  "bdcae9e67c0d6f8d": "Die Dateien des Proxys konnten nicht geschrieben werden. Es wurde nichts installiert.",
   "bedd76860db784e5": "Workflows sind auf diesem Server deaktiviert, daher werden Feeds nicht gelesen.",
   "bf39074b8186ab35": "Ausführung öffnen",
   "bf6a241f0ac4628a": "Ergebnisse",
@@ -13286,7 +13436,19 @@
   "c1ebc11561c5569e": "{column}, aus Teilaufgaben",
   "c3c3eee7650ee5b7": "die Adresse verwendet einen anderen Port als 443",
   "c3cf36342aa39f5b": "Ausführung öffnen",
+  "c478c48ff2ccaf97": "Gib einen ein, wenn du dich bei der Konsole des Proxys anmelden willst. Lass das Feld leer und der Server erzeugt einen Schlüssel, der nie angezeigt wird. 16 bis 64 Zeichen, keine Leerzeichen.",
   "c486174a9fcdbd6f": "Beleg",
+  "c5ffc77487db10e7": [
+    "Port",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "wird von einem anderen Programm benutzt."
+  ],
   "c71e095a16303b19": "Die Aufgabe konnte nicht erstellt werden.",
   "c776a66a7ac127a4": {
     "t": "Plural",
@@ -13322,12 +13484,31 @@
     }
   },
   "c9001d648bcdb06a": "Änderungen verlangt",
+  "ca0372384b2cea51": "Melde dich mit dem Verwaltungsschlüssel an, den du bei der Installation eingegeben hast.",
+  "cb17c315bf0817cb": "Der Proxy wurde fünfmal hintereinander gestoppt und nicht erneut gestartet.",
   "cc78c0c57bcb0361": "Teil von",
   "cde1887cb7981573": "Das Factory-Workflow-Paket ist auf diesem Server nicht installiert.",
   "cf13d3cec58613fb": "Kein Projekt",
   "cf75789d434680ab": "Der Plan konnte nicht geladen werden. Öffne die Ausführung, um ihn zu sehen.",
   "d35730dea8ec42d4": "Titel",
   "d3d1343241c287e7": "Nächstes Element, das mich braucht",
+  "d7839dbea6b6cb69": [
+    "Installiert: CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", Konsole",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
   "d835a4bb4e0136ce": "die Verbindung ist fehlgeschlagen",
   "d88d19c6c85c3d47": "Art",
   "d9170272700d12c0": "Nach Titel oder T-Nummer filtern",
@@ -13367,6 +13548,16 @@
       }
     }
   },
+  "db7ad9875ad1872f": [
+    "Sein letzter Exit-Code war",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
   "dba8de737cad1d51": "Der Graph zeigt die neuesten {shown} von {count} Aufgaben. Filtere, um den Rest zu sehen.",
   "dd598f9a66578985": "Aus Teilaufgaben",
   "de681e69363df52f": "Modell",
@@ -13383,9 +13574,12 @@
   "e0639f900bf775e6": "Befunde für Teil {n} zeigen",
   "e273272382783e2c": "Akzeptiert",
   "e349d13d69961e52": "die Adresse enthält einen Benutzernamen oder ein Passwort",
+  "e5567d65ffdb88e2": "Nicht installiert.",
   "e727bdbb71e2eb84": "Aufgaben filtern",
   "e76ca803d5bf3048": "Genehmigt",
+  "e78f5c54ea4982f2": "Einige Dateien des Proxys oder sein Hub konnten nicht entfernt werden. Deinstalliere erneut.",
   "e7c99bd54278936b": "Plan anzeigen",
+  "e86c76292ee9d1e5": "Was du in der Konsole speicherst, bleibt erhalten. Der Server setzt Adresse, Port, Verwaltungsschlüssel und Anmeldeordner bei jedem Start des Proxys neu, und Plugins und Netzwerkerkennung stehen dafür nicht zur Verfügung.",
   "e879c04b416eb751": "Die Aufgabe konnte nicht gespeichert werden.",
   "e8bd3f4ca3459a59": "Ungewiss",
   "e8e8d87e6fc02fc6": "Bereit",
@@ -13447,6 +13641,7 @@
   "ef007096642f36fe": "Wartet auf Genehmigung",
   "f01ee5fb1a1cfbb9": "der Feed ist weder RSS 2.0 noch Atom 1.0",
   "f0df0ef7081848c5": "Befunde ausblenden",
+  "f14490ae9c6e24b8": "Behaltene Anmeldungen entfernen",
   "f1883a8babfa2e18": "Begutachtet",
   "f2e489303c279848": "Seine wartenden und entschiedenen Elemente verlassen Signale. Bereits übernommene Aufgaben bleiben.",
   "f384dfd0feb7b59d": {
@@ -13482,8 +13677,10 @@
       }
     }
   },
+  "f3e544786f4c9b6b": "Die installierten Dateien des Proxys oder sein Schlüssel fehlen, sind unlesbar oder wurden geändert. Deinstalliere unter Beibehaltung der Anmeldungen und installiere dann erneut.",
   "f4e8335020f33490": "Nichts wartet.",
   "f52f0e92bd12adf4": "Keine Befunde.",
+  "f7546ed96b48ea66": "Auf diesem Rechner ist kein Port von 8317 bis 8327 frei.",
   "f937d61c9c85ea86": "Der Plan sieht keine Reihenfolge zwischen seinen Teilen vor.",
   "f94af8e25d3cfb42": "Signale",
   "f966abe4b6a5d91f": "Gestoppt",

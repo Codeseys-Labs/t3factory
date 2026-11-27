@@ -45,9 +45,9 @@ The server reloads changed top-level workflow files without a restart, but not t
 - `uninstall` removes only the files the manifest lists, and prints a restart warning if it removed helpers under `lib/`.
 - The skill is copied by `install` and left alone by `status` and `uninstall`.
 
-`factory-task` and `factory-task-part` are at version 3 and `factory-intake` at version 2, and the pack ships no earlier version of them. The server holds a changed file back while unfinished runs still use a version it would remove, so update a home only when no run of an old version is unfinished. `t3 workflow list` shows which runs have not ended. This update also changes files under `lib/`, so restart the server after installing it.
+`factory-task` and `factory-task-part` are at version 4 and `factory-intake` at version 2, and the pack ships no earlier version of them. The server holds a changed file back while unfinished runs still use a version it would remove, so update a home only when no run of an old version is unfinished. `t3 workflow list` shows which runs have not ended. This update also changes files under `lib/`, so restart the server after installing it.
 
-For `factory-task`, let unfinished runs end, or cancel them on the Workflows page, then install. For `factory-intake`, whose tick starts every five minutes, cut over in this order:
+For `factory-task` and `factory-task-part`, let unfinished runs end, or cancel them on the Workflows page, before installing the pack. For `factory-intake`, whose tick starts every five minutes, cut over in this order:
 
 1. Set `enabled` to `false` in every intake binding.
 2. Let the version 1 ticks end, and cancel any that paused.
@@ -108,7 +108,7 @@ Write the string in Factory code through `gt-react` as upstream's [translation p
 
 ## Pinned third-party assets
 
-`factory/vendor/manifest.json` pins CLIProxyAPI and its Management Center by exact version, with the URL, size and SHA-256 of each platform's file and of each licence text. Nothing in Factory runs, unpacks or installs them yet, and the pack installer does not copy them. [`scripts/factory-vendor.ts`](../../scripts/factory-vendor.ts) checks the manifest and downloads the pinned bytes; run it by hand only.
+`factory/vendor/manifest.json` pins CLIProxyAPI and its Management Center by exact version, with the URL, size and SHA-256 of each platform's file and of each licence text. The server installs them on request from **Work → Model proxy**. A packaged build has no checkout manifest, so it cannot install the proxy and refuses with `no-checkout`. The pack installer does not install the proxy or copy the manifest. Use [`scripts/factory-vendor.ts`](../../scripts/factory-vendor.ts) by hand to check the manifest or fetch the pinned bytes into a separate folder without installing them:
 
 ```sh
 node scripts/factory-vendor.ts check
@@ -124,12 +124,22 @@ node scripts/factory-vendor.ts fetch --dir <dir>
 
 To move a pin:
 
-1. Pick the newest release of each component that is not a draft or prerelease and was published at least 168 hours before you download it. The console has to accept the proxy (its `requires` is `>=8.0.0 <9.0.0`). When no release is old enough, keep the current pin.
+1. Pick the newest release of each component that is not a draft or prerelease and was published at least 168 hours before you download it. Check the console's `requires` range against the proxy version. When no release is old enough, keep the current pin.
 2. Download each file the manifest names, and the `LICENSE` at the tag, and take each one's size and SHA-256. They should match GitHub's asset `digest` and, for the proxy, its `checksums.txt`, but a match is not proof: nothing is signed.
 3. Edit the manifest: `version`, `publishedAt` (GitHub's publication time), `retrievedAt` (when you took the hashes), both UTC to the second as `YYYY-MM-DDTHH:MM:SSZ`, and each file's URL, `bytes` and `sha256`. The licence must still be MIT.
-4. Run `check`, then `fetch --dir` into a new folder outside the checkout to prove the bytes, and commit the manifest.
+4. Run `check`, then `fetch --dir` into a new folder outside the checkout to verify the downloads. On Windows, start Factory against a fresh, isolated home and use **Work → Model proxy** to install and start the new pin. Verify the proxy listens only on loopback, the pinned console signs in with a temporary typed management key, and **Usage → Limits** lists **Factory proxy**. Stop it, confirm the listener closes and Usage disconnects, then uninstall. Do not qualify a pin against a live home.
 
 `check` refuses a version that is not an exact `x.y.z`; a `source` other than the component's repository; a `retrievedAt` less than 168 hours after `publishedAt`; platforms other than `win32-x64`, `darwin-arm64`, `darwin-x64`, `linux-x64` and `linux-arm64` for the proxy, or `any` for the console, in that order; a URL that is not exactly the release download for that version (for a licence, the raw file at the tag), so no `latest`, branch, query, port or upper-case letter in the host; a SHA-256 that is not 64 lower-case hex; a size outside 1 byte to 100 MiB; a licence other than MIT; a URL, hash or platform used twice; and any key it does not know.
+
+Once the server reads the new manifest, **Model proxy** shows the pinned and installed versions side by side and says when either has changed. The installed copy stays as it was. To move an environment to the new pin, uninstall with sign-ins kept, then install again. This replaces the proxy and console settings and keys, not the kept sign-ins. There is no upgrade in place or rollback.
+
+Do not remove or replace `factory-proxy/static/management.html` while the proxy is running. The server verifies the pinned file before launch, but the proxy serves it itself and can fetch a replacement if the file disappears. Stop the proxy before repairing the install.
+
+## Model proxy files and recovery
+
+Look under `<dir>/userdata/factory-proxy` in the server's home. `record.json` holds the installed versions and port, not the keys. `config.yaml` holds the proxy settings, `releases/<proxy version>/` holds the executable and both licences, `static/management.html` is the pinned console, and `auth/` holds the sign-ins and account database. The server's secret store is under `<dir>/userdata/secrets`. There is no Factory log of the proxy's output. An uninstall that keeps sign-ins leaves only `auth/` in `factory-proxy`; an uninstall that also removes sign-ins removes the folder.
+
+For `port-in-use`, identify the program listening on the recorded port on that machine. If the dialog shows a process number from an earlier server run, verify that the number still belongs to that proxy before ending anything. Close the program holding the port, then choose **Start** again. The server does not try another port, and it refuses uninstall while a recorded earlier process may still be running and the port is held. If the settings file cannot be read, uninstall with sign-ins kept and install again. The saved console settings are not recovered.
 
 ## What Factory CI checks
 
@@ -138,7 +148,7 @@ To move a pin:
 - the lockfile equals the merge base with `origin/main`;
 - `node scripts/factory-seams.ts --base origin/main` (at most twelve seam files, each within its `maxAdded` line cap, and all of them together within `maxAddedTotal`);
 - typecheck of contracts, server, client-runtime, web, mobile, scripts and evals;
-- the server's `factory` tests, all `scripts/factory-*.test.ts` tests, and `evals/factory-pack`, which tests every pack workflow: `run`, `sync`, `brief`, `experiment`, `risk`, `self-repair`, `ledger`, `metrics`, `intake`, `signals` and `placement`;
+- the server's `factory` tests, all `scripts/factory-*.test.ts` tests, and `evals/factory-pack`, which tests every pack workflow: `run`, `sync`, `brief`, `experiment`, `risk`, `self-repair`, `ledger`, `metrics`, `intake`, `signals`, `placement`, `remote-writer` and `reader`;
 - upstream seam unit tests (`ws.test.ts`, `RpcAuthorization.test.ts`, `RpcInstrumentation.test.ts`, `rpc.test.ts`, `client.test.ts`);
 - the web `src/factory` unit tests and `CommandPalette.logic.test.ts` (Playwright browser seam tests — `CommandPalette*.browser.test.tsx` and `mainAppLocation.browser.test.tsx` — are not run in `factory.yml` because it does not install browser binaries);
 - `vp run i18n:check`, upstream's catalog check;

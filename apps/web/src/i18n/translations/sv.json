@@ -12997,10 +12997,28 @@
   "02d5fa3cda9e56cd": "Inte klar",
   "03833d787c4c8e17": "flödet är större än 256 KB",
   "0532ec85f9970a4a": "Programvara",
+  "05a4585797d30e34": [
+    "Fäst: CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", konsol",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
   "05ac7284b77b849c": "Använd deras",
   "05ce33cc16f8a854": "Förutsättningar",
   "06491a5281cc2d5b": "Visar de 200 senaste objekten.",
   "069abdf7d6ce5cf5": "Ångra",
+  "073a25ded88a125a": "Användning är inte ansluten till den här proxyn.",
   "0822282c37437989": "Öppna arbete",
   "0930858b7d7bdab6": "Projekt",
   "0a8bcf0e5974e640": "Fråga",
@@ -13010,10 +13028,14 @@
   "0d567a0fbe503c02": "Arbete registreras för senare.",
   "0ddb69435fb951d8": "Projekt",
   "0e7829110b2ebbbf": "Endast dess revision flyttades; inga av dess fält ändrades.",
+  "0f30543ecf6fd3bc": "Den fasta versionen har ingen bygge av proxyn för den här maskinen.",
   "0fe5811407f794ec": "Inga anteckningar än.",
+  "1009946ef341665a": "En installation eller avinstallation avbröts. Avinstallera för att rensa, installera sedan igen.",
   "1119c65be9b7bcc6": "Granskning",
   "114ebd0b99ebb95b": "Flöden",
+  "1188438b8ba6c36d": "Inloggningar från en tidigare installation finns kvar på den här maskinen.",
   "121999b234ff2db3": "Blockeras av",
+  "161ce3bef64dc505": "Att byta proxy kräver en parad enhet med behörighet att hantera leverantörer i den här miljön.",
   "16543672eb03378c": "Uppgift",
   "165803dbcb0970a8": "Inga uppgifter än",
   "166dd770f23756a1": "Allvarlig",
@@ -13026,9 +13048,21 @@
   "1bad9d7b05e8f610": "Klar",
   "1bc9734fc0696002": "flödet använder en entitet som XML inte definierar",
   "1bd9c23390d35939": "servern tog längre tid än 5 sekunder",
+  "1d555a5abc4e2167": [
+    "Kör på port",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
   "1da04a9d790cb95b": "Titel",
+  "211b165f3075a095": "Modellproxyn är upptagen med en annan ändring. Försök igen när den är klar.",
   "21254b0cf7488b28": "Avvisad",
   "216c7e223db0c2c3": "Stäng uppgiften",
+  "223f08b8db5c65f4": "Proxyns program kunde inte startas.",
   "22a0c5d5c5121355": "Merga",
   "23aa75365aeeaecf": "Startade inte",
   "23c5142879bffe19": "Gå till uppgift...",
@@ -13048,28 +13082,45 @@
   "274678b3367dacf0": "Dölj fynd för del {n}",
   "2782905be91e0179": "Ingen",
   "28e1ddaf54c703d5": "Klar",
+  "2955125548dfef17": "Öppna den i en webbläsare på den maskinen.",
   "29f578cc41aa9f45": "Kunde inte lägga tillbaka {task}",
   "2a6452bf54cd9476": "Överordnad uppgift",
   "2abf58f8384fe4a8": "Tilldelad",
   "2b895ef0b0e9ad8c": "Nummer",
   "2c0aa5ba4eebc412": "Spara",
+  "2c87759394b65c15": "Avinstallera",
+  "2d171b3f2bfb1d88": "Den här servern kör inte från en Factory-utcheckning, så den har inget fastställt manifest.",
   "2d566d79a5dfada8": "Modell",
   "2d82b077c1a79f9e": "Klar",
   "2da5e7fcc81de0f6": "Mindre",
   "2dbd7dd181026a38": "Starta",
   "2e1f42066eed2aa5": "Blockerad",
+  "2f004248af316101": "Det fastställda manifestet saknas eller är ogiltigt, så ingenting hämtades.",
   "3034167b1fed95ab": "Uppgiften skapades men startade inte.",
   "31938a4e8e21636b": "{count}+",
   "33544dea21c9d7c9": "Head flyttad",
   "339dae6f825c6866": "Gör den här tråden till projektets orkestrerare",
   "34fabd5b00324ca9": "Typ",
   "3acc2e4803ca995a": "Titel",
+  "3ace5eff11c0f9f9": "Ta reda på vilken process som lyssnar på den här porten på den valda maskinen innan du avslutar något. Välj Starta när porten är ledig.",
   "3bd8b55944df1bf4": "Öppna T-{number}",
   "3c0f7b24ac041b05": "Lägg till en anteckning",
   "3d08cdd31183989c": "Inget behöver dig just nu.",
+  "3fc29e62ef7cb9af": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "är inte ansluten"
+  ],
+  "3fe1ef14bc3e5dc0": "Proxyns arkiv innehöll inte exakt de fem väntade filerna. Inget installerades.",
   "401acc7606948304": "Projekt",
   "410a433c8f7c9a69": "Tilldelad",
+  "4334b45d7d7d146f": "Proxyns hubb kunde inte tas bort från den här serverns inställningar. Inget avinstallerades. Försök igen.",
   "43b7f004759517c6": "Bana",
+  "443c6b0f4bd5c6ab": "Proxyns inställningsfil kan inte läsas, så proxyn startades inte. Avinstallera, behåll inloggningarna, och installera igen.",
   "443df25339924a1a": "Graf",
   "4601d8c6cfb99f21": "Arbete",
   "46fddc20d2f63b4c": "Försökte:",
@@ -13095,13 +13146,25 @@
   "4fd41cd4bac9af2c": "Arbetar",
   "513b0829d813281c": "Godkänd",
   "51d78514e4664564": "Sluta följa",
+  "51edd50ae2724586": "En fastställd fil kunde inte hämtas. Inget installerades.",
+  "526095bfb6c23988": "Avinstallera modellproxyn?",
   "530fb0a2f5ef2231": "värdnamnet kunde inte slås upp",
+  "5358695254685d38": [
+    "Den fasta versionen har ingen bygge för den här maskinen (",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ")."
+  ],
   "5518fdfcf609d23d": "Flödesadress",
   "57194817096f4a56": "Intaget",
   "575baf31cbdf9bab": "värden pekar på en privat, lokal eller reserverad adress",
   "57b36fa6ad882791": "Den här uppgiften ändrades någon annanstans",
   "5821325e13e8329b": "{count, plural, one {Arbete, {count} objekt behöver dig} other {Arbete, {count} objekt behöver dig}}",
   "59a6d461bd74bdd2": "servern svarade {status}",
+  "5a7b57a94fd37f07": "Modellproxyn är redan installerad på den här servern.",
   "5ad462f4acd1df24": "Arbete pågår eller har placerats här manuellt.",
   "5bf5bb285f190ce3": "Planen kan inte visas. Öppna körningen för att se den.",
   "5cabe0f3106a1eca": "Den här servern följer 20 flöden, vilket är max.",
@@ -13112,6 +13175,16 @@
   "5fa5a990abec3975": "Inte läst än",
   "60443360213f097d": "Avgjorda",
   "61797b167ce0f4c9": "servern omdirigerade, vilket Signaler inte följer",
+  "619fbf565fe5931c": "En hanteringsnyckel är 16 till 64 utskrivbara tecken utan mellanslag.",
+  "61d02659d26642aa": [
+    "Modellproxy på",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
   "6243b0090ac24fe0": "Kolumn",
   "635ce74b53610864": {
     "t": "Plural",
@@ -13151,7 +13224,9 @@
   "66a5dbbae70d81ce": "Kunde inte starta uppgiften.",
   "66fc6f5af8b33801": "Ändrat efter att det togs in",
   "67e0bab89cac2736": "adressen är inte https",
+  "681ef78e5c4a2fce": "Den här servern har inget läsbart fastställt manifest. Proxyn kan bara installeras av en server som kör från en Factory-utcheckning.",
   "6828296ea374e663": "Behåll min",
+  "689cbadd9c78ab60": "Installerad och stoppad.",
   "690a337e8dc06a36": [
     "Det gick inte att läsa in arbetsflödeskörningar, så korten visar inget körningstillstånd. Kontrollera arbetsflöden i",
     " ",
@@ -13165,8 +13240,11 @@
   "6a0656e8e0e14b1b": "Backlog",
   "6a24d37af543b392": "Intagen från ett följt flöde vid revision {revision}. Själva objektet finns i Signaler.",
   "6a79e70aa91adb5c": "Togs inte upp igen",
+  "6ab05d286639293e": "Installerar…",
   "6af1920a1db1a000": "Ingen",
   "6df6d3f7a704fdc0": "Förseglad",
+  "6e1321d322cc310f": "Proxyn startade fem gånger utan att svara på sitt hanterings-API och startades inte igen.",
+  "6e584fc66511e1f6": "Användning läser den här proxyn som hubben med namnet Factory proxy.",
   "6e854b5468c726ae": "Projekt",
   "6e96ce482c3d701e": "Avfärdat",
   "6ef815722cc9e485": "{n, plural, one {Signaler, {n} objekt väntar} other {Signaler, {n} objekt väntar}}",
@@ -13174,10 +13252,44 @@
   "6fbd0df6a44c288c": "Olistad artefakt",
   "6fd6d050dbc62587": "Behöver dig",
   "71509d79af0cc5de": "Inget avgjort än.",
+  "717e4da671441925": [
+    "Den fasta versionen har flyttat till CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", konsol",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    ". Avinstallera, behåll inloggningarna, och installera sedan för att flytta till den."
+  ],
   "7180adf1efc1dc6b": "Senaste läsningen misslyckades {date}: {reason}",
   "71b118ff5d9edcdb": "Protokoll",
+  "7228aeee9ad7fd66": "En hämtad fil stämde inte med sin fastställda storlek eller SHA-256. Inget installerades.",
+  "728f745345c6b7e2": [
+    "Port ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " används. Proxyns senast registrerade process-ID var ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
   "735366a7be3e89d3": "Fil",
   "76a46c1775f13048": "Togs upp igen",
+  "777e492521fb5acd": "Modellproxy",
   "784cc87d53bef4c8": "Läst {date}",
   "788c4835f1c28d4e": "{task} avskrevs",
   "790c1653105ddbc3": "Granskning har fastnat",
@@ -13190,16 +13302,22 @@
   "7fdb1f8753f3532b": "Bana",
   "8093eaa7292a8a05": "Det här försöket skapade ingen plan.",
   "80b1e0d96c7b16f2": "Tilldelad",
+  "80f417f89cc031bb": "Modellproxyn är inte installerad på den här servern.",
+  "814d81c5aa5972ee": "En tidigare proxy kan fortfarande köras. Ta reda på vilken process som lyssnar på proxyns port på den valda maskinen innan du avslutar något. Försök sedan igen.",
   "81f42e4fe24fde8b": "Endast offentliga https-adresser på port 443. Servern läser varje flöde högst en gång i timmen och öppnar aldrig länkarna i det.",
+  "8272831b240c3588": "Ta också bort de inloggningar den håller",
   "828fa78ef4e9dbb9": "Brödsmulor för arbete",
   "830c1e7c48367144": "Omgång {at}",
   "8366df9f0cc4f27c": "Dess titel är objektets titel. Skriv vad du vill ha gjort i den innan du startar den.",
   "83cdea9b8f365bb3": "flödet har fler än 32 nivåer av nästlade element",
+  "842fde6f13ecd74d": "Modellproxyns inställningsfil kan inte läsas. Avinstallera, behåll inloggningarna, och installera sedan igen.",
+  "85b817ff89412d77": "Proxyns hubb kunde inte stängas av i den här serverns inställningar.",
   "85d0ee772919c83e": "Uppdaterad",
   "8722ba26b480af71": "Motbevisat",
   "8831bf8b03749675": "flödet är inte ren UTF-8",
   "892065b607da928c": "Den här servern har ingen uppgift med den länken.",
   "89b9819e837118f2": "Följ ett flöde på fliken Flöden för att se dess objekt här.",
+  "8a4dae605368b6a0": "Modellproxyn är inte tillgänglig på den här servern.",
   "8b14a12660038932": "Redo",
   "8b31ee36486f3ec1": "Den här servern har inget stöd för Arbete",
   "8c4e70af62cadc27": "Avskriven",
@@ -13209,14 +13327,28 @@
   "8ecb6aaa21d7a77c": "Kunskap",
   "8ed7ebb992529278": "Du",
   "8ef6bd7b080d04e5": "Misslyckades",
+  "90f6200d64701328": "Den här installationen skapar sin egen nyckel, som aldrig visas, så konsolen kan inte användas. För att använda den: avinstallera, behåll inloggningarna, och installera sedan med en nyckel du skriver in.",
   "9160bff2a14a7bbf": "Inte startad än.",
   "91fe864350610824": "Avskriven",
   "92265c1181a4bced": "Taget in som T-{number}",
   "922d764133c8c427": "flödet deklarerar en DTD eller entiteter",
+  "9318b94feca01612": "Installerar den fastställda CLIProxyAPI på den här miljöns maskin, kör den bredvid servern och ansluter Användning till den. Den lyssnar bara på den maskinen.",
   "93d697753aca4033": "Petitess",
+  "95e902781dfaab8f": [
+    "Startar igen efter att den stannat, försök",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "av 5…"
+  ],
   "96a6809814dca07e": "Lista",
   "96dfc9f03d480197": "Godkänn plan",
   "97e74d10555a5e2b": "Rulla upp överordnade",
+  "98d4d87d8f20aa5c": "Hanteringsnyckel (valfri)",
   "9922804e4af97f5b": "Ingen",
   "9a081baf4574cff9": "Typ",
   "9b7329363a9a50b0": "Behöver dig",
@@ -13259,14 +13391,27 @@
   "9f5f9a79d7041da4": "Dölj plan",
   "9f62431445e9e436": "{name} är inte ansluten. Skapa uppgiften när den ansluter igen.",
   "9fca94148b0130b4": "Befordrad",
+  "a0e1faa6b01b4f41": [
+    "Proxyn är stoppad, dess program, inställningar och nycklar har tagits bort från",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", och dess hubb har tagits bort från Användning."
+  ],
   "a0f7d217daefa9db": "Granskning",
   "a11a289f43a92f17": "Beskrivning",
   "a1fd8b8c39d2e390": "Klarade motbevisningssteget",
   "a26c1d48b7de6b24": "Artefakter och kvitton",
+  "a38cf2c6ea18b77f": "Misslyckades.",
   "a3a54668bf39c221": "Inte godkänd",
   "a58a2368e460fc8b": "Visar de 2 000 senaste uppgifterna.",
+  "a5ec8ea5b94f845a": "Proxyn kör, men dess hubb kunde inte sparas i den här serverns inställningar.",
   "a7be4068ae6036da": "Visa uppgifter som",
   "a918f97d604bd414": "Granskad vid {head}, en head som sedan flyttades. Omgångens fynd avgör ingenting.",
+  "aab68a46808ee916": "Inloggningar behålls och används igen av nästa installation.",
   "ad62b2323babbed2": "{count, plural, one {{count} motbevisat} other {{count} motbevisade}}",
   "adae883fd7189da7": "Läser in uppgifter…",
   "aea8f73a29717a31": "Stäng",
@@ -13278,13 +13423,17 @@
   "b609a4988213005b": "Kunde inte sluta följa det här flödet",
   "b6221630968b378a": "Dess uppgifter visas igen när den ansluter igen. Välj en annan miljö för att se dess uppgifter.",
   "b6643b9f882a16a0": "Uppgiftskörningen slutfördes eller någon markerade uppgiften som klar.",
+  "b6df2dbde5ec3d78": "Konsol:",
   "b91b85035d1be697": "Blockerande",
   "b9755d2c4d7df997": "Startade utan godkännande",
+  "bba1e3a22505b87f": "Startar…",
   "bbf426541c7a09ce": "Ta in",
+  "bcc9a4b1c42d2680": "Starta",
   "bd392f2728e0cc81": "Objekt från offentliga flöden som den här servern följer. Inget här körs av sig självt. Ta in lägger till en Backlog-uppgift, inte startad, med objektets titel; objektets text och länk finns kvar här.",
   "bd532ceeb541bb77": "Visa fynd",
   "bdc47e01d7e0b74f": "Projekt",
   "bdc8a79834c2f462": "{task} {title}, {column}, blockeras av {blockers}",
+  "bdcae9e67c0d6f8d": "Proxyns filer kunde inte skrivas. Inget installerades.",
   "bedd76860db784e5": "Arbetsflöden är avstängda på den här servern, så flödena läses inte.",
   "bf39074b8186ab35": "Öppna körning",
   "bf6a241f0ac4628a": "Resultat",
@@ -13293,7 +13442,19 @@
   "c1ebc11561c5569e": "{column}, från underordnade",
   "c3c3eee7650ee5b7": "adressen använder en annan port än 443",
   "c3cf36342aa39f5b": "Öppna körning",
+  "c478c48ff2ccaf97": "Skriv en om du vill logga in i proxyns konsol. Lämna den tom och servern skapar en nyckel som aldrig visas. 16 till 64 tecken, utan mellanslag.",
   "c486174a9fcdbd6f": "Belägg",
+  "c5ffc77487db10e7": [
+    "Port",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "används av ett annat program."
+  ],
   "c71e095a16303b19": "Kunde inte skapa uppgiften.",
   "c776a66a7ac127a4": {
     "t": "Plural",
@@ -13329,12 +13490,31 @@
     }
   },
   "c9001d648bcdb06a": "Ändringar begärda",
+  "ca0372384b2cea51": "Logga in med den hanteringsnyckel du skrev in vid installationen.",
+  "cb17c315bf0817cb": "Proxyn stannade fem gånger i rad och startades inte igen.",
   "cc78c0c57bcb0361": "Överordnad uppgift",
   "cde1887cb7981573": "Factory-arbetsflödespaketet är inte installerat på den här servern.",
   "cf13d3cec58613fb": "Inget projekt",
   "cf75789d434680ab": "Planen kunde inte läsas in. Öppna körningen för att se den.",
   "d35730dea8ec42d4": "Titel",
   "d3d1343241c287e7": "Nästa objekt som behöver mig",
+  "d7839dbea6b6cb69": [
+    "Installerad: CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", konsol",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
   "d835a4bb4e0136ce": "anslutningen misslyckades",
   "d88d19c6c85c3d47": "Typ",
   "d9170272700d12c0": "Filtrera efter titel eller T-nummer",
@@ -13374,6 +13554,16 @@
       "t": "p"
     }
   },
+  "db7ad9875ad1872f": [
+    "Dens senaste utgångskod var",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
   "dba8de737cad1d51": "Grafen visar de {shown} senaste av {count} uppgifter. Filtrera för att se resten.",
   "dd598f9a66578985": "Från underordnade",
   "de681e69363df52f": "Modell",
@@ -13390,9 +13580,12 @@
   "e0639f900bf775e6": "Visa fynd för del {n}",
   "e273272382783e2c": "Accepterad",
   "e349d13d69961e52": "adressen innehåller ett användarnamn eller lösenord",
+  "e5567d65ffdb88e2": "Inte installerad.",
   "e727bdbb71e2eb84": "Filtrera uppgifter",
   "e76ca803d5bf3048": "Godkänd",
+  "e78f5c54ea4982f2": "Några av proxyns filer eller dess hubb kunde inte tas bort. Avinstallera igen.",
   "e7c99bd54278936b": "Visa plan",
+  "e86c76292ee9d1e5": "Det du sparar i konsolen finns kvar. Servern ställer in adressen, porten, hanteringsnyckeln och inloggningsmappen igen varje gång proxyn startar, och plugins och nätverksupptäckt är inte tillgängliga för den.",
   "e879c04b416eb751": "Kunde inte spara uppgiften.",
   "e8bd3f4ca3459a59": "Osäker",
   "e8e8d87e6fc02fc6": "Redo",
@@ -13454,6 +13647,7 @@
   "ef007096642f36fe": "Väntar på godkännande",
   "f01ee5fb1a1cfbb9": "flödet är varken RSS 2.0 eller Atom 1.0",
   "f0df0ef7081848c5": "Dölj fynd",
+  "f14490ae9c6e24b8": "Ta bort bevarade inloggningar",
   "f1883a8babfa2e18": "Kritiskt granskad",
   "f2e489303c279848": "Dess väntande och avgjorda objekt lämnar Signaler. Redan intagna uppgifter finns kvar.",
   "f384dfd0feb7b59d": {
@@ -13489,8 +13683,10 @@
       "t": "p"
     }
   },
+  "f3e544786f4c9b6b": "Proxyns installerade filer eller dess nyckel saknas, kan inte läsas eller har ändrats. Avinstallera, behåll inloggningarna, och installera igen.",
   "f4e8335020f33490": "Inget väntar.",
   "f52f0e92bd12adf4": "Inga fynd.",
+  "f7546ed96b48ea66": "Ingen port från 8317 till 8327 är ledig på den här maskinen.",
   "f937d61c9c85ea86": "Planen registrerar ingen ordning mellan sina delar.",
   "f94af8e25d3cfb42": "Signaler",
   "f966abe4b6a5d91f": "Stoppad",

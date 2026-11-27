@@ -3,10 +3,28 @@
   "02d5fa3cda9e56cd": "Not done",
   "03833d787c4c8e17": "the feed is larger than 256 KB",
   "0532ec85f9970a4a": "Software",
+  "05a4585797d30e34": [
+    "Pinned: CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", console",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
   "05ac7284b77b849c": "Use theirs",
   "05ce33cc16f8a854": "Prerequisites",
   "06491a5281cc2d5b": "Showing the newest 200 items.",
   "069abdf7d6ce5cf5": "Undo",
+  "073a25ded88a125a": "Usage is not connected to this proxy.",
   "0822282c37437989": "Open work",
   "0930858b7d7bdab6": "Project",
   "0a8bcf0e5974e640": "Question",
@@ -16,10 +34,14 @@
   "0d567a0fbe503c02": "Work is recorded for later.",
   "0ddb69435fb951d8": "Project",
   "0e7829110b2ebbbf": "Only its revision moved; none of its fields changed.",
+  "0f30543ecf6fd3bc": "The pin has no build of the proxy for this machine.",
   "0fe5811407f794ec": "No notes yet.",
+  "1009946ef341665a": "An install or uninstall was interrupted. Uninstall to clean up, then install again.",
   "1119c65be9b7bcc6": "Review",
   "114ebd0b99ebb95b": "Feeds",
+  "1188438b8ba6c36d": "Sign-ins from an earlier install are kept on this machine.",
   "121999b234ff2db3": "Blocked by",
+  "161ce3bef64dc505": "Changing the proxy needs a device paired with permission to manage providers on this environment.",
   "16543672eb03378c": "Task",
   "165803dbcb0970a8": "No tasks yet",
   "166dd770f23756a1": "Major",
@@ -32,9 +54,21 @@
   "1bad9d7b05e8f610": "Done",
   "1bc9734fc0696002": "the feed uses an entity XML does not define",
   "1bd9c23390d35939": "the server took longer than 5 seconds",
+  "1d555a5abc4e2167": [
+    "Running on port",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
   "1da04a9d790cb95b": "Title",
+  "211b165f3075a095": "The model proxy is busy with another change. Try again when it has finished.",
   "21254b0cf7488b28": "Rejected",
   "216c7e223db0c2c3": "Close the task",
+  "223f08b8db5c65f4": "The proxy's program could not be started.",
   "22a0c5d5c5121355": "Merge",
   "23aa75365aeeaecf": "Did not start",
   "23c5142879bffe19": "Go to task...",
@@ -54,28 +88,45 @@
   "274678b3367dacf0": "Hide findings for part {n}",
   "2782905be91e0179": "Nobody",
   "28e1ddaf54c703d5": "Done",
+  "2955125548dfef17": "Open it in a browser on that machine.",
   "29f578cc41aa9f45": "Could not put {task} back",
   "2a6452bf54cd9476": "Part of",
   "2abf58f8384fe4a8": "Assignee",
   "2b895ef0b0e9ad8c": "Number",
   "2c0aa5ba4eebc412": "Save",
+  "2c87759394b65c15": "Uninstall",
+  "2d171b3f2bfb1d88": "This server does not run from a Factory checkout, so it has no pinned manifest.",
   "2d566d79a5dfada8": "Model",
   "2d82b077c1a79f9e": "Done",
   "2da5e7fcc81de0f6": "Minor",
   "2dbd7dd181026a38": "Start",
   "2e1f42066eed2aa5": "Blocked",
+  "2f004248af316101": "The pinned manifest is missing or invalid, so nothing was fetched.",
   "3034167b1fed95ab": "The task was created but did not start.",
   "31938a4e8e21636b": "{count}+",
   "33544dea21c9d7c9": "Head moved",
   "339dae6f825c6866": "Make this thread the project's Orchestrator",
   "34fabd5b00324ca9": "Kind",
   "3acc2e4803ca995a": "Title",
+  "3ace5eff11c0f9f9": "On the selected machine, identify the process listening on this port before stopping anything. Once the port is free, choose Start.",
   "3bd8b55944df1bf4": "Open T-{number}",
   "3c0f7b24ac041b05": "Add a note",
   "3d08cdd31183989c": "Nothing needs you now.",
+  "3fc29e62ef7cb9af": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "is not connected"
+  ],
+  "3fe1ef14bc3e5dc0": "The proxy's archive did not hold exactly the five expected files. Nothing was installed.",
   "401acc7606948304": "Project",
   "410a433c8f7c9a69": "Assignee",
+  "4334b45d7d7d146f": "The proxy's hub could not be removed from this server's settings. Nothing was uninstalled. Try again.",
   "43b7f004759517c6": "Lane",
+  "443c6b0f4bd5c6ab": "The proxy's settings file cannot be read, so the proxy was not started. Uninstall, keeping sign-ins, and install again.",
   "443df25339924a1a": "Graph",
   "4601d8c6cfb99f21": "Work",
   "46fddc20d2f63b4c": "Tried:",
@@ -101,13 +152,25 @@
   "4fd41cd4bac9af2c": "Working",
   "513b0829d813281c": "Approved",
   "51d78514e4664564": "Stop following",
+  "51edd50ae2724586": "A pinned file could not be downloaded. Nothing was installed.",
+  "526095bfb6c23988": "Uninstall the model proxy?",
   "530fb0a2f5ef2231": "the host name could not be resolved",
+  "5358695254685d38": [
+    "The pin has no build for this machine (",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ")."
+  ],
   "5518fdfcf609d23d": "Feed address",
   "57194817096f4a56": "Admitted",
   "575baf31cbdf9bab": "the host resolves to a private, local or reserved address",
   "57b36fa6ad882791": "This task changed elsewhere",
   "5821325e13e8329b": "{count, plural, one {Work, {count} item needs you} other {Work, {count} items need you}}",
   "59a6d461bd74bdd2": "the server answered {status}",
+  "5a7b57a94fd37f07": "The model proxy is already installed on this server.",
   "5ad462f4acd1df24": "Work is under way or has been placed here manually.",
   "5bf5bb285f190ce3": "The plan cannot be shown. Open the run to see it.",
   "5cabe0f3106a1eca": "This server follows 20 feeds, the most it can.",
@@ -118,6 +181,16 @@
   "5fa5a990abec3975": "Not read yet",
   "60443360213f097d": "Decided",
   "61797b167ce0f4c9": "the server redirected, which Signals does not follow",
+  "619fbf565fe5931c": "A management key is 16 to 64 printable characters with no spaces.",
+  "61d02659d26642aa": [
+    "Model proxy on",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
   "6243b0090ac24fe0": "Column",
   "635ce74b53610864": {
     "t": "Plural",
@@ -157,7 +230,9 @@
   "66a5dbbae70d81ce": "Could not start the task.",
   "66fc6f5af8b33801": "Changed after it was admitted",
   "67e0bab89cac2736": "the address is not https",
+  "681ef78e5c4a2fce": "This server has no readable pinned manifest. The proxy can be installed only by a server that runs from a Factory checkout.",
   "6828296ea374e663": "Keep mine",
+  "689cbadd9c78ab60": "Installed and stopped.",
   "690a337e8dc06a36": [
     "Workflow runs could not load, so cards show no run state. Check workflows in",
     " ",
@@ -171,8 +246,11 @@
   "6a0656e8e0e14b1b": "Backlog",
   "6a24d37af543b392": "Admitted from a followed feed at revision {revision}. The item itself is in Signals.",
   "6a79e70aa91adb5c": "Not raised again",
+  "6ab05d286639293e": "Installing…",
   "6af1920a1db1a000": "None",
   "6df6d3f7a704fdc0": "Sealed",
+  "6e1321d322cc310f": "The proxy started five times without answering its management API and was not started again.",
+  "6e584fc66511e1f6": "Usage reads this proxy as the hub named Factory proxy.",
   "6e854b5468c726ae": "Project",
   "6e96ce482c3d701e": "Dismissed",
   "6ef815722cc9e485": "{n, plural, one {Signals, {n} item waiting} other {Signals, {n} items waiting}}",
@@ -180,10 +258,47 @@
   "6fbd0df6a44c288c": "Unlisted artifact",
   "6fd6d050dbc62587": "Needs you",
   "71509d79af0cc5de": "Nothing decided yet.",
+  "717e4da671441925": [
+    "The pin has moved to CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", console",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    ". Uninstall, keeping sign-ins, then install to move to it."
+  ],
   "7180adf1efc1dc6b": "Last read failed {date}: {reason}",
   "71b118ff5d9edcdb": "Protocol",
+  "7228aeee9ad7fd66": "A downloaded file did not match its pinned size or SHA-256. Nothing was installed.",
+  "728f745345c6b7e2": [
+    "Port",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "is in use. The last recorded proxy process ID was",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
   "735366a7be3e89d3": "File",
   "76a46c1775f13048": "Raised again",
+  "777e492521fb5acd": "Model proxy",
   "784cc87d53bef4c8": "Read {date}",
   "788c4835f1c28d4e": "{task} was dropped",
   "790c1653105ddbc3": "Review stuck",
@@ -196,16 +311,22 @@
   "7fdb1f8753f3532b": "Lane",
   "8093eaa7292a8a05": "This attempt made no plan.",
   "80b1e0d96c7b16f2": "Assignee",
+  "80f417f89cc031bb": "The model proxy is not installed on this server.",
+  "814d81c5aa5972ee": "An earlier proxy may still be running. On the selected machine, identify the process listening on the proxy port before stopping anything, then try again.",
   "81f42e4fe24fde8b": "Public https addresses on port 443 only. The server reads each feed at most once an hour and never opens the links inside.",
+  "8272831b240c3588": "Also remove the sign-ins it holds",
   "828fa78ef4e9dbb9": "Work breadcrumb",
   "830c1e7c48367144": "Round {at}",
   "8366df9f0cc4f27c": "Its title is the item's title. Write what you want done in it before you start it.",
   "83cdea9b8f365bb3": "the feed nests elements more than 32 deep",
+  "842fde6f13ecd74d": "The model proxy's settings file cannot be read. Uninstall, keeping sign-ins, then install again.",
+  "85b817ff89412d77": "The proxy's hub could not be turned off in this server's settings.",
   "85d0ee772919c83e": "Updated",
   "8722ba26b480af71": "Refuted",
   "8831bf8b03749675": "the feed is not plain UTF-8",
   "892065b607da928c": "This server has no task with that link.",
   "89b9819e837118f2": "Follow a feed on the Feeds tab to see its items here.",
+  "8a4dae605368b6a0": "The model proxy is not available on this server.",
   "8b14a12660038932": "Ready",
   "8b31ee36486f3ec1": "This server has no Work support",
   "8c4e70af62cadc27": "Dropped",
@@ -215,14 +336,28 @@
   "8ecb6aaa21d7a77c": "Knowledge",
   "8ed7ebb992529278": "You",
   "8ef6bd7b080d04e5": "Failed",
+  "90f6200d64701328": "This install generates its key, which is never shown, so the console cannot be used. To use it, uninstall, keeping sign-ins, then install with a key you type.",
   "9160bff2a14a7bbf": "Not started yet.",
   "91fe864350610824": "Dropped",
   "92265c1181a4bced": "Admitted as T-{number}",
   "922d764133c8c427": "the feed declares a DTD or entities",
+  "9318b94feca01612": "Installs the pinned CLIProxyAPI on this environment's machine, runs it beside the server and connects Usage to it. It listens on that machine only.",
   "93d697753aca4033": "Nit",
+  "95e902781dfaab8f": [
+    "Starting again after it stopped, attempt",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "of 5…"
+  ],
   "96a6809814dca07e": "List",
   "96dfc9f03d480197": "Approve plan",
   "97e74d10555a5e2b": "Roll up parents",
+  "98d4d87d8f20aa5c": "Management key (optional)",
   "9922804e4af97f5b": "None",
   "9a081baf4574cff9": "Kind",
   "9b7329363a9a50b0": "Needs you",
@@ -265,14 +400,27 @@
   "9f5f9a79d7041da4": "Hide plan",
   "9f62431445e9e436": "{name} is not connected. Create the task once it reconnects.",
   "9fca94148b0130b4": "Promoted",
+  "a0e1faa6b01b4f41": [
+    "The proxy is stopped, its program, settings and keys are deleted from",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", and its hub is removed from Usage."
+  ],
   "a0f7d217daefa9db": "Review",
   "a11a289f43a92f17": "Description",
   "a1fd8b8c39d2e390": "Survived the disprove step",
   "a26c1d48b7de6b24": "Artifacts and receipts",
+  "a38cf2c6ea18b77f": "Failed.",
   "a3a54668bf39c221": "Not approved",
   "a58a2368e460fc8b": "Showing the newest 2,000 tasks.",
+  "a5ec8ea5b94f845a": "The proxy is running, but its hub could not be saved in this server's settings.",
   "a7be4068ae6036da": "Show tasks as",
   "a918f97d604bd414": "Reviewed at {head}, a head that then moved. Its findings decide nothing.",
+  "aab68a46808ee916": "Sign-ins are kept and used again by the next install.",
   "ad62b2323babbed2": "{count, plural, one {{count} refuted} other {{count} refuted}}",
   "adae883fd7189da7": "Loading tasks…",
   "aea8f73a29717a31": "Close",
@@ -284,13 +432,17 @@
   "b609a4988213005b": "Could not stop following this feed",
   "b6221630968b378a": "Its tasks show again when it reconnects. Pick another environment to see its tasks.",
   "b6643b9f882a16a0": "The task run completed or someone marked the task done.",
+  "b6df2dbde5ec3d78": "Console:",
   "b91b85035d1be697": "Blocker",
   "b9755d2c4d7df997": "Started without approval",
+  "bba1e3a22505b87f": "Starting…",
   "bbf426541c7a09ce": "Admit",
+  "bcc9a4b1c42d2680": "Start",
   "bd392f2728e0cc81": "Items from public feeds this server follows. Nothing here runs by itself. Admit adds a Backlog task, not started, with the item's title; the item's text and link stay here.",
   "bd532ceeb541bb77": "Show findings",
   "bdc47e01d7e0b74f": "Project",
   "bdc8a79834c2f462": "{task} {title}, {column}, blocked by {blockers}",
+  "bdcae9e67c0d6f8d": "The proxy's files could not be written. Nothing was installed.",
   "bedd76860db784e5": "Workflows are off on this server, so feeds are not read.",
   "bf39074b8186ab35": "Open run",
   "bf6a241f0ac4628a": "Results",
@@ -299,7 +451,19 @@
   "c1ebc11561c5569e": "{column}, from children",
   "c3c3eee7650ee5b7": "the address uses a port other than 443",
   "c3cf36342aa39f5b": "Open run",
+  "c478c48ff2ccaf97": "Type one if you want to sign in to the proxy's console. Leave it empty and the server generates a key that is never shown. 16 to 64 characters, no spaces.",
   "c486174a9fcdbd6f": "Evidence",
+  "c5ffc77487db10e7": [
+    "Port",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "is in use by another program."
+  ],
   "c71e095a16303b19": "Could not create the task.",
   "c776a66a7ac127a4": {
     "t": "Plural",
@@ -335,12 +499,31 @@
     }
   },
   "c9001d648bcdb06a": "Changes asked",
+  "ca0372384b2cea51": "Sign in with the management key you typed when installing.",
+  "cb17c315bf0817cb": "The proxy stopped five times in a row and was not started again.",
   "cc78c0c57bcb0361": "Part of",
   "cde1887cb7981573": "The Factory workflow pack is not installed on this server.",
   "cf13d3cec58613fb": "No project",
   "cf75789d434680ab": "The plan could not load. Open the run to see it.",
   "d35730dea8ec42d4": "Title",
   "d3d1343241c287e7": "Next item needing me",
+  "d7839dbea6b6cb69": [
+    "Installed: CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", console",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
   "d835a4bb4e0136ce": "the connection failed",
   "d88d19c6c85c3d47": "Kind",
   "d9170272700d12c0": "Filter by title or T-number",
@@ -380,6 +563,16 @@
       "t": "p"
     }
   },
+  "db7ad9875ad1872f": [
+    "Its last exit code was",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
   "dba8de737cad1d51": "The graph shows the newest {shown} of {count} tasks. Filter to see the rest.",
   "dd598f9a66578985": "From children",
   "de681e69363df52f": "Model",
@@ -396,9 +589,12 @@
   "e0639f900bf775e6": "Show findings for part {n}",
   "e273272382783e2c": "Accepted",
   "e349d13d69961e52": "the address holds a user name or password",
+  "e5567d65ffdb88e2": "Not installed.",
   "e727bdbb71e2eb84": "Filter tasks",
   "e76ca803d5bf3048": "Approved",
+  "e78f5c54ea4982f2": "Some of the proxy's files or its hub could not be removed. Uninstall again.",
   "e7c99bd54278936b": "View plan",
+  "e86c76292ee9d1e5": "What you save in the console is kept. The server sets the address, the port, the management key and the sign-in folder again each time the proxy starts, and plugins and network discovery are not available for it.",
   "e879c04b416eb751": "Could not save the task.",
   "e8bd3f4ca3459a59": "Uncertain",
   "e8e8d87e6fc02fc6": "Ready",
@@ -460,6 +656,7 @@
   "ef007096642f36fe": "Waiting for approval",
   "f01ee5fb1a1cfbb9": "the feed is neither RSS 2.0 nor Atom 1.0",
   "f0df0ef7081848c5": "Hide findings",
+  "f14490ae9c6e24b8": "Remove kept sign-ins",
   "f1883a8babfa2e18": "Critiqued",
   "f2e489303c279848": "Its waiting and decided items leave Signals. Tasks already admitted stay.",
   "f384dfd0feb7b59d": {
@@ -495,8 +692,10 @@
       "t": "p"
     }
   },
+  "f3e544786f4c9b6b": "The proxy's installed files or its key are missing, unreadable or changed. Uninstall, keeping sign-ins, and install again.",
   "f4e8335020f33490": "Nothing is waiting.",
   "f52f0e92bd12adf4": "No findings.",
+  "f7546ed96b48ea66": "No port from 8317 to 8327 is free on this machine.",
   "f937d61c9c85ea86": "The plan records no order between its parts.",
   "f94af8e25d3cfb42": "Signals",
   "f966abe4b6a5d91f": "Stopped",

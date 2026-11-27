@@ -510,5 +510,194 @@
       "k": "_gt_value_2",
       "v": "v"
     }
-  ]
+  ],
+  "05a4585797d30e34": [
+    "Angepinnt: CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", Konsole",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
+  "073a25ded88a125a": "Usage ist nicht mit diesem Proxy verbunden.",
+  "0f30543ecf6fd3bc": "Für die angepinnte Version gibt es keinen Build des Proxys für diesen Rechner.",
+  "1009946ef341665a": "Eine Installation oder Deinstallation wurde unterbrochen. Deinstalliere, um aufzuräumen, und installiere dann erneut.",
+  "1188438b8ba6c36d": "Anmeldungen einer früheren Installation bleiben auf diesem Rechner erhalten.",
+  "161ce3bef64dc505": "Um den Proxy zu ändern, wird ein gekoppeltes Gerät mit der Berechtigung benötigt, Provider auf dieser Umgebung zu verwalten.",
+  "1d555a5abc4e2167": [
+    "Läuft auf Port",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
+  "211b165f3075a095": "Der Modell-Proxy ist mit einer anderen Änderung beschäftigt. Versuche es erneut, wenn er fertig ist.",
+  "223f08b8db5c65f4": "Das Programm des Proxys konnte nicht gestartet werden.",
+  "2955125548dfef17": "Öffne es in einem Browser auf diesem Rechner.",
+  "2c87759394b65c15": "Deinstallieren",
+  "2d171b3f2bfb1d88": "Dieser Server läuft nicht aus einem Factory-Checkout, daher hat er kein angepinntes Manifest.",
+  "2f004248af316101": "Das angepinnte Manifest fehlt oder ist ungültig, daher wurde nichts geladen.",
+  "3ace5eff11c0f9f9": "Ermittle auf dem ausgewählten Rechner, welcher Prozess diesen Port verwendet, bevor du etwas beendest. Wähle Starten, sobald der Port frei ist.",
+  "3fc29e62ef7cb9af": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "ist nicht verbunden"
+  ],
+  "3fe1ef14bc3e5dc0": "Das Archiv des Proxys enthielt nicht genau die fünf erwarteten Dateien. Es wurde nichts installiert.",
+  "4334b45d7d7d146f": "Der Hub des Proxys konnte nicht aus den Einstellungen dieses Servers entfernt werden. Es wurde nichts deinstalliert. Versuche es erneut.",
+  "443c6b0f4bd5c6ab": "Die Einstellungsdatei des Proxys kann nicht gelesen werden, daher wurde der Proxy nicht gestartet. Deinstalliere unter Beibehaltung der Anmeldungen und installiere dann erneut.",
+  "51edd50ae2724586": "Eine angepinnte Datei konnte nicht heruntergeladen werden. Es wurde nichts installiert.",
+  "526095bfb6c23988": "Modell-Proxy deinstallieren?",
+  "5358695254685d38": [
+    "Für die angepinnte Version gibt es keinen Build für diesen Rechner (",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ")."
+  ],
+  "5a7b57a94fd37f07": "Der Modell-Proxy ist auf diesem Server bereits installiert.",
+  "619fbf565fe5931c": "Ein Verwaltungsschlüssel besteht aus 16 bis 64 druckbaren Zeichen ohne Leerzeichen.",
+  "61d02659d26642aa": [
+    "Modell-Proxy auf",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "681ef78e5c4a2fce": "Dieser Server hat kein lesbares angepinntes Manifest. Den Proxy kann nur ein Server installieren, der aus einem Factory-Checkout läuft.",
+  "689cbadd9c78ab60": "Installiert und gestoppt.",
+  "6ab05d286639293e": "Wird installiert…",
+  "6e1321d322cc310f": "Der Proxy wurde fünfmal gestartet, ohne seine Verwaltungs-API zu beantworten, und nicht erneut gestartet.",
+  "6e584fc66511e1f6": "Usage liest diesen Proxy als Hub mit dem Namen Factory proxy.",
+  "717e4da671441925": [
+    "Die angepinnte Version ist jetzt CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", Konsole",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    ". Deinstalliere unter Beibehaltung der Anmeldungen und installiere dann erneut, um zu wechseln."
+  ],
+  "7228aeee9ad7fd66": "Eine heruntergeladene Datei stimmte nicht mit der angepinnten Größe oder dem angepinnten SHA-256 überein. Es wurde nichts installiert.",
+  "728f745345c6b7e2": [
+    "Port ",
+    { "i": 1, "k": "_gt_value_1", "v": "v" },
+    " ist belegt. Die zuletzt erfasste Prozess-ID des Proxys war ",
+    { "i": 2, "k": "_gt_value_2", "v": "v" },
+    "."
+  ],
+  "777e492521fb5acd": "Modell-Proxy",
+  "80f417f89cc031bb": "Der Modell-Proxy ist auf diesem Server nicht installiert.",
+  "814d81c5aa5972ee": "Möglicherweise läuft noch ein früherer Proxy. Ermittle auf dem ausgewählten Rechner, welcher Prozess den Proxy-Port verwendet, bevor du etwas beendest. Versuche es dann erneut.",
+  "8272831b240c3588": "Auch die enthaltenen Anmeldungen entfernen",
+  "842fde6f13ecd74d": "Die Einstellungsdatei des Modell-Proxys kann nicht gelesen werden. Deinstalliere unter Beibehaltung der Anmeldungen und installiere dann erneut.",
+  "85b817ff89412d77": "Der Hub des Proxys konnte in den Einstellungen dieses Servers nicht ausgeschaltet werden.",
+  "8a4dae605368b6a0": "Der Modell-Proxy ist auf diesem Server nicht verfügbar.",
+  "90f6200d64701328": "Diese Installation erzeugt ihren Schlüssel, der nie angezeigt wird, daher kann die Konsole nicht benutzt werden. Um sie zu benutzen, deinstalliere unter Beibehaltung der Anmeldungen und installiere dann mit einem Schlüssel, den du eingibst.",
+  "9318b94feca01612": "Installiert die angepinnte CLIProxyAPI auf dem Rechner dieser Umgebung, führt sie neben dem Server aus und verbindet Usage damit. Sie lauscht nur auf diesem Rechner.",
+  "95e902781dfaab8f": [
+    "Neustart nach dem Stopp, Versuch",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "von 5…"
+  ],
+  "98d4d87d8f20aa5c": "Verwaltungsschlüssel (optional)",
+  "a38cf2c6ea18b77f": "Fehlgeschlagen.",
+  "a5ec8ea5b94f845a": "Der Proxy läuft, aber sein Hub konnte nicht in den Einstellungen dieses Servers gespeichert werden.",
+  "aab68a46808ee916": "Anmeldungen bleiben erhalten und werden von der nächsten Installation wieder verwendet.",
+  "b6df2dbde5ec3d78": "Konsole:",
+  "bba1e3a22505b87f": "Wird gestartet…",
+  "bcc9a4b1c42d2680": "Starten",
+  "bdcae9e67c0d6f8d": "Die Dateien des Proxys konnten nicht geschrieben werden. Es wurde nichts installiert.",
+  "c478c48ff2ccaf97": "Gib einen ein, wenn du dich bei der Konsole des Proxys anmelden willst. Lass das Feld leer und der Server erzeugt einen Schlüssel, der nie angezeigt wird. 16 bis 64 Zeichen, keine Leerzeichen.",
+  "c5ffc77487db10e7": [
+    "Port",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "wird von einem anderen Programm benutzt."
+  ],
+  "ca0372384b2cea51": "Melde dich mit dem Verwaltungsschlüssel an, den du bei der Installation eingegeben hast.",
+  "cb17c315bf0817cb": "Der Proxy wurde fünfmal hintereinander gestoppt und nicht erneut gestartet.",
+  "d7839dbea6b6cb69": [
+    "Installiert: CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", Konsole",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
+  "a0e1faa6b01b4f41": [
+    "Der Proxy ist gestoppt, sein Programm, seine Einstellungen und seine Schlüssel werden von",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "gelöscht und sein Hub wird aus Usage entfernt."
+  ],
+  "db7ad9875ad1872f": [
+    "Sein letzter Exit-Code war",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
+  "e5567d65ffdb88e2": "Nicht installiert.",
+  "e78f5c54ea4982f2": "Einige Dateien des Proxys oder sein Hub konnten nicht entfernt werden. Deinstalliere erneut.",
+  "e86c76292ee9d1e5": "Was du in der Konsole speicherst, bleibt erhalten. Der Server setzt Adresse, Port, Verwaltungsschlüssel und Anmeldeordner bei jedem Start des Proxys neu, und Plugins und Netzwerkerkennung stehen dafür nicht zur Verfügung.",
+  "f14490ae9c6e24b8": "Behaltene Anmeldungen entfernen",
+  "f3e544786f4c9b6b": "Die installierten Dateien des Proxys oder sein Schlüssel fehlen, sind unlesbar oder wurden geändert. Deinstalliere unter Beibehaltung der Anmeldungen und installiere dann erneut.",
+  "f7546ed96b48ea66": "Auf diesem Rechner ist kein Port von 8317 bis 8327 frei."
 }

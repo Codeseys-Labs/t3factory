@@ -22,6 +22,7 @@
     { "path": "apps/server/src/ws.ts", "maxAdded": 5 },
     { "path": "apps/server/src/orchestration-v2/runtimeLayer.ts", "maxAdded": 4 },
     { "path": "apps/server/src/observability/RpcInstrumentation.ts", "maxAdded": 8 },
+    { "path": "apps/server/src/serverSettings.ts", "maxAdded": 13 },
     { "path": "packages/client-runtime/src/rpc/client.ts", "maxAdded": 5 },
     { "path": "apps/web/src/components/sidebar/SidebarChrome.tsx", "maxAdded": 4 },
     { "path": "apps/web/src/components/sidebar/mainAppLocation.ts", "maxAdded": 4 },

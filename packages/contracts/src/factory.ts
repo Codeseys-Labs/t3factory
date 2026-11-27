@@ -6,6 +6,7 @@ import * as RpcGroup from "effect/rpc/RpcGroup";
 import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
+  AuthProvidersManageScope,
   EnvironmentAuthorizationError,
 } from "./auth.ts";
 import {
@@ -448,6 +449,97 @@ export function applyFactoryTasksUpdate(
   };
 }
 
+export const FACTORY_PROXY_SOURCE_ID = "factory-proxy";
+export const FACTORY_PROXY_PORT_FIRST = 8317;
+export const FACTORY_PROXY_PORT_LAST = 8327;
+export const FACTORY_PROXY_KEY_PATTERN = /^[\x21-\x7E]{16,64}$/;
+
+export const FactoryProxyState = Schema.Literals([
+  "not-installed",
+  "installing",
+  "stopped",
+  "starting",
+  "running",
+  "failed",
+  "port-in-use",
+]);
+export type FactoryProxyState = typeof FactoryProxyState.Type;
+export const FactoryProxyHub = Schema.Literals([
+  "connected",
+  "disconnected",
+  "enable-refused",
+  "disable-refused",
+  "remove-refused",
+]);
+export type FactoryProxyHub = typeof FactoryProxyHub.Type;
+export const FactoryProxyProblem = Schema.Literals([
+  "download",
+  "verify",
+  "archive",
+  "write",
+  "interrupted",
+  "leftover",
+  "damaged",
+  "config-unreadable",
+  "spawn",
+  "exited",
+  "unhealthy",
+]);
+export type FactoryProxyProblem = typeof FactoryProxyProblem.Type;
+export const FactoryProxyRefusal = Schema.Literals([
+  "unavailable",
+  "busy",
+  "invalid-key",
+  "not-installed",
+  "already-installed",
+  "unsupported-platform",
+  "manifest",
+  "no-checkout",
+  "no-free-port",
+  "earlier-run",
+  "config-unreadable",
+  "remove-refused",
+]);
+export type FactoryProxyRefusal = typeof FactoryProxyRefusal.Type;
+export const FactoryProxyVersions = Schema.Struct({ proxy: Schema.String, console: Schema.String });
+export type FactoryProxyVersions = typeof FactoryProxyVersions.Type;
+export const FactoryProxyStatus = Schema.Struct({
+  state: FactoryProxyState,
+  desired: Schema.NullOr(Schema.Literals(["running", "stopped"])),
+  hub: FactoryProxyHub,
+  platform: Schema.String,
+  supported: Schema.Boolean,
+  pinned: Schema.NullOr(FactoryProxyVersions),
+  installed: Schema.NullOr(FactoryProxyVersions),
+  port: Schema.NullOr(Schema.Int),
+  consoleUrl: Schema.NullOr(Schema.String),
+  consoleKey: Schema.NullOr(Schema.Literals(["typed", "generated"])),
+  credentials: Schema.Boolean,
+  restarts: NonNegativeInt,
+  pid: Schema.NullOr(Schema.Int),
+  exitCode: Schema.NullOr(Schema.Int),
+  problem: Schema.NullOr(FactoryProxyProblem),
+});
+export type FactoryProxyStatus = typeof FactoryProxyStatus.Type;
+export const FactoryProxyNoInput = Schema.Struct({});
+export type FactoryProxyNoInput = typeof FactoryProxyNoInput.Type;
+export const FactoryProxyInstallInput = Schema.Struct({
+  managementKey: Schema.optionalKey(Schema.RedactedFromValue(Schema.String)),
+});
+export type FactoryProxyInstallInput = typeof FactoryProxyInstallInput.Type;
+export const FactoryProxyUninstallInput = Schema.Struct({
+  removeCredentials: Schema.Boolean,
+  onlyCredentials: Schema.optionalKey(Schema.Boolean),
+});
+export type FactoryProxyUninstallInput = typeof FactoryProxyUninstallInput.Type;
+export class FactoryProxyError extends Schema.TaggedError<FactoryProxyError>()(
+  "FactoryProxyError",
+  {
+    reason: FactoryProxyRefusal,
+    message: Schema.String,
+  },
+) {}
+
 export const FACTORY_WS_METHODS = {
   factoryTasksSubscribe: "factory.tasks.subscribe",
   factoryTasksGet: "factory.tasks.get",
@@ -460,6 +552,11 @@ export const FACTORY_WS_METHODS = {
   factorySignalFeedsRemove: "factory.signals.feeds.remove",
   factorySignalsAdmit: "factory.signals.admit",
   factorySignalsDismiss: "factory.signals.dismiss",
+  factoryProxyStatus: "factory.proxy.status",
+  factoryProxyStart: "factory.proxy.start",
+  factoryProxyStop: "factory.proxy.stop",
+  factoryProxyInstall: "factory.proxy.install",
+  factoryProxyUninstall: "factory.proxy.uninstall",
 } as const;
 
 const FactoryTaskRequestError = Schema.Union([FactoryTaskError, EnvironmentAuthorizationError]);
@@ -529,6 +626,11 @@ const FactorySignalsDismissRpc = Rpc.make(FACTORY_WS_METHODS.factorySignalsDismi
   error: FactoryTaskRequestError,
 });
 
+const proxyResult = {
+  success: FactoryProxyStatus,
+  error: Schema.Union([FactoryProxyError, EnvironmentAuthorizationError]),
+};
+
 export const FactoryRpcGroup = RpcGroup.make(
   FactoryTasksSubscribeRpc,
   FactoryTasksGetRpc,
@@ -541,6 +643,17 @@ export const FactoryRpcGroup = RpcGroup.make(
   FactorySignalFeedsRemoveRpc,
   FactorySignalsAdmitRpc,
   FactorySignalsDismissRpc,
+  Rpc.make(FACTORY_WS_METHODS.factoryProxyStatus, { payload: FactoryProxyNoInput, ...proxyResult }),
+  Rpc.make(FACTORY_WS_METHODS.factoryProxyStart, { payload: FactoryProxyNoInput, ...proxyResult }),
+  Rpc.make(FACTORY_WS_METHODS.factoryProxyStop, { payload: FactoryProxyNoInput, ...proxyResult }),
+  Rpc.make(FACTORY_WS_METHODS.factoryProxyInstall, {
+    payload: FactoryProxyInstallInput,
+    ...proxyResult,
+  }),
+  Rpc.make(FACTORY_WS_METHODS.factoryProxyUninstall, {
+    payload: FactoryProxyUninstallInput,
+    ...proxyResult,
+  }),
 );
 
 export const FACTORY_RPC_AGGREGATES = {
@@ -555,12 +668,18 @@ export const FACTORY_RPC_AGGREGATES = {
   [FACTORY_WS_METHODS.factorySignalFeedsRemove]: "factory",
   [FACTORY_WS_METHODS.factorySignalsAdmit]: "factory",
   [FACTORY_WS_METHODS.factorySignalsDismiss]: "factory",
+  [FACTORY_WS_METHODS.factoryProxyStatus]: "factory",
+  [FACTORY_WS_METHODS.factoryProxyStart]: "factory",
+  [FACTORY_WS_METHODS.factoryProxyStop]: "factory",
+  [FACTORY_WS_METHODS.factoryProxyInstall]: "factory",
+  [FACTORY_WS_METHODS.factoryProxyUninstall]: "factory",
 } as const;
 
 export const FACTORY_RPC_READ_SCOPES = {
   [FACTORY_WS_METHODS.factoryTasksSubscribe]: AuthOrchestrationReadScope,
   [FACTORY_WS_METHODS.factoryTasksGet]: AuthOrchestrationReadScope,
   [FACTORY_WS_METHODS.factorySignalsList]: AuthOrchestrationReadScope,
+  [FACTORY_WS_METHODS.factoryProxyStatus]: AuthOrchestrationReadScope,
 } as const;
 
 export const FACTORY_CLIENT_GUARDED_RPC_SCOPES = {
@@ -572,4 +691,8 @@ export const FACTORY_CLIENT_GUARDED_RPC_SCOPES = {
   [FACTORY_WS_METHODS.factorySignalFeedsRemove]: AuthOrchestrationOperateScope,
   [FACTORY_WS_METHODS.factorySignalsAdmit]: AuthOrchestrationOperateScope,
   [FACTORY_WS_METHODS.factorySignalsDismiss]: AuthOrchestrationOperateScope,
+  [FACTORY_WS_METHODS.factoryProxyStart]: AuthProvidersManageScope,
+  [FACTORY_WS_METHODS.factoryProxyStop]: AuthProvidersManageScope,
+  [FACTORY_WS_METHODS.factoryProxyInstall]: AuthProvidersManageScope,
+  [FACTORY_WS_METHODS.factoryProxyUninstall]: AuthProvidersManageScope,
 } as const;

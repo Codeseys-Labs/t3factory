@@ -3,6 +3,7 @@ import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
   type AtomCommandResult,
+  createAtomCommandScheduler,
   createEnvironmentRpcCommand,
   createEnvironmentRpcQueryAtomFamily,
   createEnvironmentRpcSubscriptionAtomFamily,
@@ -13,12 +14,15 @@ import {
   applyFactoryTasksUpdate,
   type EnvironmentId,
   FACTORY_WS_METHODS,
+  type FactoryProxyRefusal,
+  type FactoryProxyStatus,
   type FactorySignalCandidate,
   type FactoryTasksSnapshot,
   type ProjectId,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import type * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
@@ -94,6 +98,92 @@ export const startFactoryTask = createEnvironmentRpcCommand(connectionAtomRuntim
     mode: "singleFlight",
     key: ({ environmentId, input }) => JSON.stringify([environmentId, input.taskId]),
   },
+});
+
+const STATUS_REFRESH_MS = 2000;
+
+const proxyStatusRevision = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make(0).pipe(Atom.keepAlive, Atom.withLabel(`factory:proxy:revision:${environmentId}`)),
+);
+
+type ProxyChange =
+  | { readonly kind: "pending" }
+  | { readonly kind: "answered"; readonly status: FactoryProxyStatus }
+  | { readonly kind: "refused"; readonly reason: FactoryProxyRefusal | "permission" };
+
+// Commands and refusals outlive the dialog; an answer is kept only until the live read returns.
+export const factoryProxyChange = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make<ProxyChange | null>(null).pipe(
+    Atom.keepAlive,
+    Atom.withLabel(`factory:proxy:change:${environmentId}`),
+  ),
+);
+
+const proxyStatusQuery = {
+  tag: FACTORY_WS_METHODS.factoryProxyStatus,
+  refreshTrigger: ({ environmentId }: { readonly environmentId: EnvironmentId }) =>
+    proxyStatusRevision(environmentId),
+};
+
+export const factoryProxyStatus = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+  ...proxyStatusQuery,
+  label: "environment-data:factory:proxy:status",
+});
+
+export const factoryProxyStatusLive = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+  ...proxyStatusQuery,
+  label: "environment-data:factory:proxy:status-live",
+  refreshIntervalMs: STATUS_REFRESH_MS,
+  idleTtlMs: 0,
+  onAnswer: ({ environmentId }, _status, registry) =>
+    Effect.sync(() => {
+      const change = factoryProxyChange(environmentId);
+      if (registry.get(change)?.kind === "answered") registry.set(change, null);
+    }),
+});
+
+const proxyChange = {
+  scheduler: createAtomCommandScheduler(),
+  concurrency: {
+    mode: "singleFlight",
+    key: ({ environmentId }: { readonly environmentId: EnvironmentId }) => environmentId,
+  },
+  onSettled: (
+    { environmentId }: { readonly environmentId: EnvironmentId },
+    registry: AtomRegistry.AtomRegistry,
+    exit: Exit.Exit<FactoryProxyStatus, unknown>,
+  ) =>
+    Effect.sync(() => {
+      const revision = proxyStatusRevision(environmentId);
+      if (exit._tag === "Success") {
+        registry.set(factoryProxyChange(environmentId), { kind: "answered", status: exit.value });
+      }
+      registry.set(revision, registry.get(revision) + 1);
+    }),
+} as const;
+
+export const installFactoryProxy = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  ...proxyChange,
+  label: "environment-data:factory:proxy:install",
+  tag: FACTORY_WS_METHODS.factoryProxyInstall,
+});
+
+export const startFactoryProxy = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  ...proxyChange,
+  label: "environment-data:factory:proxy:start",
+  tag: FACTORY_WS_METHODS.factoryProxyStart,
+});
+
+export const stopFactoryProxy = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  ...proxyChange,
+  label: "environment-data:factory:proxy:stop",
+  tag: FACTORY_WS_METHODS.factoryProxyStop,
+});
+
+export const uninstallFactoryProxy = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  ...proxyChange,
+  label: "environment-data:factory:proxy:uninstall",
+  tag: FACTORY_WS_METHODS.factoryProxyUninstall,
 });
 
 // Moved by every successful feed or decision command of an environment. Both list views read it,

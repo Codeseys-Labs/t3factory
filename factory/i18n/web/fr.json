@@ -510,5 +510,194 @@
       "k": "_gt_value_2",
       "v": "v"
     }
-  ]
+  ],
+  "05a4585797d30e34": [
+    "Épinglé : CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", console",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
+  "073a25ded88a125a": "Usage n’est pas connecté à ce proxy.",
+  "0f30543ecf6fd3bc": "La version épinglée n’a pas de build du proxy pour cette machine.",
+  "1009946ef341665a": "Une installation ou une désinstallation a été interrompue. Désinstallez pour nettoyer, puis réinstallez.",
+  "1188438b8ba6c36d": "Les connexions d’une installation précédente sont conservées sur cette machine.",
+  "161ce3bef64dc505": "Modifier le proxy exige un appareil appairé avec l’autorisation de gérer des fournisseurs sur cet environnement.",
+  "1d555a5abc4e2167": [
+    "Fonctionne sur le port",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
+  "211b165f3075a095": "Le proxy de modèles est occupé par un autre changement. Réessayez quand il a terminé.",
+  "223f08b8db5c65f4": "Le programme du proxy n’a pas pu être démarré.",
+  "2955125548dfef17": "Ouvrez-le dans un navigateur sur cette machine.",
+  "2c87759394b65c15": "Désinstaller",
+  "2d171b3f2bfb1d88": "Ce serveur ne s’exécute pas depuis un checkout de Factory, il n’a donc pas de manifeste épinglé.",
+  "2f004248af316101": "Le manifeste épinglé est absent ou invalide, rien n’a donc été récupéré.",
+  "3ace5eff11c0f9f9": "Sur la machine sélectionnée, identifiez le processus qui écoute sur ce port avant d’arrêter quoi que ce soit. Une fois le port libre, choisissez Démarrer.",
+  "3fc29e62ef7cb9af": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "n’est pas connecté"
+  ],
+  "3fe1ef14bc3e5dc0": "L’archive du proxy ne contenait pas exactement les cinq fichiers attendus. Rien n’a été installé.",
+  "4334b45d7d7d146f": "Le hub du proxy n’a pas pu être retiré des paramètres de ce serveur. Rien n’a été désinstallé. Réessayez.",
+  "443c6b0f4bd5c6ab": "Le fichier de configuration du proxy ne peut pas être lu, le proxy n’a donc pas été démarré. Désinstallez en conservant les connexions, puis réinstallez.",
+  "51edd50ae2724586": "Un fichier épinglé n’a pas pu être téléchargé. Rien n’a été installé.",
+  "526095bfb6c23988": "Désinstaller le proxy de modèles ?",
+  "5358695254685d38": [
+    "La version épinglée n’a pas de build pour cette machine (",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ")."
+  ],
+  "5a7b57a94fd37f07": "Le proxy de modèles est déjà installé sur ce serveur.",
+  "619fbf565fe5931c": "Une clé de gestion compte de 16 à 64 caractères imprimables, sans espaces.",
+  "61d02659d26642aa": [
+    "Proxy de modèles sur",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "681ef78e5c4a2fce": "Ce serveur n’a pas de manifeste épinglé lisible. Le proxy ne peut être installé que par un serveur qui s’exécute depuis un checkout de Factory.",
+  "689cbadd9c78ab60": "Installé et arrêté.",
+  "6ab05d286639293e": "Installation…",
+  "6e1321d322cc310f": "Le proxy a démarré cinq fois sans répondre à son API de gestion et n’a pas été redémarré.",
+  "6e584fc66511e1f6": "Usage lit ce proxy comme le hub nommé Factory proxy.",
+  "717e4da671441925": [
+    "La version épinglée est désormais CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", console",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    ". Désinstallez en conservant les connexions, puis installez pour y passer."
+  ],
+  "7228aeee9ad7fd66": "Un fichier téléchargé ne correspondait pas à sa taille ou à son SHA-256 épinglés. Rien n’a été installé.",
+  "728f745345c6b7e2": [
+    "Le port ",
+    { "i": 1, "k": "_gt_value_1", "v": "v" },
+    " est utilisé. Le dernier identifiant de processus relevé pour le proxy était ",
+    { "i": 2, "k": "_gt_value_2", "v": "v" },
+    "."
+  ],
+  "777e492521fb5acd": "Proxy de modèles",
+  "80f417f89cc031bb": "Le proxy de modèles n’est pas installé sur ce serveur.",
+  "814d81c5aa5972ee": "Un ancien proxy est peut-être encore en cours d’exécution. Sur la machine sélectionnée, identifiez le processus qui écoute sur le port du proxy avant d’arrêter quoi que ce soit, puis réessayez.",
+  "8272831b240c3588": "Retirer aussi les connexions qu’il contient",
+  "842fde6f13ecd74d": "Le fichier de configuration du proxy de modèles ne peut pas être lu. Désinstallez en conservant les connexions, puis réinstallez.",
+  "85b817ff89412d77": "Le hub du proxy n’a pas pu être désactivé dans les paramètres de ce serveur.",
+  "8a4dae605368b6a0": "Le proxy de modèles n’est pas disponible sur ce serveur.",
+  "90f6200d64701328": "Cette installation génère sa clé, qui n’est jamais affichée, la console ne peut donc pas être utilisée. Pour l’utiliser, désinstallez en conservant les connexions, puis installez avec une clé que vous saisissez.",
+  "9318b94feca01612": "Installe la CLIProxyAPI épinglée sur la machine de cet environnement, l’exécute à côté du serveur et connecte Usage à elle. Elle n’écoute que sur cette machine.",
+  "95e902781dfaab8f": [
+    "Redémarrage après l’arrêt, tentative",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "sur 5…"
+  ],
+  "98d4d87d8f20aa5c": "Clé de gestion (facultatif)",
+  "a38cf2c6ea18b77f": "Échec.",
+  "a5ec8ea5b94f845a": "Le proxy est en cours d’exécution, mais son hub n’a pas pu être enregistré dans les paramètres de ce serveur.",
+  "aab68a46808ee916": "Les connexions sont conservées et réutilisées par la prochaine installation.",
+  "b6df2dbde5ec3d78": "Console :",
+  "bba1e3a22505b87f": "Démarrage…",
+  "bcc9a4b1c42d2680": "Démarrer",
+  "bdcae9e67c0d6f8d": "Les fichiers du proxy n’ont pas pu être écrits. Rien n’a été installé.",
+  "c478c48ff2ccaf97": "Saisissez-en une si vous voulez vous connecter à la console du proxy. Laissez-la vide et le serveur génère une clé qui n’est jamais affichée. 16 à 64 caractères, sans espaces.",
+  "c5ffc77487db10e7": [
+    "Le port",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "est utilisé par un autre programme."
+  ],
+  "ca0372384b2cea51": "Connectez-vous avec la clé de gestion que vous avez saisie lors de l’installation.",
+  "cb17c315bf0817cb": "Le proxy s’est arrêté cinq fois de suite et n’a pas été redémarré.",
+  "d7839dbea6b6cb69": [
+    "Installé : CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", console",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
+  "a0e1faa6b01b4f41": [
+    "Le proxy est arrêté, son programme, ses paramètres et ses clés sont supprimés de",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "et son hub est retiré de Usage."
+  ],
+  "db7ad9875ad1872f": [
+    "Son dernier code de sortie était",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
+  "e5567d65ffdb88e2": "Non installé.",
+  "e78f5c54ea4982f2": "Certains fichiers du proxy ou son hub n’ont pas pu être retirés. Désinstallez à nouveau.",
+  "e86c76292ee9d1e5": "Ce que vous enregistrez dans la console est conservé. Le serveur redéfinit l’adresse, le port, la clé de gestion et le dossier de connexion à chaque démarrage du proxy, et les extensions et la découverte du réseau ne sont pas disponibles pour lui.",
+  "f14490ae9c6e24b8": "Retirer les connexions conservées",
+  "f3e544786f4c9b6b": "Les fichiers installés du proxy ou sa clé sont absents, illisibles ou modifiés. Désinstallez en conservant les connexions, puis réinstallez.",
+  "f7546ed96b48ea66": "Aucun port de 8317 à 8327 n’est libre sur cette machine."
 }

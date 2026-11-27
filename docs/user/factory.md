@@ -41,13 +41,13 @@ Press **Start** on a task, or tick the start option when you create it. Software
 3. Each part runs in its own worktree with its own agent. The agent opens a pull request when the project is a Git repository with a remote; with `baseRef` set, it is told to open it against that branch. The pull request must be one of the project's own, or the part stops.
 4. The workflow waits for the pull request's checks, then a separate review agent reads the change and lists its findings; [How review works](#how-review-works) says which ones block. If the checks fail or the review blocks the merge, the part's agent fixes it, up to two rounds by default. If it still does not pass, you choose **Merge anyway**, **Fix again** or **Stop**. **Fix again** needs a reason: the worker takes it as your ruling for one more round, and the next reviewer is shown it.
 5. When `askMerge` is on — or when the pull request classifies as `high` risk (protected paths, missing or mismatched scope/head SHA, unknown checks, or exhausted fix rounds) — you approve the merge; high-risk merges always require an in-app answer from a person even when `askMerge` is off. The pull request is then merged.
-6. A part with no pull request is shown to you instead, and you accept it or ask for a redo.
+6. A part with no pull request is shown to you instead. Choose **Accept** or **Redo**. If you choose **Redo** or withdraw the question, the task does not go to **Done**. Once all parts have ended, a question under **Needs you** says a part was not accepted. Answer **Seen** to end the attempt, then start the task again, edit it, or drop it. Nothing reruns the part for you.
 
 A task made from an issue asks each part's agent to reference that issue in its pull request description; when the description does not, the workflow comments `Refs <issue URL>` on the pull request. A fix round that pushes no new commit is reported as such, and the same commit is not checked or reviewed again. The merge question and the question for a part that did not pass review show the pull request, the agent's summary, how many fix rounds pushed a commit and how many pushed nothing, the notes of the latest review that was not stale, its open findings (blocking ones first, at most 20), how many findings the disprove pass refuted, and your rulings.
 
 If an agent runs out of time (`stepTimeout`), its thread is continued once from where it stopped rather than restarted. If it runs out again, the task shows **Failed** and waits in **Needs you**; resume the run on the Workflows page and the same thread carries on. An agent that you stopped, or whose turn could not be stopped, is not continued automatically: the part stops and says why.
 
-Starting again after a run stops makes a new attempt; the task lists its attempts, and any still-open pull requests from earlier attempts are passed to the worker so it updates them instead of opening duplicates. A task that is already running cannot be started, and neither can a dropped one, from the page or the command line.
+Starting again after a run stops makes a new attempt. The task lists its attempts, and the worker is shown any still-open pull requests from earlier attempts. A worker on this machine is asked to update the earlier pull request for its part; a worker on another machine is asked to open its own. A task that is already running cannot be started, and neither can a dropped one, from the page or the command line.
 
 Questions appear in two places. The **Needs you** strip sits above **Board**, **List** and **Graph** and lists every task whose run waits on you or has paused. Each item has a badge for what it waits on (**Approve plan**, **Merge**, **Accept**, **Review stuck**, **Failed** or **Question**), the task number and title, and **Open run**, which takes you to the run on the Workflows page, where you answer. When you answer an item or close its panel, focus moves to the next item in the strip, or to the one before it when that was the last, or to the strip's heading when none is left. **Next item needing me** opens the task of the oldest item, then the next one on each press; the command palette has the same command. The count on **Work** in the sidebar adds up the items of every server you are connected to; when a server's count cannot be known (it is disconnected, has workflows off, or refused), the count reads "at least". If a part's agent asks you something of its own, that question shows in the agent's thread as usual.
 
@@ -60,7 +60,7 @@ The reviewer gives no verdict. It lists findings, each with a severity, a catego
 - **Blocker** and **major** findings block the merge. **Minor** and **nit** findings are recorded and shown to you but never block.
 - The result follows from the findings: a review asks for changes exactly when a blocker or major finding is still open. A reviewer cannot approve a change with a blocking finding open.
 - Before a blocking finding counts, another agent tries to disprove it, by reproducing it or finding a counter-example. A finding it shows to be false is marked **refuted** and no longer blocks. If it cannot show that, or fails, or runs out of time, the finding stays open: a failed attempt never lets a change through.
-- A review belongs to one commit. If the pull request gets a new commit while it is being reviewed, or the reviewer says it read another commit, the review is **stale**: its findings are kept and shown but decide nothing, and the pull request is checked and reviewed once more. If that review is stale too, you get the **Review did not pass** question at once; no fix round is spent on it.
+- A review belongs to one commit. If the reviewer says it read another commit, or the pull request moves while a local worker's change is being reviewed, the review is **stale**: its findings are kept and shown but decide nothing, and the pull request is checked and reviewed once more. If that review is stale too, you get the **Review did not pass** question at once; no fix round is spent on it. If Factory finds an unexpected commit on the pull request of a worker [on another machine](#work-on-another-machine), it stops the part instead of reviewing that commit.
 - When the change is high risk, a second reviewer also asks what input or state breaks the changed lines, quoting the line. Its findings count like the first reviewer's.
 
 Every round of review stays on the task, so you can see what was raised, what was refuted and what came back.
@@ -157,6 +157,23 @@ Press **Signals** on the Work page and follow a feed from **Feeds**, with its ad
 
 Limits: a server follows at most 20 feeds. A feed must answer within 5 seconds with at most 256 KB, uncompressed, and only its first 50 items are read. A feed holds at most 100 waiting items; newer ones are picked up by a later read once you have decided some. Beyond 200 dismissed items, the oldest that are no longer in the feed are forgotten, and come back as new if they reappear. Titles are cut at 200 characters and summaries at 2,000. **Waiting** and **Decided** show the newest 200 items each. When a read fails, **Feeds** says when and why.
 
+## Model proxy
+
+The model proxy is a pinned version of CLIProxyAPI that runs on the selected environment's machine. Usage reads it as a hub named **Factory proxy** and includes the subscription accounts you sign in to there in [Usage → Limits](usage.md#track-subscription-limits). Each machine has its own proxy and sign-ins. Usage pools the accounts from the environments you are connected to. Agent traffic does not go through the proxy yet.
+
+1. On **Work**, pick the environment and open **Model proxy**. To change the proxy, your device must be paired with permission to manage providers on that environment.
+2. Choose **Install**. If you want to use the management console, first type a management key of 16 to 64 printable ASCII characters with no spaces. If you leave it blank, the server makes a key for Usage and you cannot sign in to the console. T3 Code never shows either key. To add or change a key you can use, uninstall, keep your sign-ins, and install again with a key you type.
+3. When installation finishes, choose **Start**. The proxy listens only on that machine at `127.0.0.1`. The dialog shows its port, the first free one from 8317 through 8327 at installation. If you typed a key, open the console address in a browser on that machine and sign in with it. Use the console to sign in to provider accounts and manage their settings.
+4. Choose **Stop** to end the proxy without removing it or its sign-ins. **Uninstall** also removes the program, its settings and keys, and the hub from Usage. Sign-ins are kept for the next install unless you select **Also remove the sign-ins it holds**. To delete sign-ins left by an earlier uninstall, choose **Remove kept sign-ins**.
+
+At each start, the server sets the address, port, management key, sign-in folder and account data location again. It keeps the proxy's required client API key without removing keys you added. It restores the pinned console's download source and turns off automatic console updates. It also turns off remote management, HTTPS, network discovery, the Codex live media relay, profiling and plugins. Other settings you save in the console are kept across starts.
+
+If the port is held, identify the current listener on that machine before stopping anything. An earlier proxy's process ID does not identify the current listener. Free the port, then retry **Start** or **Uninstall**; the proxy does not switch ports. If the settings file cannot be read, uninstall with sign-ins kept, then install again. Settings you saved in the console are lost, but the sign-ins are kept.
+
+Only a person in the dialog can install or start the proxy. There is no command-line command, workflow or agent tool for it.
+
+CLIProxyAPI is an unsigned third-party program that runs as the server's user, can access that user's files, and makes outbound requests on its own. Anyone with permission to manage providers on an environment can install and run it there. If the server is killed, the first Usage check after it restarts may send a typed key to another program holding the port, and that key can be reused to use your accounts or make requests from that machine.
+
 ## Self-repair
 
 `factory-self-repair` runs daily at 04:00. It looks for Factory runs that ended or paused for the same reason at least twice (stopped runs from the last seven days; paused runs whenever they paused) and adds one **Backlog** task per reason, naming the workflow, the reason and the runs. A run that ended on your own choice, such as a plan you did not approve, does not count. It never starts the task: you decide whether a repair is worth a run. A reason already turned into a task is not added again.
@@ -198,6 +215,7 @@ Settings are JSON values in the workflow store. `factory/v1/config` applies to e
 - `critiqueModel`, `briefDelivery`: for Knowledge tasks. `critiqueModel` has the same shape as the models above; unset, the brief gets no critique. `briefDelivery` is `none` or `issue-comment`. Default `none`.
 - `protectedPaths`, `lowRiskPaths`: glob lists for pull-request risk routing. Protected paths (workflows, lockfiles, migrations, fork seams, plus any paths you add) always ask for a person's merge approval even when `askMerge` is off.
 - `readOnlyOn`: runs the reading steps of the project's reviews on another linked machine. It is valid only in a project's own key; see [Review on another machine](#review-on-another-machine).
+- `writeOn`: runs the workers for a project's Software tasks on another linked machine. It is valid only in a project's own key; see [Work on another machine](#work-on-another-machine).
 
 A value that does not decode stops the task at its first step with a message naming the key; it is not ignored. Checks are the pull request's own checks; Work runs no check command of its own.
 
@@ -211,28 +229,59 @@ t3 workflow store set factory/v1/config/<projectId> '{"v":1,"readOnlyOn":{"envir
 
 - `environment` is the linked machine's id, as `t3 environment list` prints it.
 - `project` is the project's id on that machine, not a folder path.
-- `limit` is how many review agents this server runs there at a time, across all its tasks: 1 to 4, with no default.
+- `limit` is how many places this server gives review agents there at a time, across all its tasks: 1 to 4, with no default. If `writeOn` names the same machine, the workers and reviewers share those places.
 
 All three are required. `null`, or no `readOnlyOn`, turns it off. It is refused in `factory/v1/config`: there it stops every task with a message saying it belongs in a project's key.
 
-In each review round three steps run there: listing the changed files, the review, and the second reviewer of a high-risk change. Each gets a new worktree at the pull request's exact commit and is told to only read. No approval is given there: a Codex agent runs in a read-only sandbox, and a Claude agent asks before anything but reading and gets no answer. An agent that tries more than reading waits until `stepTimeout` and is then stopped. Planning, the worker's changes and fixes, the disprove pass, checks, comments, merges and every question stay on this machine.
+Three review steps can run there: listing the changed files, the review, and the second reviewer of a high-risk change. Each gets a new worktree at the pull request's exact commit. The reader is told to read only, and gets the worker's brief as context, with each quoted line marked `| `, not as instructions to follow. Factory gives no approvals there. Planning, the disprove pass, checks, comments, merges and every task question stay on this machine. The workers and their fixes stay here unless you set `writeOn` separately.
 
 It needs:
 
 - A project that is a Git repository, so that its tasks work in worktrees. A task of a project that is worked in directly stops with a message saying so, and so does a task of a project that was never started from the Work page, which is where the server records how a project is worked in; start one of its tasks there once. A task with no project ignores `readOnlyOn`.
-- The pull request's full commit, and a model: `reviewModel`, or the task's model. A round without either runs on this machine, as if `readOnlyOn` were not set.
+- The pull request's full commit, and a model available on that machine: `reviewModel`, or the task's model. A round without either runs on this machine, as if `readOnlyOn` were not set. For a Windows destination, use a Claude model: Codex waits for approval even to read with Git and cannot finish unattended. The turn is asked to stop at `stepTimeout`.
 - **Linked environments** on for both machines and a working link; see [Link another environment](remote-access.md#link-another-environment).
-- The commit already in that machine's clone. Nothing fetches it there. The changed files are listed against that clone's `origin/<base branch>`, so an out-of-date clone can only make a change look riskier.
+- The pull request's head commit already in the reader's clone. With `readOnlyOn` alone, the file listing compares it to that clone's `origin/<base branch>`; a stale branch can give a different list. If you also set `writeOn`, the clone must contain **both** the head commit and the exact commit Factory pinned for the target branch that round. The reader never fetches either one.
 
-Nothing falls back. Once a round runs there, it never moves to this machine or to another one. If that machine cannot be reached, refuses the launch or lacks the commit, the part pauses and the task shows **Failed** under **Needs you**; the run tries again by itself after 5, 20 and 80 minutes, then waits for you. If the changed files cannot be listed there, the pull request is treated as high risk, so its merge asks you. A review whose agent does not report the commit it read is stale, like one whose commit moved (see [How review works](#how-review-works)). To bring a task back to this machine, cancel its run, remove `readOnlyOn` and start the task again.
+Nothing falls back. Once a round runs there, it never moves to this machine or to another one. If that machine cannot be reached, refuses the review launch or lacks the head commit, the part pauses and the task shows **Failed** under **Needs you**. The run tries again by itself after 5, 20 and 80 minutes, then waits for you. If the head is missing, every retry fails until someone fetches it on that machine.
+
+If the reader reports a missing pinned base, the part stops before review, with no merge override. In the reader environment and project named in the stop reason, fetch the target branch from `origin` yourself. Verify the reported SHA is present with `git rev-parse --verify "<SHA>^{commit}"`, then start the task again. Other file-listing failures still make the pull request high risk, so its merge asks you.
+
+A review whose agent does not report the commit it read is stale, like one that read the wrong commit (see [How review works](#how-review-works)). To bring reviews back to this machine, cancel the run, remove `readOnlyOn` and start the task again.
 
 Limits:
 
-- Keeping writes out is up to that machine's provider; Factory does not enforce it. It is expected of Codex and Claude as described above, and unknown for other providers.
-- This has been tested against a stand-in for the other machine, not yet between two real machines.
-- The model has to exist on that machine. What happens when it does not has not been checked.
+- Keeping writes out is up to that machine's provider; Factory does not enforce it. Claude declined to change the project in testing, so whether it would ask before a write was not tested. Claude does write its own plan file under `~/.claude/plans` without asking.
+- Remote review has run between two real servers on one Windows machine. It has not yet been tested between two physical machines.
+- What happens when the named model is missing on the other machine has not been tested.
 - Each review there leaves its worktree and branch on that machine. Remove them yourself.
 - A run that pauses gives back its place under `limit` while its agent there may still be working, so more than `limit` agents can be at work there at once. Work on that machine that does not come from this server does not count against `limit`.
+
+## Work on another machine
+
+Set `writeOn` to run the workers for a project's Software tasks on another linked machine. They make the changes, push and open pull requests there, and carry on there if a part needs to continue or fix its changes. Planning, reviews, the disprove pass, checks, Factory's comments and merges, and questions stay on this machine. To move the reading steps of review as well, set `readOnlyOn` separately.
+
+Set `writeOn` in `factory/v1/config/<projectId>` on the machine you start the task from. Merge it into the existing settings:
+
+```sh
+t3 workflow store set factory/v1/config/<projectId> '{"v":1,"baseRef":"main","writeOn":{"environment":"<environmentId>","project":"<project id there>","limit":2}}'
+```
+
+- `environment` is the other machine's id from `t3 environment list`.
+- `project` is the id of an ordinary Git repository project on that machine, with its own clone of the same repository. Do not give a folder path or use a project that makes its own clones from a plain folder.
+- `limit` is how many places this server gives workers there at a time, across all its tasks: 1 to 4, with no default.
+
+All three fields are required. If `readOnlyOn` and `writeOn` name the same machine, they must name the same project and limit, and workers and readers share that one limit. Set `writeOn` to `null` or remove it to turn it off. Do not set it in the global settings key.
+
+Use a GitHub project and set `baseRef` to the branch on `origin` that the pull requests should target. Start from **Work** so Factory knows where the project's clone is. Turn on **Linked environments** on both machines and pair the link at full access; see [Link another environment](remote-access.md#link-another-environment). Name a `workerModel` or give the task a model that is available there. Workers run with that machine's user and Git credentials, so set up access to fetch, push and open pull requests there. Factory does not sync files or credentials. Each part needs a pull request: there is no file result to accept from another machine.
+
+Once dispatched, the work never falls back or moves to another machine. If the other machine cannot be reached or refuses to start the worker, the part pauses and the task shows **Failed** under **Needs you**, with the step and its reason. The run tries again on that machine after 5, 20 and 80 minutes, then waits for you. A worker failure can also stop the part. The attempt note lists a stopped part as stopped; open its run for the reason. To bring the workers back here, cancel the run, remove `writeOn` and start the task again.
+
+Limits:
+
+- Factory may ask a writer to stop but does not kill it. A writer Factory loses track of may keep working and open a pull request Factory never reviews. Check for and close any such pull request yourself.
+- Factory checks that the pull request still targets the configured branch when reviewing and before merging. A new commit or retargeting between the final check and GitHub's merge can still slip through, including during time spent in a merge queue. If the merged commit or target differs, Factory writes a task note and puts a question under **Needs you**. If it cannot confirm the merge, it asks you to check the pull request instead of marking it merged.
+- The branches and worktrees stay on that machine. Remove them yourself when you no longer need them.
+- Working on another machine has been tested against a stand-in for that machine only. It has not yet run between two real servers, and not between two physical machines.
 
 ## On the page
 
@@ -247,6 +296,8 @@ Limits:
 ## What needs Workflows on
 
 The board itself works without workflows: create, edit, move and annotate tasks. Starting a task, run-driven columns, **Needs you**, intake, reading followed feeds and the Orchestrator's commands need **Settings → Labs → Workflows** on, and the Factory workflows installed on the server. A note on the page says when workflows are off.
+
+The model proxy does not need Workflows on.
 
 ## Limits
 

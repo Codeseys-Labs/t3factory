@@ -1499,26 +1499,37 @@ describe("P11-16 restart with backoff", () => {
 });
 
 describe("P11-17 both histories of a first stop", () => {
-  it.effect("a failed stop intent write still disables the hub and stops the runtime", () =>
-    withWorld({}, (world) =>
-      Effect.gen(function* () {
-        yield* install(world);
-        yield* startToRunning(world);
-        world.setRefuseRecordWrites(true);
-        const stopped = yield* world.proxy.stop({});
-        assert.strictEqual(stopped.state, "failed");
-        assert.strictEqual(stopped.problem, "write");
-        assert.strictEqual(stopped.desired, "running");
-        assert.strictEqual(recordOf(world)["desired"], "running");
-        assert.strictEqual(stopped.hub, "disconnected");
-        assert.isTrue(world.supervisors[0]!.state.exited);
-        assert.strictEqual(world.supervisors[0]!.state.kills, 0);
-        yield* TestClock.adjust(Duration.minutes(1));
-        assert.strictEqual(world.supervisors.length, 1);
-        world.setRefuseRecordWrites(false);
-        assert.strictEqual((yield* world.proxy.stop({})).desired, "stopped");
-      }),
-    ),
+  it.effect.each(["before-rename", "after-rename"] as const)(
+    "a stop intent write failing %s stops the runtime without overwriting the record",
+    (failure) =>
+      withWorld({}, (world) =>
+        Effect.gen(function* () {
+          yield* install(world);
+          yield* startToRunning(world);
+          const before = countEvent(world.order, `rename:${world.recordPath}`);
+          world.setRefuseRecordWrites(failure === "after-rename" ? failure : true);
+          const stopped = yield* world.proxy.stop({});
+          assert.strictEqual(stopped.state, "failed");
+          assert.strictEqual(stopped.problem, "write");
+          assert.strictEqual(stopped.desired, "running");
+          assert.strictEqual(stopped.hub, "disconnected");
+          const handle = world.supervisors[0]!;
+          assert.isTrue(handle.state.exited);
+          assert.strictEqual(handle.state.kills, 0);
+          const landed = failure === "after-rename";
+          assert.strictEqual(recordOf(world)["desired"], landed ? "stopped" : "running");
+          assert.deepStrictEqual(recordOf(world)["process"], { pid: handle.pid });
+          assert.strictEqual(
+            countEvent(world.order, `rename:${world.recordPath}`),
+            before + (landed ? 1 : 0),
+          );
+          yield* TestClock.adjust(Duration.minutes(1));
+          assert.lengthOf(world.supervisors, 1);
+          world.setRefuseRecordWrites(false);
+          assert.strictEqual((yield* world.proxy.stop({})).desired, "stopped");
+          assert.strictEqual(recordOf(world)["process"], null);
+        }),
+      ),
   );
 
   it.effect.each([false, true])(
@@ -1839,6 +1850,34 @@ describe("P11-20 an earlier run", () => {
 });
 
 describe("P11-21 uninstall", () => {
+  it.effect(
+    "resumes removal of a never-started proxy even if another process now holds the port",
+    () =>
+      Effect.gen(function* () {
+        const baseDir = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped({
+          prefix: "t3-factory-proxy-removing-",
+        });
+        yield* withWorld({ baseDir }, (world) =>
+          Effect.gen(function* () {
+            yield* install(world);
+            yield* world.fs.writeFileString(
+              world.recordPath,
+              JSON.stringify({ ...recordOf(world), phase: "removing" }),
+            );
+          }),
+        );
+        yield* withWorld({ baseDir, takenPorts: [8317] }, (world) =>
+          Effect.gen(function* () {
+            const removed = yield* world.proxy.uninstall({ removeCredentials: true });
+            assert.strictEqual(removed.state, "not-installed");
+            assert.isFalse(yield* world.fs.exists(world.root));
+            assert.deepStrictEqual(world.supervisors, []);
+            assert.isTrue(world.takenPorts.has(8317));
+          }),
+        );
+      }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("a failed removing marker preserves the installed files, keys and sign-ins", () =>
     withWorld({}, (world) =>
       Effect.gen(function* () {

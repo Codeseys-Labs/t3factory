@@ -20,6 +20,7 @@ import {
   projectPullRequest,
   pullRequestHead,
   readConfig,
+  readOriginHead,
   recordAttemptPullRequest,
   resolvePlacement,
   resolveTarget,
@@ -207,6 +208,7 @@ const Started = Schema.Struct({
 const ScopeSuccess = Schema.Struct({ headSha: Schema.String, files: Schema.Array(Schema.String) });
 const ScopeFailure = Schema.Struct({ error: Schema.String });
 const ScopeReport = Schema.Struct({ report: Schema.Union([ScopeSuccess, ScopeFailure]) });
+const ReviewBase = Schema.Struct({ target: Schema.String, baseSha: HeadSha });
 
 const PullRequestRiskSnapshot = Schema.Struct({
   headSha: Schema.NullOr(Schema.String),
@@ -607,9 +609,15 @@ const factoryTaskPart = workflow(
     const rulings: Array<string> = [];
     let latest = questionEvidence(null);
     // The tier a part's changes earn only goes up: a later round can raise it, never lower it.
-    const risk: { tier: RiskTier | undefined; headSha: string | null; reasons: Array<string> } = {
+    const risk: {
+      tier: RiskTier | undefined;
+      headSha: string | null;
+      baseSha: string | null;
+      reasons: Array<string>;
+    } = {
       tier: undefined,
       headSha: null,
+      baseSha: null,
       reasons: [],
     };
     let reviewedHead: string | null = null;
@@ -711,6 +719,29 @@ const factoryTaskPart = workflow(
         },
       );
       const head = snapshot.headSha;
+      const reviewBase =
+        writer === null
+          ? null
+          : yield* step(
+              `review-base/${at}`,
+              { returns: ReviewBase },
+              Effect.map(readOriginHead(writer.folder, writer.target), (baseSha) => ({
+                target: writer.target,
+                baseSha,
+              })),
+            );
+      if (reviewBase !== null && reviewBase.baseSha === null) {
+        return yield* stop(
+          `Could not pin the review base origin/${reviewBase.target}. Nothing was merged.`,
+        );
+      }
+      const range = reviewBase === null ? null : `${reviewBase.baseSha}...${head}`;
+      const basis =
+        reviewBase === null
+          ? []
+          : [
+              `Compare the configured target \`${reviewBase.target}\` with this head using the pinned commits below. Do not substitute the live pull request diff, a branch tip, or another base.`,
+            ];
       const remote =
         placement.where === "remote" && head !== null && isFullSha(head) && reviewModel !== null;
       const readOptions = remote
@@ -731,6 +762,7 @@ const factoryTaskPart = workflow(
       let staleScope = false;
       if (
         risk.tier === undefined ||
+        (reviewBase !== null && reviewBase.baseSha !== risk.baseSha) ||
         (snapshot.headSha !== null && snapshot.headSha !== risk.headSha)
       ) {
         const scoped = yield* holdRead(
@@ -742,9 +774,12 @@ const factoryTaskPart = workflow(
               `List the files pull request ${prUrl} changes.`,
               "",
               ...readLines,
-              remote
-                ? remoteScopeBase(snapshot.baseBranch)
-                : `Fetch the pull request's head commit${snapshot.headSha === null ? "" : ` \`${snapshot.headSha}\``} and run \`git diff --name-only <base>...<head>\`, where <head> is that commit and <base> is the branch the pull request targets.`,
+              ...basis,
+              range !== null
+                ? `Run \`git diff --name-only ${range}\`.`
+                : remote
+                  ? remoteScopeBase(snapshot.baseBranch)
+                  : `Fetch the pull request's head commit${snapshot.headSha === null ? "" : ` \`${snapshot.headSha}\``} and run \`git diff --name-only <base>...<head>\`, where <head> is that commit and <base> is the branch the pull request targets.`,
               "Return `report` containing `headSha`: the full SHA of the commit you listed, and `files`: every path the command printed, exactly as printed.",
               SCOPE_ERROR_LINE,
               quotation,
@@ -784,11 +819,17 @@ const factoryTaskPart = workflow(
         risk.tier = ratchetRiskTier(risk.tier ?? null, classified.tier);
         noteRisk(classified.reasons);
         risk.headSha = snapshot.headSha;
+        risk.baseSha = reviewBase?.baseSha ?? null;
       }
       const commit = head === null ? [] : [`Review commit \`${head}\`.`];
+      if (range !== null) commit.push(...basis, `Run \`git diff ${range}\`.`);
       const rulingLines = quoteRulings(rulings);
       const reportInstructions =
         "Return `reviewedHead` (the full SHA you read, or null if unknown) and `findings` (severity, category, repository-relative path or empty string, line or null, claim, and quoted evidence). An empty findings list means it can be merged as it is. Blocker and major findings block the merge; minor and nit do not.";
+      const reviewInstructions =
+        range === null
+          ? reportInstructions
+          : `${reportInstructions} If you cannot read the pinned comparison, return null for \`reviewedHead\`.`;
       const lenses = risk.tier === "high" ? LENSES : ([LENSES[0]] as const);
       const reports = yield* Effect.forEach(
         lenses,
@@ -800,7 +841,9 @@ const factoryTaskPart = workflow(
                   ...commit,
                   ...readLines,
                   "",
-                  "Change nothing. Read its diff and check that it does what the brief asks, works, and changes nothing else.",
+                  range === null
+                    ? "Change nothing. Read its diff and check that it does what the brief asks, works, and changes nothing else."
+                    : "Change nothing. Check that the pinned diff does what the brief asks, works, and changes nothing else.",
                   "Actively try to disprove the change: name one concrete input, edge case, or counterfactual state that could break it, verify whether the diff handles it, and cite exact file paths and line numbers for every finding.",
                   ...(issueUrl === null
                     ? []
@@ -808,7 +851,7 @@ const factoryTaskPart = workflow(
                         `It is for issue ${issueUrl}: check that the pull request description, or a comment on it, references that issue.`,
                       ]),
                   ...rulingLines,
-                  reportInstructions,
+                  reviewInstructions,
                 ]
               : [
                   `Review pull request ${prUrl}.`,
@@ -816,7 +859,7 @@ const factoryTaskPart = workflow(
                   ...readLines,
                   "What input or state breaks the changed lines? Quote the line. Change nothing.",
                   ...rulingLines,
-                  reportInstructions,
+                  reviewInstructions,
                 ];
           return Effect.map(
             holdRead(
@@ -846,6 +889,9 @@ const factoryTaskPart = workflow(
               `Try to refute each finding on pull request ${prUrl} by reproducing it or by a counter-example.`,
               ...commit,
               "Change nothing. Answer refuted only when you have shown the claim false; otherwise answer survived. For each id, say what you tried.",
+              ...(range === null
+                ? []
+                : ["If you cannot read the pinned comparison, do not refute any finding."]),
               JSON.stringify(
                 blocking.map(({ id, path, line, claim, evidence }) => ({
                   id,
@@ -871,7 +917,8 @@ const factoryTaskPart = workflow(
           (after !== null && after !== head) ||
           reports.some(
             ({ report }) =>
-              (remote || report.reviewedHead !== null) && report.reviewedHead !== head,
+              (reviewBase !== null || remote || report.reviewedHead !== null) &&
+              report.reviewedHead !== head,
           ));
       const verdict = stale ? "stale" : deriveVerdict(findings);
       yield* step(

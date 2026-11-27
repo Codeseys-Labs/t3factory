@@ -1662,10 +1662,31 @@ it("WT16 distinct environments leave the writer on E and pin scope and review on
   withOrigin(({ folder, X }) =>
     scenario(
       X,
-      {},
+      { needsFix: true },
       Effect.fn(function* (world, workflows) {
         const readOnlyOn = { environment: "env-reader", project: "reader-project", limit: 1 };
-        const { runId } = yield* start(workflows, remote(folder, { readOnlyOn }));
+        const { runId } = yield* start(
+          workflows,
+          remote(folder, { readOnlyOn, protectedPaths: ["src/**"] }),
+        );
+        const child = yield* world.child(workflows, runId, 0);
+        yield* ask(world, workflows, child.runId, "approve-merge");
+        const steps = (yield* workflows.get(child.runId)).steps;
+        for (const [at, head] of [
+          ["0", H],
+          ["1", H2],
+        ] as const) {
+          expect(row(steps, `review-base/${at}`).result).toEqual({ target: "main", baseSha: X });
+          const readers = [`scope/${at}`, `review/${at}`, `review/${at}/defects`];
+          if (at === "0") readers.push("disprove/0");
+          for (const name of readers) {
+            const turn = only(world.turns, name);
+            const command = name.startsWith("scope/") ? "git diff --name-only" : "git diff";
+            expect(turn.prompt).toContain(`\`${command} ${X}...${head}\``);
+            expect(turn.prompt).toContain("Do not substitute the live pull request diff");
+          }
+        }
+        yield* workflows.answer(child.runId, "approve-merge", { choice: "Merge" }, PERSON);
         yield* world.ended(workflows, runId, true);
         expect(only(world.turns, "do")).toMatchObject({ environment: E, project: RP });
         for (const step of ["scope/0", "review/0"]) {

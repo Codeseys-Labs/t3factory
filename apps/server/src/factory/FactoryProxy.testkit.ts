@@ -380,7 +380,7 @@ export interface World {
   setOwnerAnswer(answer: "ours" | "other"): void;
   setHttpAnswer(answer: { readonly status: number; readonly body: unknown }): void;
   setRefuseSettings(refused: boolean): void;
-  setRefuseRecordWrites(refused: boolean): void;
+  setRefuseRecordWrites(refused: boolean | "after-rename"): void;
 }
 
 // A stand-in handle for a `tar`/`netstat`/`lsof` run: fixed pid, scripted stdout, no-op kill.
@@ -498,12 +498,18 @@ const makeWorld = Effect.fn("FactoryProxy.testkit.makeWorld")(function* (
   let ownerAnswer: "ours" | "other" = "ours";
   let httpAnswer: { status: number; body: unknown } = { status: 200, body: { files: [] } };
   let refuseSettings = false;
-  let refuseRecordWrites = false;
+  let refuseRecordWrites: boolean | "after-rename" = false;
   const renameFailure = PlatformError.systemError({
     _tag: "PermissionDenied",
     module: "FileSystem",
     method: "rename",
     description: "Fixture commit refused.",
+  });
+  const directorySyncFailure = PlatformError.systemError({
+    _tag: "Unknown",
+    module: "FileSystem",
+    method: "sync",
+    pathOrDescriptor: root,
   });
 
   const currentRecord = (): Record<string, unknown> =>
@@ -770,9 +776,19 @@ const makeWorld = Effect.fn("FactoryProxy.testkit.makeWorld")(function* (
     remove: eventful("remove", fs.remove),
     chmod: eventful("chmod", fs.chmod),
     rename: (from, to) =>
-      refuseRecordWrites && to === recordPath
+      refuseRecordWrites === true && to === recordPath
         ? Effect.fail(renameFailure)
-        : Effect.tap(fs.rename(from, to), () => Effect.sync(() => record(`rename:${to}`))),
+        : fs.rename(from, to).pipe(
+            Effect.andThen(() => {
+              record(`rename:${to}`);
+              // Model a POSIX directory sync failing once after the replacement is visible.
+              if (refuseRecordWrites === "after-rename" && to === recordPath) {
+                refuseRecordWrites = false;
+                return Effect.fail(directorySyncFailure);
+              }
+              return Effect.void;
+            }),
+          ),
   });
 
   const env = {

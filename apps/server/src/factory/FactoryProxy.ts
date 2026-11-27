@@ -575,11 +575,17 @@ export const make = Effect.gen(function* () {
     asProblem("write"),
     Effect.uninterruptible,
   );
+  // A failed intent write may already have renamed the file before its directory sync failed.
+  // Until intent is saved again, no run or finalizer may merge a process patch into stale intent.
+  let stopWriteUncertain = false;
   const updateRecord = (patch: Partial<ProxyRecord>) =>
     recordLock.withPermit(
-      Effect.suspend(() =>
-        record ? persist({ ...record, ...patch }) : Effect.fail(fault("damaged")),
-      ),
+      Effect.gen(function* () {
+        if (!record) return yield* fault("damaged");
+        if (stopWriteUncertain && patch.process !== undefined) return yield* fault("write");
+        yield* persist({ ...record, ...patch });
+        if (patch.desired !== undefined) stopWriteUncertain = false;
+      }),
     );
   const setFailed = (code: FactoryProxyProblem) => {
     state = "failed";
@@ -1179,7 +1185,6 @@ export const make = Effect.gen(function* () {
       );
   const mutation = <A, E>(effect: Effect.Effect<A, E>) => decideMutation(effect, false);
   const removeOwned = Effect.fn("FactoryProxy.removeOwned")(function* (removeCredentials: boolean) {
-    const interruptedRemoval = record?.phase === "removing";
     const marked =
       !record || (yield* Effect.isSuccess(updateRecord({ phase: "removing", desired: "stopped" })));
     yield* interruptWorker;
@@ -1187,9 +1192,7 @@ export const make = Effect.gen(function* () {
     yield* closeActive;
     if (
       active ||
-      (record &&
-        (run || record.process || interruptedRemoval) &&
-        !(yield* net.isPortAvailableOnLoopback(record.port)))
+      (record && (run || record.process) && !(yield* net.isPortAvailableOnLoopback(record.port)))
     ) {
       removing = false;
       setFailed("interrupted");
@@ -1309,6 +1312,7 @@ export const make = Effect.gen(function* () {
       if (hub === "disable-refused") yield* disableHub;
       return yield* status();
     }
+    stopWriteUncertain = true;
     const saved = yield* Effect.isSuccess(updateRecord({ desired: "stopped" }));
     yield* interruptWorker;
     const closed = yield* closeActive;

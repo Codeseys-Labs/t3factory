@@ -298,8 +298,7 @@ export function WorkBoard({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="min-h-0 flex-1">
         <ScrollArea>
-          {/* 60rem is five 11rem columns with their gaps and padding; narrower, the row scrolls. */}
-          <div className="flex min-h-full min-w-240 gap-3 p-4">
+          <div className="flex min-h-full min-w-0 flex-col gap-3 p-4 md:min-w-240 md:flex-row">
             {WORK_COLUMNS.map((column) => {
               const all = columns[column];
               const limit = limits[column] ?? WORK_PAGE_SIZE;
@@ -311,7 +310,7 @@ export function WorkBoard({
                   key={column}
                   aria-label={label}
                   aria-describedby={`${id}-${column}`}
-                  className="flex min-w-44 flex-1 basis-0 flex-col gap-2"
+                  className="flex min-w-0 flex-col gap-2 md:min-w-44 md:flex-1 md:basis-0"
                 >
                   <h2 className="flex items-center gap-2 px-1 text-xs font-medium text-muted-foreground">
                     <Tooltip>

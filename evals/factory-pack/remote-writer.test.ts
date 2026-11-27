@@ -1814,6 +1814,7 @@ it("WT18 placement decisions obey W3's ordering and exact shapes", () => {
 it.each([
   ["main", "main"],
   ["origin/main", "main"],
+  ["refs/remotes/origin/main", "main"],
   ["refs/heads/topic/x", "topic/x"],
   ["refs/heads/origin/topic", "origin/topic"],
 ] as const)("WT18 baseRef %s denotes the target %s", (ref, target) => {

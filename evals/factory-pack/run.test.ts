@@ -3958,6 +3958,11 @@ const seedTarget = (
 it.each([
   "verified",
   "previous PR",
+  "launcher suffix",
+  "sibling PR",
+  "head moved",
+  "queued",
+  "externally merged",
   "wrong head",
   "wrong branch",
   "wrong fork",
@@ -3974,9 +3979,17 @@ it.each([
     try {
       const git = (...args: string[]) =>
         NodeChildProcess.execFileSync("git", args, { cwd: folder, encoding: "utf8" }).trim();
-      const attempt = delivery === "previous PR" ? 2 : 1;
+      const isRetry = delivery === "previous PR" || delivery === "sibling PR";
+      const attempt = isRetry ? 2 : 1;
       const branch = `factory-task/${TASK_ID}/a${attempt}-p1`;
-      const publishedBranch = delivery === "previous PR" ? `factory-task/${TASK_ID}/a1-p1` : branch;
+      const publishedBranch =
+        delivery === "previous PR"
+          ? `factory-task/${TASK_ID}/a1-p1`
+          : delivery === "sibling PR"
+            ? `factory-task/${TASK_ID}/a1-p2`
+            : delivery === "launcher suffix"
+              ? `${branch}-2`
+              : branch;
       git("init", "-q");
       if (delivery !== "no remote") {
         git("remote", "add", "origin", "https://github.com/factory/pack.git");
@@ -3997,6 +4010,8 @@ it.each([
       const head = git("rev-parse", "HEAD");
       const url = "https://github.com/factory/pack/pull/17";
       let baseBranch = delivery === "wrong base" ? "other-base" : "main";
+      let reads = 0;
+      let acts: World["acts"] = [];
       const baseline = script({ noPullRequest: true });
       await withWorld(
         {
@@ -4011,9 +4026,14 @@ it.each([
                   },
                 }
               : baseline.agent(turn),
-          readPullRequest: (_address, detail) =>
-            Effect.succeed({
+          readPullRequest: (_address, detail) => {
+            reads += 1;
+            const merged =
+              (acts.length > 0 && delivery !== "queued") ||
+              (delivery === "externally merged" && reads > 1);
+            return Effect.succeed({
               ...detail,
+              state: merged ? "merged" : detail.state,
               headRepositoryNameWithOwner:
                 delivery === "wrong fork" ? "someone/pack" : "factory/pack",
               headBranch:
@@ -4021,12 +4041,17 @@ it.each([
                   ? "other-part"
                   : publishedBranch,
               baseBranch,
-              headSha: delivery === "wrong head" ? "a".repeat(40) : head,
-            }),
+              headSha:
+                delivery === "wrong head" || (delivery === "head moved" && reads > 1)
+                  ? "a".repeat(40)
+                  : head,
+            });
+          },
         },
         (world) =>
           world.server(
             Effect.fn("factoryPack.test.recoverLocalDelivery")(function* (workflows) {
+              acts = world.acts;
               yield* seedTarget(workflows, PROJECT, {
                 projectId: PROJECT,
                 workspace: "worktree",
@@ -4038,7 +4063,7 @@ it.each([
                 baseRef: delivery === "previous PR" ? "refs/remotes/origin/main" : "origin/main",
                 mergeNeedsPerson: true,
               });
-              if (delivery === "previous PR") {
+              if (isRetry) {
                 yield* workflows.storeSet(`factory/v1/attempt/${TASK_ID}/0001`, {
                   v: 1,
                   taskId: TASK_ID,
@@ -4054,7 +4079,11 @@ it.each([
               const { runId } = yield* startTask(workflows, null, PROJECT, attempt);
               yield* approvePlan(world, workflows, runId);
               const child = yield* world.child(workflows, runId, 0);
-              if (delivery === "verified" || delivery === "previous PR") {
+              if (
+                delivery === "verified" ||
+                delivery === "previous PR" ||
+                delivery === "launcher suffix"
+              ) {
                 const gate = yield* ask(world, workflows, child.runId, "approve-merge", "merge", [
                   "Merge",
                   "Hold",
@@ -4076,7 +4105,29 @@ it.each([
                   status: "completed",
                   result: { parts: [{ outcome: "merged", prUrl: url }] },
                 });
-              } else if (delivery === "held" || delivery === "retargeted") {
+              } else if (
+                delivery === "held" ||
+                delivery === "retargeted" ||
+                delivery === "queued" ||
+                delivery === "externally merged"
+              ) {
+                if (delivery === "externally merged") {
+                  const warning = yield* ask(
+                    world,
+                    workflows,
+                    child.runId,
+                    "unreviewed",
+                    "unreviewed",
+                    ["Seen"],
+                  );
+                  expect(warning.request).toMatchObject({
+                    title: expect.stringContaining("no accepted review"),
+                  });
+                  yield* workflows.answer(child.runId, "unreviewed", { choice: "Seen" });
+                  expect(yield* world.ended(workflows, runId)).toMatchObject({ status: "stopped" });
+                  expect(world.acts).toEqual([]);
+                  return;
+                }
                 const gate = yield* ask(world, workflows, child.runId, "approve-merge", "merge", [
                   "Merge",
                   "Hold",
@@ -4089,13 +4140,28 @@ it.each([
                   { choice: delivery === "held" ? "Hold" : "Merge" },
                   { label: "Test person", sessionId: "test-person" },
                 );
+                if (delivery === "queued") {
+                  const waiting = yield* workflows.waitFor(
+                    child.runId,
+                    (run) => run.detail === "merge-wait" || run.endedAt !== null,
+                  );
+                  expect(waiting).toMatchObject({ status: "waiting", detail: "merge-wait" });
+                  expect(world.acts).toHaveLength(1);
+                  yield* world.expireQuestion(workflows, child.runId, "merge-wait");
+                  yield* ask(world, workflows, child.runId, "unreviewed", "unreviewed", ["Seen"]);
+                  yield* workflows.answer(child.runId, "unreviewed", { choice: "Seen" });
+                }
                 expect(yield* world.ended(workflows, runId)).toMatchObject({
                   status: "stopped",
                   detail: expect.stringContaining(
-                    delivery === "held" ? "merge held" : "retargeted",
+                    delivery === "held"
+                      ? "merge held"
+                      : delivery === "queued"
+                        ? "had not completed"
+                        : "retargeted",
                   ),
                 });
-                expect(world.acts).toEqual([]);
+                expect(world.acts).toHaveLength(delivery === "queued" ? 1 : 0);
               } else if (delivery === "no remote") {
                 yield* ask(world, workflows, child.runId, "accept", "accept", ["Accept", "Redo"]);
                 yield* workflows.answer(child.runId, "accept", { choice: "Accept" });
@@ -4108,7 +4174,9 @@ it.each([
                 expect(yield* world.ended(workflows, runId, true)).toMatchObject({
                   status: "stopped",
                   detail: expect.stringContaining(
-                    "a part could not deliver a verified pull request",
+                    delivery === "head moved"
+                      ? "last commit this part's worker reported"
+                      : "a part could not deliver a verified pull request",
                   ),
                 });
                 expect(world.acts).toEqual([]);

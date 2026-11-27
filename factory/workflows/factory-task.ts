@@ -98,6 +98,11 @@ const STALE_RETRIES = 1;
 const HEAD_KEPT_CHANGING = "The pull request's head kept changing while it was reviewed.";
 const LOCAL_DELIVERY_FAILED = "a part could not deliver a verified pull request";
 
+const matchesLocalWriterBranch = (branch: string, requested: string) =>
+  branch === requested ||
+  (branch.startsWith(`${requested}-`) &&
+    /^(?:[2-9]|[1-9]\d+)$/.test(branch.slice(requested.length + 1)));
+
 const Plan = Schema.Struct({
   summary: Schema.String,
   parts: Schema.Array(Schema.Struct({ title: Schema.String, brief: Schema.String })).check(
@@ -418,25 +423,23 @@ const factoryTaskPart = workflow(
                   returns,
                 }),
           );
+    const assignedLocalBranch =
+      localBranch !== null && tried.outcome === "failed" && tried.thread === undefined
+        ? againBranch(localBranch)
+        : localBranch;
     let recovered = false;
     if (done.value.prUrl === null && localFolder !== null && hasRemote !== false) {
-      if (localBranch === null) {
+      if (assignedLocalBranch === null) {
         return yield* stop(
           `${LOCAL_DELIVERY_FAILED}: could not determine the project's Git remotes`,
         );
       }
-      const branch =
-        tried.outcome === "failed" && tried.thread === undefined
-          ? againBranch(localBranch)
-          : localBranch;
       const delivery = yield* holdWrite(
         agent.try("do/deliver", {
           thread: done.thread,
           brief: [
             `Finish publishing part ${input.part + 1} of task T-${input.number}; its last result did not include a pull request.`,
-            priorPrs.length === 0
-              ? `Stay on \`${branch}\` in this worktree. Do not start over or switch branches.`
-              : `Stay on the branch you already used in this worktree: \`${branch}\` or the branch of the earlier pull request you are updating. Do not switch branches or open a duplicate.`,
+            "Stay on the branch already checked out in this worktree. Do not start over, switch branches, or open a duplicate pull request.",
             "Finish the requested checks, commit and push this branch if needed without force, and return the existing pull request URL if one is already open for it. Otherwise open one. Do not merge.",
             ...(config.baseRef === null
               ? []
@@ -581,35 +584,47 @@ const factoryTaskPart = workflow(
     const prUrl = yield* projectPullRequest(project, reported);
     if (prUrl === null) return yield* stop("pull request is not this project's");
     const pr = { project, url: prUrl };
-    let localTarget: string | undefined;
-    if (localFolder !== null && localBranch !== null) {
-      const branch =
-        tried.outcome === "failed" && tried.thread === undefined
-          ? againBranch(localBranch)
-          : localBranch;
+    let localWriter: {
+      readonly branch: string;
+      readonly target: string;
+      expectedHead: string;
+    } | null = null;
+    if (localFolder !== null && assignedLocalBranch !== null) {
       const base = config.baseRef === null ? null : baseTarget(config.baseRef);
       const verified = yield* step(
         "deliver/verify",
         {
           returns: Schema.Union([
             Schema.Literals(["unverified", "mismatch"]),
-            Schema.Struct({ target: Schema.String }),
+            Schema.Struct({
+              branch: Schema.String,
+              target: Schema.String,
+              expectedHead: Schema.String,
+            }),
           ]),
         },
         Effect.gen(function* () {
           const detail = yield* pullRequests.read(pr);
           if (detail.provider !== "github") return "unverified" as const;
+          const branch = detail.headBranch;
+          const priorAttempt = Number(branch.match(/\/a([1-9]\d*)-p/)?.[1]);
+          const priorBranch = writerBranch(input.taskId, priorAttempt, input.part);
+          const reusesOwnPart =
+            priorPrUrls.includes(prUrl) &&
+            priorAttempt < attempt &&
+            (matchesLocalWriterBranch(branch, priorBranch) ||
+              matchesLocalWriterBranch(branch, againBranch(priorBranch)));
           if (
             detail.state !== "open" ||
             detail.headRepositoryNameWithOwner?.toLowerCase() !== detail.repository.toLowerCase() ||
             (base !== null && detail.baseBranch !== base) ||
-            (detail.headBranch !== branch && !priorPrUrls.includes(prUrl))
+            (!matchesLocalWriterBranch(branch, assignedLocalBranch) && !reusesOwnPart)
           ) {
             return "mismatch" as const;
           }
-          const head = yield* localWriterHead(localFolder, detail.headBranch);
+          const head = yield* localWriterHead(localFolder, branch);
           return head !== null && detail.headSha === head
-            ? { target: detail.baseBranch }
+            ? { branch, target: detail.baseBranch, expectedHead: head }
             : ("mismatch" as const);
         }),
       );
@@ -625,9 +640,10 @@ const factoryTaskPart = workflow(
           );
         }
       } else {
-        localTarget = verified.target;
+        localWriter = verified;
       }
     }
+    const verifiedWriter = remoteWriter ?? localWriter;
     const checkedRead = Effect.fnUntraced(function* <A, I, E>(
       name: string,
       returns: Parameters<typeof step<A, I, E>>[1]["returns"],
@@ -639,7 +655,7 @@ const factoryTaskPart = workflow(
         readonly moved?: (seen: string) => string;
       } = {},
     ) {
-      const expected = options.expected ?? remoteWriter?.expectedHead;
+      const expected = options.expected ?? verifiedWriter?.expectedHead;
       for (let fresh = false; ; fresh = true) {
         const snapshot = yield* step(
           fresh ? `${name}/fresh` : name,
@@ -718,7 +734,7 @@ const factoryTaskPart = workflow(
     }
     const links = [{ label: "Pull request", url: prUrl }];
     const reviewModel = config.reviewModel ?? input.model;
-    const expectedTarget = remoteWriter?.target ?? localTarget;
+    const expectedTarget = verifiedWriter?.target;
     const rulings: Array<string> = [];
     let latest = questionEvidence(null);
     // The tier a part's changes earn only goes up: a later round can raise it, never lower it.
@@ -739,8 +755,8 @@ const factoryTaskPart = workflow(
       tier = risk.tier ?? null,
       authorizedHead: string | null = null,
     ) {
-      if (remoteWriter !== null) {
-        const { expectedHead, target: expectedTarget } = remoteWriter;
+      if (verifiedWriter !== null) {
+        const { expectedHead, target: expectedTarget } = verifiedWriter;
         const { state, baseBranch, headSha } = yield* step(
           "merged-head",
           { returns: MergedHead },
@@ -1068,7 +1084,7 @@ const factoryTaskPart = workflow(
         }),
       );
       if (verdict === "stale") return "stale" as const;
-      if (remoteWriter !== null) reviewedHead = head;
+      if (verifiedWriter !== null) reviewedHead = head;
       latest = questionEvidence(findings);
       stats.reviewRounds++;
       stats.findingsRaised += blocking.length;
@@ -1097,6 +1113,24 @@ const factoryTaskPart = workflow(
       const after = yield* Effect.gen(function* () {
         if (remoteWriter === null) {
           yield* held(agent(name, { thread: done.thread, brief, timeout: config.stepTimeout }));
+          if (localWriter !== null && localFolder !== null) {
+            const branch = localWriter.branch;
+            const expected = yield* step(
+              `fix-local-head/${at}`,
+              { returns: HeadSha },
+              localWriterHead(localFolder, branch),
+            );
+            if (expected === null) return yield* stop(headUnusable(name));
+            const confirmed = yield* readHead(afterName, {
+              expected,
+              moved: (seen) =>
+                seen === before
+                  ? fixContradicts(name, expected, seen)
+                  : headMoved(afterName, seen, expected),
+            });
+            localWriter.expectedHead = expected;
+            return confirmed;
+          }
           return yield* readHead(afterName);
         }
         const fixed = yield* holdWrite(
@@ -1215,7 +1249,7 @@ const factoryTaskPart = workflow(
     }
 
     const headSha =
-      remoteWriter === null ? yield* pullRequestHead(pr) : yield* readHead("head-sha");
+      verifiedWriter === null ? yield* pullRequestHead(pr) : yield* readHead("head-sha");
     const exhausted = config.fixRounds > 0 && stats.fixRounds >= config.fixRounds;
     if (risk.tier === undefined) noteRisk(["no review round listed the changed files"]);
     if (headSha === null) {
@@ -1229,7 +1263,7 @@ const factoryTaskPart = workflow(
       headSha === null || headSha !== risk.headSha || exhausted ? "high" : "low",
     );
     const needsAuthorization =
-      remoteWriter !== null && stats.mergedAnyway && acceptedHead !== headSha;
+      verifiedWriter !== null && stats.mergedAnyway && acceptedHead !== headSha;
     const needsPerson = needsAuthorization || finalTier === "high" || config.mergeNeedsPerson;
     const mustAskMerge = needsPerson || config.askMerge;
     if (mustAskMerge) stats.asks++;
@@ -1243,11 +1277,9 @@ const factoryTaskPart = workflow(
           data: {
             prUrl,
             headSha,
-            ...(localTarget === undefined
-              ? needsAuthorization
-                ? { baseBranch: remoteWriter.target }
-                : {}
-              : { baseBranch: localTarget }),
+            ...(expectedTarget !== undefined && (localWriter !== null || needsAuthorization)
+              ? { baseBranch: expectedTarget }
+              : {}),
             summary,
             fixRoundsUsed: stats.fixRounds,
             noOpFixRounds: stats.noOpFixRounds,
@@ -1263,12 +1295,12 @@ const factoryTaskPart = workflow(
       return yield* stop("merge held");
     }
     const authorizedHead = needsAuthorization ? headSha : null;
-    if (remoteWriter === null) {
-      yield* mergePullRequest(pr, headSha, config.mergeMethod, localTarget);
+    if (verifiedWriter === null) {
+      yield* mergePullRequest(pr, headSha, config.mergeMethod);
     } else {
       const outcome = yield* mergeAtHead(
         pr,
-        remoteWriter,
+        verifiedWriter,
         config.mergeMethod,
         authorizedHead === null ? "reviewed" : "authorized",
       );

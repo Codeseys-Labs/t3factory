@@ -1030,10 +1030,7 @@ export const mergeApproved = Effect.fn("factoryPack.mergeApproved")(function* (
 type PullRequestAddress = Parameters<typeof pullRequests.read>[0];
 
 const HeadSha = Schema.NullOr(Schema.String);
-const MergeOutcome = Schema.Union([
-  Schema.Literals(["merged", "head-changed", "closed"]),
-  Schema.Struct({ wrongBase: Schema.String, expectedBase: Schema.String }),
-]);
+const MergeOutcome = Schema.Literals(["merged", "head-changed"]);
 
 /** The commit `pr`'s head is on now, for `mergePullRequest`; null when the host does not say. */
 export const pullRequestHead = (pr: PullRequestAddress) =>
@@ -1051,29 +1048,12 @@ export const mergePullRequest = Effect.fn("factoryPack.mergePullRequest")(functi
   pr: PullRequestAddress,
   expectedHeadSha: string | null,
   mergeMethod: PackConfig["mergeMethod"],
-  expectedTarget?: string,
 ) {
-  if (expectedTarget !== undefined && (expectedHeadSha === null || !isFullSha(expectedHeadSha))) {
-    return yield* stop(headUnusable("merge"));
-  }
   const merged = yield* step(
     "merge",
     { returns: MergeOutcome },
     Effect.gen(function* () {
-      if (expectedTarget !== undefined && expectedHeadSha !== null) {
-        yield* pullRequests.comment(
-          pr,
-          `Factory is rechecking head ${expectedHeadSha} and target ${expectedTarget} before merge.`,
-        );
-      }
       const detail = yield* pullRequests.read(pr);
-      if (expectedTarget !== undefined) {
-        if (detail.baseBranch !== expectedTarget) {
-          return { wrongBase: detail.baseBranch, expectedBase: expectedTarget };
-        }
-        if (detail.headSha !== expectedHeadSha) return "head-changed" as const;
-        if (detail.state === "closed") return "closed" as const;
-      }
       if (detail.state === "merged") return "merged" as const;
       if (
         expectedHeadSha !== null &&
@@ -1086,15 +1066,11 @@ export const mergePullRequest = Effect.fn("factoryPack.mergePullRequest")(functi
       return "merged" as const;
     }),
   );
-  if (typeof merged !== "string") {
-    return yield* stop(wrongBase(merged.wrongBase, merged.expectedBase));
-  }
-  if (merged === "closed") return yield* stop("pull request closed");
   if (merged === "head-changed") return yield* stop("pull request head changed after review");
 });
 
 const MergeAtHeadOutcome = Schema.Union([
-  Schema.Literals(["requested", "already-merged", "unusable", "head-changed"]),
+  Schema.Literals(["requested", "already-merged", "unusable", "head-changed", "closed"]),
   Schema.Struct({ wrongBase: Schema.String }),
 ]);
 
@@ -1112,6 +1088,7 @@ export const mergeAtHead = Effect.fn("factoryPack.mergeAtHead")(function* (
       const detail = yield* pullRequests.read(pr);
       if (!isFullSha(detail.headSha ?? null)) return "unusable" as const;
       if (detail.state === "merged") return "already-merged" as const;
+      if (detail.state === "closed") return "closed" as const;
       if (detail.baseBranch !== target) return { wrongBase: detail.baseBranch };
       if (detail.headSha !== expectedHead) return "head-changed" as const;
       yield* pullRequests.act(pr, "merge", { mergeMethod });
@@ -1121,5 +1098,6 @@ export const mergeAtHead = Effect.fn("factoryPack.mergeAtHead")(function* (
   if (typeof outcome !== "string") return yield* stop(wrongBase(outcome.wrongBase, target));
   if (outcome === "unusable") return yield* stop(headUnusable("merge"));
   if (outcome === "head-changed") return yield* stop("pull request head changed after review");
+  if (outcome === "closed") return yield* stop("pull request closed");
   return outcome;
 });

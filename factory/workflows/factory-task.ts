@@ -763,6 +763,11 @@ const factoryTaskPart = workflow(
           } as const)
         : { project, ...(reviewModel === null ? {} : { model: reviewModel }) };
       const readLines = remote ? [remoteLine(head)] : [];
+      if (remote && reviewBase !== null) {
+        readLines.push(
+          "Run every Git command with `GIT_NO_LAZY_FETCH=1` and `GIT_ALLOW_PROTOCOL=factory-review-no-transport` in its environment. This prevents implicit fetches from partial clones. If you cannot set both variables, do not run Git.",
+        );
+      }
       const holdRead = <A, E, R>(body: Parameters<typeof within<A, E, R>>[2]) =>
         remote
           ? within(pool, slot, within(placement.pool, { limit: placement.limit }, body))

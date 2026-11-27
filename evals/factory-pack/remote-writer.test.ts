@@ -1684,6 +1684,10 @@ it("WT16 distinct environments leave the writer on E and pin scope and review on
             const command = name.startsWith("scope/") ? "git diff --name-only" : "git diff";
             expect(turn.prompt).toContain(`\`${command} ${X}...${head}\``);
             expect(turn.prompt).toContain("Do not substitute the live pull request diff");
+            if (name !== "disprove/0") {
+              expect(turn.prompt).toContain("GIT_NO_LAZY_FETCH=1");
+              expect(turn.prompt).toContain("GIT_ALLOW_PROTOCOL=factory-review-no-transport");
+            }
           }
         }
         yield* workflows.answer(child.runId, "approve-merge", { choice: "Merge" }, PERSON);

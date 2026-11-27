@@ -6,6 +6,7 @@ import * as NodePath from "node:path";
 
 import { SourceControlProviderKind } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import { expect, it } from "vite-plus/test";
 
@@ -304,7 +305,7 @@ const scenario = <A, Err>(
         }
         if (!existing) throw new Error(`No pull request for ${step}`);
         if (step.startsWith("scope/"))
-          return { output: { headSha: existing.head, files: ["src/part.ts"] } };
+          return { output: { report: { headSha: existing.head, files: ["src/part.ts"] } } };
         if (step.startsWith("review/"))
           return review(existing.head, options.needsFix && step === "review/0");
         if (step.startsWith("disprove/")) return { output: { results: [] } };
@@ -445,6 +446,36 @@ it.each([false, true])(
       }),
     ),
 );
+
+it("WT2 writer-base bounds the noninteractive Git read and aborts it on interruption", () =>
+  scenario(
+    H,
+    {},
+    Effect.fn(function* () {
+      const { readOriginHead } = yield* Effect.promise(
+        () => import("../../factory/workflows/lib/records.ts"),
+      );
+      const started = Promise.withResolvers<NodeChildProcess.ExecFileOptionsWithStringEncoding>();
+      const read = yield* Effect.forkChild(
+        readOriginHead("/project", "main", (_command, _args, options) => {
+          const pending = Promise.withResolvers<never>();
+          options.signal?.addEventListener(
+            "abort",
+            () => pending.reject(new Error("Git interrupted")),
+            { once: true },
+          );
+          started.resolve(options);
+          return pending.promise;
+        }),
+      );
+      const options = yield* Effect.promise(() => started.promise);
+      expect(options.timeout).toBe(30_000);
+      expect(options.env).toMatchObject({ GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" });
+      expect(options.signal?.aborted).toBe(false);
+      yield* Fiber.interrupt(read);
+      expect(options.signal?.aborted).toBe(true);
+    }),
+  ));
 
 it("WT2 the coordinator pins origin/main and starts only the writer on E with the exact launch", () =>
   withOrigin(({ folder, X }) =>
@@ -712,7 +743,13 @@ it.each(["continue", "again"] as const)(
             expect(continuation.model).toBeUndefined();
             expect(continuation.issue).toBeUndefined();
             exactLine(continuation, continueReturn(X));
-            exactLine(continuation, writerLine(X));
+            exactLine(
+              continuation,
+              `Stay on this worktree's branch and keep any commits from your last turn. Before you resume, run \`git merge-base HEAD ${X}\`; if it does not print \`${X}\`, change nothing and return \`prUrl: null\`. Do not create, switch or rename branches. Push this branch under its own name with \`git push -u origin HEAD\`, never force-push, and use or open its pull request against \`main\`.`,
+            );
+            expect(continuation.prompt).not.toContain(
+              "run `git rev-parse HEAD`; if it does not print",
+            );
             exactLine(continuation, FOLLOW_UPS);
             expect(continuation.prompt).not.toContain(WRITER_RETURN);
             expect(continuation.outputSchema).toEqual(owner.outputSchema);
@@ -859,16 +896,20 @@ it.each(rejected)("WT7 $label stops before any record, check, review, question o
   ),
 );
 
-it.each([false, true])(
-  "WT8 risk-pr/0 confirms a mismatch only after headCheck (head returns to H: %s)",
-  (returns) =>
+it.each(["head moved", "head restored", "retarget before scope"] as const)(
+  "WT8 risk-pr/0 checks the review target and confirms a head mismatch: %s",
+  (mode) =>
     withOrigin(({ folder, X }) => {
+      const returns = mode === "head restored";
       const freshReads: number[] = [];
       return scenario(
         X,
         {
           read: ({ detail, count, world }) => {
             // W6.1, L4: writer-pr, checks/0, then risk-pr/0 and its confirming read.
+            if (mode === "retarget before scope") {
+              return count === 2 ? { ...detail, baseBranch: "release" } : detail;
+            }
             if (count === 2) return { ...detail, headSha: H2 };
             if (count === 3) {
               freshReads.push(world.prComments.length);
@@ -881,14 +922,20 @@ it.each([false, true])(
           const { runId } = yield* start(workflows, remote(folder));
           const child = yield* world.child(workflows, runId, 0);
           const result = yield* world.ended(workflows, child.runId, true);
-          expect(result).toMatchObject(returns ? merged() : stopped(headMoved("risk-pr/0", H2)));
-          expect(freshReads).toEqual([1]);
-          expect(world.prComments[0]).toEqual({
-            pullRequest: { project: PROJECT, url: URL },
-            body: headCheck(H),
-          });
           const names = named((yield* workflows.get(child.runId)).steps);
-          expect(names.indexOf("risk-pr/0/fresh")).toBeGreaterThan(names.indexOf("risk-pr/0"));
+          if (mode === "retarget before scope") {
+            expect(result).toMatchObject(stopped(wrongBase("release")));
+            expect(names).toContain("risk-pr/0");
+            expect(world.prComments).toEqual([]);
+          } else {
+            expect(result).toMatchObject(returns ? merged() : stopped(headMoved("risk-pr/0", H2)));
+            expect(freshReads).toEqual([1]);
+            expect(world.prComments[0]).toEqual({
+              pullRequest: { project: PROJECT, url: URL },
+              body: headCheck(H),
+            });
+            expect(names.indexOf("risk-pr/0/fresh")).toBeGreaterThan(names.indexOf("risk-pr/0"));
+          }
           if (returns) expect(only(world.turns, "scope/0").environment).toBeUndefined();
           else {
             expect(names).not.toContain("scope/0");
@@ -1071,7 +1118,8 @@ it.each([
   { label: "absent head", head: undefined, reason: headUnusable("merge") },
   { label: "short head", head: "abc", reason: headUnusable("merge") },
   { label: "push after answer", head: H2, reason: "pull request head changed after review" },
-])("WT11 merge comments before it reads: $label", ({ head, reason }) =>
+  { label: "retarget after answer", head: H, baseBranch: "release", reason: wrongBase("release") },
+])("WT11 merge comments before it reads: $label", ({ head, baseBranch, reason }) =>
   withOrigin(({ folder, X }) => {
     let answered = false;
     const seen: Array<{ comments: string[]; acts: number }> = [];
@@ -1084,7 +1132,9 @@ it.each([
             comments: world.prComments.map((comment) => comment.body),
             acts: world.acts.length,
           });
-          return head === undefined ? withoutHead(detail) : { ...detail, headSha: head };
+          return head === undefined
+            ? withoutHead(detail)
+            : { ...detail, headSha: head, baseBranch: baseBranch ?? detail.baseBranch };
         },
       },
       Effect.fn(function* (world, workflows) {
@@ -1111,9 +1161,11 @@ it.each([
   "matched",
   "unreviewed",
   "unusable",
+  "retarget after act",
   "timeout",
   "wrong wake",
   "merged at checks",
+  "matched at checks before review",
   "merged at merge",
 ] as const)("WT12 merged-head owns the verdict after %s", (mode) =>
   withOrigin(({ folder, X }) =>
@@ -1121,8 +1173,12 @@ it.each([
       X,
       {
         read: ({ detail, count, world }) => {
-          if (mode === "merged at checks" && count >= 1)
+          if (count >= 1 && mode === "merged at checks") {
             return { ...detail, state: "merged", headSha: H2 };
+          }
+          if (count >= 1 && mode === "matched at checks before review") {
+            return { ...detail, state: "merged" };
+          }
           if (
             mode === "merged at merge" &&
             world.prComments.some((comment) => comment.body === mergeMark(H))
@@ -1133,13 +1189,16 @@ it.each([
           if (mode === "timeout" || mode === "wrong wake") return { ...detail, state: "open" };
           if (mode === "unreviewed") return { ...detail, headSha: H2 };
           if (mode === "unusable") return withoutHead(detail);
+          if (mode === "retarget after act") return { ...detail, baseBranch: "release" };
           return detail;
         },
       },
       Effect.fn(function* (world, workflows) {
         const { runId } = yield* start(workflows, remote(folder));
         const child = yield* world.child(workflows, runId, 0);
-        const alreadyMerged = mode === "merged at checks" || mode === "merged at merge";
+        const beforeReview =
+          mode === "merged at checks" || mode === "matched at checks before review";
+        const alreadyMerged = beforeReview || mode === "merged at merge";
         if (mode === "timeout" || mode === "wrong wake") {
           const atWait = yield* workflows.waitFor(
             child.runId,
@@ -1164,7 +1223,11 @@ it.each([
           const reason =
             mode === "timeout" || mode === "wrong wake"
               ? mergeUnconfirmed("open")
-              : mergedUnreviewed(mode === "unusable" ? "unknown" : H2);
+              : mode === "retarget after act"
+                ? `${URL} was merged into release, not the reviewed target main. Check the merge now.`
+                : beforeReview
+                  ? `${URL} was merged at ${mode === "merged at checks" ? H2 : H}, but Factory had no accepted review of that commit. Check the merge now.`
+                  : mergedUnreviewed(mode === "unusable" ? "unknown" : H2);
           const question = yield* ask(world, workflows, child.runId, "unreviewed");
           expect(question.kind).toBe("unreviewed");
           expect(question.request).toMatchObject({
@@ -1174,7 +1237,12 @@ it.each([
             data: {
               prUrl: URL,
               expectedHead: H,
-              mergedHead: mode === "unreviewed" || alreadyMerged ? H2 : null,
+              mergedHead:
+                mode === "retarget after act" || mode === "matched at checks before review"
+                  ? H
+                  : mode === "unreviewed" || alreadyMerged
+                    ? H2
+                    : null,
             },
           });
           const notes = yield* workflows.stored(`factory/v1/note/${TASK_ID}/`);
@@ -1194,8 +1262,10 @@ it.each([
           expect(names.indexOf("merge-wait")).toBeGreaterThan(names.indexOf("merge"));
           expect(names.indexOf("merged-head")).toBeGreaterThan(names.indexOf("merge-wait"));
         } else {
-          if (mode === "merged at checks") expect(names).not.toContain("merge");
-          else expect(names.indexOf("merged-head")).toBeGreaterThan(names.indexOf("merge"));
+          if (beforeReview) {
+            expect(names).not.toContain("review/0");
+            expect(names).not.toContain("merge");
+          } else expect(names.indexOf("merged-head")).toBeGreaterThan(names.indexOf("merge"));
           expect(names).not.toContain("merge-wait");
         }
       }),

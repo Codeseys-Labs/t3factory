@@ -1067,7 +1067,11 @@ const make = Effect.gen(function* () {
     | { readonly kind: "remove"; readonly operation: "remove-secret" | "remove-stale-secret" }
   );
 
-  const persistSettingsSecrets = (current: ServerSettings, next: ServerSettings) =>
+  const persistSettingsSecrets = (
+    current: ServerSettings,
+    next: ServerSettings,
+    patch: ServerSettingsPatch,
+  ) =>
     Effect.sync(() => {
       // Only sensitive rows own a stored secret; a plain duplicate must not hide one from cleanup.
       const previous = new Map<string, SettingsSecret>();
@@ -1139,6 +1143,13 @@ const make = Effect.gen(function* () {
             ? { environmentVariable: secret.environmentVariable }
             : {}),
         });
+      }
+      // A crash can leave the management key in the store before its source row reaches disk.
+      for (const [id, source] of Object.entries(patch.usageLimitSources ?? {})) {
+        if (source !== null || Object.hasOwn(next.usageLimitSources, id)) continue;
+        const secretName = `usage-limit-source-${Buffer.from(id, "utf8").toString("base64url")}`;
+        if (!previous.has(secretName))
+          changes.push({ kind: "remove", secretName, operation: "remove-stale-secret" });
       }
       return {
         settings,
@@ -1277,6 +1288,7 @@ const make = Effect.gen(function* () {
         const persisted = yield* persistSettingsSecrets(
           current,
           withoutRemovedSecretProviderReferences(current, vettedProviders.settings),
+          patch,
         );
         const next = yield* normalizeServerSettings(persisted.settings);
         const materializedNext = yield* Effect.uninterruptibleMask(() =>

@@ -13103,25 +13103,8 @@
   "33544dea21c9d7c9": "Head moved",
   "339dae6f825c6866": "Make this thread the project's Orchestrator",
   "34fabd5b00324ca9": "Kind",
-  "3a312b1d7f199398": [
-    "Port",
-    " ",
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    },
-    " ",
-    "is still held, and an earlier proxy of this server ran as process",
-    " ",
-    {
-      "i": 2,
-      "k": "_gt_value_2",
-      "v": "v"
-    },
-    "."
-  ],
   "3acc2e4803ca995a": "Title",
+  "3ace5eff11c0f9f9": "On the selected machine, identify the process listening on this port before stopping anything. Once the port is free, choose Start.",
   "3bd8b55944df1bf4": "Open T-{number}",
   "3c0f7b24ac041b05": "Add a note",
   "3d08cdd31183989c": "Nothing needs you now.",
@@ -13291,8 +13274,25 @@
   "7180adf1efc1dc6b": "Last read failed {date}: {reason}",
   "71b118ff5d9edcdb": "Protocol",
   "7228aeee9ad7fd66": "A downloaded file did not match its pinned size or SHA-256. Nothing was installed.",
+  "728f745345c6b7e2": [
+    "Port",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "is in use. The last recorded proxy process ID was",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
   "735366a7be3e89d3": "File",
-  "768e08f1016f012e": "End that process on the machine, then choose Start.",
   "76a46c1775f13048": "Raised again",
   "777e492521fb5acd": "Model proxy",
   "784cc87d53bef4c8": "Read {date}",
@@ -13308,6 +13308,7 @@
   "8093eaa7292a8a05": "This attempt made no plan.",
   "80b1e0d96c7b16f2": "Assignee",
   "80f417f89cc031bb": "The model proxy is not installed on this server.",
+  "814d81c5aa5972ee": "An earlier proxy may still be running. On the selected machine, identify the process listening on the proxy port before stopping anything, then try again.",
   "81f42e4fe24fde8b": "Public https addresses on port 443 only. The server reads each feed at most once an hour and never opens the links inside.",
   "8272831b240c3588": "Also remove the sign-ins it holds",
   "828fa78ef4e9dbb9": "Work breadcrumb",
@@ -13613,7 +13614,6 @@
   "ec15e1b4845411ea": "None",
   "ec5e2edf708466b2": "Open",
   "ed5558ae9fc8dcc0": "{count, plural, one {{count} more not shown} other {{count} more not shown}}",
-  "ede148e113aec0dd": "An earlier proxy of this server may still be running. End it on the machine, then try again.",
   "eecefdbee8435729": "Create task",
   "eee704e25dbc15e6": "Start now",
   "eeea97b0cf7b81e2": {
@@ -13699,7 +13699,6 @@
   "fb90b8e5705ab86c": "No tasks",
   "fbe9165c6105daaa": "Work is in review or has been placed here for review.",
   "fc0e18b3717236be": "Research",
-  "fc2dc2e4d13e214e": "Close the program that uses the port, then choose Start.",
   "fc69bad4ccc6deb9": "Planning…",
   "fc9df14ea23f45b9": "Attempts",
   "fe0d419a5d3fbfc4": "Loading the task…",

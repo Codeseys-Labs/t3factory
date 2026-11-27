@@ -127,11 +127,13 @@ To move a pin:
 1. Pick the newest release of each component that is not a draft or prerelease and was published at least 168 hours before you download it. Check the console's `requires` range against the proxy version. When no release is old enough, keep the current pin.
 2. Download each file the manifest names, and the `LICENSE` at the tag, and take each one's size and SHA-256. They should match GitHub's asset `digest` and, for the proxy, its `checksums.txt`, but a match is not proof: nothing is signed.
 3. Edit the manifest: `version`, `publishedAt` (GitHub's publication time), `retrievedAt` (when you took the hashes), both UTC to the second as `YYYY-MM-DDTHH:MM:SSZ`, and each file's URL, `bytes` and `sha256`. The licence must still be MIT.
-4. Run `check`, then `fetch --dir` into a new folder outside the checkout to prove the bytes. Before committing the manifest, follow the Windows procedure in clause P12 of the T3 Factory v2 contract (`r11-P.md`) with the real pinned binary and a new home.
+4. Run `check`, then `fetch --dir` into a new folder outside the checkout to verify the downloads. On Windows, start Factory against a fresh, isolated home and use **Work → Model proxy** to install and start the new pin. Verify the proxy listens only on loopback, the pinned console signs in with a temporary typed management key, and **Usage → Limits** lists **Factory proxy**. Stop it, confirm the listener closes and Usage disconnects, then uninstall. Do not qualify a pin against a live home.
 
 `check` refuses a version that is not an exact `x.y.z`; a `source` other than the component's repository; a `retrievedAt` less than 168 hours after `publishedAt`; platforms other than `win32-x64`, `darwin-arm64`, `darwin-x64`, `linux-x64` and `linux-arm64` for the proxy, or `any` for the console, in that order; a URL that is not exactly the release download for that version (for a licence, the raw file at the tag), so no `latest`, branch, query, port or upper-case letter in the host; a SHA-256 that is not 64 lower-case hex; a size outside 1 byte to 100 MiB; a licence other than MIT; a URL, hash or platform used twice; and any key it does not know.
 
 Once the server reads the new manifest, **Model proxy** shows the pinned and installed versions side by side and says when either has changed. The installed copy stays as it was. To move an environment to the new pin, uninstall with sign-ins kept, then install again. This replaces the proxy and console settings and keys, not the kept sign-ins. There is no upgrade in place or rollback.
+
+Do not remove or replace `factory-proxy/static/management.html` while the proxy is running. The server verifies the pinned file before launch, but the proxy serves it itself and can fetch a replacement if the file disappears. Stop the proxy before repairing the install.
 
 ## Model proxy files and recovery
 

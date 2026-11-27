@@ -33,7 +33,7 @@ import * as Base64Url from "effect/encoding/Base64Url";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
-import { HttpClient } from "effect/http";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import type * as PlatformError from "effect/PlatformError";
@@ -59,7 +59,6 @@ import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import { makeCliproxyApi } from "../usage/cliproxyApi.ts";
 import { removeEmptyDirectory } from "../vcs/removeEmptyDirectory.ts";
 import { openZipArchive } from "../zipArchive.ts";
 
@@ -85,6 +84,9 @@ const PROXY_ENV = new Set(
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const urlFor = (port: number) => `http://${LOOPBACK}:${port}`;
+const readHealth = HttpClientResponse.schemaBodyJson(
+  Schema.Struct({ files: Schema.Array(Schema.Unknown) }),
+);
 
 export const SUPERVISOR = String.raw`const { spawn } = require("node:child_process");
 const [command, ...args] = process.argv.slice(1);
@@ -401,7 +403,7 @@ export const make = Effect.gen(function* () {
   const settings = yield* ServerSettings.ServerSettingsService;
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const api = yield* makeCliproxyApi;
+  const http = yield* HttpClient.HttpClient;
   const runner = yield* ProcessRunner.make();
   const net = yield* Net.NetService;
   const random = yield* SecureRandom.SecureRandom;
@@ -595,8 +597,12 @@ export const make = Effect.gen(function* () {
   );
   const removeHub = hubLock.withPermit(
     Effect.gen(function* () {
-      if ((yield* settings.getSettings).usageLimitSources[SOURCE]) yield* patchSource(null);
-      if (Option.isSome(yield* secrets.get(SETTINGS_KEY))) return yield* refusal("remove-refused");
+      const entry = (yield* settings.getSettings).usageLimitSources[SOURCE];
+      if (entry || Option.isSome(yield* secrets.get(SETTINGS_KEY))) {
+        const updated = yield* patchSource(null);
+        if (updated.usageLimitSources[SOURCE] || Option.isSome(yield* secrets.get(SETTINGS_KEY)))
+          return yield* refusal("remove-refused");
+      }
       hub = "disconnected";
       removing = true;
     }).pipe(
@@ -682,11 +688,11 @@ export const make = Effect.gen(function* () {
     Effect.orElseSucceed(() => false),
   );
   const cleanup = Effect.fn("FactoryProxy.cleanup")(
-    function* (removeCredentials: boolean, previousStepsOk: boolean) {
+    function* (removeCredentials: boolean) {
       const a = yield* Effect.isSuccess(secrets.remove(MANAGEMENT_KEY));
       const b = yield* Effect.isSuccess(secrets.remove(CLIENT_KEY));
       const files = yield* prune(removeCredentials);
-      if (!a || !b || !files || !previousStepsOk) return false;
+      if (!a || !b || !files) return false;
       if ((yield* kind(root)) === "Directory") {
         const retained = (yield* fs.readDirectory(root)).filter((name) => name !== "record.json");
         if (retained.some((name) => removeCredentials || name !== "auth")) return false;
@@ -875,14 +881,16 @@ export const make = Effect.gen(function* () {
       if (rec.consoleKey === "generated")
         yield* writeKey(MANAGEMENT_KEY, management).pipe(asProblem("damaged"));
       if (missing) yield* writeKey(CLIENT_KEY, client).pipe(asProblem("damaged"));
-      yield* atomic(configPath, contents);
       if (os !== "win32") yield* fs.chmod(configPath, 0o600);
+      yield* atomic(configPath, contents);
       return Redacted.make(management);
     },
     Effect.mapError((error) => (isJobProblem(error) ? error : fault("config-unreadable"))),
     Effect.catchDefect(() => Effect.fail(fault("config-unreadable"))),
   );
 
+  const mayBeRunning = (run: Active) =>
+    run.exited ? Effect.succeed(false) : run.child.isRunning.pipe(Effect.orElseSucceed(() => true));
   const end = Effect.fn("FactoryProxy.end")(function* (run: Active) {
     if (!run.exited) {
       yield* disableHub;
@@ -895,8 +903,9 @@ export const make = Effect.gen(function* () {
         Effect.orElseSucceed(() => Option.none()),
       );
       if (Option.isSome(ended)) {
+        run.exited = true;
         exitCode = ended.value;
-        if (record?.process)
+        if (!removing && record?.process && (yield* net.isPortAvailableOnLoopback(run.port)))
           yield* updateRecord({ process: null }).pipe(
             Effect.catch(() => Effect.sync(() => setFailed("write"))),
           );
@@ -904,11 +913,20 @@ export const make = Effect.gen(function* () {
         yield* run.child.kill({ forceKillAfter: STOP_GRACE }).pipe(Effect.ignore);
       }
     }
-    if (active === run) active = null;
   });
-  const closeActive = Effect.suspend(() =>
-    active ? Scope.close(active.scope, Exit.succeed(undefined)) : disableHub,
-  );
+  const closeActive = Effect.gen(function* () {
+    const run = active;
+    if (!run) return yield* disableHub;
+    yield* Scope.close(run.scope, Exit.void);
+    // A closed scope or a returned kill is not evidence that its supervisor exited.
+    if (active === run) {
+      if (!(yield* mayBeRunning(run))) active = null;
+      else if (run.pid !== null && record && record.process === null)
+        yield* updateRecord({ process: { pid: run.pid } }).pipe(
+          Effect.catch(() => Effect.sync(() => setFailed("write"))),
+        );
+    }
+  });
   yield* Scope.addFinalizer(scope, closeActive);
   const launch = Effect.fn("FactoryProxy.launch")(function* (
     executable: string,
@@ -939,7 +957,7 @@ export const make = Effect.gen(function* () {
     );
     const run: Active = { scope: childScope, child, managementKey, port, pid: null, exited: false };
     active = run;
-    const announced = yield* Deferred.make<number>();
+    const announced = yield* Deferred.make<number, JobProblem>();
     yield* run.child.stderr.pipe(Stream.runDrain, Effect.ignore, Effect.forkIn(run.scope));
     yield* run.child.stdout.pipe(
       Stream.decodeText(),
@@ -953,6 +971,7 @@ export const make = Effect.gen(function* () {
         return Deferred.succeed(announced, pid);
       }),
       Effect.ignore,
+      Effect.ensuring(Deferred.fail(announced, fault("spawn"))),
       Effect.forkIn(run.scope),
     );
     yield* Scope.addFinalizer(childScope, end(run));
@@ -979,7 +998,11 @@ export const make = Effect.gen(function* () {
   }, asProblem("damaged"));
 
   const attempt = Effect.fn("FactoryProxy.attempt")(function* (rec: ProxyRecord) {
-    if (!(yield* net.isPortAvailableOnLoopback(rec.port))) return "port-in-use" as const;
+    if (
+      !(yield* net.isPortAvailableOnLoopback(rec.port)) ||
+      (active && (yield* mayBeRunning(active)))
+    )
+      return "port-in-use" as const;
     if (rec.process) yield* updateRecord({ process: null });
     const exe = yield* verifyFiles(rec);
     const key = yield* configure(rec, true);
@@ -994,16 +1017,27 @@ export const make = Effect.gen(function* () {
       asProblem("spawn"),
     );
     const observe = Effect.gen(function* () {
-      const pid = yield* Deferred.await(announced);
+      const pid = yield* Deferred.await(announced).pipe(
+        Effect.timeout(HEALTH_WAIT),
+        asProblem("spawn"),
+      );
       yield* updateRecord({ process: { pid } });
       const health = yield* Effect.gen(function* () {
         for (;;) {
           if (!(yield* net.isPortAvailableOnLoopback(run.port))) {
             if (!(yield* proved(run))) return "port-in-use" as const;
+            const request = HttpClientRequest.get(
+              `${urlFor(run.port)}/v0/management/auth-files`,
+            ).pipe(HttpClientRequest.setHeader("Authorization", `Bearer ${Redacted.value(key)}`));
             if (
-              yield* Effect.isSuccess(
-                api.readAccounts({ url: urlFor(run.port), managementKey: Redacted.value(key) }),
-              )
+              yield* http
+                .execute(request)
+                .pipe(
+                  Effect.flatMap(HttpClientResponse.filterStatusOk),
+                  Effect.flatMap(readHealth),
+                  Effect.timeout("15 seconds"),
+                  Effect.isSuccess,
+                )
             )
               return "healthy" as const;
           }
@@ -1049,6 +1083,9 @@ export const make = Effect.gen(function* () {
         const delay = RESTART_DELAYS[restarts++];
         if (delay === undefined) {
           setFailed(outcome);
+          yield* Effect.logWarning("Factory proxy exhausted restart attempts").pipe(
+            Effect.annotateLogs({ problem: outcome, attempts: restarts }),
+          );
           return;
         }
         state = "starting";
@@ -1103,11 +1140,23 @@ export const make = Effect.gen(function* () {
       );
   const mutation = <A, E>(effect: Effect.Effect<A, E>) => decideMutation(effect, false);
   const removeOwned = Effect.fn("FactoryProxy.removeOwned")(function* (removeCredentials: boolean) {
+    const interruptedRemoval = record?.phase === "removing";
     const marked =
       !record || (yield* Effect.isSuccess(updateRecord({ phase: "removing", desired: "stopped" })));
     yield* interruptWorker;
+    const run = active;
     yield* closeActive;
-    const clean = yield* cleanup(removeCredentials, marked);
+    if (
+      active ||
+      (record &&
+        (run || record.process || interruptedRemoval) &&
+        !(yield* net.isPortAvailableOnLoopback(record.port)))
+    ) {
+      removing = false;
+      setFailed("interrupted");
+      return yield* refusal("earlier-run");
+    }
+    const clean = marked && (yield* cleanup(removeCredentials));
     removing = false;
     return clean;
   });
@@ -1115,7 +1164,7 @@ export const make = Effect.gen(function* () {
     error: JobProblem,
   ) {
     const gone = yield* Effect.isSuccess(removeHub);
-    const clean = gone && (yield* removeOwned(false));
+    const clean = gone && (yield* removeOwned(false).pipe(Effect.orElseSucceed(() => false)));
     state = clean ? "not-installed" : "failed";
     problem = clean ? error.problem : "leftover";
   });
@@ -1215,14 +1264,14 @@ export const make = Effect.gen(function* () {
       if (hub === "disable-refused") yield* disableHub;
       return yield* status();
     }
-    if (!(yield* Effect.isSuccess(updateRecord({ desired: "stopped" })))) {
-      setFailed("write");
-      return yield* status();
-    }
+    const saved = yield* Effect.isSuccess(updateRecord({ desired: "stopped" }));
     yield* interruptWorker;
     yield* closeActive;
-    state = "stopped";
-    problem = null;
+    if (!saved) setFailed("write");
+    else {
+      state = "stopped";
+      problem = null;
+    }
     return yield* status();
   }, mutation);
   const uninstall = Effect.fn("FactoryProxy.uninstall")(
@@ -1245,7 +1294,7 @@ export const make = Effect.gen(function* () {
       }
       if (
         record?.process &&
-        (!active || !(yield* active.child.isRunning.pipe(Effect.orElseSucceed(() => false)))) &&
+        (!active || !(yield* mayBeRunning(active))) &&
         !(yield* net.isPortAvailableOnLoopback(record.port))
       )
         return yield* refusal("earlier-run");

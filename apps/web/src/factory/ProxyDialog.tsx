@@ -14,7 +14,7 @@ import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { msg, T, useMessages, Var } from "gt-react";
-import { type RefObject, useContext, useEffect, useId, useRef, useState } from "react";
+import { useContext, useEffect, useId, useRef, useState } from "react";
 
 import {
   AlertDialog,
@@ -75,7 +75,7 @@ const REFUSALS: Record<ProxyRefusal, string> = {
   "unsupported-platform": msg("The pin has no build of the proxy for this machine."),
   "no-free-port": msg("No port from 8317 to 8327 is free on this machine."),
   "earlier-run": msg(
-    "An earlier proxy of this server may still be running. End it on the machine, then try again.",
+    "An earlier proxy may still be running. On the selected machine, identify the process listening on the proxy port before stopping anything, then try again.",
   ),
   "remove-refused": msg(
     "The proxy's hub could not be removed from this server's settings. Nothing was uninstalled. Try again.",
@@ -197,7 +197,7 @@ function ProcessLine({ status }: { readonly status: FactoryProxyStatus }) {
           <Var>
             <bdi>{status.port}</bdi>
           </Var>{" "}
-          is still held, and an earlier proxy of this server ran as process{" "}
+          is in use. The last recorded proxy process ID was{" "}
           <Var>
             <bdi>{status.pid}</bdi>
           </Var>
@@ -252,11 +252,10 @@ function ProxyStatusDetails({ status }: { readonly status: FactoryProxyStatus })
       ) : null}
       {state === "port-in-use" ? (
         <p>
-          {status.pid === null ? (
-            <T>Close the program that uses the port, then choose Start.</T>
-          ) : (
-            <T>End that process on the machine, then choose Start.</T>
-          )}
+          <T>
+            On the selected machine, identify the process listening on this port before stopping
+            anything. Once the port is free, choose Start.
+          </T>
         </p>
       ) : null}
       {state !== "installing" && pinned !== null ? (
@@ -350,16 +349,19 @@ function ProxyStatusDetails({ status }: { readonly status: FactoryProxyStatus })
 function InstallForm({
   offered,
   enabled,
+  value,
+  onChange,
   onInstall,
 }: {
   readonly offered: boolean;
   readonly enabled: boolean;
+  readonly value: string;
+  readonly onChange: (value: string) => void;
   readonly onInstall: (input: FactoryProxyInstallInput) => Promise<void>;
 }) {
   const m = useMessages();
   const id = useId();
-  const [key, setKey] = useState("");
-  const invalid = keyProblem(key);
+  const invalid = keyProblem(value);
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
 
@@ -369,9 +371,7 @@ function InstallForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (!enabled || invalid) return;
-        const input = installInput(key);
-        setKey("");
-        void onInstall(input);
+        void onInstall(installInput(value));
       }}
     >
       <Label htmlFor={id}>
@@ -383,8 +383,8 @@ function InstallForm({
         autoComplete="new-password"
         size="default"
         disabled={!enabled}
-        value={key}
-        onChange={(event) => setKey(event.currentTarget.value)}
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value)}
         aria-invalid={invalid}
         aria-describedby={invalid ? `${hintId} ${errorId}` : hintId}
       />
@@ -417,13 +417,13 @@ export function ProxyDialog({
   environmentId,
   environmentLabel,
   connected,
-  openerRef,
+  finalFocus,
   onClose,
 }: {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
   readonly connected: boolean;
-  readonly openerRef: RefObject<HTMLButtonElement | null>;
+  readonly finalFocus: () => HTMLElement | null;
   readonly onClose: () => void;
 }) {
   const registry = useContext(RegistryContext);
@@ -439,6 +439,7 @@ export function ProxyDialog({
   const start = useAtomCommand(startFactoryProxy, QUIET_COMMAND);
   const stop = useAtomCommand(stopFactoryProxy, QUIET_COMMAND);
   const uninstall = useAtomCommand(uninstallFactoryProxy, QUIET_COMMAND);
+  const [managementKey, setManagementKey] = useState("");
   const [confirmation, setConfirmation] = useState<Removal | null>(null);
   const [removeCredentials, setRemoveCredentials] = useState(false);
   const cancel = useRef<HTMLButtonElement>(null);
@@ -487,20 +488,20 @@ export function ProxyDialog({
 
   const run = async (command: () => Promise<AtomCommandResult<FactoryProxyStatus, unknown>>) => {
     // The scheduler joins calls sharing a key; a different action must not join the active one.
-    if (!connected || registry.get(changeAtom)?.kind === "pending") return;
+    if (!connected || registry.get(changeAtom)?.kind === "pending") return false;
     registry.set(changeAtom, { kind: "pending" });
     const result = await command();
-    if (result._tag === "Failure") {
-      registry.set(
-        changeAtom,
-        isAtomCommandInterrupted(result)
-          ? null
-          : {
-              kind: "refused",
-              reason: refusalCode(Option.getOrNull(Cause.findErrorOption(result.cause))),
-            },
-      );
-    }
+    if (result._tag === "Success") return true;
+    registry.set(
+      changeAtom,
+      isAtomCommandInterrupted(result)
+        ? null
+        : {
+            kind: "refused",
+            reason: refusalCode(Option.getOrNull(Cause.findErrorOption(result.cause))),
+          },
+    );
+    return false;
   };
 
   return (
@@ -510,7 +511,7 @@ export function ProxyDialog({
         if (!open) onClose();
       }}
     >
-      <DialogPopup showCloseButton={false} initialFocus={cancel} finalFocus={openerRef}>
+      <DialogPopup showCloseButton={false} initialFocus={cancel} finalFocus={finalFocus}>
         <DialogHeader>
           <DialogTitle>
             <T>
@@ -555,7 +556,11 @@ export function ProxyDialog({
             <InstallForm
               offered={installAction !== undefined}
               enabled={!busy && installAction?.enabled === true}
-              onInstall={(input) => run(() => install({ environmentId, input }))}
+              value={managementKey}
+              onChange={setManagementKey}
+              onInstall={async (input) => {
+                if (await run(() => install({ environmentId, input }))) setManagementKey("");
+              }}
             />
           ) : null}
           <div className="flex flex-wrap gap-2">

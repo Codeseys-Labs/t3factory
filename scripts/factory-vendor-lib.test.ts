@@ -98,36 +98,36 @@ it.layer(NodeServices.layer)("24 pinnedFor and readVendorManifestIn", (it) => {
           assert.deepStrictEqual(result.problems, [], "the committed manifest has no problems");
         }
         if ("problems" in result) return;
-        assert.strictEqual(result.proxy, "8.0.78");
-        assert.strictEqual(result.console, "1.28.3");
+        assert.strictEqual(result.proxy, proxy.version);
+        assert.strictEqual(result.console, center.version);
 
         const archive = proxy.assets.find((asset) => asset.platform === "win32-x64");
         assert.isTrue(archive !== undefined);
         assert.deepStrictEqual(result.files && [...result.files], [
           {
             role: "archive",
-            label: "cliproxyapi 8.0.78 win32-x64",
+            label: `cliproxyapi ${proxy.version} win32-x64`,
             url: archive?.url,
             bytes: archive?.bytes,
             sha256: archive?.sha256,
           },
           {
             role: "proxy-license",
-            label: "cliproxyapi 8.0.78 license",
+            label: `cliproxyapi ${proxy.version} license`,
             url: proxy.license.url,
             bytes: proxy.license.bytes,
             sha256: proxy.license.sha256,
           },
           {
             role: "console",
-            label: "management-center 1.28.3 any",
+            label: `management-center ${center.version} any`,
             url: center.assets[0]?.url,
             bytes: center.assets[0]?.bytes,
             sha256: center.assets[0]?.sha256,
           },
           {
             role: "console-license",
-            label: "management-center 1.28.3 license",
+            label: `management-center ${center.version} license`,
             url: center.license.url,
             bytes: center.license.bytes,
             sha256: center.license.sha256,
@@ -148,10 +148,12 @@ it.layer(NodeServices.layer)("24 pinnedFor and readVendorManifestIn", (it) => {
           assert.deepStrictEqual(linux.problems, [], "linux-arm64 is pinned");
         }
         if ("problems" in linux) return;
-        assert.strictEqual(
-          linux.files?.[0]?.url.endsWith("CLIProxyAPI_8.0.78_linux_aarch64.tar.gz"),
-          true,
+        const manifest = JSON.parse(text) as { components: [ComponentFixture, ComponentFixture] };
+        const archive = manifest.components[0].assets.find(
+          (asset) => asset.platform === "linux-arm64",
         );
+        assert.isDefined(archive);
+        assert.strictEqual(linux.files?.[0]?.url, archive?.url);
 
         const arm = pinnedFor(text, "win32-arm64");
         if ("problems" in arm) {

@@ -549,24 +549,7 @@
   "2c87759394b65c15": "Desinstalar",
   "2d171b3f2bfb1d88": "Este servidor no se ejecuta desde un checkout de Factory, así que no tiene manifiesto fijado.",
   "2f004248af316101": "El manifiesto fijado falta o no es válido, así que no se obtuvo nada.",
-  "3a312b1d7f199398": [
-    "El puerto",
-    " ",
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    },
-    " ",
-    "sigue ocupado y un proxy anterior de este servidor se ejecutó como proceso",
-    " ",
-    {
-      "i": 2,
-      "k": "_gt_value_2",
-      "v": "v"
-    },
-    "."
-  ],
+  "3ace5eff11c0f9f9": "En la máquina seleccionada, identifica el proceso que está escuchando en este puerto antes de detener nada. Cuando el puerto esté libre, elige Iniciar.",
   "3fc29e62ef7cb9af": [
     {
       "i": 1,
@@ -624,9 +607,16 @@
     ". Desinstala conservando los inicios de sesión y luego instala para pasar a ella."
   ],
   "7228aeee9ad7fd66": "Un archivo descargado no coincidía con su tamaño o SHA-256 fijados. No se instaló nada.",
-  "768e08f1016f012e": "Termina ese proceso en la máquina y luego elige Iniciar.",
+  "728f745345c6b7e2": [
+    "El puerto ",
+    { "i": 1, "k": "_gt_value_1", "v": "v" },
+    " está en uso. El último ID de proceso registrado para el proxy fue ",
+    { "i": 2, "k": "_gt_value_2", "v": "v" },
+    "."
+  ],
   "777e492521fb5acd": "Proxy de modelos",
   "80f417f89cc031bb": "El proxy de modelos no está instalado en este servidor.",
+  "814d81c5aa5972ee": "Puede que un proxy anterior siga en ejecución. En la máquina seleccionada, identifica el proceso que está escuchando en el puerto del proxy antes de detener nada. Luego vuelve a intentarlo.",
   "8272831b240c3588": "Quitar también los inicios de sesión que contiene",
   "842fde6f13ecd74d": "No se puede leer el archivo de configuración del proxy de modelos. Desinstala conservando los inicios de sesión y vuelve a instalar.",
   "85b817ff89412d77": "No se pudo desactivar el hub del proxy en la configuración de este servidor.",
@@ -707,9 +697,7 @@
   "e5567d65ffdb88e2": "No está instalado.",
   "e78f5c54ea4982f2": "No se pudieron quitar algunos archivos del proxy o su hub. Vuelve a desinstalar.",
   "e86c76292ee9d1e5": "Lo que guardes en la consola se conserva. El servidor vuelve a establecer la dirección, el puerto, la clave de gestión y la carpeta de inicio de sesión cada vez que se inicia el proxy, y los plugins y el descubrimiento de red no están disponibles para él.",
-  "ede148e113aec0dd": "Un proxy anterior de este servidor puede seguir en ejecución. Termínalo en la máquina y vuelve a intentarlo.",
   "f14490ae9c6e24b8": "Quitar los inicios de sesión conservados",
   "f3e544786f4c9b6b": "Los archivos instalados del proxy o su clave faltan, no se pueden leer o han cambiado. Desinstala conservando los inicios de sesión y vuelve a instalar.",
-  "f7546ed96b48ea66": "Ningún puerto del 8317 al 8327 está libre en esta máquina.",
-  "fc2dc2e4d13e214e": "Cierra el programa que usa el puerto y luego elige Iniciar."
+  "f7546ed96b48ea66": "Ningún puerto del 8317 al 8327 está libre en esta máquina."
 }

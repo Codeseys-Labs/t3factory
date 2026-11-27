@@ -547,7 +547,7 @@ export const fetchVendor = Effect.fn("factoryVendor.fetch")(function* (input: {
       insensitive ? resolved.success.toLowerCase() : resolved.success,
       insensitive ? folder.toLowerCase() : folder,
     );
-    if (relative === "" || (!path.isAbsolute(relative) && relative.split(/[\\/]/)[0] !== ".."))
+    if (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
       return {
         exitCode: 1,
         stdout: [],

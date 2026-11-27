@@ -18,6 +18,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Net from "@t3tools/shared/Net";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -28,6 +29,7 @@ import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as PlatformError from "effect/PlatformError";
 import * as Queue from "effect/Queue";
 import * as Redacted from "effect/Redacted";
 import * as Scope from "effect/Scope";
@@ -37,6 +39,8 @@ import * as TestClock from "effect/testing/TestClock";
 
 import * as SecretStoreModule from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as ServerSettingsModule from "../serverSettings.ts";
 import { makeDownload } from "../../../../scripts/factory-vendor-lib.ts";
 import * as FactoryProxy from "./FactoryProxy.ts";
@@ -322,8 +326,14 @@ export interface WorldOptions {
   readonly takenPorts?: ReadonlyArray<number>;
   readonly hangArchive?: boolean;
   readonly settingsOverrides?: Parameters<typeof ServerSettingsModule.layerTest>[0];
+  readonly persistentSettings?: boolean;
   readonly tar?: (args: ReadonlyArray<string>) => ScriptedReply;
-  readonly supervisor?: { readonly pid?: number; readonly exitsOnStdinEnd?: boolean };
+  readonly supervisor?: {
+    readonly pid?: number;
+    readonly exitsOnStdinEnd?: boolean;
+    readonly exitsOnKill?: boolean;
+    readonly stdoutClosed?: boolean;
+  };
 }
 
 export interface World {
@@ -370,6 +380,7 @@ export interface World {
   setOwnerAnswer(answer: "ours" | "other"): void;
   setHttpAnswer(answer: { readonly status: number; readonly body: unknown }): void;
   setRefuseSettings(refused: boolean): void;
+  setRefuseRecordWrites(refused: boolean): void;
 }
 
 // A stand-in handle for a `tar`/`netstat`/`lsof` run: fixed pid, scripted stdout, no-op kill.
@@ -487,6 +498,13 @@ const makeWorld = Effect.fn("FactoryProxy.testkit.makeWorld")(function* (
   let ownerAnswer: "ours" | "other" = "ours";
   let httpAnswer: { status: number; body: unknown } = { status: 200, body: { files: [] } };
   let refuseSettings = false;
+  let refuseRecordWrites = false;
+  const renameFailure = PlatformError.systemError({
+    _tag: "PermissionDenied",
+    module: "FileSystem",
+    method: "rename",
+    description: "Fixture commit refused.",
+  });
 
   const currentRecord = (): Record<string, unknown> =>
     JSON.parse(NodeFS.readFileSync(recordPath, "utf8")) as Record<string, unknown>;
@@ -523,9 +541,27 @@ const makeWorld = Effect.fn("FactoryProxy.testkit.makeWorld")(function* (
       ),
   };
 
-  const settingsContext = yield* Layer.build(
-    ServerSettingsModule.layerTest(options.settingsOverrides),
-  ).pipe(Effect.provide(ServerConfig.layerTest(baseDir, baseDir)));
+  const settingsContext = options.persistentSettings
+    ? yield* ServerSettingsModule.layer.pipe(
+        Layer.provide(ManagedPolicy.layerTest()),
+        Layer.provide(SqlitePersistence.layerMemory),
+        Layer.provide(Layer.succeed(SecretStoreModule.ServerSecretStore, secretStore)),
+        Layer.provide(
+          Layer.succeed(
+            FileSystem.FileSystem,
+            FileSystem.FileSystem.of({
+              ...fs,
+              rename: (from, to) =>
+                refuseSettings ? Effect.fail(renameFailure) : fs.rename(from, to),
+            }),
+          ),
+        ),
+        Layer.provide(
+          Layer.mergeAll(PlatformCrypto.layer, ServerConfig.layerTest(baseDir, baseDir)),
+        ),
+        Layer.build,
+      )
+    : yield* Layer.build(ServerSettingsModule.layerTest(options.settingsOverrides));
   const innerSettings = yield* Effect.service(ServerSettingsModule.ServerSettingsService).pipe(
     Effect.provide(settingsContext),
   );
@@ -535,20 +571,23 @@ const makeWorld = Effect.fn("FactoryProxy.testkit.makeWorld")(function* (
       Effect.gen(function* () {
         record("patch");
         patches.push(patch);
-        if (refuseSettings) {
+        if (refuseSettings && !options.persistentSettings) {
+          record("settings-refused");
           return yield* new ServerSettingsError({
             settingsPath: "<test>",
             operation: "write-managed-setting",
             managedSetting: "usageLimitSources",
           });
         }
-        const entry = proxyEntry(patch);
-        if (entry === null) {
-          yield* Effect.ignore(secretStore.remove(SETTINGS_SECRET_NAME));
-        } else if (managementKeyOf(entry) !== undefined) {
-          yield* Effect.ignore(
-            secretStore.set(SETTINGS_SECRET_NAME, encoder.encode(String(managementKeyOf(entry)))),
-          );
+        if (!options.persistentSettings) {
+          const entry = proxyEntry(patch);
+          if (entry === null) {
+            yield* Effect.ignore(secretStore.remove(SETTINGS_SECRET_NAME));
+          } else if (managementKeyOf(entry) !== undefined) {
+            yield* Effect.ignore(
+              secretStore.set(SETTINGS_SECRET_NAME, encoder.encode(String(managementKeyOf(entry)))),
+            );
+          }
         }
         const next = yield* innerSettings.updateSettings(patch);
         record("settings-applied");
@@ -616,14 +655,17 @@ const makeWorld = Effect.fn("FactoryProxy.testkit.makeWorld")(function* (
   const makeSupervisor = Effect.fn("FactoryProxy.testkit.supervisor")(function* (script: {
     readonly pid: number;
     readonly exitsOnStdinEnd: boolean;
+    readonly exitsOnKill: boolean;
   }) {
     const exit = yield* Deferred.make<ChildProcessSpawner.ExitCode>();
     const stdout = yield* Queue.unbounded<Uint8Array>();
     const stderr = yield* Queue.unbounded<Uint8Array>();
     const state = { stdinEnds: 0, kills: 0, exited: false };
+    const port = recordOrNull()?.["port"];
     const settle = (code: number) => {
       if (state.exited) return;
       state.exited = true;
+      if (typeof port === "number" && ownerAnswer === "ours") takenPorts.delete(port);
       Deferred.doneUnsafe(exit, Effect.succeed(ChildProcessSpawner.ExitCode(code)));
     };
     const stdin: Sink.Sink<void, Uint8Array> = Sink.suspend(() => {
@@ -648,10 +690,10 @@ const makeWorld = Effect.fn("FactoryProxy.testkit.makeWorld")(function* (
         Effect.sync(() => {
           state.kills += 1;
           record("kill");
-          settle(1);
+          if (script.exitsOnKill) settle(1);
         }),
       stdin,
-      stdout: Stream.fromQueue(stdout),
+      stdout: options.supervisor?.stdoutClosed ? Stream.empty : Stream.fromQueue(stdout),
       stderr: Stream.fromQueue(stderr),
       all: Stream.empty,
       getInputFd: () => Sink.drain,
@@ -676,6 +718,7 @@ const makeWorld = Effect.fn("FactoryProxy.testkit.makeWorld")(function* (
         const { handle, made } = yield* makeSupervisor({
           pid: options.supervisor?.pid ?? 800 + supervisors.length,
           exitsOnStdinEnd: options.supervisor?.exitsOnStdinEnd ?? true,
+          exitsOnKill: options.supervisor?.exitsOnKill ?? true,
         });
         supervisors.push(handle);
         if (NodeFS.existsSync(recordPath)) recordAtSpawns.push(currentRecord());
@@ -725,8 +768,11 @@ const makeWorld = Effect.fn("FactoryProxy.testkit.makeWorld")(function* (
     writeFile: eventful("write", fs.writeFile),
     makeDirectory: eventful("write", fs.makeDirectory),
     remove: eventful("remove", fs.remove),
+    chmod: eventful("chmod", fs.chmod),
     rename: (from, to) =>
-      Effect.tap(fs.rename(from, to), () => Effect.sync(() => record(`rename:${to}`))),
+      refuseRecordWrites && to === recordPath
+        ? Effect.fail(renameFailure)
+        : Effect.tap(fs.rename(from, to), () => Effect.sync(() => record(`rename:${to}`))),
   });
 
   const env = {
@@ -739,8 +785,18 @@ const makeWorld = Effect.fn("FactoryProxy.testkit.makeWorld")(function* (
     ANTHROPIC_API_KEY: "server key",
   };
 
+  const clock = yield* Clock.Clock;
+  const recordingClock: Clock.Clock = {
+    ...clock,
+    sleep: (duration) =>
+      Effect.suspend(() => {
+        record(`timer:${Duration.toMillis(duration)}`);
+        return clock.sleep(duration);
+      }),
+  };
   const layer = Layer.mergeAll(
     PlatformCrypto.layer,
+    Layer.succeed(Clock.Clock, recordingClock),
     ServerConfig.layerTest(baseDir, baseDir),
     Layer.succeed(ServerSettingsModule.ServerSettingsService, settings),
     Layer.succeed(SecretStoreModule.ServerSecretStore, secretStore),
@@ -809,7 +865,20 @@ const makeWorld = Effect.fn("FactoryProxy.testkit.makeWorld")(function* (
     settings,
     secretStore,
     fs,
-    proxy,
+    // Manual mutations fork in the caller's context, not the layer used to build the proxy.
+    proxy: {
+      ...proxy,
+      start: (input) =>
+        proxy
+          .start(input)
+          .pipe(
+            Effect.provideService(Clock.Clock, recordingClock),
+            Effect.provide(Logger.layer([collector])),
+          ),
+      stop: (input) => proxy.stop(input).pipe(Effect.provideService(Clock.Clock, recordingClock)),
+      uninstall: (input) =>
+        proxy.uninstall(input).pipe(Effect.provideService(Clock.Clock, recordingClock)),
+    },
     events,
     takenPorts,
     downloadFailures,
@@ -822,6 +891,9 @@ const makeWorld = Effect.fn("FactoryProxy.testkit.makeWorld")(function* (
     },
     setRefuseSettings: (refused) => {
       refuseSettings = refused;
+    },
+    setRefuseRecordWrites: (refused) => {
+      refuseRecordWrites = refused;
     },
   };
   return world;
@@ -924,7 +996,12 @@ export const seedInstalledRecord = (
 export const rootListing = (world: World) =>
   Effect.map(world.fs.readDirectory(world.root, { recursive: true }), (entries) =>
     entries.map((entry) => unslash(String(entry))).sort(),
-  ).pipe(Effect.catchCause(() => Effect.succeed([] as Array<string>)));
+  ).pipe(
+    Effect.catchIf(
+      (error) => error.reason._tag === "NotFound",
+      () => Effect.succeed(Array<string>()),
+    ),
+  );
 
 // Every file under the home as text, skipping the folders a clause says to skip.
 export const scanHome = (
@@ -938,9 +1015,10 @@ export const scanHome = (
   const visit = (dir: string) => {
     for (const name of NodeFS.readdirSync(dir)) {
       const full = `${dir}/${name}`;
-      const info = NodeFS.statSync(full);
+      if (skip.has(unslash(full))) continue;
+      const info = NodeFS.lstatSync(full);
       if (info.isDirectory()) visit(full);
-      else if (!skip.has(unslash(full))) files.push([full, NodeFS.readFileSync(full, "utf8")]);
+      else if (info.isFile()) files.push([full, NodeFS.readFileSync(full, "utf8")]);
     }
   };
   visit(world.stateDir);
@@ -970,17 +1048,12 @@ export const startToRunning = Effect.fn("FactoryProxy.testkit.startToRunning")(f
   const handle = world.supervisors[world.supervisors.length - 1]!;
   handle.offerStdout(`pid ${handle.pid}\n`);
   world.takenPorts.add(8317);
-  // One interval: the ownership answer, the keyed read and P9's enable patch.
-  yield* TestClock.adjust(Duration.millis(500));
-  yield* awaitFresh(world, from, "owner");
-  yield* awaitFresh(world, from, "request");
-  yield* awaitFresh(world, from, "patch");
-  // Poll until the enable patch has been applied, so `hub` and the settings-owned
-  // secret are observable the moment the driver returns (also after a refused patch).
-  return yield* awaitStatus(
-    world,
-    (status) => status.state === "running" && status.hub !== "disconnected",
+  yield* until(world, (events) =>
+    events
+      .slice(from)
+      .some((event) => event === "settings-applied" || event === "settings-refused"),
   );
+  return yield* world.proxy.status({});
 });
 
 export const processAlive = (pid: number) => {

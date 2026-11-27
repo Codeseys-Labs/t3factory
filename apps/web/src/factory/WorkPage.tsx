@@ -171,8 +171,10 @@ export function WorkPage() {
   const [proxyOn, setProxyOn] = useState<{
     readonly environmentId: EnvironmentId;
     readonly label: string;
+    readonly opener: HTMLButtonElement;
   } | null>(null);
-  const proxyOpener = useRef<HTMLButtonElement>(null);
+  const work = useRef<HTMLElement>(null);
+  const workHeading = useRef<HTMLHeadingElement>(null);
   const proxy = useEnvironmentQuery(
     environmentId === null ? null : factoryProxyStatus({ environmentId, input: {} }),
   );
@@ -408,7 +410,7 @@ export function WorkPage() {
     );
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
+    <SidebarInset ref={work} className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
       <div className="flex min-h-0 min-w-0 flex-1">
         {/* Below md there is room for one thing, and an open task is that thing. */}
         <div
@@ -424,7 +426,7 @@ export function WorkPage() {
           >
             <WorkspaceBreadcrumb ariaLabel={gt("Work breadcrumb")} className="flex-1">
               <WorkspaceBreadcrumbItem current>
-                <h1 className="truncate">
+                <h1 ref={workHeading} tabIndex={-1} className="truncate">
                   <T context="page title: the board of tasks">Work</T>
                 </h1>
               </WorkspaceBreadcrumbItem>
@@ -490,13 +492,14 @@ export function WorkPage() {
             )}
             {environmentId === null || !proxy.isSuccess ? null : (
               <Button
-                ref={proxyOpener}
+                key={environmentId}
                 variant="outline"
                 size="sm"
                 aria-haspopup="dialog"
-                onClick={() =>
+                onClick={(event) =>
                   setProxyOn({
                     environmentId,
+                    opener: event.currentTarget,
                     label:
                       connected.find((environment) => environment.environmentId === environmentId)
                         ?.label ?? environmentId,
@@ -693,7 +696,17 @@ export function WorkPage() {
           environmentId={proxyOn.environmentId}
           environmentLabel={proxyOn.label}
           connected={connectedIds.includes(proxyOn.environmentId)}
-          openerRef={proxyOpener}
+          finalFocus={() => {
+            const opener = proxyOn.opener;
+            if (opener.isConnected && opener.getClientRects().length > 0) return opener;
+            const controls = work.current?.querySelectorAll<HTMLButtonElement>(
+              "button:not(:disabled):not([aria-disabled='true'])",
+            );
+            for (const control of controls ?? []) {
+              if (control.getClientRects().length > 0) return control;
+            }
+            return workHeading.current;
+          }}
           onClose={() => setProxyOn(null)}
         />
       )}

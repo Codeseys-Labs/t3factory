@@ -549,24 +549,7 @@
   "2c87759394b65c15": "Deinstallieren",
   "2d171b3f2bfb1d88": "Dieser Server läuft nicht aus einem Factory-Checkout, daher hat er kein angepinntes Manifest.",
   "2f004248af316101": "Das angepinnte Manifest fehlt oder ist ungültig, daher wurde nichts geladen.",
-  "3a312b1d7f199398": [
-    "Port",
-    " ",
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    },
-    " ",
-    "wird noch belegt, und ein früherer Proxy dieses Servers lief als Prozess",
-    " ",
-    {
-      "i": 2,
-      "k": "_gt_value_2",
-      "v": "v"
-    },
-    "."
-  ],
+  "3ace5eff11c0f9f9": "Ermittle auf dem ausgewählten Rechner, welcher Prozess diesen Port verwendet, bevor du etwas beendest. Wähle Starten, sobald der Port frei ist.",
   "3fc29e62ef7cb9af": [
     {
       "i": 1,
@@ -605,7 +588,7 @@
   "689cbadd9c78ab60": "Installiert und gestoppt.",
   "6ab05d286639293e": "Wird installiert…",
   "6e1321d322cc310f": "Der Proxy wurde fünfmal gestartet, ohne seine Verwaltungs-API zu beantworten, und nicht erneut gestartet.",
-  "6e584fc66511e1f6": "Usage liest diesen Proxy als Hub mit dem Namen Factory-Proxy.",
+  "6e584fc66511e1f6": "Usage liest diesen Proxy als Hub mit dem Namen Factory proxy.",
   "717e4da671441925": [
     "Die angepinnte Version ist jetzt CLIProxyAPI",
     " ",
@@ -624,9 +607,16 @@
     ". Deinstalliere unter Beibehaltung der Anmeldungen und installiere dann erneut, um zu wechseln."
   ],
   "7228aeee9ad7fd66": "Eine heruntergeladene Datei stimmte nicht mit der angepinnten Größe oder dem angepinnten SHA-256 überein. Es wurde nichts installiert.",
-  "768e08f1016f012e": "Beende diesen Prozess auf dem Rechner und wähle dann Starten.",
+  "728f745345c6b7e2": [
+    "Port ",
+    { "i": 1, "k": "_gt_value_1", "v": "v" },
+    " ist belegt. Die zuletzt erfasste Prozess-ID des Proxys war ",
+    { "i": 2, "k": "_gt_value_2", "v": "v" },
+    "."
+  ],
   "777e492521fb5acd": "Modell-Proxy",
   "80f417f89cc031bb": "Der Modell-Proxy ist auf diesem Server nicht installiert.",
+  "814d81c5aa5972ee": "Möglicherweise läuft noch ein früherer Proxy. Ermittle auf dem ausgewählten Rechner, welcher Prozess den Proxy-Port verwendet, bevor du etwas beendest. Versuche es dann erneut.",
   "8272831b240c3588": "Auch die enthaltenen Anmeldungen entfernen",
   "842fde6f13ecd74d": "Die Einstellungsdatei des Modell-Proxys kann nicht gelesen werden. Deinstalliere unter Beibehaltung der Anmeldungen und installiere dann erneut.",
   "85b817ff89412d77": "Der Hub des Proxys konnte in den Einstellungen dieses Servers nicht ausgeschaltet werden.",
@@ -707,9 +697,7 @@
   "e5567d65ffdb88e2": "Nicht installiert.",
   "e78f5c54ea4982f2": "Einige Dateien des Proxys oder sein Hub konnten nicht entfernt werden. Deinstalliere erneut.",
   "e86c76292ee9d1e5": "Was du in der Konsole speicherst, bleibt erhalten. Der Server setzt Adresse, Port, Verwaltungsschlüssel und Anmeldeordner bei jedem Start des Proxys neu, und Plugins und Netzwerkerkennung stehen dafür nicht zur Verfügung.",
-  "ede148e113aec0dd": "Ein früherer Proxy dieses Servers läuft vielleicht noch. Beende ihn auf dem Rechner und versuche es dann erneut.",
   "f14490ae9c6e24b8": "Behaltene Anmeldungen entfernen",
   "f3e544786f4c9b6b": "Die installierten Dateien des Proxys oder sein Schlüssel fehlen, sind unlesbar oder wurden geändert. Deinstalliere unter Beibehaltung der Anmeldungen und installiere dann erneut.",
-  "f7546ed96b48ea66": "Auf diesem Rechner ist kein Port von 8317 bis 8327 frei.",
-  "fc2dc2e4d13e214e": "Schließe das Programm, das den Port benutzt, und wähle dann Starten."
+  "f7546ed96b48ea66": "Auf diesem Rechner ist kein Port von 8317 bis 8327 frei."
 }

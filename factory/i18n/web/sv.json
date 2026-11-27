@@ -549,24 +549,7 @@
   "2c87759394b65c15": "Avinstallera",
   "2d171b3f2bfb1d88": "Den här servern kör inte från en Factory-utcheckning, så den har inget fastställt manifest.",
   "2f004248af316101": "Det fastställda manifestet saknas eller är ogiltigt, så ingenting hämtades.",
-  "3a312b1d7f199398": [
-    "Port",
-    " ",
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    },
-    " ",
-    "hålls fortfarande, och en tidigare proxy för den här servern körde som processen",
-    " ",
-    {
-      "i": 2,
-      "k": "_gt_value_2",
-      "v": "v"
-    },
-    "."
-  ],
+  "3ace5eff11c0f9f9": "Ta reda på vilken process som lyssnar på den här porten på den valda maskinen innan du avslutar något. Välj Starta när porten är ledig.",
   "3fc29e62ef7cb9af": [
     {
       "i": 1,
@@ -624,9 +607,16 @@
     ". Avinstallera, behåll inloggningarna, och installera sedan för att flytta till den."
   ],
   "7228aeee9ad7fd66": "En hämtad fil stämde inte med sin fastställda storlek eller SHA-256. Inget installerades.",
-  "768e08f1016f012e": "Avsluta den processen på maskinen och välj sedan Starta.",
+  "728f745345c6b7e2": [
+    "Port ",
+    { "i": 1, "k": "_gt_value_1", "v": "v" },
+    " används. Proxyns senast registrerade process-ID var ",
+    { "i": 2, "k": "_gt_value_2", "v": "v" },
+    "."
+  ],
   "777e492521fb5acd": "Modellproxy",
   "80f417f89cc031bb": "Modellproxyn är inte installerad på den här servern.",
+  "814d81c5aa5972ee": "En tidigare proxy kan fortfarande köras. Ta reda på vilken process som lyssnar på proxyns port på den valda maskinen innan du avslutar något. Försök sedan igen.",
   "8272831b240c3588": "Ta också bort de inloggningar den håller",
   "842fde6f13ecd74d": "Modellproxyns inställningsfil kan inte läsas. Avinstallera, behåll inloggningarna, och installera sedan igen.",
   "85b817ff89412d77": "Proxyns hubb kunde inte stängas av i den här serverns inställningar.",
@@ -706,9 +696,7 @@
   "e5567d65ffdb88e2": "Inte installerad.",
   "e78f5c54ea4982f2": "Några av proxyns filer eller dess hubb kunde inte tas bort. Avinstallera igen.",
   "e86c76292ee9d1e5": "Det du sparar i konsolen finns kvar. Servern ställer in adressen, porten, hanteringsnyckeln och inloggningsmappen igen varje gång proxyn startar, och plugins och nätverksupptäckt är inte tillgängliga för den.",
-  "ede148e113aec0dd": "En tidigare proxy för den här servern kan fortfarande köra. Avsluta den på maskinen och försök sedan igen.",
   "f14490ae9c6e24b8": "Ta bort bevarade inloggningar",
   "f3e544786f4c9b6b": "Proxyns installerade filer eller dess nyckel saknas, kan inte läsas eller har ändrats. Avinstallera, behåll inloggningarna, och installera igen.",
-  "f7546ed96b48ea66": "Ingen port från 8317 till 8327 är ledig på den här maskinen.",
-  "fc2dc2e4d13e214e": "Stäng programmet som använder porten och välj sedan Starta."
+  "f7546ed96b48ea66": "Ingen port från 8317 till 8327 är ledig på den här maskinen."
 }

@@ -13094,25 +13094,8 @@
   "33544dea21c9d7c9": "Head verschoben",
   "339dae6f825c6866": "Diesen Thread zum Orchestrator des Projekts machen",
   "34fabd5b00324ca9": "Art",
-  "3a312b1d7f199398": [
-    "Port",
-    " ",
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    },
-    " ",
-    "wird noch belegt, und ein früherer Proxy dieses Servers lief als Prozess",
-    " ",
-    {
-      "i": 2,
-      "k": "_gt_value_2",
-      "v": "v"
-    },
-    "."
-  ],
   "3acc2e4803ca995a": "Titel",
+  "3ace5eff11c0f9f9": "Ermittle auf dem ausgewählten Rechner, welcher Prozess diesen Port verwendet, bevor du etwas beendest. Wähle Starten, sobald der Port frei ist.",
   "3bd8b55944df1bf4": "T-{number} öffnen",
   "3c0f7b24ac041b05": "Notiz hinzufügen",
   "3d08cdd31183989c": "Gerade braucht dich nichts.",
@@ -13254,7 +13237,7 @@
   "6af1920a1db1a000": "Keine",
   "6df6d3f7a704fdc0": "Versiegelt",
   "6e1321d322cc310f": "Der Proxy wurde fünfmal gestartet, ohne seine Verwaltungs-API zu beantworten, und nicht erneut gestartet.",
-  "6e584fc66511e1f6": "Usage liest diesen Proxy als Hub mit dem Namen Factory-Proxy.",
+  "6e584fc66511e1f6": "Usage liest diesen Proxy als Hub mit dem Namen Factory proxy.",
   "6e854b5468c726ae": "Projekt",
   "6e96ce482c3d701e": "Verworfen",
   "6ef815722cc9e485": "{n, plural, one {Signale, {n} Element wartet} other {Signale, {n} Elemente warten}}",
@@ -13282,8 +13265,22 @@
   "7180adf1efc1dc6b": "Letztes Lesen fehlgeschlagen {date}: {reason}",
   "71b118ff5d9edcdb": "Protokoll",
   "7228aeee9ad7fd66": "Eine heruntergeladene Datei stimmte nicht mit der angepinnten Größe oder dem angepinnten SHA-256 überein. Es wurde nichts installiert.",
+  "728f745345c6b7e2": [
+    "Port ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ist belegt. Die zuletzt erfasste Prozess-ID des Proxys war ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
   "735366a7be3e89d3": "Datei",
-  "768e08f1016f012e": "Beende diesen Prozess auf dem Rechner und wähle dann Starten.",
   "76a46c1775f13048": "Erneut gemeldet",
   "777e492521fb5acd": "Modell-Proxy",
   "784cc87d53bef4c8": "Gelesen {date}",
@@ -13299,6 +13296,7 @@
   "8093eaa7292a8a05": "Dieser Versuch hat keinen Plan erstellt.",
   "80b1e0d96c7b16f2": "Zugewiesen an",
   "80f417f89cc031bb": "Der Modell-Proxy ist auf diesem Server nicht installiert.",
+  "814d81c5aa5972ee": "Möglicherweise läuft noch ein früherer Proxy. Ermittle auf dem ausgewählten Rechner, welcher Prozess den Proxy-Port verwendet, bevor du etwas beendest. Versuche es dann erneut.",
   "81f42e4fe24fde8b": "Nur öffentliche https-Adressen auf Port 443. Der Server liest jeden Feed höchstens einmal pro Stunde und öffnet die darin enthaltenen Links nie.",
   "8272831b240c3588": "Auch die enthaltenen Anmeldungen entfernen",
   "828fa78ef4e9dbb9": "Navigationspfad der Arbeit",
@@ -13605,7 +13603,6 @@
   "ec15e1b4845411ea": "Keine",
   "ec5e2edf708466b2": "Offen",
   "ed5558ae9fc8dcc0": "{count, plural, one {{count} weitere nicht angezeigt} other {{count} weitere nicht angezeigt}}",
-  "ede148e113aec0dd": "Ein früherer Proxy dieses Servers läuft vielleicht noch. Beende ihn auf dem Rechner und versuche es dann erneut.",
   "eecefdbee8435729": "Aufgabe erstellen",
   "eee704e25dbc15e6": "Jetzt starten",
   "eeea97b0cf7b81e2": {
@@ -13691,7 +13688,6 @@
   "fb90b8e5705ab86c": "Keine Aufgaben",
   "fbe9165c6105daaa": "Arbeit ist im Review oder wurde für das Review hierher verschoben.",
   "fc0e18b3717236be": "Forschung",
-  "fc2dc2e4d13e214e": "Schließe das Programm, das den Port benutzt, und wähle dann Starten.",
   "fc69bad4ccc6deb9": "Planung läuft…",
   "fc9df14ea23f45b9": "Versuche",
   "fe0d419a5d3fbfc4": "Aufgabe wird geladen…",

@@ -843,7 +843,7 @@ it("T8 a remote scope/0 that reports another head makes the round stale", () =>
   withWorld(
     scenario((turn) =>
       turn.origin.step === "scope/0"
-        ? { output: { headSha: HEAD_9, files: ["src/part.ts"] } }
+        ? { output: { report: { headSha: HEAD_9, files: ["src/part.ts"] } } }
         : undefined,
     ),
     (world) =>

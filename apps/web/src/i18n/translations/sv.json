@@ -13101,25 +13101,8 @@
   "33544dea21c9d7c9": "Head flyttad",
   "339dae6f825c6866": "Gör den här tråden till projektets orkestrerare",
   "34fabd5b00324ca9": "Typ",
-  "3a312b1d7f199398": [
-    "Port",
-    " ",
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    },
-    " ",
-    "hålls fortfarande, och en tidigare proxy för den här servern körde som processen",
-    " ",
-    {
-      "i": 2,
-      "k": "_gt_value_2",
-      "v": "v"
-    },
-    "."
-  ],
   "3acc2e4803ca995a": "Titel",
+  "3ace5eff11c0f9f9": "Ta reda på vilken process som lyssnar på den här porten på den valda maskinen innan du avslutar något. Välj Starta när porten är ledig.",
   "3bd8b55944df1bf4": "Öppna T-{number}",
   "3c0f7b24ac041b05": "Lägg till en anteckning",
   "3d08cdd31183989c": "Inget behöver dig just nu.",
@@ -13289,8 +13272,22 @@
   "7180adf1efc1dc6b": "Senaste läsningen misslyckades {date}: {reason}",
   "71b118ff5d9edcdb": "Protokoll",
   "7228aeee9ad7fd66": "En hämtad fil stämde inte med sin fastställda storlek eller SHA-256. Inget installerades.",
+  "728f745345c6b7e2": [
+    "Port ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " används. Proxyns senast registrerade process-ID var ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
   "735366a7be3e89d3": "Fil",
-  "768e08f1016f012e": "Avsluta den processen på maskinen och välj sedan Starta.",
   "76a46c1775f13048": "Togs upp igen",
   "777e492521fb5acd": "Modellproxy",
   "784cc87d53bef4c8": "Läst {date}",
@@ -13306,6 +13303,7 @@
   "8093eaa7292a8a05": "Det här försöket skapade ingen plan.",
   "80b1e0d96c7b16f2": "Tilldelad",
   "80f417f89cc031bb": "Modellproxyn är inte installerad på den här servern.",
+  "814d81c5aa5972ee": "En tidigare proxy kan fortfarande köras. Ta reda på vilken process som lyssnar på proxyns port på den valda maskinen innan du avslutar något. Försök sedan igen.",
   "81f42e4fe24fde8b": "Endast offentliga https-adresser på port 443. Servern läser varje flöde högst en gång i timmen och öppnar aldrig länkarna i det.",
   "8272831b240c3588": "Ta också bort de inloggningar den håller",
   "828fa78ef4e9dbb9": "Brödsmulor för arbete",
@@ -13611,7 +13609,6 @@
   "ec15e1b4845411ea": "Ingen",
   "ec5e2edf708466b2": "Öppen",
   "ed5558ae9fc8dcc0": "{count, plural, one {{count} till visas inte} other {{count} till visas inte}}",
-  "ede148e113aec0dd": "En tidigare proxy för den här servern kan fortfarande köra. Avsluta den på maskinen och försök sedan igen.",
   "eecefdbee8435729": "Skapa uppgift",
   "eee704e25dbc15e6": "Starta nu",
   "eeea97b0cf7b81e2": {
@@ -13697,7 +13694,6 @@
   "fb90b8e5705ab86c": "Inga uppgifter",
   "fbe9165c6105daaa": "Arbete granskas eller har placerats här för granskning.",
   "fc0e18b3717236be": "Forskning",
-  "fc2dc2e4d13e214e": "Stäng programmet som använder porten och välj sedan Starta.",
   "fc69bad4ccc6deb9": "Planerar…",
   "fc9df14ea23f45b9": "Försök",
   "fe0d419a5d3fbfc4": "Läser in uppgiften…",

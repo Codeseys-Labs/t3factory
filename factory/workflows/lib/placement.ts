@@ -112,6 +112,8 @@ export const REMOTE_FOLLOW_UPS =
   "If you discover an out-of-scope bug or follow-up while working, do not widen this pull request: list it at the end of your `summary`.";
 export const writerLine = (base: string, target: string) =>
   `You are on another machine than the one this task is run from, in a worktree made for this part from \`origin/${target}\`, which should be at commit \`${base}\`. Before you change anything, run \`git rev-parse HEAD\`; if it does not print \`${base}\`, change nothing and return \`prUrl: null\`. Do not create, switch or rename branches: commit on the branch this worktree is on, push it under its own name with \`git push -u origin HEAD\`, never force-push, and open the pull request from it against \`${target}\`.`;
+export const continueWriterLine = (base: string, target: string) =>
+  `Stay on this worktree's branch and keep any commits from your last turn. Before you resume, run \`git merge-base HEAD ${base}\`; if it does not print \`${base}\`, change nothing and return \`prUrl: null\`. Do not create, switch or rename branches. Push this branch under its own name with \`git push -u origin HEAD\`, never force-push, and use or open its pull request against \`${target}\`.`;
 export const WRITER_RETURN_LINE =
   "Return `prUrl`: the pull request's URL, or null if you could not push or open it, saying why in `summary`; `branch`: the output of `git rev-parse --abbrev-ref HEAD`; `baseSha`: what `git rev-parse HEAD` printed before your first change; `headSha`: the output of `git rev-parse HEAD` after your last push, or null; and a short `summary` of what you changed. Return no `artifacts`: the machine that runs this task cannot read files here.";
 export const continueReturnLine = (base: string) =>
@@ -154,6 +156,8 @@ export const mergeMark = (expected: string) =>
   `Factory is merging this pull request at ${expected}, the commit its review covered.`;
 export const mergedUnreviewed = (seen: string, expected: string, url: string) =>
   `${url} was merged at ${seen}, but the last commit reviewed was ${expected}: commits nobody reviewed were merged. Check them now.`;
+export const mergedWrongBase = (seen: string, target: string, url: string) =>
+  `${url} was merged into ${seen}, not the reviewed target ${target}. Check the merge now.`;
 export const mergeUnconfirmed = (url: string, expected: string, state: string) =>
   `The host accepted the merge of ${url} at ${expected}, but the merge had not completed when Factory last read it: the pull request was ${state}. Nothing here says it merged, and anything pushed before the host merges it is unreviewed. Check it.`;
 
@@ -169,7 +173,7 @@ export const RULINGS_INTRO =
 export const quoteRulings = (rulings: ReadonlyArray<string>) =>
   rulings.length === 0 ? [] : ["", RULINGS_INTRO, ...rulings.map(quoteLines)];
 export const SCOPE_ERROR_LINE =
-  "If the command fails or cannot be run, return only `error`, with its last line of output, and no `files`.";
+  "If the command fails or cannot be run, return `report` containing only `error`: the last line of output. Do not report `files`.";
 export const bounded = (text: string) => text.trim().replace(/\s+/g, " ").slice(0, 200);
 export const scopeFailed = (error: string) =>
   `the changed files could not be listed: ${bounded(error)}`;

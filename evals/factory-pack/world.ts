@@ -472,7 +472,11 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
           reply: "Fixed checks and review feedback.",
           ...result,
           ...(input.origin.step.startsWith("scope/") && result.output === undefined
-            ? { output: { headSha: latestHeadSha ?? "sha-default", files: ["src/part.ts"] } }
+            ? {
+                output: {
+                  report: { headSha: latestHeadSha ?? "sha-default", files: ["src/part.ts"] },
+                },
+              }
             : {}),
         };
       }).pipe(

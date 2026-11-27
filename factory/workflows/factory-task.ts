@@ -59,6 +59,7 @@ import {
   baseTarget,
   branchNotGiven,
   continueReturnLine,
+  continueWriterLine,
   fixContradicts,
   headCheck,
   headMoved,
@@ -66,6 +67,7 @@ import {
   isFullSha,
   mergeUnconfirmed,
   mergedUnreviewed,
+  mergedWrongBase,
   quoteBrief,
   quoteRulings,
   ranElsewhere,
@@ -158,7 +160,11 @@ const WriterPr = Schema.Struct({
   baseBranch: Schema.String,
   headSha: HeadSha,
 });
-const MergedHead = Schema.Struct({ state: Schema.String, headSha: HeadSha });
+const MergedHead = Schema.Struct({
+  state: Schema.String,
+  baseBranch: Schema.String,
+  headSha: HeadSha,
+});
 
 const Hashed = Schema.Array(
   Schema.Struct({
@@ -200,7 +206,7 @@ const Started = Schema.Struct({
 
 const ScopeSuccess = Schema.Struct({ headSha: Schema.String, files: Schema.Array(Schema.String) });
 const ScopeFailure = Schema.Struct({ error: Schema.String });
-const ScopeReport = Schema.Union([ScopeSuccess, ScopeFailure]);
+const ScopeReport = Schema.Struct({ report: Schema.Union([ScopeSuccess, ScopeFailure]) });
 
 const PullRequestRiskSnapshot = Schema.Struct({
   headSha: Schema.NullOr(Schema.String),
@@ -290,7 +296,9 @@ const factoryTaskPart = workflow(
     const returnRules = (continuing: boolean) =>
       writer !== null
         ? [
-            writerLine(writer.base, writer.target),
+            continuing
+              ? continueWriterLine(writer.base, writer.target)
+              : writerLine(writer.base, writer.target),
             ...issueLine,
             continuing ? continueReturnLine(writer.base) : WRITER_RETURN_LINE,
           ]
@@ -604,24 +612,31 @@ const factoryTaskPart = workflow(
       headSha: null,
       reasons: [],
     };
+    let reviewedHead: string | null = null;
+    let acceptedHead: string | null = null;
     const merged = Effect.fnUntraced(function* (tier = risk.tier ?? null) {
       if (remoteWriter !== null) {
-        const { expectedHead } = remoteWriter;
-        const { state, headSha } = yield* step(
+        const { expectedHead, target: expectedTarget } = remoteWriter;
+        const { state, baseBranch, headSha } = yield* step(
           "merged-head",
           { returns: MergedHead },
           Effect.map(pullRequests.read(pr), (detail) => ({
             state: detail.state,
+            baseBranch: detail.baseBranch,
             headSha: detail.headSha ?? null,
           })),
         );
         const mergedHead = state === "merged" ? headSha : null;
-        const text =
-          state !== "merged"
-            ? mergeUnconfirmed(prUrl, expectedHead, state)
-            : mergedHead !== expectedHead
-              ? mergedUnreviewed(mergedHead ?? "unknown", expectedHead, prUrl)
-              : null;
+        let text: string | null = null;
+        if (state !== "merged") {
+          text = mergeUnconfirmed(prUrl, expectedHead, state);
+        } else if (baseBranch !== expectedTarget) {
+          text = mergedWrongBase(baseBranch, expectedTarget, prUrl);
+        } else if (acceptedHead !== expectedHead) {
+          text = `${prUrl} was merged at ${mergedHead ?? "unknown"}, but Factory had no accepted review of that commit. Check the merge now.`;
+        } else if (mergedHead !== acceptedHead) {
+          text = mergedUnreviewed(mergedHead ?? "unknown", acceptedHead, prUrl);
+        }
         if (text !== null) {
           yield* step(
             "unreviewed-note",
@@ -679,6 +694,12 @@ const factoryTaskPart = workflow(
           checks,
         })),
         (value) => value.headSha,
+        {
+          invalid: ({ baseBranch }) =>
+            remoteWriter !== null && baseBranch !== remoteWriter.target
+              ? wrongBase(baseBranch, remoteWriter.target)
+              : undefined,
+        },
       );
       const head = snapshot.headSha;
       const remote =
@@ -715,7 +736,7 @@ const factoryTaskPart = workflow(
               remote
                 ? remoteScopeBase(snapshot.baseBranch)
                 : `Fetch the pull request's head commit${snapshot.headSha === null ? "" : ` \`${snapshot.headSha}\``} and run \`git diff --name-only <base>...<head>\`, where <head> is that commit and <base> is the branch the pull request targets.`,
-              "Return `headSha`: the full SHA of the commit you listed, and `files`: every path the command printed, exactly as printed.",
+              "Return `report` containing `headSha`: the full SHA of the commit you listed, and `files`: every path the command printed, exactly as printed.",
               SCOPE_ERROR_LINE,
               quotation,
             ].join("\n"),
@@ -723,24 +744,26 @@ const factoryTaskPart = workflow(
             returns: ScopeReport,
           }),
         );
+        let files: ReadonlyArray<string> | null = null;
         if (scoped.outcome !== "done") {
           noteRisk([`the changed files could not be listed: ${scoped.reason}`]);
-        } else if ("error" in scoped.value) {
-          noteRisk([scopeFailed(scoped.value.error)]);
-        } else if (snapshot.headSha !== null && scoped.value.headSha !== snapshot.headSha) {
-          staleScope = remote;
-          noteRisk([
-            `the changed files were listed at ${scoped.value.headSha}, not at the head ${snapshot.headSha}`,
-          ]);
+        } else {
+          const { report } = scoped.value;
+          if ("error" in report) {
+            noteRisk([scopeFailed(report.error)]);
+          } else if (snapshot.headSha !== null) {
+            if (report.headSha === snapshot.headSha) {
+              files = report.files;
+            } else {
+              staleScope = remote;
+              noteRisk([
+                `the changed files were listed at ${report.headSha}, not at the head ${snapshot.headSha}`,
+              ]);
+            }
+          }
         }
         const classified = classifyRisk({
-          files:
-            scoped.outcome === "done" &&
-            "files" in scoped.value &&
-            snapshot.headSha !== null &&
-            scoped.value.headSha === snapshot.headSha
-              ? scoped.value.files
-              : null,
+          files,
           changedFiles: snapshot.changedFiles,
           headSha: snapshot.headSha ?? undefined,
           checks: snapshot.checks,
@@ -858,11 +881,15 @@ const factoryTaskPart = workflow(
         }),
       );
       if (verdict === "stale") return "stale" as const;
+      if (remoteWriter !== null) reviewedHead = head;
       latest = questionEvidence(findings);
       stats.reviewRounds++;
       stats.findingsRaised += blocking.length;
       stats.findingsRefuted += latest.refuted;
-      if (verdict === "approve") return "approved" as const;
+      if (verdict === "approve") {
+        acceptedHead = reviewedHead;
+        return "approved" as const;
+      }
       return {
         problem: `A review asked for changes:\n\n${latest.lastReviewNotes}`,
         notes: latest.lastReviewNotes,
@@ -969,6 +996,7 @@ const factoryTaskPart = workflow(
       }
       if (stuck.value.choice === "Merge anyway") {
         stats.mergedAnyway = true;
+        acceptedHead = reviewedHead;
         break;
       }
       stats.rulings++;
@@ -1043,7 +1071,7 @@ const factoryTaskPart = workflow(
     if (remoteWriter === null) {
       yield* mergePullRequest(pr, headSha, config.mergeMethod);
     } else {
-      const outcome = yield* mergeAtHead(pr, remoteWriter.expectedHead, config.mergeMethod);
+      const outcome = yield* mergeAtHead(pr, remoteWriter, config.mergeMethod);
       if (outcome === "requested") {
         yield* pullRequests.wait("merge-wait", pr, {
           until: "merged",

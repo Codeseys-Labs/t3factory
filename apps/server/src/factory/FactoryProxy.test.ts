@@ -462,9 +462,7 @@ describe("P11-4 install on linux-x64", () => {
         platform: "linux",
         arch: "x64",
         tar: (args) =>
-          args[0] === failing
-            ? { stdout: `${LINUX_ARCHIVE_NAMES.join("\n")}\n`, exitCode: 1 }
-            : tarReplyOk(args),
+          args[0] === failing ? { ...tarReplyOk(args), exitCode: 1 } : tarReplyOk(args),
       },
       (world) =>
         Effect.gen(function* () {
@@ -679,9 +677,20 @@ describe("P11-7 the config file and a typed key", () => {
               ((yield* world.fs.stat(world.configPath)).mode & 0o7777) as number,
               0o600,
             );
+            yield* world.fs.chmod(world.configPath, 0o644);
           }
 
+          const from = world.order.length;
           yield* startToRunning(world);
+          if (hostHasModes) {
+            const publish = `rename:${world.configPath}`;
+            const restrict = `chmod:${world.configPath}`;
+            assert.deepStrictEqual(
+              world.order.slice(from).filter((event) => event === restrict || event === publish),
+              [restrict, publish],
+            );
+            assert.strictEqual((yield* world.fs.stat(world.configPath)).mode & 0o777, 0o600);
+          }
           const after = parseDocument(yield* world.fs.readFileString(world.configPath)).toJS();
           assert.deepStrictEqual(
             after,
@@ -731,9 +740,10 @@ describe("P11-8 no key anywhere it must not be", () => {
         yield* TestClock.adjust(Duration.millis(500));
         yield* awaitCount(world, "owner", 2);
         yield* awaitCount(world, "request", 2);
-        yield* awaitCount(world, "patch", 1);
+        yield* awaitCount(world, "settings-applied", 1);
         capture(yield* world.proxy.status({}));
         capture(recordOf(world));
+        for (const [file, contents] of scanHome(world)) assertClean(contents, file);
 
         const stopped = yield* world.proxy.stop({});
         world.takenPorts.delete(8317);
@@ -1035,11 +1045,8 @@ describe("P11-13 the ownership gate", () => {
           world.setHttpAnswer({ status: 200, body: { files: [] } });
           yield* TestClock.adjust(Duration.millis(500));
           yield* awaitCount(world, "request", 2);
-          yield* awaitEvent(world, "patch");
-          const running = yield* awaitStatus(
-            world,
-            (next) => next.state === "running" && next.hub === "connected",
-          );
+          yield* awaitEvent(world, "settings-applied");
+          const running = yield* proxy.status({});
           assert.strictEqual(running.state, "running");
           assert.strictEqual(running.hub, "connected");
 
@@ -1056,6 +1063,29 @@ describe("P11-13 the ownership gate", () => {
           });
         }),
       ),
+  );
+
+  it.effect("startup probes only local management when the account list is populated", () =>
+    withWorld({}, (world) =>
+      Effect.gen(function* () {
+        yield* install(world);
+        world.setHttpAnswer({
+          status: 200,
+          body: { files: [{ id: "fixture.json", auth_index: "1", provider: "codex" }] },
+        });
+        yield* world.proxy.start({});
+        yield* awaitEvent(world, "supervisor-spawn");
+        const handle = world.supervisors[0]!;
+        world.takenPorts.add(8317);
+        handle.offerStdout(`pid ${handle.pid}\n`);
+        yield* awaitEvent(world, "settings-applied");
+        assert.strictEqual((yield* world.proxy.status({})).state, "running");
+        assert.deepStrictEqual(
+          world.httpRequests.map(({ url }) => url),
+          ["http://127.0.0.1:8317/v0/management/auth-files"],
+        );
+      }),
+    ),
   );
 
   it.effect("an answer of other ends the child, gives port-in-use and makes no request ever", () =>
@@ -1098,30 +1128,23 @@ describe("P11-14 health waits and a refused enable", () => {
           for (let round = 1; round <= 5; round += 1) {
             // The module spawns one supervisor per try; each try ends at its stdin.
             yield* awaitCount(world, "supervisor-spawn", round);
+            const nextRequest = world.httpRequests.length + 1;
             const handle = world.supervisors[world.supervisors.length - 1]!;
             handle.offerStdout(`pid ${handle.pid}\n`);
             world.takenPorts.add(8317);
-            // 30 s of refused reads in half-second steps; one big jump starves the fibers.
-            let waited = yield* proxy.status({});
-            let guard = 0;
-            while (
-              guard < 200 &&
-              countEvent(world.order, "stdin-end:1") < round &&
-              waited.state !== "failed"
-            ) {
-              guard += 1;
-              yield* TestClock.adjust(Duration.millis(500));
-              waited = yield* proxy.status({});
-            }
-            world.takenPorts.delete(8317);
-            const status = yield* awaitStatus(
-              world,
-              (next) => next.restarts >= round || next.state === "failed",
-            );
-            if (round < 5) {
+            yield* awaitCount(world, "request", nextRequest);
+            const delay = [1, 2, 4, 8][round - 1];
+            const cleared = countEvent(world.order, `rename:${world.recordPath}`) + 1;
+            yield* TestClock.adjust(Duration.seconds(30));
+            yield* awaitCount(world, "stdin-end:1", round);
+            yield* awaitCount(world, `rename:${world.recordPath}`, cleared);
+            if (delay !== undefined) yield* awaitEvent(world, `timer:${delay * 1_000}`);
+            else yield* awaitEvent(world, "log");
+            const status = yield* proxy.status({});
+            if (delay !== undefined) {
               assert.strictEqual(status.state, "starting");
               assert.strictEqual(status.restarts, round);
-              yield* TestClock.adjust(Duration.seconds([1, 2, 4, 8][round - 1]!));
+              yield* TestClock.adjust(Duration.seconds(delay));
             } else {
               assert.strictEqual(status.state, "failed");
               assert.strictEqual(status.problem, "unhealthy");
@@ -1366,32 +1389,26 @@ describe("P11-16 restart with backoff", () => {
           for (let round = 1; round <= 5; round += 1) {
             const before = patches();
             handle.exit(3);
-            world.takenPorts.delete(8317);
-            yield* TestClock.adjust(Duration.millis(1));
-            const status = yield* awaitStatus(
-              world,
-              (next) => next.restarts >= round || next.state === "failed",
-            );
+            yield* awaitCount(world, "settings-applied", before + 1);
+            const delay = [1, 2, 4, 8][round - 1];
+            if (delay !== undefined) yield* awaitEvent(world, `timer:${delay * 1_000}`);
+            else yield* awaitEvent(world, "log");
+            const status = yield* proxy.status({});
             assert.strictEqual(status.exitCode, 3);
             assert.strictEqual(status.restarts, round);
             // P8.5 disables the hub entry the moment the exit is seen.
             assert.strictEqual(patches(), before + 1);
-            if (round < 5) {
+            if (delay !== undefined) {
               assert.strictEqual(status.state, "starting");
               const beforeSpawns = spawns();
-              yield* TestClock.adjust(Duration.millis([1, 2, 4, 8][round - 1]! * 1000 - 1));
+              yield* TestClock.adjust(Duration.millis(delay * 1_000 - 1));
               assert.strictEqual(spawns(), beforeSpawns);
               yield* TestClock.adjust(Duration.millis(1));
               yield* awaitCount(world, "supervisor-spawn", round + 1);
               handle = world.supervisors[world.supervisors.length - 1]!;
               handle.offerStdout(`pid ${handle.pid}\n`);
               world.takenPorts.add(8317);
-              // Drive the respawn to running: the module needs clock for its health round.
-              yield* awaitStatus(
-                world,
-                (next) => next.state === "running" && next.hub === "connected",
-                400,
-              );
+              yield* awaitCount(world, "settings-applied", before + 2);
             } else {
               assert.strictEqual(status.state, "failed");
               assert.strictEqual(status.problem, "exited");
@@ -1403,27 +1420,32 @@ describe("P11-16 restart with backoff", () => {
 
           // Start accepts again: a fresh supervisor reaches running with the count back at 0.
           yield* proxy.start({});
-          yield* TestClock.adjust(Duration.millis(1));
           yield* awaitCount(world, "supervisor-spawn", 6);
-          const stable = world.supervisors[world.supervisors.length - 1]!;
-          stable.offerStdout(`pid ${stable.pid}\n`);
+          const applied = countEvent(world.order, "settings-applied");
+          const manual = world.supervisors[5]!;
+          manual.offerStdout(`pid ${manual.pid}\n`);
           world.takenPorts.add(8317);
-          const running = yield* awaitStatus(
-            world,
-            (next) => next.state === "running" && next.hub === "connected",
-            400,
-          );
+          yield* awaitCount(world, "settings-applied", applied + 1);
+          const running = yield* proxy.status({});
           assert.strictEqual(running.state, "running");
           assert.strictEqual(running.restarts, 0);
 
-          // Stable for five minutes: the next exit starts the count again at one.
+          manual.exit(3);
+          yield* awaitCount(world, "settings-applied", applied + 2);
+          yield* awaitCount(world, "timer:1000", 2);
+          yield* TestClock.adjust(Duration.seconds(1));
+          yield* awaitCount(world, "supervisor-spawn", 7);
+          const stable = world.supervisors[6]!;
+          world.takenPorts.add(8317);
+          stable.offerStdout(`pid ${stable.pid}\n`);
+          yield* awaitCount(world, "settings-applied", applied + 3);
+          assert.strictEqual((yield* proxy.status({})).restarts, 1);
+
           yield* TestClock.adjust(Duration.minutes(5));
-          const before = patches();
+          assert.strictEqual((yield* proxy.status({})).restarts, 0);
           stable.exit(3);
-          world.takenPorts.delete(8317);
-          yield* TestClock.adjust(Duration.millis(1));
-          const again = yield* awaitStatus(world, (next) => next.restarts >= 1);
-          assert.strictEqual(patches(), before + 1);
+          yield* awaitCount(world, "settings-applied", applied + 4);
+          const again = yield* proxy.status({});
           assert.strictEqual(again.state, "starting");
           assert.strictEqual(again.restarts, 1);
         }),
@@ -1447,9 +1469,55 @@ describe("P11-16 restart with backoff", () => {
       }),
     ),
   );
+
+  it.effect.each(["open", "closed"] as const)(
+    "a live supervisor with %s stdout and no pid is closed without a health read",
+    (stdout) =>
+      withWorld({ supervisor: { stdoutClosed: stdout === "closed" } }, (world) =>
+        Effect.gen(function* () {
+          yield* install(world);
+          yield* world.proxy.start({});
+          if (stdout === "open") {
+            yield* awaitEvent(world, "timer:30000");
+            yield* TestClock.adjust(Duration.seconds(30));
+          }
+          yield* awaitEvent(world, "stdin-end:1");
+          const status = yield* world.proxy.status({});
+          assert.strictEqual(status.state, "failed");
+          assert.strictEqual(status.problem, "spawn");
+          assert.strictEqual(status.pid, null);
+          assert.strictEqual(status.restarts, 0);
+          assert.isTrue(world.supervisors[0]!.state.exited);
+          assert.deepStrictEqual(world.httpRequests, []);
+          assert.deepStrictEqual(world.patches, []);
+        }),
+      ),
+  );
 });
 
 describe("P11-17 both histories of a first stop", () => {
+  it.effect("a failed stop intent write still disables the hub and stops the runtime", () =>
+    withWorld({}, (world) =>
+      Effect.gen(function* () {
+        yield* install(world);
+        yield* startToRunning(world);
+        world.setRefuseRecordWrites(true);
+        const stopped = yield* world.proxy.stop({});
+        assert.strictEqual(stopped.state, "failed");
+        assert.strictEqual(stopped.problem, "write");
+        assert.strictEqual(stopped.desired, "running");
+        assert.strictEqual(recordOf(world)["desired"], "running");
+        assert.strictEqual(stopped.hub, "disconnected");
+        assert.isTrue(world.supervisors[0]!.state.exited);
+        assert.strictEqual(world.supervisors[0]!.state.kills, 0);
+        yield* TestClock.adjust(Duration.minutes(1));
+        assert.strictEqual(world.supervisors.length, 1);
+        world.setRefuseRecordWrites(false);
+        assert.strictEqual((yield* world.proxy.stop({})).desired, "stopped");
+      }),
+    ),
+  );
+
   it.effect(
     "the disable patch precedes the pipe after a connected start; an unconnected start sends none",
     () =>
@@ -1471,10 +1539,9 @@ describe("P11-17 both histories of a first stop", () => {
               tail.filter((event) => event === "patch"),
               ["patch"],
             );
-            assert.isTrue(
-              tail.findIndex((event) => event === "patch") <
-                tail.findIndex((event) => event.startsWith("stdin-end")),
-              "the disable patch must precede the ended pipe",
+            assert.deepStrictEqual(
+              tail.filter((event) => event === "settings-applied" || event.startsWith("stdin-end")),
+              ["settings-applied", "stdin-end:1"],
             );
             const atEnd = world.recordAtStdinEnds.at(-1);
             assert.isDefined(atEnd);
@@ -1580,12 +1647,14 @@ describe("P11-19 a module built over a home with a record", () => {
             },
           },
         } as unknown as Parameters<typeof ServerSettings.layerTest>[0];
+        yield* withWorld({ baseDir }, (world) =>
+          Effect.sync(() => seedInstalledRecord(world, { desired: "running", process: null })),
+        );
         yield* withWorld({ baseDir, settingsOverrides }, (world, close) =>
           Effect.gen(function* () {
-            seedInstalledRecord(world, { desired: "running", process: null });
             yield* awaitEvent(world, "patch");
             yield* awaitEvent(world, "supervisor-spawn");
-            const patchAt = firstIndex(world.order, (event) => event === "patch")!;
+            const patchAt = firstIndex(world.order, (event) => event === "settings-applied")!;
             const spawnAt = firstIndex(world.order, (event) => event === "supervisor-spawn")!;
             assert.isTrue(patchAt < spawnAt);
 
@@ -1598,20 +1667,22 @@ describe("P11-19 a module built over a home with a record", () => {
             yield* awaitCount(world, "settings-applied", 2);
             assert.strictEqual((yield* world.proxy.status({})).state, "running");
 
-            const patchesBefore = countEvent(world.order, "patch");
+            const patchesBefore = countEvent(world.order, "settings-applied");
             yield* close();
-            yield* awaitCount(world, "patch", patchesBefore + 1);
-            const disableAt = lastIndex(world.order, (event) => event === "patch")!;
+            yield* awaitCount(world, "settings-applied", patchesBefore + 1);
+            const disableAt = lastIndex(world.order, (event) => event === "settings-applied")!;
             const stdinAt = firstIndex(world.order, (event) => event.startsWith("stdin-end"))!;
             assert.isTrue(stdinAt > disableAt);
             assert.strictEqual(recordOf(world)["desired"], "running");
           }),
         );
 
-        yield* withWorld({}, (world) =>
+        yield* withWorld({ baseDir }, (world) =>
+          Effect.sync(() => seedInstalledRecord(world, { desired: "stopped", process: null })),
+        );
+        yield* withWorld({ baseDir }, (world) =>
           Effect.gen(function* () {
-            seedInstalledRecord(world, { desired: "stopped", process: null });
-            yield* TestClock.adjust(Duration.seconds(2));
+            yield* world.proxy.stop({});
             assert.strictEqual(countEvent(world.order, "supervisor-spawn"), 0);
             assert.strictEqual((yield* world.proxy.status({})).state, "stopped");
           }),
@@ -1673,6 +1744,34 @@ describe("P11-20 an earlier run", () => {
 });
 
 describe("P11-21 uninstall", () => {
+  it.effect("a failed removing marker preserves the installed files, keys and sign-ins", () =>
+    withWorld({}, (world) =>
+      Effect.gen(function* () {
+        yield* install(world);
+        yield* startToRunning(world);
+        yield* world.fs.writeFileString(`${world.authDir}/kv.db`, "sign-ins");
+        const installed = recordOf(world);
+        const files = yield* rootListing(world);
+        world.setRefuseRecordWrites(true);
+        const stopped = yield* world.proxy.uninstall({ removeCredentials: true });
+        yield* world.proxy.drain;
+        assert.strictEqual(stopped.state, "failed");
+        assert.strictEqual(stopped.problem, "leftover");
+        assert.deepStrictEqual(recordOf(world), installed);
+        assert.deepStrictEqual(yield* rootListing(world), files);
+        assert.strictEqual(yield* world.fs.readFileString(`${world.authDir}/kv.db`), "sign-ins");
+        for (const name of [MANAGEMENT_KEY_NAME, CLIENT_KEY_NAME])
+          assert.isTrue(Option.isSome(yield* world.secretStore.get(name)));
+
+        world.setRefuseRecordWrites(false);
+        const retried = yield* world.proxy.uninstall({ removeCredentials: true });
+        assert.strictEqual(retried.state, "not-installed");
+        yield* world.proxy.drain;
+        assert.isFalse(yield* world.fs.exists(world.root));
+      }),
+    ),
+  );
+
   it.effect(
     "keeping sign-ins removes the hub entry first and every proxy secret, and keeps auth",
     () =>
@@ -1710,10 +1809,9 @@ describe("P11-21 uninstall", () => {
             tail.filter((event) => event === "patch"),
             ["patch"],
           );
-          assert.isTrue(
-            tail.findIndex((event) => event === "patch") <
-              tail.findIndex((event) => event.startsWith("stdin-end")),
-            "the removal patch must precede the ended child",
+          assert.deepStrictEqual(
+            tail.filter((event) => event === "settings-applied" || event.startsWith("stdin-end")),
+            ["settings-applied", "stdin-end:1"],
           );
           assert.strictEqual(world.supervisors[0]!.state.kills, 0);
         }),
@@ -1755,8 +1853,64 @@ describe("P11-21 uninstall", () => {
     ),
   );
 
-  it.effect("with no record it removes stray secrets and folders and keeps auth", () =>
-    withWorld({}, (world) =>
+  it.effect.each(["unconfirmed shutdown", "held port after exit"] as const)(
+    "%s keeps the process record, keys and files until uninstall is safe",
+    (condition) =>
+      withWorld(
+        {
+          supervisor: { exitsOnStdinEnd: condition === "held port after exit", exitsOnKill: false },
+        },
+        (world) =>
+          Effect.gen(function* () {
+            yield* install(world);
+            yield* world.fs.writeFileString(`${world.authDir}/kv.db`, "sign-ins");
+            yield* startToRunning(world);
+            const handle = world.supervisors[0]!;
+            if (condition === "held port after exit") world.setOwnerAnswer("other");
+
+            const remove = world.proxy.uninstall({ removeCredentials: true });
+            const result = yield* Effect.forkChild(refusalOf(remove));
+            yield* awaitEvent(world, "stdin-end:1");
+            if (condition === "unconfirmed shutdown") {
+              yield* awaitEvent(world, "timer:10000");
+              yield* TestClock.adjust(Duration.seconds(10));
+            }
+            assert.deepStrictEqual(yield* Fiber.join(result), {
+              reason: "earlier-run",
+              message: REFUSALS["earlier-run"],
+            });
+            yield* world.proxy.drain;
+            assert.strictEqual(recordOf(world)["phase"], "removing");
+            assert.deepStrictEqual(recordOf(world)["process"], { pid: handle.pid });
+            assert.isTrue(yield* world.fs.exists(world.exePath));
+            assert.isTrue(yield* world.fs.exists(world.configPath));
+            assert.strictEqual(
+              yield* world.fs.readFileString(`${world.authDir}/kv.db`),
+              "sign-ins",
+            );
+            for (const name of [MANAGEMENT_KEY_NAME, CLIENT_KEY_NAME])
+              assert.isTrue(Option.isSome(yield* world.secretStore.get(name)));
+            assert.isTrue(Option.isNone(yield* world.secretStore.get(SETTINGS_SECRET_NAME)));
+
+            if (condition === "unconfirmed shutdown") {
+              assert.strictEqual(handle.state.kills, 1);
+              world.takenPorts.clear();
+              assert.strictEqual((yield* refusalOf(remove)).reason, "earlier-run");
+              handle.exit(0);
+            } else {
+              assert.isTrue(handle.state.exited);
+              assert.strictEqual(handle.state.kills, 0);
+              world.takenPorts.clear();
+            }
+            assert.strictEqual((yield* remove).state, "not-installed");
+            yield* world.proxy.drain;
+            assert.isFalse(yield* world.fs.exists(world.root));
+          }),
+      ),
+  );
+
+  it.effect("with no record or hub row it removes the orphaned settings key and keeps auth", () =>
+    withWorld({ persistentSettings: true }, (world) =>
       Effect.gen(function* () {
         NodeFS.mkdirSync(world.authDir, { recursive: true });
         NodeFS.writeFileSync(`${world.authDir}/kv.db`, "bbolt bytes");
@@ -1765,13 +1919,31 @@ describe("P11-21 uninstall", () => {
         NodeFS.mkdirSync(world.secretsDir, { recursive: true });
         yield* world.secretStore.set(MANAGEMENT_KEY_NAME, encoder.encode("stray management"));
         yield* world.secretStore.set(CLIENT_KEY_NAME, encoder.encode("stray client"));
+        yield* world.secretStore.set(SETTINGS_SECRET_NAME, encoder.encode("orphan"));
+        const settings = yield* world.settings.getSettings;
+        assert.isFalse(Object.hasOwn(settings.usageLimitSources, FACTORY_PROXY_SOURCE_ID));
+
+        world.setRefuseSettings(true);
+        const refused = yield* refusalOf(world.proxy.uninstall({ removeCredentials: false }));
+        yield* world.proxy.drain;
+        assert.strictEqual(refused.reason, "remove-refused");
+        assert.include(world.order, `secret-remove:${SETTINGS_SECRET_NAME}`);
+        assert.strictEqual(yield* secretText(world, SETTINGS_SECRET_NAME), "orphan");
+        assert.isTrue(yield* world.fs.exists(`${world.root}/releases/9.9.9/stray.txt`));
+        world.setRefuseSettings(false);
 
         const status = yield* world.proxy.uninstall({ removeCredentials: false });
         yield* world.proxy.drain;
         assert.strictEqual(status.state, "not-installed");
         assert.isTrue(Option.isNone(yield* world.secretStore.get(MANAGEMENT_KEY_NAME)));
         assert.isTrue(Option.isNone(yield* world.secretStore.get(CLIENT_KEY_NAME)));
+        assert.isTrue(Option.isNone(yield* world.secretStore.get(SETTINGS_SECRET_NAME)));
+        const removalPatch = { usageLimitSources: { [FACTORY_PROXY_SOURCE_ID]: null } };
+        assert.deepStrictEqual(world.patches, [removalPatch, removalPatch]);
         assert.deepStrictEqual(yield* rootListing(world), ["auth", "auth/kv.db"]);
+        yield* world.proxy.uninstall({ removeCredentials: false });
+        yield* world.proxy.drain;
+        assert.strictEqual(world.patches.length, 2);
       }),
     ),
   );

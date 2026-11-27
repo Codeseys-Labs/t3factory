@@ -168,7 +168,7 @@ The model proxy is a pinned version of CLIProxyAPI that runs on the selected env
 
 At each start, the server sets the address, port, management key, sign-in folder and account data location again. It keeps the proxy's required client API key without removing keys you added. It restores the pinned console's download source and turns off automatic console updates. It also turns off remote management, HTTPS, network discovery, the Codex live media relay, profiling and plugins. Other settings you save in the console are kept across starts.
 
-If the port is held, close the program using it on that machine, then choose **Start** again. If the dialog names an earlier proxy, check that it is still that proxy before ending it. The proxy does not switch ports. If the settings file cannot be read, uninstall with sign-ins kept, then install again. Settings you saved in the console are lost, but the sign-ins are kept.
+If the port is held, identify the current listener on that machine before stopping anything. An earlier proxy's process ID does not identify the current listener. Free the port, then retry **Start** or **Uninstall**; the proxy does not switch ports. If the settings file cannot be read, uninstall with sign-ins kept, then install again. Settings you saved in the console are lost, but the sign-ins are kept.
 
 Only a person in the dialog can install or start the proxy. There is no command-line command, workflow or agent tool for it.
 
@@ -275,7 +275,7 @@ Once dispatched, the work never falls back or moves to another machine. If the o
 Limits:
 
 - Factory may ask a writer to stop but does not kill it. A writer Factory loses track of may keep working and open a pull request Factory never reviews. Check for and close any such pull request yourself.
-- A commit pushed between Factory's last check and GitHub's merge can be merged unreviewed. This window includes time spent in a merge queue. If Factory finds a different commit after the merge, it writes a task note and puts a question under **Needs you**. If the merge has not completed when Factory checks, it asks you to check the pull request rather than saying it merged.
+- Factory checks that the pull request still targets the configured branch when reviewing and before merging. A new commit or retargeting between the final check and GitHub's merge can still slip through, including during time spent in a merge queue. If the merged commit or target differs, Factory writes a task note and puts a question under **Needs you**. If it cannot confirm the merge, it asks you to check the pull request instead of marking it merged.
 - The branches and worktrees stay on that machine. Remove them yourself when you no longer need them.
 - Working on another machine has been tested against a stand-in for that machine only. It has not yet run between two real servers, and not between two physical machines.
 

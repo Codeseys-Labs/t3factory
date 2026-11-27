@@ -6,6 +6,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
+import * as NodeProcess from "node:process";
 import * as NodeUtil from "node:util";
 import {
   GLOBAL_WRITE_ROW_REFUSED,
@@ -21,6 +22,7 @@ import {
   placementsAgree,
   placementsDiffer,
   writePlacementFor,
+  wrongBase,
 } from "./placement.ts";
 
 const { ask, pullRequests, runs, sleep, start, step, stop, store } = T3;
@@ -857,23 +859,30 @@ export const resolveWritePlacement = Effect.fnUntraced(function* (
   return { ...placement, baseRef, model };
 });
 
-const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
-export const writerBase = Effect.fnUntraced(function* (folder: string, target: string) {
-  const base = yield* step(
-    "writer-base",
-    { returns: HeadSha },
-    Effect.tryPromise({
-      try: () =>
-        execFile("git", ["-C", folder, "ls-remote", "--", "origin", `refs/heads/${target}`], {
-          encoding: "utf8",
-        }),
-      catch: (cause) => ({
-        _tag: "WriterBaseReadError" as const,
-        message: "An error occurred in Effect.tryPromise",
-        cause,
+type RunGit = (
+  command: string,
+  args: string[],
+  options: NodeChildProcess.ExecFileOptionsWithStringEncoding,
+) => Promise<{ readonly stdout: string }>;
+const execFile: RunGit = NodeUtil.promisify(NodeChildProcess.execFile);
+export const readOriginHead = (folder: string, target: string, runGit = execFile) =>
+  Effect.tryPromise({
+    try: (signal) =>
+      runGit("git", ["-C", folder, "ls-remote", "--", "origin", `refs/heads/${target}`], {
+        encoding: "utf8",
+        signal,
+        timeout: 30_000,
+        env: { ...NodeProcess.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" },
       }),
-    }).pipe(Effect.map(({ stdout }) => baseFromLsRemote(stdout, target))),
-  );
+    catch: (cause) => ({
+      _tag: "WriterBaseReadError" as const,
+      message: "An error occurred in Effect.tryPromise",
+      cause,
+    }),
+  }).pipe(Effect.map(({ stdout }) => baseFromLsRemote(stdout, target)));
+
+export const writerBase = Effect.fnUntraced(function* (folder: string, target: string) {
+  const base = yield* step("writer-base", { returns: HeadSha }, readOriginHead(folder, target));
   if (base === null) return yield* stop(baseUnread(target));
   return base;
 });
@@ -1028,31 +1037,31 @@ export const mergePullRequest = Effect.fn("factoryPack.mergePullRequest")(functi
   if (merged === "head-changed") return yield* stop("pull request head changed after review");
 });
 
-const MergeAtHeadOutcome = Schema.Literals([
-  "requested",
-  "already-merged",
-  "unusable",
-  "head-changed",
+const MergeAtHeadOutcome = Schema.Union([
+  Schema.Literals(["requested", "already-merged", "unusable", "head-changed"]),
+  Schema.Struct({ wrongBase: Schema.String }),
 ]);
 
 export const mergeAtHead = Effect.fn("factoryPack.mergeAtHead")(function* (
   pr: PullRequestAddress,
-  expected: string,
+  { expectedHead, target }: { readonly expectedHead: string; readonly target: string },
   mergeMethod: PackConfig["mergeMethod"],
 ) {
   const outcome = yield* step(
     "merge",
     { returns: MergeAtHeadOutcome },
     Effect.gen(function* () {
-      yield* pullRequests.comment(pr, mergeMark(expected));
+      yield* pullRequests.comment(pr, mergeMark(expectedHead));
       const detail = yield* pullRequests.read(pr);
       if (!isFullSha(detail.headSha ?? null)) return "unusable" as const;
       if (detail.state === "merged") return "already-merged" as const;
-      if (detail.headSha !== expected) return "head-changed" as const;
+      if (detail.baseBranch !== target) return { wrongBase: detail.baseBranch };
+      if (detail.headSha !== expectedHead) return "head-changed" as const;
       yield* pullRequests.act(pr, "merge", { mergeMethod });
       return "requested" as const;
     }),
   );
+  if (typeof outcome !== "string") return yield* stop(wrongBase(outcome.wrongBase, target));
   if (outcome === "unusable") return yield* stop(headUnusable("merge"));
   if (outcome === "head-changed") return yield* stop("pull request head changed after review");
   return outcome;

@@ -75,7 +75,7 @@ const script = ({
         case "do":
           return { output: { summary: PART.title, prUrl: PR_URL } };
         case "scope/0":
-          return { output: { headSha: reportedHead, files: [file] } };
+          return { output: { report: { headSha: reportedHead, files: [file] } } };
         // r9 L1: a reviewer reports its head and findings; an open major blocks (L3).
         case "review/0":
           return {
@@ -106,7 +106,7 @@ const script = ({
           headSha = FIXED_HEAD;
           return { reply: "Replaced the implementation with a documentation change." };
         case "scope/1":
-          return { output: { headSha: FIXED_HEAD, files: ["README.md"] } };
+          return { output: { report: { headSha: FIXED_HEAD, files: ["README.md"] } } };
         case "review/1":
           return { output: { reviewedHead: headSha, findings: [] } };
         default:

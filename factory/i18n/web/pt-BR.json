@@ -549,24 +549,7 @@
   "2c87759394b65c15": "Desinstalar",
   "2d171b3f2bfb1d88": "Este servidor não roda de um checkout do Factory, então não tem manifesto fixado.",
   "2f004248af316101": "O manifesto fixado está ausente ou é inválido, então nada foi obtido.",
-  "3a312b1d7f199398": [
-    "A porta",
-    " ",
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    },
-    " ",
-    "ainda está ocupada, e um proxy anterior deste servidor rodou como o processo",
-    " ",
-    {
-      "i": 2,
-      "k": "_gt_value_2",
-      "v": "v"
-    },
-    "."
-  ],
+  "3ace5eff11c0f9f9": "Na máquina selecionada, identifique o processo que está escutando nesta porta antes de encerrar qualquer processo. Quando a porta estiver livre, escolha Iniciar.",
   "3fc29e62ef7cb9af": [
     {
       "i": 1,
@@ -624,9 +607,16 @@
     ". Desinstale, mantendo os logins, e depois instale para mudar para ele."
   ],
   "7228aeee9ad7fd66": "Um arquivo baixado não correspondeu ao tamanho ou ao SHA-256 fixados. Nada foi instalado.",
-  "768e08f1016f012e": "Encerre esse processo na máquina e depois escolha Iniciar.",
+  "728f745345c6b7e2": [
+    "A porta ",
+    { "i": 1, "k": "_gt_value_1", "v": "v" },
+    " está em uso. O último ID de processo registrado para o proxy foi ",
+    { "i": 2, "k": "_gt_value_2", "v": "v" },
+    "."
+  ],
   "777e492521fb5acd": "Proxy de modelos",
   "80f417f89cc031bb": "O proxy de modelos não está instalado neste servidor.",
+  "814d81c5aa5972ee": "Um proxy anterior ainda pode estar em execução. Na máquina selecionada, identifique o processo que está escutando na porta do proxy antes de encerrar qualquer processo. Depois, tente novamente.",
   "8272831b240c3588": "Remover também os logins que ele guarda",
   "842fde6f13ecd74d": "O arquivo de configurações do proxy de modelos não pode ser lido. Desinstale, mantendo os logins, e depois instale novamente.",
   "85b817ff89412d77": "Não foi possível desativar o hub do proxy nas configurações deste servidor.",
@@ -706,9 +696,7 @@
   "e5567d65ffdb88e2": "Não instalado.",
   "e78f5c54ea4982f2": "Alguns arquivos do proxy ou o hub dele não puderam ser removidos. Desinstale novamente.",
   "e86c76292ee9d1e5": "O que você salvar no console é mantido. O servidor define novamente o endereço, a porta, a chave de gerenciamento e a pasta de logins a cada vez que o proxy inicia, e plug-ins e descoberta de rede não estão disponíveis para ele.",
-  "ede148e113aec0dd": "Um proxy anterior deste servidor ainda pode estar em execução. Encerre-o na máquina e tente novamente.",
   "f14490ae9c6e24b8": "Remover os logins mantidos",
   "f3e544786f4c9b6b": "Os arquivos instalados do proxy ou a chave dele estão ausentes, ilegíveis ou alterados. Desinstale, mantendo os logins, e instale novamente.",
-  "f7546ed96b48ea66": "Nenhuma porta de 8317 a 8327 está livre nesta máquina.",
-  "fc2dc2e4d13e214e": "Feche o programa que usa a porta e depois escolha Iniciar."
+  "f7546ed96b48ea66": "Nenhuma porta de 8317 a 8327 está livre nesta máquina."
 }

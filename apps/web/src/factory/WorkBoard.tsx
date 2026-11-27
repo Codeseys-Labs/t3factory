@@ -230,7 +230,7 @@ export function WorkNeedsYou({
           {items.map((item) => (
             <li
               key={item.key}
-              className="grid min-w-0 grid-cols-[1fr_auto] items-center justify-items-start gap-2 text-sm sm:flex"
+              className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center justify-items-start gap-2 text-sm sm:flex"
               onFocus={() => {
                 focusedKey.current = item.key;
               }}
@@ -244,7 +244,7 @@ export function WorkNeedsYou({
                 className="order-last col-span-2 flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-2 rounded-sm sm:order-none sm:flex-nowrap text-left hover:underline focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:outline-none focus-visible:ring-inset"
                 onClick={() => open(item)}
               >
-                <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                <span className="min-w-0 max-w-full wrap-anywhere font-mono text-xs text-muted-foreground sm:max-w-none sm:shrink-0 sm:wrap-normal">
                   {taskNumber({ number: item.taskNumber })}
                 </span>
                 <span className="min-w-0 basis-full wrap-anywhere sm:max-w-64 sm:basis-auto sm:truncate">

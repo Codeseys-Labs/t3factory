@@ -199,7 +199,7 @@ const start = Effect.fn("factoryPack.reader.start")(function* (
     v: 1,
     projectId: task.projectId ?? "scratch-project",
     workspace: settings.workspace ?? "worktree",
-    workspaceRoot: "/factory-pack-test",
+    workspaceRoot: yield* world.localRepository,
     problem: null,
     checkedAt: AT,
   });

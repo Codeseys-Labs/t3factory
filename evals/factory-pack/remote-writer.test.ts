@@ -203,6 +203,7 @@ type Scenario = {
   readonly parts?: ReadonlyArray<typeof PART>;
   readonly done?: (value: Done, turn: AgentTurnInput) => Done;
   readonly respond?: (turn: AgentTurnInput, pr: Pr | undefined) => Partial<AgentResult> | undefined;
+  readonly publishLocal?: (branch: string) => string;
   readonly read?: (input: HostRead) => PullRequestDetail;
   readonly needsFix?: boolean;
   readonly starts?: Pick<
@@ -287,10 +288,15 @@ const scenario = <A, Err>(
         if (step === "plan")
           return { output: { summary: "One change per part.", parts: options.parts ?? [PART] } };
         if (step === "do" || step === "do/continue" || step === "do/again") {
+          const branch = turnBranch(turn) ?? B;
+          const head =
+            options.publishLocal !== undefined && turn.environment == null
+              ? options.publishLocal(branch)
+              : H;
           const pr = {
             url: `https://github.com/${REPOSITORY}/pull/${41 + prs.size}`,
-            branch: turnBranch(turn) ?? B,
-            head: H,
+            branch,
+            head,
             runId,
           };
           prs.set(runId, pr);
@@ -299,7 +305,7 @@ const scenario = <A, Err>(
             prUrl: pr.url,
             branch: pr.branch,
             baseSha: X,
-            headSha: H,
+            headSha: head,
           };
           return { output: options.done?.(done, turn) ?? done };
         }
@@ -428,6 +434,7 @@ it.each([false, true])(
       {},
       Effect.fn(function* (world, workflows) {
         const { runId } = yield* start(workflows, {
+          folder: yield* world.localRepository,
           settings: remoteReaders ? { readOnlyOn: WRITE_ON } : {},
         });
         const part = yield* world.child(workflows, runId, 0);
@@ -896,17 +903,28 @@ it.each(rejected)("WT7 $label stops before any record, check, review, question o
   ),
 );
 
-it.each(["head moved", "head restored", "retarget before scope"] as const)(
+it.each(["head moved", "head restored", "retarget before scope", "checks stale"] as const)(
   "WT8 risk-pr/0 checks the review target and confirms a head mismatch: %s",
   (mode) =>
     withOrigin(({ folder, X }) => {
       const returns = mode === "head restored";
+      const differentHeadPassed = mode === "checks stale";
       const freshReads: number[] = [];
       return scenario(
         X,
         {
           read: ({ detail, count, world }) => {
             // W6.1, L4: writer-pr, checks/0, then risk-pr/0 and its confirming read.
+            if (differentHeadPassed) {
+              if (count === 1) return { ...detail, headSha: H2 };
+              if (count === 2) {
+                return {
+                  ...detail,
+                  checks: detail.checks.map((check) => ({ ...check, status: "failure" as const })),
+                };
+              }
+              return detail;
+            }
             if (mode === "retarget before scope") {
               return count === 2 ? { ...detail, baseBranch: "release" } : detail;
             }
@@ -919,8 +937,21 @@ it.each(["head moved", "head restored", "retarget before scope"] as const)(
           },
         },
         Effect.fn(function* (world, workflows) {
-          const { runId } = yield* start(workflows, remote(folder));
+          const { runId } = yield* start(
+            workflows,
+            remote(folder, differentHeadPassed ? { fixRounds: 0 } : {}),
+          );
           const child = yield* world.child(workflows, runId, 0);
+          if (differentHeadPassed) {
+            yield* ask(world, workflows, child.runId, "stuck");
+            yield* workflows.answer(child.runId, "stuck", { choice: "Stop" });
+            expect(yield* world.ended(workflows, child.runId)).toMatchObject(
+              stopped("review did not pass"),
+            );
+            expect(world.turns.map((turn) => turn.origin.step)).toEqual(["plan", "do"]);
+            expect(world.acts).toEqual([]);
+            return;
+          }
           const result = yield* world.ended(workflows, child.runId, true);
           const names = named((yield* workflows.get(child.runId)).steps);
           if (mode === "retarget before scope") {
@@ -947,7 +978,7 @@ it.each(["head moved", "head restored", "retarget before scope"] as const)(
 );
 
 it.each(["remote push", "local push", "remote null lens"] as const)(
-  "WT9 %s: only a remote writer's unexpected push stops without another round",
+  "WT9 %s: a verified writer's unexpected push stops without another round",
   (mode) =>
     withOrigin(({ folder, X }) =>
       scenario(
@@ -964,7 +995,7 @@ it.each(["remote push", "local push", "remote null lens"] as const)(
           const { runId } = yield* start(
             workflows,
             mode === "local push"
-              ? {}
+              ? { folder: yield* world.localRepository }
               : remote(folder, mode === "remote null lens" ? { readOnlyOn: WRITE_ON } : {}),
           );
           const child = yield* world.child(workflows, runId, 0);
@@ -1426,6 +1457,7 @@ it("WT14 null writeOn in the global and project rows is unset", () =>
     {},
     Effect.fn(function* (world, workflows) {
       const { runId } = yield* start(workflows, {
+        folder: yield* world.localRepository,
         global: { writeOn: null },
         settings: { writeOn: null },
       });
@@ -1565,6 +1597,10 @@ it("WT16 a writer and another task's reader share the environment's one admissio
     scenario(
       X,
       {
+        publishLocal: (branch) => {
+          git(folder, "branch", branch, X);
+          return X;
+        },
         starts: {
           holdAgent: (turn) =>
             turn.environment === E && (turn.origin.step === "scope/0" || turn.origin.step === "do"),
@@ -1732,7 +1768,7 @@ it("WT16 a missing pinned base stops remote review before any lens or merge over
     ),
   ));
 
-it("WT18 only version 4 is registered and factory-start dispatches it", () =>
+it("WT18 only version 5 is registered and factory-start dispatches it", () =>
   scenario(
     H,
     {},
@@ -1742,13 +1778,13 @@ it("WT18 only version 4 is registered and factory-start dispatches it", () =>
           world.definitions
             .filter((definition) => definition.name === name)
             .map((definition) => definition.version),
-        ).toEqual([4]);
+        ).toEqual([5]);
       }
       expect(
         world.definitions.find((definition) => definition.name === "factory-task-part")?.asks
           .unreviewed,
       ).toBe("Unreviewed commits merged");
-      yield* seed(workflows);
+      yield* seed(workflows, { folder: yield* world.localRepository });
       const started = yield* workflows.start(
         "factory-start",
         { taskId: TASK_ID },
@@ -1757,7 +1793,7 @@ it("WT18 only version 4 is registered and factory-start dispatches it", () =>
       const { runId } = decodeStarted((yield* world.ended(workflows, started.runId)).result);
       expect((yield* workflows.get(runId)).run).toMatchObject({
         workflow: "factory-task",
-        version: 4,
+        version: 5,
       });
       expect(yield* world.ended(workflows, runId, true)).toMatchObject({ status: "completed" });
     }),
@@ -1814,6 +1850,7 @@ it("WT18 placement decisions obey W3's ordering and exact shapes", () => {
 it.each([
   ["main", "main"],
   ["origin/main", "main"],
+  ["refs/remotes/origin/main", "main"],
   ["refs/heads/topic/x", "topic/x"],
   ["refs/heads/origin/topic", "origin/topic"],
 ] as const)("WT18 baseRef %s denotes the target %s", (ref, target) => {

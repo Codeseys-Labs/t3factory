@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -264,6 +265,7 @@ const startTask = Effect.fn("factoryPack.test.startTask")(function* (
   workflows: Service,
   issueUrl: string | null = null,
   projectId: string | null = PROJECT,
+  attempt = 1,
 ) {
   yield* workflows.storeSet("factory/v1/seq", TASK.number);
   yield* workflows.storeSet(`factory/v1/task/${TASK_ID}`, { ...TASK, projectId });
@@ -272,14 +274,14 @@ const startTask = Effect.fn("factoryPack.test.startTask")(function* (
     {
       taskId: TASK_ID,
       number: TASK.number,
-      attempt: 1,
+      attempt,
       title: TASK.title,
       description: TASK.description,
       projectId,
       model: MODEL,
       issueUrl,
     },
-    { idempotencyKey: `task/${TASK_ID}/a1` },
+    { idempotencyKey: `task/${TASK_ID}/a${attempt}` },
   );
 });
 
@@ -3952,6 +3954,331 @@ const seedTarget = (
     readonly problem: string | null;
   },
 ) => workflows.storeSet(`factory/v1/target/${key}`, { v: 1, ...target, checkedAt: AT });
+
+it.each([
+  "verified",
+  "previous PR",
+  "launcher suffix",
+  "pre-existing branch",
+  "sibling PR",
+  "head moved",
+  "queued",
+  "externally merged",
+  "merged at delivery",
+  "merged before review",
+  "merged during review",
+  "different head merged during review",
+  "checks passed on a different head",
+  "unknown review head",
+  "wrong head",
+  "wrong branch",
+  "wrong fork",
+  "wrong base",
+  "wrong first PR",
+  "held",
+  "retargeted",
+  "missing",
+  "unreadable head",
+  "unknown remotes",
+  "no remote",
+] as const)(
+  "handles %s PR delivery on the same local worker before any acceptance or merge",
+  async (delivery) => {
+    const folder = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "factory-delivery-"));
+    try {
+      const git = (...args: string[]) =>
+        NodeChildProcess.execFileSync("git", args, { cwd: folder, encoding: "utf8" }).trim();
+      const isRetry = delivery === "previous PR" || delivery === "sibling PR";
+      const attempt = isRetry ? 2 : 1;
+      const branch = `factory-task/${TASK_ID}/a${attempt}-p1`;
+      const publishedBranch =
+        delivery === "previous PR"
+          ? `factory-task/${TASK_ID}/a1-p1`
+          : delivery === "sibling PR"
+            ? `factory-task/${TASK_ID}/a1-p2`
+            : delivery === "launcher suffix"
+              ? `${branch}-2`
+              : branch;
+      const mergedDuringReview =
+        delivery === "merged during review" || delivery === "different head merged during review";
+      const warnsUnreviewed =
+        delivery === "externally merged" ||
+        delivery === "merged at delivery" ||
+        delivery === "merged before review" ||
+        mergedDuringReview;
+      git("init", "-q");
+      if (delivery !== "no remote") {
+        git("remote", "add", "origin", "https://github.com/factory/pack.git");
+      }
+      const hooks = NodePath.join(folder, "hooks");
+      NodeFS.mkdirSync(hooks);
+      git(
+        "-c",
+        "user.name=Factory",
+        "-c",
+        "user.email=factory@example.test",
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        `core.hooksPath=${hooks}`,
+        "commit",
+        "-qm",
+        "Work",
+        "--allow-empty",
+      );
+      if (isRetry || delivery === "pre-existing branch") git("branch", publishedBranch);
+      if (delivery === "launcher suffix") git("branch", branch);
+      const head = git("rev-parse", "HEAD");
+      const url = "https://github.com/factory/pack/pull/17";
+      let baseBranch = delivery === "wrong base" ? "other-base" : "main";
+      let reads = 0;
+      let sawReviewer = false;
+      let acts: World["acts"] = [];
+      let prComments: World["prComments"] = [];
+      const baseline = script({ noPullRequest: true });
+      await withWorld(
+        {
+          ...baseline,
+          agent: (turn) => {
+            const step = turn.origin.step;
+            if (step === "do" && !isRetry && delivery !== "unreadable head") {
+              git("branch", delivery === "pre-existing branch" ? `${branch}-2` : publishedBranch);
+            }
+            if (step.startsWith("review/")) {
+              sawReviewer = true;
+              const { output } = reviewReport([]);
+              return {
+                output: {
+                  ...output,
+                  reviewedHead: delivery === "unknown review head" ? null : head,
+                },
+              };
+            }
+            if (step === "do/deliver" || (delivery === "wrong first PR" && step === "do")) {
+              return {
+                output: {
+                  summary: "Finished publishing.",
+                  prUrl: delivery === "missing" ? null : url,
+                },
+              };
+            }
+            return baseline.agent(turn);
+          },
+          readPullRequest: (_address, detail) => {
+            reads += 1;
+            const merged =
+              (acts.length > 0 && delivery !== "queued") ||
+              delivery === "merged at delivery" ||
+              (delivery === "externally merged" && reads > 1) ||
+              (delivery === "merged before review" && reads > 2) ||
+              (mergedDuringReview && sawReviewer && prComments.length > 0);
+            return Effect.succeed({
+              ...detail,
+              state: merged ? "merged" : detail.state,
+              headRepositoryNameWithOwner:
+                delivery === "wrong fork" ? "someone/pack" : "factory/pack",
+              headBranch:
+                delivery === "wrong branch" || delivery === "wrong first PR"
+                  ? "other-part"
+                  : publishedBranch,
+              baseBranch,
+              checks:
+                delivery === "checks passed on a different head" && reads > 2
+                  ? detail.checks.map((check) => ({ ...check, status: "failure" as const }))
+                  : detail.checks,
+              headSha:
+                delivery === "wrong head" ||
+                (delivery === "head moved" && reads > 1) ||
+                (delivery === "checks passed on a different head" && reads === 2) ||
+                (delivery === "different head merged during review" && merged)
+                  ? "a".repeat(40)
+                  : head,
+            });
+          },
+        },
+        (world) =>
+          world.server(
+            Effect.fn("factoryPack.test.recoverLocalDelivery")(function* (workflows) {
+              acts = world.acts;
+              prComments = world.prComments;
+              yield* seedTarget(workflows, PROJECT, {
+                projectId: PROJECT,
+                workspace: "worktree",
+                workspaceRoot:
+                  delivery === "unknown remotes" ? NodePath.join(folder, "missing") : folder,
+                problem: null,
+              });
+              yield* workflows.storeSet("factory/v1/config", {
+                v: 1,
+                baseRef: delivery === "previous PR" ? "refs/remotes/origin/main" : "origin/main",
+                mergeNeedsPerson: true,
+                ...(delivery === "checks passed on a different head" ? { fixRounds: 0 } : {}),
+              });
+              if (isRetry || delivery === "unreadable head") {
+                yield* workflows.storeSet(`factory/v1/attempt/${TASK_ID}/0001`, {
+                  v: 1,
+                  taskId: TASK_ID,
+                  n: 1,
+                  key: `task/${TASK_ID}/a1`,
+                  workflow: "factory-task",
+                  runId: null,
+                  requestedBy: "operator",
+                  startedAt: AT,
+                  prUrls: isRetry ? [url] : [],
+                });
+              }
+              const { runId } = yield* startTask(workflows, null, PROJECT, attempt);
+              yield* approvePlan(world, workflows, runId);
+              if (delivery === "unknown remotes") {
+                expect(yield* world.ended(workflows, runId, true)).toMatchObject({
+                  status: "stopped",
+                  detail: expect.stringContaining("could not determine the project's Git remotes"),
+                });
+                expect(world.turns.map((turn) => turn.origin.step)).toEqual(["plan"]);
+                return;
+              }
+              const child = yield* world.child(workflows, runId, 0);
+              if (
+                delivery === "verified" ||
+                delivery === "previous PR" ||
+                delivery === "launcher suffix"
+              ) {
+                const gate = yield* ask(world, workflows, child.runId, "approve-merge", "merge", [
+                  "Merge",
+                  "Hold",
+                ]);
+                expect(gate.request).toMatchObject({ data: { prUrl: url, headSha: head } });
+                yield* workflows.answer(child.runId, "approve-merge", { choice: "Merge" });
+                yield* ask(world, workflows, child.runId, "approve-merge/person", "merge", [
+                  "Merge",
+                  "Hold",
+                ]);
+                expect(world.acts).toEqual([]);
+                yield* workflows.answer(
+                  child.runId,
+                  "approve-merge/person",
+                  { choice: "Merge" },
+                  { label: "Test person", sessionId: "test-person" },
+                );
+                expect(yield* world.ended(workflows, runId)).toMatchObject({
+                  status: "completed",
+                  result: { parts: [{ outcome: "merged", prUrl: url }] },
+                });
+              } else if (
+                delivery === "unknown review head" ||
+                delivery === "checks passed on a different head"
+              ) {
+                yield* askStuck(world, workflows, child.runId);
+                expect(sawReviewer).toBe(delivery === "unknown review head");
+                yield* workflows.answer(child.runId, "stuck", { choice: "Stop" });
+                expect(yield* world.ended(workflows, runId)).toMatchObject({ status: "stopped" });
+                expect(world.acts).toEqual([]);
+              } else if (
+                delivery === "held" ||
+                delivery === "retargeted" ||
+                delivery === "queued" ||
+                warnsUnreviewed
+              ) {
+                if (warnsUnreviewed) {
+                  const warning = yield* ask(
+                    world,
+                    workflows,
+                    child.runId,
+                    "unreviewed",
+                    "unreviewed",
+                    ["Seen"],
+                  );
+                  expect(warning.request).toMatchObject({
+                    title: expect.stringContaining("no accepted review"),
+                    data: {
+                      mergedHead:
+                        delivery === "different head merged during review" ? "a".repeat(40) : head,
+                      expectedHead: head,
+                    },
+                  });
+                  expect(sawReviewer).toBe(mergedDuringReview);
+                  yield* workflows.answer(child.runId, "unreviewed", { choice: "Seen" });
+                  expect(yield* world.ended(workflows, runId)).toMatchObject({ status: "stopped" });
+                  expect(world.acts).toEqual([]);
+                  return;
+                }
+                const gate = yield* ask(world, workflows, child.runId, "approve-merge", "merge", [
+                  "Merge",
+                  "Hold",
+                ]);
+                expect(gate.request).toMatchObject({ data: { prUrl: url, headSha: head } });
+                if (delivery === "retargeted") baseBranch = "retargeted";
+                yield* workflows.answer(
+                  child.runId,
+                  "approve-merge",
+                  { choice: delivery === "held" ? "Hold" : "Merge" },
+                  { label: "Test person", sessionId: "test-person" },
+                );
+                if (delivery === "queued") {
+                  const waiting = yield* workflows.waitFor(
+                    child.runId,
+                    (run) => run.detail === "merge-wait" || run.endedAt !== null,
+                  );
+                  expect(waiting).toMatchObject({ status: "waiting", detail: "merge-wait" });
+                  expect(world.acts).toHaveLength(1);
+                  yield* world.expireQuestion(workflows, child.runId, "merge-wait");
+                  yield* ask(world, workflows, child.runId, "unreviewed", "unreviewed", ["Seen"]);
+                  yield* workflows.answer(child.runId, "unreviewed", { choice: "Seen" });
+                }
+                expect(yield* world.ended(workflows, runId)).toMatchObject({
+                  status: "stopped",
+                  detail: expect.stringContaining(
+                    delivery === "held"
+                      ? "merge held"
+                      : delivery === "queued"
+                        ? "had not completed"
+                        : "retargeted",
+                  ),
+                });
+                expect(world.acts).toHaveLength(delivery === "queued" ? 1 : 0);
+              } else if (delivery === "no remote") {
+                yield* ask(world, workflows, child.runId, "accept", "accept", ["Accept", "Redo"]);
+                yield* workflows.answer(child.runId, "accept", { choice: "Accept" });
+                expect(yield* world.ended(workflows, runId)).toMatchObject({
+                  status: "completed",
+                  result: { parts: [{ outcome: "accepted", prUrl: null }] },
+                });
+                expect(world.acts).toEqual([]);
+              } else {
+                expect(yield* world.ended(workflows, runId, true)).toMatchObject({
+                  status: "stopped",
+                  detail: expect.stringContaining(
+                    delivery === "head moved"
+                      ? "last commit this part's worker reported"
+                      : "a part could not deliver a verified pull request",
+                  ),
+                });
+                expect(world.acts).toEqual([]);
+                if (delivery === "unreadable head") {
+                  const [record] = yield* workflows.stored(`factory/v1/attempt/${TASK_ID}/`);
+                  expect(record?.value).toMatchObject({ prUrls: [url] });
+                }
+              }
+              const writers = world.turns.filter(
+                (turn) => turn.origin.runId === child.runId && turn.origin.step.startsWith("do"),
+              );
+              expect(writers.map((turn) => turn.origin.step)).toEqual(
+                delivery === "no remote" || delivery === "wrong first PR"
+                  ? ["do"]
+                  : ["do", "do/deliver"],
+              );
+              if (delivery !== "no remote" && delivery !== "wrong first PR") {
+                expect(writers[1]?.thread).toBe(`thread-${writers[0]?.key}`);
+                expect(writers[0]?.launch?.workspace).toMatchObject({ branch });
+              }
+            }),
+          ),
+      );
+    } finally {
+      NodeFS.rmSync(folder, { recursive: true, force: true });
+    }
+  },
+);
 
 const withReportFile = async (use: (file: string) => Promise<void>) => {
   const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "factory-artifact-"));

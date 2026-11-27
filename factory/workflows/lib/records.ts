@@ -258,7 +258,7 @@ type TaskWorkflow = Parameters<typeof start<FactoryTaskRunInput>>[0];
 
 // `start` reads only the name and version. A workflow file cannot import another for its
 // definition: the loader would register that file's workflows twice.
-export const FACTORY_TASK_VERSION = 4;
+export const FACTORY_TASK_VERSION = 5;
 const workflowRef = (name: string) =>
   ({ name, version: name === FACTORY_TASK ? FACTORY_TASK_VERSION : 1 }) as unknown as TaskWorkflow;
 
@@ -865,6 +865,44 @@ type RunGit = (
   options: NodeChildProcess.ExecFileOptionsWithStringEncoding,
 ) => Promise<{ readonly stdout: string }>;
 const execFile: RunGit = NodeUtil.promisify(NodeChildProcess.execFile);
+
+const readLocalGit = Effect.fn("factoryPack.readLocalGit")(function* (
+  folder: string,
+  args: ReadonlyArray<string>,
+) {
+  return yield* Effect.tryPromise({
+    try: async (signal) => {
+      const { stdout } = await execFile("git", ["-C", folder, ...args], {
+        encoding: "utf8",
+        signal,
+        timeout: 10_000,
+      });
+      return stdout.trim();
+    },
+    catch: () => null,
+  }).pipe(Effect.orElseSucceed(() => null));
+});
+
+export const localGitHasRemote = (folder: string) =>
+  Effect.map(readLocalGit(folder, ["remote"]), (names) => (names === null ? null : names !== ""));
+
+export const localWriterBranches = (folder: string, branch: string) =>
+  Effect.map(
+    readLocalGit(folder, ["for-each-ref", "--format=%(refname:lstrip=2)", `refs/heads/${branch}*`]),
+    (names) => (names === null ? null : names === "" ? [] : names.split(/\r?\n/)),
+  );
+
+export const localWriterHead = (folder: string, branch: string) =>
+  Effect.map(
+    readLocalGit(folder, [
+      "rev-parse",
+      "--verify",
+      "--end-of-options",
+      `refs/heads/${branch}^{commit}`,
+    ]),
+    (head) => (isFullSha(head) ? head : null),
+  );
+
 export const readOriginHead = (folder: string, target: string, runGit = execFile) =>
   Effect.tryPromise({
     try: (signal) =>
@@ -1038,7 +1076,7 @@ export const mergePullRequest = Effect.fn("factoryPack.mergePullRequest")(functi
 });
 
 const MergeAtHeadOutcome = Schema.Union([
-  Schema.Literals(["requested", "already-merged", "unusable", "head-changed"]),
+  Schema.Literals(["requested", "already-merged", "unusable", "head-changed", "closed"]),
   Schema.Struct({ wrongBase: Schema.String }),
 ]);
 
@@ -1056,6 +1094,7 @@ export const mergeAtHead = Effect.fn("factoryPack.mergeAtHead")(function* (
       const detail = yield* pullRequests.read(pr);
       if (!isFullSha(detail.headSha ?? null)) return "unusable" as const;
       if (detail.state === "merged") return "already-merged" as const;
+      if (detail.state === "closed") return "closed" as const;
       if (detail.baseBranch !== target) return { wrongBase: detail.baseBranch };
       if (detail.headSha !== expectedHead) return "head-changed" as const;
       yield* pullRequests.act(pr, "merge", { mergeMethod });
@@ -1065,5 +1104,6 @@ export const mergeAtHead = Effect.fn("factoryPack.mergeAtHead")(function* (
   if (typeof outcome !== "string") return yield* stop(wrongBase(outcome.wrongBase, target));
   if (outcome === "unusable") return yield* stop(headUnusable("merge"));
   if (outcome === "head-changed") return yield* stop("pull request head changed after review");
+  if (outcome === "closed") return yield* stop("pull request closed");
   return outcome;
 });

@@ -30,7 +30,7 @@ A deliverable and the decisions made about it are records of their own: `factory
 
 For a verified writer, the wait only settles checks. Check evidence comes from the same host read as the writer's verified head: the wait may have settled at a different commit.
 
-For each review round on a verified delivery, scope, review and disproof share the same `base...head` range. Resolve the target at origin, not an unqualified local branch: a stale branch of the same name can make an unrelated protected change appear in a small pull request.
+For each review round on a verified delivery, scope, review and disproof share the same `base...head` range. For a local writer, resolve the target in the verified pull request's repository. A stale local branch can make unrelated protected changes appear in the review, and `origin` can point at a fork that omits changes from it.
 
 ## Review ledger and outcomes
 

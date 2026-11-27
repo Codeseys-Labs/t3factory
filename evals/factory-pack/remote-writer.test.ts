@@ -129,6 +129,7 @@ const withOrigin = async (use: (repo: Repo) => Promise<void>, baseBranch = "main
       "Base",
     );
     git(project, "remote", "add", "origin", origin);
+    git(project, "config", `url.${origin}.insteadOf`, `https://github.com/${REPOSITORY}.git`);
     git(project, "push", "origin", baseBranch);
     await use({ folder: project, X: git(project, "rev-parse", "HEAD") });
   } finally {

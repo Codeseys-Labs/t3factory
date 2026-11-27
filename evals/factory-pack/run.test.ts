@@ -4037,10 +4037,15 @@ it.each([
       }
       const base = git("rev-parse", "HEAD");
       if (delivery !== "no remote") {
-        const origin = NodePath.join(folder, "origin.git");
-        git("init", "-q", "--bare", origin);
-        git("remote", "add", "origin", origin);
-        git("-c", `core.hooksPath=${hooks}`, "push", "--quiet", "origin", "HEAD:refs/heads/main");
+        const upstream = NodePath.join(folder, "upstream.git");
+        const remote =
+          delivery === "stale local base"
+            ? "git@github.com:factory/pack.git"
+            : "https://github.com/factory/pack.git";
+        git("init", "-q", "--bare", upstream);
+        git("config", `url.${upstream}.insteadOf`, remote);
+        git("remote", "add", "upstream", remote);
+        git("-c", `core.hooksPath=${hooks}`, "push", "--quiet", "upstream", "HEAD:refs/heads/main");
       }
       if (scopesPinnedBase) {
         git("switch", "--detach", "--quiet");
@@ -4049,6 +4054,13 @@ it.each([
         NodeFS.writeFileSync(NodePath.join(folder, path), "change\n");
         git("add", "--", path);
         commit("Proposed change");
+        if (delivery === "protected path") {
+          const fork = NodePath.join(folder, "fork.git");
+          git("init", "-q", "--bare", fork);
+          git("config", `url.${fork}.insteadOf`, "https://github.com/someone/pack.git");
+          git("remote", "add", "origin", "https://github.com/someone/pack.git");
+          git("-c", `core.hooksPath=${hooks}`, "push", "--quiet", "origin", "HEAD:refs/heads/main");
+        }
       }
       if (isRetry || delivery === "pre-existing branch") git("branch", publishedBranch);
       if (delivery === "launcher suffix") git("branch", branch);

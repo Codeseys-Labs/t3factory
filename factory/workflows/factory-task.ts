@@ -24,6 +24,7 @@ import {
   pullRequestHead,
   readConfig,
   readOriginHead,
+  readPullRequestBase,
   recordAttemptPullRequest,
   resolvePlacement,
   resolveTarget,
@@ -922,24 +923,28 @@ const factoryTaskPart = workflow(
       }
       const head = snapshot.headSha;
       const baseSource =
-        writer ??
-        (localWriter !== null && localFolder !== null
-          ? { folder: localFolder, target: localWriter.target }
-          : null);
+        writer !== null
+          ? { target: writer.target, read: readOriginHead(writer.folder, writer.target) }
+          : localWriter !== null && localFolder !== null
+            ? {
+                target: localWriter.target,
+                read: readPullRequestBase(localFolder, prUrl, localWriter.target),
+              }
+            : null;
       const reviewBase =
         baseSource === null
           ? null
           : yield* step(
               `review-base/${at}`,
               { returns: ReviewBase },
-              Effect.map(readOriginHead(baseSource.folder, baseSource.target), (baseSha) => ({
+              Effect.map(baseSource.read, (baseSha) => ({
                 target: baseSource.target,
                 baseSha,
               })),
             );
       if (reviewBase !== null && reviewBase.baseSha === null) {
         return yield* stop(
-          `Could not pin the review base origin/${reviewBase.target}. Nothing was merged.`,
+          `Could not pin the review base ${reviewBase.target} for ${prUrl}. Nothing was merged.`,
         );
       }
       const range = reviewBase === null ? null : `${reviewBase.baseSha}...${head}`;
@@ -965,7 +970,7 @@ const factoryTaskPart = workflow(
         range === null
           ? []
           : [
-              "If a pinned commit is missing, fetch the target branch from origin or the pull request head without checking either out, then use only the exact SHAs in the comparison.",
+              "If a pinned commit is missing, fetch the target or PR head from the repository named by the pull request without checking it out, then verify both exact SHAs exist and use only those SHAs.",
             ];
       const readLines = remote ? [remoteLine(head)] : [...localFetch];
       if (remote && reviewBase !== null) {
@@ -1021,7 +1026,7 @@ const factoryTaskPart = workflow(
           const { report } = scoped.value;
           if (pinnedReader && "missingBase" in report) {
             return yield* stop(
-              `The reader in environment ${placement.environment}, project ${placement.project}, lacks the pinned base commit ${reviewBase.baseSha}. Fetch the target branch ${reviewBase.target} from origin in that project's clone, verify it contains ${reviewBase.baseSha}, then start the task again. Nothing was merged.`,
+              `The reader in environment ${placement.environment}, project ${placement.project}, lacks the pinned base commit ${reviewBase.baseSha}. Fetch the target branch ${reviewBase.target} ${writer === null ? `from the repository for ${prUrl}` : "from origin"} in that project's clone, verify it contains ${reviewBase.baseSha}, then start the task again. Nothing was merged.`,
             );
           }
           if ("error" in report) {

@@ -903,10 +903,10 @@ export const localWriterHead = (folder: string, branch: string) =>
     (head) => (isFullSha(head) ? head : null),
   );
 
-export const readOriginHead = (folder: string, target: string, runGit = execFile) =>
+const readRemoteHead = (folder: string, remote: string, target: string, runGit: RunGit) =>
   Effect.tryPromise({
     try: (signal) =>
-      runGit("git", ["-C", folder, "ls-remote", "--", "origin", `refs/heads/${target}`], {
+      runGit("git", ["-C", folder, "ls-remote", "--", remote, `refs/heads/${target}`], {
         encoding: "utf8",
         signal,
         timeout: 30_000,
@@ -918,6 +918,54 @@ export const readOriginHead = (folder: string, target: string, runGit = execFile
       cause,
     }),
   }).pipe(Effect.map(({ stdout }) => baseFromLsRemote(stdout, target)));
+
+export const readOriginHead = (folder: string, target: string, runGit = execFile) =>
+  readRemoteHead(folder, "origin", target, runGit);
+
+export const readPullRequestBase = Effect.fn("factoryPack.readPullRequestBase")(function* (
+  folder: string,
+  prUrl: string,
+  target: string,
+) {
+  const pr = URL.parse(prUrl);
+  const repository = pr?.pathname.match(/^(\/[\w.-]+\/[\w.-]+)\/pull\/[1-9]\d*(?:\/|$)/i)?.[1];
+  if (pr?.protocol !== "https:" || repository === undefined) return null;
+  const path = repository.toLowerCase();
+
+  // Use a matching fetch remote if configured, so SSH-only GitHub checkouts keep their transport.
+  const urls = yield* readLocalGit(folder, [
+    "config",
+    "--null",
+    "--get-regexp",
+    "^remote\\..+\\.url$",
+  ]);
+  const seen = new Set<string>();
+  for (const entry of urls?.split("\0") ?? []) {
+    const at = entry.indexOf("\n");
+    if (at === -1) continue;
+    const name = entry.slice("remote.".length, at - ".url".length);
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const raw = entry.slice(at + 1);
+    const scp = raw.match(/^(?:[^@/:]+@)?([^/:]+):([^/].*)$/);
+    const url = URL.parse(scp === null ? raw : `ssh://${scp[1]}/${scp[2]}`);
+    if (
+      ((url?.protocol === "https:" && url.host === pr.host) ||
+        (url?.protocol === "ssh:" && url.hostname === pr.hostname)) &&
+      url.pathname
+        .replace(/\/$/, "")
+        .replace(/\.git$/i, "")
+        .toLowerCase() === path
+    ) {
+      return yield* readRemoteHead(folder, name, target, execFile).pipe(
+        Effect.orElseSucceed(() => null),
+      );
+    }
+  }
+  return yield* readRemoteHead(folder, `${pr.origin}${repository}.git`, target, execFile).pipe(
+    Effect.orElseSucceed(() => null),
+  );
+});
 
 export const writerBase = Effect.fnUntraced(function* (folder: string, target: string) {
   const base = yield* step("writer-base", { returns: HeadSha }, readOriginHead(folder, target));

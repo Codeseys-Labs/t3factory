@@ -208,6 +208,14 @@ const Started = Schema.Struct({
 const ScopeSuccess = Schema.Struct({ headSha: Schema.String, files: Schema.Array(Schema.String) });
 const ScopeFailure = Schema.Struct({ error: Schema.String });
 const ScopeReport = Schema.Struct({ report: Schema.Union([ScopeSuccess, ScopeFailure]) });
+const PinnedScopeReport = Schema.Struct({
+  report: Schema.Union([
+    ScopeSuccess,
+    ScopeFailure,
+    Schema.Struct({ missingBase: Schema.Literal(true) }),
+  ]),
+});
+type ScopeResult = typeof PinnedScopeReport.Type;
 const ReviewBase = Schema.Struct({ target: Schema.String, baseSha: HeadSha });
 
 const PullRequestRiskSnapshot = Schema.Struct({
@@ -765,8 +773,9 @@ const factoryTaskPart = workflow(
         (reviewBase !== null && reviewBase.baseSha !== risk.baseSha) ||
         (snapshot.headSha !== null && snapshot.headSha !== risk.headSha)
       ) {
+        const pinnedReader = remote && reviewBase !== null;
         const scoped = yield* holdRead(
-          agent.try(`scope/${at}`, {
+          agent.try<ScopeResult, ScopeResult>(`scope/${at}`, {
             ...readOptions,
             title: `${label} scope: ${input.title}`,
             brief: [
@@ -775,17 +784,24 @@ const factoryTaskPart = workflow(
               "",
               ...readLines,
               ...basis,
+              ...(pinnedReader
+                ? [
+                    `First run \`git rev-parse --verify "${reviewBase.baseSha}^{commit}"\`. If the commit is missing from this clone, return \`{"report":{"missingBase":true}}\` immediately. Do not fetch it.`,
+                  ]
+                : []),
               range !== null
                 ? `Run \`git diff --name-only ${range}\`.`
                 : remote
                   ? remoteScopeBase(snapshot.baseBranch)
                   : `Fetch the pull request's head commit${snapshot.headSha === null ? "" : ` \`${snapshot.headSha}\``} and run \`git diff --name-only <base>...<head>\`, where <head> is that commit and <base> is the branch the pull request targets.`,
               "Return `report` containing `headSha`: the full SHA of the commit you listed, and `files`: every path the command printed, exactly as printed.",
-              SCOPE_ERROR_LINE,
+              pinnedReader
+                ? "For any other failure, return `report` containing only `error`: the last line of output."
+                : SCOPE_ERROR_LINE,
               quotation,
             ].join("\n"),
             timeout: config.stepTimeout,
-            returns: ScopeReport,
+            returns: pinnedReader ? PinnedScopeReport : ScopeReport,
           }),
         );
         let files: ReadonlyArray<string> | null = null;
@@ -793,9 +809,14 @@ const factoryTaskPart = workflow(
           noteRisk([`the changed files could not be listed: ${scoped.reason}`]);
         } else {
           const { report } = scoped.value;
+          if (pinnedReader && "missingBase" in report) {
+            return yield* stop(
+              `The reader in environment ${placement.environment}, project ${placement.project}, lacks the pinned base commit ${reviewBase.baseSha}. Fetch the target branch ${reviewBase.target} from origin in that project's clone, verify it contains ${reviewBase.baseSha}, then start the task again. Nothing was merged.`,
+            );
+          }
           if ("error" in report) {
             noteRisk([scopeFailed(report.error)]);
-          } else if (snapshot.headSha !== null) {
+          } else if ("files" in report && snapshot.headSha !== null) {
             if (report.headSha === snapshot.headSha) {
               files = report.files;
             } else {

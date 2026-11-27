@@ -1700,6 +1700,34 @@ it("WT16 distinct environments leave the writer on E and pin scope and review on
     ),
   ));
 
+it("WT16 a missing pinned base stops remote review before any lens or merge override", () =>
+  withOrigin(({ folder, X }) =>
+    scenario(
+      X,
+      {
+        respond: (turn) =>
+          turn.origin.step === "scope/0"
+            ? { output: { report: { missingBase: true } } }
+            : undefined,
+      },
+      Effect.fn(function* (world, workflows) {
+        const readOnlyOn = { environment: "env-reader", project: "reader-project", limit: 1 };
+        const { runId } = yield* start(workflows, remote(folder, { readOnlyOn }));
+        const child = yield* world.child(workflows, runId, 0);
+        expect(yield* world.ended(workflows, child.runId, true)).toMatchObject(
+          stopped(
+            `The reader in environment env-reader, project reader-project, lacks the pinned base commit ${X}. Fetch the target branch main from origin in that project's clone, verify it contains ${X}, then start the task again. Nothing was merged.`,
+          ),
+        );
+        const scope = only(world.turns, "scope/0");
+        expect(scope.prompt).toContain(`git rev-parse --verify "${X}^{commit}"`);
+        expect(scope.prompt).toContain('{"report":{"missingBase":true}}');
+        expect(world.turns.map((turn) => turn.origin.step)).toEqual(["plan", "do", "scope/0"]);
+        expect(world.acts).toEqual([]);
+      }),
+    ),
+  ));
+
 it("WT18 only version 4 is registered and factory-start dispatches it", () =>
   scenario(
     H,

@@ -1089,6 +1089,44 @@ it.each([
   ),
 );
 
+it("WT10 failing checks can be overridden by a person for the exact unreviewed head", () =>
+  withOrigin(({ folder, X }) =>
+    scenario(
+      X,
+      {
+        read: ({ detail }) => ({
+          ...detail,
+          checks: detail.checks.map((check) => ({ ...check, status: "failure" })),
+        }),
+      },
+      Effect.fn(function* (world, workflows) {
+        const { runId } = yield* start(workflows, remote(folder, { fixRounds: 0 }));
+        const child = yield* world.child(workflows, runId, 0);
+        const stuck = yield* ask(world, workflows, child.runId, "stuck");
+        expect(stuck.request).toMatchObject({
+          data: { problem: expect.stringContaining("checks are failing") },
+        });
+        yield* workflows.answer(child.runId, "stuck", { choice: "Merge anyway" }, PERSON);
+        const approve = yield* ask(world, workflows, child.runId, "approve-merge");
+        const target = { data: { prUrl: URL, headSha: H, baseBranch: "main" } };
+        expect(approve.request).toMatchObject(target);
+        yield* workflows.answer(child.runId, "approve-merge", { choice: "Merge" });
+        const person = yield* ask(world, workflows, child.runId, "approve-merge/person");
+        expect(person.request).toMatchObject(target);
+        expect(world.acts).toEqual([]);
+        yield* workflows.answer(child.runId, "approve-merge/person", { choice: "Merge" }, PERSON);
+        expect(yield* world.ended(workflows, child.runId, true)).toMatchObject({
+          status: "completed",
+          result: { outcome: "merged", stats: { reviewRounds: 0, mergedAnyway: true } },
+        });
+        expect(world.acts).toHaveLength(1);
+        expect(world.prComments.map((comment) => comment.body)).toEqual([
+          `Factory is merging this pull request at ${H}, the commit a person authorized without review.`,
+        ]);
+      }),
+    ),
+  ));
+
 it("WT11 a changed head at head-sha stops before asking to merge", () =>
   withOrigin(({ folder, X }) =>
     scenario(
@@ -1773,7 +1811,7 @@ it("WT18 W12's strings render the names and observations they are given", () => 
   expect(Placement.fixContradicts("fix/1", H2, H)).toBe(fixContradicts("fix/1", H2, H));
   expect(Placement.ranElsewhere("fix/0")).toBe(ranElsewhere("fix/0"));
   expect(Placement.headCheck(H)).toBe(headCheck(H));
-  expect(Placement.mergeMark(H)).toBe(mergeMark(H));
+  expect(Placement.mergeMark(H, "reviewed")).toBe(mergeMark(H));
   expect(Placement.mergedUnreviewed(H2, H, URL)).toBe(mergedUnreviewed(H2));
   expect(Placement.mergeUnconfirmed(URL, H, "open")).toBe(mergeUnconfirmed("open"));
   expect(Placement.WRITE_NEEDS_WORKTREE).toBe(needsWorktree);

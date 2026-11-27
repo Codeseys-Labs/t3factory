@@ -614,7 +614,10 @@ const factoryTaskPart = workflow(
     };
     let reviewedHead: string | null = null;
     let acceptedHead: string | null = null;
-    const merged = Effect.fnUntraced(function* (tier = risk.tier ?? null) {
+    const merged = Effect.fnUntraced(function* (
+      tier = risk.tier ?? null,
+      authorizedHead: string | null = null,
+    ) {
       if (remoteWriter !== null) {
         const { expectedHead, target: expectedTarget } = remoteWriter;
         const { state, baseBranch, headSha } = yield* step(
@@ -631,11 +634,17 @@ const factoryTaskPart = workflow(
         if (state !== "merged") {
           text = mergeUnconfirmed(prUrl, expectedHead, state);
         } else if (baseBranch !== expectedTarget) {
-          text = mergedWrongBase(baseBranch, expectedTarget, prUrl);
-        } else if (acceptedHead !== expectedHead) {
+          text =
+            authorizedHead === null
+              ? mergedWrongBase(baseBranch, expectedTarget, prUrl)
+              : `${prUrl} was merged into ${baseBranch}, not the authorized target ${expectedTarget}. Check the merge now.`;
+        } else if (acceptedHead !== expectedHead && authorizedHead !== expectedHead) {
           text = `${prUrl} was merged at ${mergedHead ?? "unknown"}, but Factory had no accepted review of that commit. Check the merge now.`;
-        } else if (mergedHead !== acceptedHead) {
-          text = mergedUnreviewed(mergedHead ?? "unknown", acceptedHead, prUrl);
+        } else if (mergedHead !== expectedHead) {
+          text =
+            authorizedHead === null
+              ? mergedUnreviewed(mergedHead ?? "unknown", expectedHead, prUrl)
+              : `${prUrl} was merged at ${mergedHead ?? "unknown"}, but a person authorized only ${authorizedHead}. Check the merge now.`;
         }
         if (text !== null) {
           yield* step(
@@ -1041,8 +1050,10 @@ const factoryTaskPart = workflow(
       risk.tier ?? "high",
       headSha === null || headSha !== risk.headSha || exhausted ? "high" : "low",
     );
-    const mustAskMerge = finalTier === "high" || config.askMerge || config.mergeNeedsPerson;
-    const needsPerson = finalTier === "high" || config.mergeNeedsPerson;
+    const needsAuthorization =
+      remoteWriter !== null && stats.mergedAnyway && acceptedHead !== headSha;
+    const needsPerson = needsAuthorization || finalTier === "high" || config.mergeNeedsPerson;
+    const mustAskMerge = needsPerson || config.askMerge;
     if (mustAskMerge) stats.asks++;
     if (
       mustAskMerge &&
@@ -1054,6 +1065,7 @@ const factoryTaskPart = workflow(
           data: {
             prUrl,
             headSha,
+            ...(needsAuthorization ? { baseBranch: remoteWriter.target } : {}),
             summary,
             fixRoundsUsed: stats.fixRounds,
             noOpFixRounds: stats.noOpFixRounds,
@@ -1068,10 +1080,16 @@ const factoryTaskPart = workflow(
     ) {
       return yield* stop("merge held");
     }
+    const authorizedHead = needsAuthorization ? headSha : null;
     if (remoteWriter === null) {
       yield* mergePullRequest(pr, headSha, config.mergeMethod);
     } else {
-      const outcome = yield* mergeAtHead(pr, remoteWriter, config.mergeMethod);
+      const outcome = yield* mergeAtHead(
+        pr,
+        remoteWriter,
+        config.mergeMethod,
+        authorizedHead === null ? "reviewed" : "authorized",
+      );
       if (outcome === "requested") {
         yield* pullRequests.wait("merge-wait", pr, {
           until: "merged",
@@ -1079,7 +1097,7 @@ const factoryTaskPart = workflow(
         });
       }
     }
-    return yield* merged(finalTier);
+    return yield* merged(finalTier, authorizedHead);
   }),
 );
 

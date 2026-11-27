@@ -171,7 +171,7 @@ const ProxyRecord = Schema.Struct({
   consoleKey: Schema.Literals(["typed", "generated"]),
   desired: Schema.Literals(["running", "stopped"]),
   installedAt: IsoDateTime,
-  process: Schema.NullOr(Schema.Struct({ pid: PositiveInt })),
+  process: Schema.NullOr(Schema.Struct({ pid: Schema.NullOr(PositiveInt) })),
 });
 type ProxyRecord = typeof ProxyRecord.Type;
 const recordJson = Schema.fromJsonString(ProxyRecord);
@@ -396,6 +396,7 @@ interface Active {
   readonly port: number;
   pid: number | null;
   exited: boolean;
+  stopping: boolean;
 }
 
 export const make = Effect.gen(function* () {
@@ -510,6 +511,10 @@ export const make = Effect.gen(function* () {
     }
     return hub;
   });
+  const recordedPortHeld = (rec: ProxyRecord) =>
+    rec.process === null
+      ? Effect.succeed(false)
+      : Effect.map(net.isPortAvailableOnLoopback(rec.port), (free) => !free);
   const status = Effect.fn("FactoryProxy.status")(function* (
     _input?: FactoryProxyNoInput,
   ): Effect.fn.Return<FactoryProxyStatus> {
@@ -519,6 +524,12 @@ export const make = Effect.gen(function* () {
     }).pipe(Effect.orElseSucceed(() => false));
     const connection = yield* observedHub;
     const initial = initialized ? null : yield* inspect();
+    const held =
+      !initialized &&
+      initial !== null &&
+      initial !== "damaged" &&
+      initial.phase === "installed" &&
+      (yield* recordedPortHeld(initial));
     const rec = initialized ? record : initial === "damaged" ? null : initial;
     const interrupted = !initialized && rec !== null && rec.phase !== "installed";
     const bad = !initialized && initial === "damaged";
@@ -527,11 +538,13 @@ export const make = Effect.gen(function* () {
         ? state
         : bad || interrupted
           ? "failed"
-          : rec?.desired === "running"
-            ? "starting"
-            : rec
-              ? "stopped"
-              : "not-installed",
+          : held
+            ? "port-in-use"
+            : rec?.desired === "running"
+              ? "starting"
+              : rec
+                ? "stopped"
+                : "not-installed",
       desired: rec?.desired ?? null,
       hub: connection,
       platform,
@@ -545,7 +558,7 @@ export const make = Effect.gen(function* () {
       restarts,
       pid: rec?.process?.pid ?? null,
       exitCode,
-      problem: bad ? "damaged" : interrupted ? "interrupted" : problem,
+      problem: bad ? "damaged" : interrupted || (held && !initialized) ? "interrupted" : problem,
     };
   });
 
@@ -891,9 +904,11 @@ export const make = Effect.gen(function* () {
 
   const mayBeRunning = (run: Active) =>
     run.exited ? Effect.succeed(false) : run.child.isRunning.pipe(Effect.orElseSucceed(() => true));
-  const end = Effect.fn("FactoryProxy.end")(function* (run: Active) {
-    if (!run.exited) {
-      yield* disableHub;
+  const closeActive = Effect.gen(function* () {
+    const run = active;
+    if (!run || !run.exited) yield* disableHub;
+    if (run && !run.stopping && (yield* mayBeRunning(run))) {
+      run.stopping = true;
       const ended = yield* Effect.gen(function* () {
         yield* Stream.run(Stream.empty, run.child.stdin).pipe(Effect.ignore);
         return yield* run.child.exitCode;
@@ -905,34 +920,40 @@ export const make = Effect.gen(function* () {
       if (Option.isSome(ended)) {
         run.exited = true;
         exitCode = ended.value;
-        if (!removing && record?.process && (yield* net.isPortAvailableOnLoopback(run.port)))
-          yield* updateRecord({ process: null }).pipe(
-            Effect.catch(() => Effect.sync(() => setFailed("write"))),
-          );
-      } else if (yield* run.child.isRunning.pipe(Effect.orElseSucceed(() => false))) {
-        yield* run.child.kill({ forceKillAfter: STOP_GRACE }).pipe(Effect.ignore);
       }
     }
-  });
-  const closeActive = Effect.gen(function* () {
-    const run = active;
-    if (!run) return yield* disableHub;
-    yield* Scope.close(run.scope, Exit.void);
-    // A closed scope or a returned kill is not evidence that its supervisor exited.
-    if (active === run) {
-      if (!(yield* mayBeRunning(run))) active = null;
-      else if (run.pid !== null && record && record.process === null)
-        yield* updateRecord({ process: { pid: run.pid } }).pipe(
-          Effect.catch(() => Effect.sync(() => setFailed("write"))),
-        );
+    if (run) {
+      if (yield* mayBeRunning(run)) {
+        yield* run.child
+          .kill({ forceKillAfter: STOP_GRACE })
+          .pipe(Effect.interruptible, Effect.timeoutOption(STOP_WAIT), Effect.ignore);
+        if (yield* mayBeRunning(run)) return "unconfirmed" as const;
+      }
+      yield* Scope.close(run.scope, Exit.void);
+      run.exited = true;
     }
-  });
-  yield* Scope.addFinalizer(scope, closeActive);
+    if (!removing && record?.process) {
+      if (yield* recordedPortHeld(record)) return "port-in-use" as const;
+      if (run && !(yield* Effect.isSuccess(updateRecord({ process: null }))))
+        return "write" as const;
+    }
+    active = null;
+    return "stopped" as const;
+  }).pipe(Effect.uninterruptible);
+  yield* Scope.addFinalizer(
+    scope,
+    Effect.gen(function* () {
+      if (!active) return yield* disableHub;
+      yield* closeActive;
+      if (active) yield* Scope.close(active.scope, Exit.void);
+    }),
+  );
   const launch = Effect.fn("FactoryProxy.launch")(function* (
     executable: string,
     port: number,
     managementKey: Redacted.Redacted<string>,
   ) {
+    yield* updateRecord({ process: { pid: null } });
     const childScope = yield* Scope.make("sequential");
     const command = ChildProcess.make(
       node,
@@ -955,7 +976,15 @@ export const make = Effect.gen(function* () {
       Effect.catchDefect(() => Effect.fail(fault("spawn"))),
       Effect.onError(() => Scope.close(childScope, Exit.void)),
     );
-    const run: Active = { scope: childScope, child, managementKey, port, pid: null, exited: false };
+    const run: Active = {
+      scope: childScope,
+      child,
+      managementKey,
+      port,
+      pid: null,
+      exited: false,
+      stopping: false,
+    };
     active = run;
     const announced = yield* Deferred.make<number, JobProblem>();
     yield* run.child.stderr.pipe(Stream.runDrain, Effect.ignore, Effect.forkIn(run.scope));
@@ -974,7 +1003,6 @@ export const make = Effect.gen(function* () {
       Effect.ensuring(Deferred.fail(announced, fault("spawn"))),
       Effect.forkIn(run.scope),
     );
-    yield* Scope.addFinalizer(childScope, end(run));
     return { run, announced };
   }, Effect.uninterruptible);
 
@@ -1003,7 +1031,11 @@ export const make = Effect.gen(function* () {
       (active && (yield* mayBeRunning(active)))
     )
       return "port-in-use" as const;
-    if (rec.process) yield* updateRecord({ process: null });
+    // A retained supervisor may have exited since the last unconfirmed stop.
+    if (active) {
+      yield* Scope.close(active.scope, Exit.void);
+      active = null;
+    }
     const exe = yield* verifyFiles(rec);
     const key = yield* configure(rec, true);
     if (key === null) return yield* fault("damaged");
@@ -1069,10 +1101,14 @@ export const make = Effect.gen(function* () {
         const current = record;
         if (current?.phase !== "installed" || current.desired !== "running") return;
         const outcome = yield* attempt(current);
-        if (active) yield* closeActive;
-        if (outcome === "port-in-use") {
-          state = outcome;
-          problem = null;
+        const closed = active ? yield* closeActive : null;
+        if (closed === "write" || closed === "unconfirmed") {
+          setFailed(closed === "write" ? "write" : "interrupted");
+          return;
+        }
+        if (outcome === "port-in-use" || closed === "port-in-use") {
+          state = "port-in-use";
+          problem = record?.process?.pid === null ? "interrupted" : null;
           return;
         }
         if (outcome === "spawn") {
@@ -1094,8 +1130,8 @@ export const make = Effect.gen(function* () {
     },
     Effect.catch((error) =>
       Effect.gen(function* () {
-        if (active) yield* closeActive;
-        setFailed(error.problem);
+        const closed = active ? yield* closeActive : null;
+        setFailed(closed === "write" ? "write" : error.problem);
       }),
     ),
   );
@@ -1113,7 +1149,10 @@ export const make = Effect.gen(function* () {
     } else if (found !== null) {
       record = found;
       if (found.phase !== "installed") setFailed("interrupted");
-      else if (found.desired === "running") yield* begin();
+      else if (yield* recordedPortHeld(found)) {
+        state = "port-in-use";
+        problem = "interrupted";
+      } else if (found.desired === "running") yield* begin();
       else state = "stopped";
     }
     initialized = true;
@@ -1239,11 +1278,17 @@ export const make = Effect.gen(function* () {
         !run.exited
       ) {
         yield* interruptWorker;
-        yield* closeActive;
-        state = "port-in-use";
+        const closed = yield* closeActive;
+        if (closed === "unconfirmed") {
+          setFailed("interrupted");
+          return yield* refusal("earlier-run");
+        }
+        if (closed === "write") setFailed("write");
+        else state = "port-in-use";
       }
       return yield* status();
     }
+    if (active?.stopping && (yield* mayBeRunning(active))) return yield* refusal("earlier-run");
     if (problem === "config-unreadable" || !(yield* Effect.isSuccess(configure(record, false))))
       return yield* refusal("config-unreadable");
     if (!(yield* Effect.isSuccess(updateRecord({ desired: "running" })))) {
@@ -1260,14 +1305,19 @@ export const make = Effect.gen(function* () {
   const stop = Effect.fn("FactoryProxy.stop")(function* (_input?: FactoryProxyNoInput) {
     if (damagedRecord || (record && record.phase !== "installed")) return yield* status();
     if (!record) return yield* refusal("not-installed");
-    if (state === "stopped") {
+    if (state === "stopped" && !record.process && !active) {
       if (hub === "disable-refused") yield* disableHub;
       return yield* status();
     }
     const saved = yield* Effect.isSuccess(updateRecord({ desired: "stopped" }));
     yield* interruptWorker;
-    yield* closeActive;
-    if (!saved) setFailed("write");
+    const closed = yield* closeActive;
+    if (closed === "unconfirmed" || closed === "port-in-use") {
+      state = closed === "port-in-use" ? "port-in-use" : "failed";
+      problem = saved ? "interrupted" : "write";
+      return yield* refusal("earlier-run");
+    }
+    if (!saved || closed === "write") setFailed("write");
     else {
       state = "stopped";
       problem = null;
@@ -1296,8 +1346,13 @@ export const make = Effect.gen(function* () {
         record?.process &&
         (!active || !(yield* mayBeRunning(active))) &&
         !(yield* net.isPortAvailableOnLoopback(record.port))
-      )
+      ) {
+        if (record.phase === "installed") {
+          state = "port-in-use";
+          if (problem !== "write") problem = "interrupted";
+        }
         return yield* refusal("earlier-run");
+      }
       yield* removeHub;
       problem = null;
       const clean = yield* removeOwned(input.removeCredentials);

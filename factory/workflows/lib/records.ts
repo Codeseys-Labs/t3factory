@@ -1046,12 +1046,13 @@ export const mergeAtHead = Effect.fn("factoryPack.mergeAtHead")(function* (
   pr: PullRequestAddress,
   { expectedHead, target }: { readonly expectedHead: string; readonly target: string },
   mergeMethod: PackConfig["mergeMethod"],
+  basis: Parameters<typeof mergeMark>[1],
 ) {
   const outcome = yield* step(
     "merge",
     { returns: MergeAtHeadOutcome },
     Effect.gen(function* () {
-      yield* pullRequests.comment(pr, mergeMark(expectedHead));
+      yield* pullRequests.comment(pr, mergeMark(expectedHead, basis));
       const detail = yield* pullRequests.read(pr);
       if (!isFullSha(detail.headSha ?? null)) return "unusable" as const;
       if (detail.state === "merged") return "already-merged" as const;

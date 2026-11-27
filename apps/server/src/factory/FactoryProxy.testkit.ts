@@ -961,7 +961,7 @@ export const seedInstalledRecord = (
   world: World,
   record: {
     readonly desired: "running" | "stopped";
-    readonly process: { readonly pid: number } | null;
+    readonly process: { readonly pid: number | null } | null;
     readonly consoleKey?: "typed" | "generated";
   },
 ) => {

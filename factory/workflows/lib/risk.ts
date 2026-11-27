@@ -25,6 +25,7 @@ export const FORK_SEAM_PATHS: ReadonlyArray<string> = [
   "apps/server/src/ws.ts",
   "apps/server/src/orchestration-v2/runtimeLayer.ts",
   "apps/server/src/observability/RpcInstrumentation.ts",
+  "apps/server/src/serverSettings.ts",
   "packages/client-runtime/src/rpc/client.ts",
   "apps/web/src/components/sidebar/SidebarChrome.tsx",
   "apps/web/src/components/sidebar/mainAppLocation.ts",

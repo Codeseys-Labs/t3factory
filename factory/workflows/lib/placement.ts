@@ -152,8 +152,10 @@ export const ranElsewhere = (step: string) =>
   `Step ${step} came back without the machine writeOn names, so it ran somewhere else, perhaps on this server if writeOn names it. Nothing was merged.`;
 export const headCheck = (expected: string) =>
   `Factory is checking this pull request's head against ${expected}, the last commit its worker reported.`;
-export const mergeMark = (expected: string) =>
-  `Factory is merging this pull request at ${expected}, the commit its review covered.`;
+export const mergeMark = (expected: string, basis: "reviewed" | "authorized") =>
+  basis === "reviewed"
+    ? `Factory is merging this pull request at ${expected}, the commit its review covered.`
+    : `Factory is merging this pull request at ${expected}, the commit a person authorized without review.`;
 export const mergedUnreviewed = (seen: string, expected: string, url: string) =>
   `${url} was merged at ${seen}, but the last commit reviewed was ${expected}: commits nobody reviewed were merged. Check them now.`;
 export const mergedWrongBase = (seen: string, target: string, url: string) =>

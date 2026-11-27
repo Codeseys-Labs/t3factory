@@ -3957,6 +3957,8 @@ const seedTarget = (
 
 it.each([
   "verified",
+  "stale local base",
+  "protected path",
   "previous PR",
   "launcher suffix",
   "pre-existing branch",
@@ -4006,26 +4008,60 @@ it.each([
         delivery === "merged at delivery" ||
         delivery === "merged before review" ||
         mergedDuringReview;
-      git("init", "-q");
-      if (delivery !== "no remote") {
-        git("remote", "add", "origin", "https://github.com/factory/pack.git");
-      }
+      const scopesPinnedBase = delivery === "stale local base" || delivery === "protected path";
+      git("init", "-q", "-b", "main");
       const hooks = NodePath.join(folder, "hooks");
       NodeFS.mkdirSync(hooks);
-      git(
-        "-c",
-        "user.name=Factory",
-        "-c",
-        "user.email=factory@example.test",
-        "-c",
-        "commit.gpgsign=false",
-        "-c",
-        `core.hooksPath=${hooks}`,
-        "commit",
-        "-qm",
-        "Work",
-        "--allow-empty",
-      );
+      const commit = (message: string) =>
+        git(
+          "-c",
+          "user.name=Factory",
+          "-c",
+          "user.email=factory@example.test",
+          "-c",
+          "commit.gpgsign=false",
+          "-c",
+          `core.hooksPath=${hooks}`,
+          "commit",
+          "-qm",
+          message,
+          "--allow-empty",
+        );
+      commit("Initial");
+      const staleBase = git("rev-parse", "HEAD");
+      if (scopesPinnedBase) {
+        NodeFS.mkdirSync(NodePath.join(folder, "factory"));
+        NodeFS.writeFileSync(NodePath.join(folder, "factory/seams.json"), "base\n");
+        git("add", "--", "factory/seams.json");
+        commit("Landed base");
+      }
+      const base = git("rev-parse", "HEAD");
+      if (delivery !== "no remote") {
+        const upstream = NodePath.join(folder, "upstream.git");
+        const remote =
+          delivery === "stale local base"
+            ? "git@github.com:factory/pack.git"
+            : "https://github.com/factory/pack.git";
+        git("init", "-q", "--bare", upstream);
+        git("config", `url.${upstream}.insteadOf`, remote);
+        git("remote", "add", "upstream", remote);
+        git("-c", `core.hooksPath=${hooks}`, "push", "--quiet", "upstream", "HEAD:refs/heads/main");
+      }
+      if (scopesPinnedBase) {
+        git("switch", "--detach", "--quiet");
+        git("update-ref", "refs/heads/main", staleBase);
+        const path = delivery === "protected path" ? "factory/seams.json" : "work-board.ts";
+        NodeFS.writeFileSync(NodePath.join(folder, path), "change\n");
+        git("add", "--", path);
+        commit("Proposed change");
+        if (delivery === "protected path") {
+          const fork = NodePath.join(folder, "fork.git");
+          git("init", "-q", "--bare", fork);
+          git("config", `url.${fork}.insteadOf`, "https://github.com/someone/pack.git");
+          git("remote", "add", "origin", "https://github.com/someone/pack.git");
+          git("-c", `core.hooksPath=${hooks}`, "push", "--quiet", "origin", "HEAD:refs/heads/main");
+        }
+      }
       if (isRetry || delivery === "pre-existing branch") git("branch", publishedBranch);
       if (delivery === "launcher suffix") git("branch", branch);
       const head = git("rev-parse", "HEAD");
@@ -4043,6 +4079,13 @@ it.each([
             const step = turn.origin.step;
             if (step === "do" && !isRetry && delivery !== "unreadable head") {
               git("branch", delivery === "pre-existing branch" ? `${branch}-2` : publishedBranch);
+            }
+            if (scopesPinnedBase && step.startsWith("scope/")) {
+              const range =
+                turn.prompt.match(/Run `git diff --name-only ([a-f0-9]+\.\.\.[a-f0-9]+)`/)?.[1] ??
+                `refs/heads/main...${head}`;
+              const files = git("diff", "--name-only", range, "--").split(/\r?\n/);
+              return { output: { report: { headSha: head, files } } };
             }
             if (step.startsWith("review/")) {
               sawReviewer = true;
@@ -4111,7 +4154,7 @@ it.each([
               yield* workflows.storeSet("factory/v1/config", {
                 v: 1,
                 baseRef: delivery === "previous PR" ? "refs/remotes/origin/main" : "origin/main",
-                mergeNeedsPerson: true,
+                mergeNeedsPerson: !scopesPinnedBase,
                 ...(delivery === "checks passed on a different head" ? { fixRounds: 0 } : {}),
               });
               if (isRetry || delivery === "unreadable head") {
@@ -4140,6 +4183,7 @@ it.each([
               const child = yield* world.child(workflows, runId, 0);
               if (
                 delivery === "verified" ||
+                scopesPinnedBase ||
                 delivery === "previous PR" ||
                 delivery === "launcher suffix"
               ) {
@@ -4148,18 +4192,27 @@ it.each([
                   "Hold",
                 ]);
                 expect(gate.request).toMatchObject({ data: { prUrl: url, headSha: head } });
+                if (scopesPinnedBase) {
+                  expect(gate.request).toMatchObject({
+                    data: { riskTier: delivery === "protected path" ? "high" : "standard" },
+                  });
+                  const review = world.turns.find((turn) => turn.origin.step === "review/0");
+                  expect(review?.prompt).toContain(`Run \`git diff ${base}...${head}\`.`);
+                }
                 yield* workflows.answer(child.runId, "approve-merge", { choice: "Merge" });
-                yield* ask(world, workflows, child.runId, "approve-merge/person", "merge", [
-                  "Merge",
-                  "Hold",
-                ]);
-                expect(world.acts).toEqual([]);
-                yield* workflows.answer(
-                  child.runId,
-                  "approve-merge/person",
-                  { choice: "Merge" },
-                  { label: "Test person", sessionId: "test-person" },
-                );
+                if (delivery !== "stale local base") {
+                  yield* ask(world, workflows, child.runId, "approve-merge/person", "merge", [
+                    "Merge",
+                    "Hold",
+                  ]);
+                  expect(world.acts).toEqual([]);
+                  yield* workflows.answer(
+                    child.runId,
+                    "approve-merge/person",
+                    { choice: "Merge" },
+                    { label: "Test person", sessionId: "test-person" },
+                  );
+                }
                 expect(yield* world.ended(workflows, runId)).toMatchObject({
                   status: "completed",
                   result: { parts: [{ outcome: "merged", prUrl: url }] },

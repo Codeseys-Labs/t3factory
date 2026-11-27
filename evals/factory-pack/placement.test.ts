@@ -1682,7 +1682,7 @@ it("T19 a remote step whose launch was never acknowledged has no thread and no e
       ),
   ));
 
-it("T20 both task workflows are registered at version 5 only, and factory-start runs version 5", () =>
+it("T20 both task workflows are registered at version 6 only, and factory-start runs version 6", () =>
   withWorld(scenario(), (world) =>
     world.server(
       Effect.fn("factoryPack.placement.versions")(function* (workflows) {
@@ -1691,7 +1691,7 @@ it("T20 both task workflows are registered at version 5 only, and factory-start 
             world.definitions
               .filter((definition) => definition.name === name)
               .map((definition) => definition.version),
-          ).toEqual([5]);
+          ).toEqual([6]);
         }
         yield* seedTask(workflows, { global: { askPlan: true } });
         const started = yield* workflows.start(
@@ -1702,7 +1702,7 @@ it("T20 both task workflows are registered at version 5 only, and factory-start 
         const { runId } = decodeStarted((yield* world.ended(workflows, started.runId)).result);
         expect((yield* workflows.get(runId)).run).toMatchObject({
           workflow: "factory-task",
-          version: 5,
+          version: 6,
         });
         yield* asked(world, workflows, runId, "approve-plan");
         yield* workflows.answer(runId, "approve-plan", { choice: "Drop" });

@@ -129,6 +129,7 @@ const withOrigin = async (use: (repo: Repo) => Promise<void>, baseBranch = "main
       "Base",
     );
     git(project, "remote", "add", "origin", origin);
+    git(project, "config", `url.${origin}.insteadOf`, `https://github.com/${REPOSITORY}.git`);
     git(project, "push", "origin", baseBranch);
     await use({ folder: project, X: git(project, "rev-parse", "HEAD") });
   } finally {
@@ -1768,7 +1769,7 @@ it("WT16 a missing pinned base stops remote review before any lens or merge over
     ),
   ));
 
-it("WT18 only version 5 is registered and factory-start dispatches it", () =>
+it("WT18 only version 6 is registered and factory-start dispatches it", () =>
   scenario(
     H,
     {},
@@ -1778,7 +1779,7 @@ it("WT18 only version 5 is registered and factory-start dispatches it", () =>
           world.definitions
             .filter((definition) => definition.name === name)
             .map((definition) => definition.version),
-        ).toEqual([5]);
+        ).toEqual([6]);
       }
       expect(
         world.definitions.find((definition) => definition.name === "factory-task-part")?.asks
@@ -1793,7 +1794,7 @@ it("WT18 only version 5 is registered and factory-start dispatches it", () =>
       const { runId } = decodeStarted((yield* world.ended(workflows, started.runId)).result);
       expect((yield* workflows.get(runId)).run).toMatchObject({
         workflow: "factory-task",
-        version: 5,
+        version: 6,
       });
       expect(yield* world.ended(workflows, runId, true)).toMatchObject({ status: "completed" });
     }),

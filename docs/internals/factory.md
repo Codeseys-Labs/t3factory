@@ -30,6 +30,8 @@ A deliverable and the decisions made about it are records of their own: `factory
 
 For a verified writer, the wait only settles checks. Check evidence comes from the same host read as the writer's verified head: the wait may have settled at a different commit.
 
+For each review round on a verified delivery, scope, review and disproof share the same `base...head` range. For a local writer, resolve the target in the verified pull request's repository. A stale local branch can make unrelated protected changes appear in the review, and `origin` can point at a fork that omits changes from it.
+
 ## Review ledger and outcomes
 
 A reviewer returns findings, never a verdict. The verdict is derived from them by `deriveVerdict` in [`ledger.ts`](../../factory/workflows/lib/ledger.ts): changes are asked for exactly when a finding with a blocking severity is open. A field that lets an agent state the verdict brings back what this replaced, an approval that survives an open blocker. A stored round's verdict is derived the same way, or is `stale`.

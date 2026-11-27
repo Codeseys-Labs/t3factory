@@ -24,6 +24,7 @@ import {
   pullRequestHead,
   readConfig,
   readOriginHead,
+  readPullRequestBase,
   recordAttemptPullRequest,
   resolvePlacement,
   resolveTarget,
@@ -921,20 +922,29 @@ const factoryTaskPart = workflow(
         };
       }
       const head = snapshot.headSha;
+      const baseSource =
+        writer !== null
+          ? { target: writer.target, read: readOriginHead(writer.folder, writer.target) }
+          : localWriter !== null && localFolder !== null
+            ? {
+                target: localWriter.target,
+                read: readPullRequestBase(localFolder, prUrl, localWriter.target),
+              }
+            : null;
       const reviewBase =
-        writer === null
+        baseSource === null
           ? null
           : yield* step(
               `review-base/${at}`,
               { returns: ReviewBase },
-              Effect.map(readOriginHead(writer.folder, writer.target), (baseSha) => ({
-                target: writer.target,
+              Effect.map(baseSource.read, (baseSha) => ({
+                target: baseSource.target,
                 baseSha,
               })),
             );
       if (reviewBase !== null && reviewBase.baseSha === null) {
         return yield* stop(
-          `Could not pin the review base origin/${reviewBase.target}. Nothing was merged.`,
+          `Could not pin the review base ${reviewBase.target} for ${prUrl}. Nothing was merged.`,
         );
       }
       const range = reviewBase === null ? null : `${reviewBase.baseSha}...${head}`;
@@ -956,7 +966,13 @@ const factoryTaskPart = workflow(
             interactionMode: "plan",
           } as const)
         : { project, ...(reviewModel === null ? {} : { model: reviewModel }) };
-      const readLines = remote ? [remoteLine(head)] : [];
+      const localFetch =
+        range === null
+          ? []
+          : [
+              "If a pinned commit is missing, fetch the target or PR head from the repository named by the pull request without checking it out, then verify both exact SHAs exist and use only those SHAs.",
+            ];
+      const readLines = remote ? [remoteLine(head)] : [...localFetch];
       if (remote && reviewBase !== null) {
         readLines.push(
           "Run every Git command with `GIT_NO_LAZY_FETCH=1` and `GIT_ALLOW_PROTOCOL=factory-review-no-transport` in its environment. This prevents implicit fetches from partial clones. If you cannot set both variables, do not run Git.",
@@ -1010,7 +1026,7 @@ const factoryTaskPart = workflow(
           const { report } = scoped.value;
           if (pinnedReader && "missingBase" in report) {
             return yield* stop(
-              `The reader in environment ${placement.environment}, project ${placement.project}, lacks the pinned base commit ${reviewBase.baseSha}. Fetch the target branch ${reviewBase.target} from origin in that project's clone, verify it contains ${reviewBase.baseSha}, then start the task again. Nothing was merged.`,
+              `The reader in environment ${placement.environment}, project ${placement.project}, lacks the pinned base commit ${reviewBase.baseSha}. Fetch the target branch ${reviewBase.target} ${writer === null ? `from the repository for ${prUrl}` : "from origin"} in that project's clone, verify it contains ${reviewBase.baseSha}, then start the task again. Nothing was merged.`,
             );
           }
           if ("error" in report) {
@@ -1108,6 +1124,7 @@ const factoryTaskPart = workflow(
               READER_LINE,
               `Try to refute each finding on pull request ${prUrl} by reproducing it or by a counter-example.`,
               ...commit,
+              ...localFetch,
               "Change nothing. Answer refuted only when you have shown the claim false; otherwise answer survived. For each id, say what you tried.",
               ...(range === null
                 ? []

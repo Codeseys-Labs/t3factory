@@ -47,15 +47,23 @@ import * as Stream from "effect/Stream";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as Workflows from "../workflows/Workflows.ts";
+import * as FactoryProxy from "./FactoryProxy.ts";
 import * as FactorySignals from "./FactorySignals.ts";
 import * as FactoryTaskStore from "./FactoryTaskStore.ts";
 
 export const FACTORY_TASK_WORKFLOW = FACTORY_KIND_WORKFLOWS.software;
 export const FACTORY_POLL_INTERVAL = "5 seconds";
 
+type ProxyMethods = Effect.Success<typeof FactoryProxy.make>;
+
 export class FactoryTasks extends Context.Service<
   FactoryTasks,
   {
+    readonly proxyStatus: ProxyMethods["status"];
+    readonly proxyInstall: ProxyMethods["install"];
+    readonly proxyStart: ProxyMethods["start"];
+    readonly proxyStop: ProxyMethods["stop"];
+    readonly proxyUninstall: ProxyMethods["uninstall"];
     readonly watch: Stream.Stream<FactoryTasksUpdate>;
     readonly get: (taskId: string) => Effect.Effect<FactoryTaskDetail, FactoryTaskError>;
     readonly create: (
@@ -115,6 +123,11 @@ const disabled = FactoryTasks.of({
   removeSignalFeed: refuse,
   admitSignal: refuse,
   dismissSignal: refuse,
+  proxyStatus: FactoryProxy.unavailable.status,
+  proxyInstall: FactoryProxy.unavailable.install,
+  proxyStart: FactoryProxy.unavailable.start,
+  proxyStop: FactoryProxy.unavailable.stop,
+  proxyUninstall: FactoryProxy.unavailable.uninstall,
 });
 
 export const orDisabled = Effect.map(
@@ -153,6 +166,7 @@ const FEED_URL_REFUSALS = {
 const make = Effect.gen(function* () {
   const store = yield* FactoryTaskStore.make;
   const signals = yield* FactorySignals.make;
+  const proxy = yield* FactoryProxy.makeOrUnavailable;
   const workflows = yield* Workflows.Workflows;
   const random = yield* SecureRandom.SecureRandom;
   const projects = Option.getOrUndefined(
@@ -1015,6 +1029,11 @@ const make = Effect.gen(function* () {
     removeSignalFeed,
     admitSignal,
     dismissSignal,
+    proxyStatus: proxy.status,
+    proxyInstall: proxy.install,
+    proxyStart: proxy.start,
+    proxyStop: proxy.stop,
+    proxyUninstall: proxy.uninstall,
   });
 });
 
@@ -1043,4 +1062,9 @@ export const wsHandlers = (service: FactoryTasks["Service"]) => ({
     service.admitSignal(input),
   [FACTORY_WS_METHODS.factorySignalsDismiss]: (input: FactorySignalDecisionInput) =>
     service.dismissSignal(input),
+  [FACTORY_WS_METHODS.factoryProxyStatus]: service.proxyStatus,
+  [FACTORY_WS_METHODS.factoryProxyStart]: service.proxyStart,
+  [FACTORY_WS_METHODS.factoryProxyStop]: service.proxyStop,
+  [FACTORY_WS_METHODS.factoryProxyInstall]: service.proxyInstall,
+  [FACTORY_WS_METHODS.factoryProxyUninstall]: service.proxyUninstall,
 });

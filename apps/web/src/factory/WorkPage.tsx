@@ -9,8 +9,8 @@ import {
 } from "@t3tools/contracts";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Plural, T, useGT, Var } from "gt-react";
-import { BotIcon, KanbanIcon, PlusIcon, RssIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { BotIcon, KanbanIcon, NetworkIcon, PlusIcon, RssIcon } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { isElectron } from "~/env";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
@@ -52,9 +52,16 @@ import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { useWorkflowEnvironmentIds } from "../components/workflows/useWorkflowEnvironmentIds";
 import { useRememberWorkEnvironment } from "./FactoryWorkSidebarItem";
 import { NewTaskDialog } from "./NewTaskDialog";
+import { ProxyDialog } from "./ProxyDialog";
 import { SignalsDialog } from "./SignalsDialog";
 import { pendingTotal } from "./signals.logic";
-import { createFactoryTask, factorySignalsList, factoryTasksLive, workTriage } from "./state";
+import {
+  createFactoryTask,
+  factoryProxyStatus,
+  factorySignalsList,
+  factoryTasksLive,
+  workTriage,
+} from "./state";
 import { TaskPanel } from "./TaskPanel";
 import { focusAttention, WorkBoard, WorkNeedsYou } from "./WorkBoard";
 import {
@@ -161,6 +168,14 @@ export function WorkPage() {
   );
   const signalsList = signals.isSuccess ? signals.data : null;
   const waitingSignals = signalsList === null ? 0 : pendingTotal(signalsList);
+  const [proxyOn, setProxyOn] = useState<{
+    readonly environmentId: EnvironmentId;
+    readonly label: string;
+  } | null>(null);
+  const proxyOpener = useRef<HTMLButtonElement>(null);
+  const proxy = useEnvironmentQuery(
+    environmentId === null ? null : factoryProxyStatus({ environmentId, input: {} }),
+  );
   const [text, setText] = useState("");
   const [rollUp, setRollUp] = useState(false);
   // The Needs you item the open panel came from, here or in the palette, to bring focus back to.
@@ -405,7 +420,7 @@ export function WorkPage() {
           <WorkspacePageHeader
             electron={isElectron}
             reserveNativeControls={!panelOpen}
-            className="border-b"
+            className="border-b max-sm:gap-2"
           >
             <WorkspaceBreadcrumb ariaLabel={gt("Work breadcrumb")} className="flex-1">
               <WorkspaceBreadcrumbItem current>
@@ -416,7 +431,7 @@ export function WorkPage() {
             </WorkspaceBreadcrumb>
             {(connected.length > 1 && environmentId !== null) ||
             (away !== null && connected.length > 0) ? (
-              // The picker gives way first, so both buttons stay in a narrow header.
+              // The picker gives way first, so the action buttons stay in a narrow header.
               <div className="w-44 min-w-0 shrink">
                 <Select
                   value={environmentId ?? asked}
@@ -473,13 +488,36 @@ export function WorkPage() {
                 ) : null}
               </Button>
             )}
+            {environmentId === null || !proxy.isSuccess ? null : (
+              <Button
+                ref={proxyOpener}
+                variant="outline"
+                size="sm"
+                aria-haspopup="dialog"
+                onClick={() =>
+                  setProxyOn({
+                    environmentId,
+                    label:
+                      connected.find((environment) => environment.environmentId === environmentId)
+                        ?.label ?? environmentId,
+                  })
+                }
+              >
+                <NetworkIcon aria-hidden />
+                <span className="max-sm:sr-only">
+                  <T context="button: opens the CLIProxyAPI proxy of this server">Model proxy</T>
+                </span>
+              </Button>
+            )}
             <Button
               size="sm"
               disabled={!ready || !canCreate}
               onClick={() => setCreatingOn(environmentId)}
             >
-              <PlusIcon />
-              <T>New task</T>
+              <PlusIcon aria-hidden />
+              <span className="max-sm:sr-only">
+                <T>New task</T>
+              </span>
             </Button>
           </WorkspacePageHeader>
           {ready ? (
@@ -647,6 +685,16 @@ export function WorkPage() {
           workflowsOn={workflowIds.includes(signalsOn)}
           onClose={() => setSignalsOn(null)}
           onOpenTask={(taskId) => openFromDialog(signalsOn, taskId)}
+        />
+      )}
+      {proxyOn === null ? null : (
+        <ProxyDialog
+          key={proxyOn.environmentId}
+          environmentId={proxyOn.environmentId}
+          environmentLabel={proxyOn.label}
+          connected={connectedIds.includes(proxyOn.environmentId)}
+          openerRef={proxyOpener}
+          onClose={() => setProxyOn(null)}
         />
       )}
     </SidebarInset>

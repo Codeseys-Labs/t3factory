@@ -510,5 +510,206 @@
       "k": "_gt_value_2",
       "v": "v"
     }
-  ]
+  ],
+  "05a4585797d30e34": [
+    "Fijado: CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", consola",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
+  "073a25ded88a125a": "Usage no está conectado a este proxy.",
+  "0f30543ecf6fd3bc": "La versión fijada no tiene ningún build del proxy para esta máquina.",
+  "1009946ef341665a": "Se interrumpió una instalación o desinstalación. Desinstala para limpiar y luego vuelve a instalar.",
+  "1188438b8ba6c36d": "Los inicios de sesión de una instalación anterior se conservan en esta máquina.",
+  "161ce3bef64dc505": "Cambiar el proxy requiere un dispositivo emparejado con permiso para gestionar proveedores en este entorno.",
+  "1d555a5abc4e2167": [
+    "Se ejecuta en el puerto",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
+  "211b165f3075a095": "El proxy de modelos está ocupado con otro cambio. Vuelve a intentarlo cuando haya terminado.",
+  "223f08b8db5c65f4": "No se pudo iniciar el programa del proxy.",
+  "2955125548dfef17": "Ábrelo en un navegador en esa máquina.",
+  "2c87759394b65c15": "Desinstalar",
+  "2d171b3f2bfb1d88": "Este servidor no se ejecuta desde un checkout de Factory, así que no tiene manifiesto fijado.",
+  "2f004248af316101": "El manifiesto fijado falta o no es válido, así que no se obtuvo nada.",
+  "3a312b1d7f199398": [
+    "El puerto",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "sigue ocupado y un proxy anterior de este servidor se ejecutó como proceso",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
+  "3fc29e62ef7cb9af": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "no está conectado"
+  ],
+  "3fe1ef14bc3e5dc0": "El archivo comprimido del proxy no contenía exactamente los cinco archivos esperados. No se instaló nada.",
+  "4334b45d7d7d146f": "No se pudo quitar el hub del proxy de la configuración de este servidor. No se desinstaló nada. Vuelve a intentarlo.",
+  "443c6b0f4bd5c6ab": "No se puede leer el archivo de configuración del proxy, por lo que el proxy no se inició. Desinstala conservando los inicios de sesión y vuelve a instalar.",
+  "51edd50ae2724586": "No se pudo descargar un archivo fijado. No se instaló nada.",
+  "526095bfb6c23988": "¿Desinstalar el proxy de modelos?",
+  "5358695254685d38": [
+    "La versión fijada no tiene ningún build para esta máquina (",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ")."
+  ],
+  "5a7b57a94fd37f07": "El proxy de modelos ya está instalado en este servidor.",
+  "619fbf565fe5931c": "Una clave de gestión tiene entre 16 y 64 caracteres imprimibles, sin espacios.",
+  "61d02659d26642aa": [
+    "Proxy de modelos en",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "681ef78e5c4a2fce": "Este servidor no tiene un manifiesto fijado legible. Solo un servidor que se ejecute desde un checkout de Factory puede instalar el proxy.",
+  "689cbadd9c78ab60": "Instalado y detenido.",
+  "6ab05d286639293e": "Instalando…",
+  "6e1321d322cc310f": "El proxy se inició cinco veces sin responder a su API de gestión y no se volvió a iniciar.",
+  "6e584fc66511e1f6": "Usage lee este proxy como el hub llamado Proxy de Factory.",
+  "717e4da671441925": [
+    "La versión fijada ahora es CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", consola",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    ". Desinstala conservando los inicios de sesión y luego instala para pasar a ella."
+  ],
+  "7228aeee9ad7fd66": "Un archivo descargado no coincidía con su tamaño o SHA-256 fijados. No se instaló nada.",
+  "768e08f1016f012e": "Termina ese proceso en la máquina y luego elige Iniciar.",
+  "777e492521fb5acd": "Proxy de modelos",
+  "80f417f89cc031bb": "El proxy de modelos no está instalado en este servidor.",
+  "8272831b240c3588": "Quitar también los inicios de sesión que contiene",
+  "842fde6f13ecd74d": "No se puede leer el archivo de configuración del proxy de modelos. Desinstala conservando los inicios de sesión y vuelve a instalar.",
+  "85b817ff89412d77": "No se pudo desactivar el hub del proxy en la configuración de este servidor.",
+  "8a4dae605368b6a0": "El proxy de modelos no está disponible en este servidor.",
+  "90f6200d64701328": "Esta instalación genera su clave, que nunca se muestra, así que no se puede usar la consola. Para usarla, desinstala conservando los inicios de sesión y luego instala con una clave que escribas.",
+  "9318b94feca01612": "Instala la CLIProxyAPI fijada en la máquina de este entorno, la ejecuta junto al servidor y conecta Usage a ella. Escucha únicamente en esa máquina.",
+  "95e902781dfaab8f": [
+    "Reinicio tras detenerse, intento",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "de 5…"
+  ],
+  "98d4d87d8f20aa5c": "Clave de gestión (opcional)",
+  "a38cf2c6ea18b77f": "Falló.",
+  "a5ec8ea5b94f845a": "El proxy está en ejecución, pero su hub no se pudo guardar en la configuración de este servidor.",
+  "aab68a46808ee916": "Los inicios de sesión se conservan y la próxima instalación los vuelve a usar.",
+  "b6df2dbde5ec3d78": "Consola:",
+  "bba1e3a22505b87f": "Iniciando…",
+  "bcc9a4b1c42d2680": "Iniciar",
+  "bdcae9e67c0d6f8d": "No se pudieron escribir los archivos del proxy. No se instaló nada.",
+  "c478c48ff2ccaf97": "Escribe una si quieres iniciar sesión en la consola del proxy. Déjala vacía y el servidor genera una clave que nunca se muestra. De 16 a 64 caracteres, sin espacios.",
+  "c5ffc77487db10e7": [
+    "El puerto",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "está en uso por otro programa."
+  ],
+  "ca0372384b2cea51": "Inicia sesión con la clave de gestión que escribiste al instalar.",
+  "cb17c315bf0817cb": "El proxy se detuvo cinco veces seguidas y no se volvió a iniciar.",
+  "d7839dbea6b6cb69": [
+    "Instalado: CLIProxyAPI",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ", consola",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "."
+  ],
+  "a0e1faa6b01b4f41": [
+    "El proxy está detenido, su programa, su configuración y sus claves se eliminan de",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    "y su hub se quita de Usage."
+  ],
+  "db7ad9875ad1872f": [
+    "Su último código de salida fue",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
+  "e5567d65ffdb88e2": "No está instalado.",
+  "e78f5c54ea4982f2": "No se pudieron quitar algunos archivos del proxy o su hub. Vuelve a desinstalar.",
+  "e86c76292ee9d1e5": "Lo que guardes en la consola se conserva. El servidor vuelve a establecer la dirección, el puerto, la clave de gestión y la carpeta de inicio de sesión cada vez que se inicia el proxy, y los plugins y el descubrimiento de red no están disponibles para él.",
+  "ede148e113aec0dd": "Un proxy anterior de este servidor puede seguir en ejecución. Termínalo en la máquina y vuelve a intentarlo.",
+  "f14490ae9c6e24b8": "Quitar los inicios de sesión conservados",
+  "f3e544786f4c9b6b": "Los archivos instalados del proxy o su clave faltan, no se pueden leer o han cambiado. Desinstala conservando los inicios de sesión y vuelve a instalar.",
+  "f7546ed96b48ea66": "Ningún puerto del 8317 al 8327 está libre en esta máquina.",
+  "fc2dc2e4d13e214e": "Cierra el programa que usa el puerto y luego elige Iniciar."
 }

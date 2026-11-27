@@ -1757,17 +1757,31 @@ it("WT19 and WT17 a tracked-repository replacement starts but its B-2 is refused
     );
   }));
 
-it.each(["do", "fix/0"] as const)(
-  "WT20 a %s thread without E is detected as having run elsewhere",
-  (name) =>
+it.each([
+  { name: "do", reportedEnvironment: null },
+  { name: "do/again", reportedEnvironment: "env-other-writer" },
+  { name: "do/continue", reportedEnvironment: "env-other-writer" },
+  { name: "fix/0", reportedEnvironment: null },
+] as const)(
+  "WT20 $name reporting $reportedEnvironment instead of E stops before its result is used",
+  ({ name, reportedEnvironment }) =>
     withOrigin(({ folder, X }) =>
       scenario(
         X,
         {
           needsFix: name === "fix/0",
           starts: {
-            startedIn: (turn) => (turn.origin.step === name ? null : (turn.environment ?? null)),
+            startError: (turn) =>
+              name === "do/again" && turn.origin.step === "do"
+                ? "Lost the launch reply."
+                : undefined,
+            startedIn: (turn) =>
+              turn.origin.step === name ? reportedEnvironment : (turn.environment ?? null),
           },
+          respond: (turn) =>
+            name === "do/continue" && turn.origin.step === "do"
+              ? { ending: "stopped", detail: "it was not done after 2h" }
+              : undefined,
         },
         Effect.fn(function* (world, workflows) {
           const { runId } = yield* start(workflows, remote(folder));
@@ -1776,9 +1790,28 @@ it.each(["do", "fix/0"] as const)(
             stopped(ranElsewhere(name)),
           );
           const { steps } = yield* workflows.get(child.runId);
-          expect(named(steps)).not.toContain(name === "do" ? "pull-request" : "fix-after/0");
-          expect(row(steps, name).environmentId).toBeNull();
-          expect(only(world.turns, name).environment).toBe(E);
+          if (name === "fix/0") {
+            expect(named(steps)).not.toContain("fix-after/0");
+          } else {
+            expect(
+              named(steps).filter((step) =>
+                /^(?:pull-request$|writer-pr$|pr-record$|checks\/|scope\/|review\/|ledger\/)/.test(
+                  step,
+                ),
+              ),
+            ).toEqual([]);
+          }
+          expect(row(steps, name).environmentId).toBe(reportedEnvironment);
+          const writer = only(world.turns, name);
+          expect(writer.environment).toBe(E);
+          if (name === "do/again") {
+            expect(only(world.startAttempts, "do").environment).toBe(E);
+            expect(world.turns.some((turn) => turn.origin.step === "do")).toBe(false);
+          }
+          if (name === "do/continue") {
+            expect(writer.thread).toBe(threadOf(only(world.turns, "do")));
+          }
+          expect(world.questions).toEqual([]);
           expect(world.acts).toEqual([]);
         }),
       ),

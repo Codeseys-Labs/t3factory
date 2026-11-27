@@ -175,7 +175,7 @@ describe("deriveWorkCards", () => {
     }
   });
 
-  it("keeps retained older tasks in Doing when the snapshot can have omitted live parts", () => {
+  it("keeps older tasks in Doing only when the snapshot can have omitted live parts", () => {
     const root = run("root", { status: "paused" });
     const part = run("reviewing", {
       workflow: "factory-task-part",
@@ -203,6 +203,22 @@ describe("deriveWorkCards", () => {
       ...recent.slice(0, 498),
     ]);
     expect(recentTask?.column).toBe("review");
+
+    const boundary = [{ ...part, startedAt: at(5) }, ...recent.slice(0, 498)];
+    const [atCutoff] = cardsFor(tasks, [...boundary, root]);
+    expect(atCutoff?.column).toBe("review");
+
+    const cutoffPeer = run("same-start", { status: "paused", startedAt: root.startedAt });
+    const [ambiguous] = cardsFor(tasks, [...boundary, cutoffPeer, root]);
+    expect(ambiguous?.column).toBe("doing");
+
+    const liveRoot = { ...root, status: "running" as const };
+    const tied = [...boundary, cutoffPeer, liveRoot];
+    const [askingRoot] = cardsFor(tasks, tied, [question(root.runId)]);
+    expect(askingRoot?.column).toBe("doing");
+
+    const [ordinaryRoot] = cardsFor(tasks, tied, [question(part.runId)]);
+    expect(ordinaryRoot?.column).toBe("review");
   });
 
   // B5: ended completed runs finish only when the lane was not changed afterward; other ended statuses keep the lane.

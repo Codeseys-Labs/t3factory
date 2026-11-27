@@ -1,9 +1,3 @@
-// @effect-diagnostics nodeBuiltinImport:off
-import * as NodeChildProcess from "node:child_process";
-import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
-
 import type { PullRequestDetail } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -165,7 +159,6 @@ const exercise = <A, Err>(
 
 type Settings = {
   readonly workspace?: "worktree" | "root" | "scratch";
-  readonly folder?: string;
   readonly config?: Schema.JsonObject;
 };
 const start = Effect.fn("factoryPack.reader.start")(function* (
@@ -206,7 +199,7 @@ const start = Effect.fn("factoryPack.reader.start")(function* (
     v: 1,
     projectId: task.projectId ?? "scratch-project",
     workspace: settings.workspace ?? "worktree",
-    workspaceRoot: settings.folder ?? "/factory-pack-test",
+    workspaceRoot: yield* world.localRepository,
     problem: null,
     checkedAt: AT,
   });
@@ -541,15 +534,7 @@ it.each(["Redo", "withdrawn", "Accept", "Hold"] as const)(
     exercise(
       { noPullRequest: mode !== "Hold" },
       Effect.fn(function* (world, workflows) {
-        const folder = yield* Effect.acquireRelease(
-          Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "factory-reader-"))),
-          (directory) =>
-            Effect.sync(() =>
-              NodeFS.rmSync(directory, { recursive: true, force: true, maxRetries: 3 }),
-            ),
-        );
-        NodeChildProcess.execFileSync("git", ["init", "-q"], { cwd: folder });
-        const runId = yield* start(world, workflows, { folder, config: { askMerge: true } });
+        const runId = yield* start(world, workflows, { config: { askMerge: true } });
         const child = yield* world.child(workflows, runId, 0);
         const askName = mode === "Hold" ? "approve-merge" : "accept";
         yield* asked(world, workflows, child.runId, askName);
@@ -595,6 +580,6 @@ it.each(["Redo", "withdrawn", "Accept", "Hold"] as const)(
           result: null,
         });
         expect(world.turns.filter((turn) => turn.origin.step === "do")).toHaveLength(1);
-      }, Effect.scoped),
+      }),
     ),
 );

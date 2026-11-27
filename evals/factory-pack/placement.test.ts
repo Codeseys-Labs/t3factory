@@ -261,7 +261,7 @@ const seedTarget = (workflows: Service, projectId: string, workspace: "worktree"
     v: 1,
     projectId,
     workspace,
-    workspaceRoot: "/factory-pack-test",
+    workspaceRoot: null,
     problem: null,
     checkedAt: AT,
   });

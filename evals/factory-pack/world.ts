@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeChildProcess from "node:child_process";
+
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -43,6 +46,7 @@ type Service = Workflows.Workflows["Service"];
 
 export interface World {
   readonly definitions: ReadonlyArray<WorkflowDefinition>;
+  readonly localRepository: Effect.Effect<string>;
   readonly turns: ReadonlyArray<AgentTurnInput>;
   readonly startAttempts: ReadonlyArray<AgentTurnInput>;
   readonly interrupts: ReadonlyArray<InterruptTarget>;
@@ -233,6 +237,13 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-factory-pack-" });
+  const localRepository = yield* Effect.cached(
+    Effect.sync(() => {
+      const folder = path.join(directory, "repository");
+      NodeChildProcess.execFileSync("git", ["init", "-q", folder], { stdio: "ignore" });
+      return folder;
+    }),
+  );
   // The server's own journal settings (persistence/Sqlite.ts); the defaults fsync every commit.
   const database = Layer.effectDiscard(
     Effect.gen(function* () {
@@ -687,6 +698,7 @@ const makeWorld = Effect.fn("factoryPack.world")(function* (script: Script) {
 
   return {
     definitions,
+    localRepository,
     turns,
     startAttempts,
     interrupts,

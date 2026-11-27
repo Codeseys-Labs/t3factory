@@ -434,6 +434,7 @@ it.each([false, true])(
       {},
       Effect.fn(function* (world, workflows) {
         const { runId } = yield* start(workflows, {
+          folder: yield* world.localRepository,
           settings: remoteReaders ? { readOnlyOn: WRITE_ON } : {},
         });
         const part = yield* world.child(workflows, runId, 0);
@@ -953,7 +954,7 @@ it.each(["head moved", "head restored", "retarget before scope"] as const)(
 );
 
 it.each(["remote push", "local push", "remote null lens"] as const)(
-  "WT9 %s: only a remote writer's unexpected push stops without another round",
+  "WT9 %s: a verified writer's unexpected push stops without another round",
   (mode) =>
     withOrigin(({ folder, X }) =>
       scenario(
@@ -970,7 +971,7 @@ it.each(["remote push", "local push", "remote null lens"] as const)(
           const { runId } = yield* start(
             workflows,
             mode === "local push"
-              ? {}
+              ? { folder: yield* world.localRepository }
               : remote(folder, mode === "remote null lens" ? { readOnlyOn: WRITE_ON } : {}),
           );
           const child = yield* world.child(workflows, runId, 0);
@@ -1432,6 +1433,7 @@ it("WT14 null writeOn in the global and project rows is unset", () =>
     {},
     Effect.fn(function* (world, workflows) {
       const { runId } = yield* start(workflows, {
+        folder: yield* world.localRepository,
         global: { writeOn: null },
         settings: { writeOn: null },
       });
@@ -1758,7 +1760,7 @@ it("WT18 only version 5 is registered and factory-start dispatches it", () =>
         world.definitions.find((definition) => definition.name === "factory-task-part")?.asks
           .unreviewed,
       ).toBe("Unreviewed commits merged");
-      yield* seed(workflows);
+      yield* seed(workflows, { folder: yield* world.localRepository });
       const started = yield* workflows.start(
         "factory-start",
         { taskId: TASK_ID },

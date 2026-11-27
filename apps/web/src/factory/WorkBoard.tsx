@@ -226,11 +226,11 @@ export function WorkNeedsYou({
           <T>Nothing needs you now.</T>
         </p>
       ) : (
-        <ul className="flex max-h-36 flex-col gap-1 overflow-y-auto px-4 pb-2">
+        <ul className="flex max-h-72 flex-col sm:max-h-36 gap-1 overflow-y-auto px-4 pb-2">
           {items.map((item) => (
             <li
               key={item.key}
-              className="flex min-w-0 items-center gap-2 text-sm"
+              className="grid min-w-0 grid-cols-[1fr_auto] items-center justify-items-start gap-2 text-sm sm:flex"
               onFocus={() => {
                 focusedKey.current = item.key;
               }}
@@ -241,15 +241,17 @@ export function WorkNeedsYou({
               <button
                 type="button"
                 data-work-attention={item.key}
-                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm text-left hover:underline focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:outline-none focus-visible:ring-inset"
+                className="order-last col-span-2 flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-2 rounded-sm sm:order-none sm:flex-nowrap text-left hover:underline focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:outline-none focus-visible:ring-inset"
                 onClick={() => open(item)}
               >
                 <span className="shrink-0 font-mono text-xs text-muted-foreground">
                   {taskNumber({ number: item.taskNumber })}
                 </span>
-                <span className="min-w-0 max-w-64 truncate">{item.taskTitle}</span>
+                <span className="min-w-0 basis-full wrap-anywhere sm:max-w-64 sm:basis-auto sm:truncate">
+                  {item.taskTitle}
+                </span>
                 {item.detail === null ? null : (
-                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  <span className="min-w-0 basis-full wrap-anywhere text-xs text-muted-foreground sm:flex-1 sm:basis-auto sm:truncate">
                     {item.detail}
                   </span>
                 )}

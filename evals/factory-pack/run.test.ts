@@ -4016,6 +4016,7 @@ it.each([
       let reads = 0;
       let sawReviewer = false;
       let acts: World["acts"] = [];
+      let prComments: World["prComments"] = [];
       const baseline = script({ noPullRequest: true });
       await withWorld(
         {
@@ -4048,7 +4049,7 @@ it.each([
               (acts.length > 0 && delivery !== "queued") ||
               (delivery === "externally merged" && reads > 1) ||
               (delivery === "merged before review" && reads > 2) ||
-              (delivery === "merged during review" && sawReviewer);
+              (delivery === "merged during review" && sawReviewer && prComments.length > 0);
             return Effect.succeed({
               ...detail,
               state: merged ? "merged" : detail.state,
@@ -4070,6 +4071,7 @@ it.each([
           world.server(
             Effect.fn("factoryPack.test.recoverLocalDelivery")(function* (workflows) {
               acts = world.acts;
+              prComments = world.prComments;
               yield* seedTarget(workflows, PROJECT, {
                 projectId: PROJECT,
                 workspace: "worktree",

@@ -652,16 +652,18 @@ const factoryTaskPart = workflow(
       headOf: (value: A) => string | null,
       options: {
         readonly expected?: string;
+        readonly refresh?: true;
         readonly invalid?: (value: A) => string | undefined;
         readonly moved?: (seen: string) => string;
       } = {},
     ) {
       const expected = options.expected ?? verifiedWriter?.expectedHead;
       for (let fresh = false; ; fresh = true) {
+        const refresh = fresh || options.refresh === true;
         const snapshot = yield* step(
           fresh ? `${name}/fresh` : name,
           { returns },
-          fresh && expected !== undefined
+          refresh && expected !== undefined
             ? Effect.andThen(pullRequests.comment(pr, headCheck(expected)), read)
             : read,
         );
@@ -671,7 +673,7 @@ const factoryTaskPart = workflow(
         const seen = headOf(snapshot);
         if (seen === null || !isFullSha(seen)) return yield* stop(headUnusable(name));
         if (seen === expected) return snapshot;
-        if (fresh) return yield* stop(options.moved?.(seen) ?? headMoved(name, seen, expected));
+        if (refresh) return yield* stop(options.moved?.(seen) ?? headMoved(name, seen, expected));
       }
     });
     const readHead = (
@@ -1073,6 +1075,8 @@ const factoryTaskPart = workflow(
           PullRequestPosition,
           readPrPosition,
           (value) => value.headSha,
+          // A merge can leave the cached head unchanged while the open state is stale.
+          { refresh: true },
         );
         if (position.state === "merged") return "merged" as const;
         if (position.state === "closed") return yield* stop("pull request closed");

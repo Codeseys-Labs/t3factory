@@ -1663,35 +1663,44 @@ describe("P11-17 both histories of a first stop", () => {
 });
 
 describe("P11-18 a refused disable patch", () => {
-  it.effect("stop still ends the child and answers disable-refused; a second stop finishes", () =>
-    withWorld({}, (world) =>
-      Effect.gen(function* () {
-        const { proxy } = world;
-        yield* install(world);
-        yield* startToRunning(world);
-        const entry = () =>
-          Effect.map(
-            world.settings.getSettings,
-            (settings) => settings.usageLimitSources[FACTORY_PROXY_SOURCE_ID as UsageLimitSourceId],
-          );
+  it.effect.each([false, true])(
+    "a second Stop retries a refused hub disable (port held: %s)",
+    (held) =>
+      withWorld({}, (world) =>
+        Effect.gen(function* () {
+          const { proxy } = world;
+          yield* install(world);
+          yield* startToRunning(world);
+          const entry = () =>
+            Effect.map(
+              world.settings.getSettings,
+              (settings) =>
+                settings.usageLimitSources[FACTORY_PROXY_SOURCE_ID as UsageLimitSourceId],
+            );
 
-        world.setRefuseSettings(true);
-        let stopped = yield* proxy.stop({});
-        world.takenPorts.delete(8317);
-        assert.strictEqual(stopped.state, "stopped");
-        assert.strictEqual(stopped.hub, "disable-refused");
-        assert.isTrue(world.supervisors[0]!.state.stdinEnds > 0);
-        assert.strictEqual(world.supervisors[0]!.state.kills, 0);
-        assert.isTrue(yield* world.fs.exists(world.recordPath));
-        assert.isTrue((yield* entry())?.enabled === true);
+          world.setRefuseSettings(true);
+          if (held) {
+            world.setOwnerAnswer("other");
+            const refused = yield* refusalOf(proxy.stop({}));
+            assert.strictEqual(refused.reason, "earlier-run");
+            assert.strictEqual((yield* proxy.status({})).state, "port-in-use");
+            world.takenPorts.delete(8317);
+          } else {
+            assert.strictEqual((yield* proxy.stop({})).state, "stopped");
+          }
+          assert.strictEqual((yield* proxy.status({})).hub, "disable-refused");
+          assert.isTrue(world.supervisors[0]!.state.stdinEnds > 0);
+          assert.strictEqual(world.supervisors[0]!.state.kills, 0);
+          assert.isTrue(yield* world.fs.exists(world.recordPath));
+          assert.isTrue((yield* entry())?.enabled === true);
 
-        world.setRefuseSettings(false);
-        stopped = yield* proxy.stop({});
-        assert.strictEqual(stopped.state, "stopped");
-        assert.strictEqual(stopped.hub, "disconnected");
-        assert.isTrue((yield* entry())?.enabled === false);
-      }),
-    ),
+          world.setRefuseSettings(false);
+          const stopped = yield* proxy.stop({});
+          assert.strictEqual(stopped.state, "stopped");
+          assert.strictEqual(stopped.hub, "disconnected");
+          assert.isTrue((yield* entry())?.enabled === false);
+        }),
+      ),
   );
 });
 

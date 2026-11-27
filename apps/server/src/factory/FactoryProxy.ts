@@ -912,7 +912,7 @@ export const make = Effect.gen(function* () {
     run.exited ? Effect.succeed(false) : run.child.isRunning.pipe(Effect.orElseSucceed(() => true));
   const closeActive = Effect.gen(function* () {
     const run = active;
-    if (!run || !run.exited) yield* disableHub;
+    if (!run || !run.exited || hub === "disable-refused") yield* disableHub;
     if (run && !run.stopping && (yield* mayBeRunning(run))) {
       run.stopping = true;
       const ended = yield* Effect.gen(function* () {

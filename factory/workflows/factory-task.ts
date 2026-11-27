@@ -170,7 +170,7 @@ const WriterPr = Schema.Struct({
   baseBranch: Schema.String,
   headSha: HeadSha,
 });
-const MergedHead = Schema.Struct({
+const PullRequestPosition = Schema.Struct({
   state: Schema.String,
   baseBranch: Schema.String,
   headSha: HeadSha,
@@ -228,6 +228,7 @@ type ScopeResult = typeof PinnedScopeReport.Type;
 const ReviewBase = Schema.Struct({ target: Schema.String, baseSha: HeadSha });
 
 const PullRequestRiskSnapshot = Schema.Struct({
+  state: Schema.String,
   headSha: Schema.NullOr(Schema.String),
   baseBranch: Schema.String,
   changedFiles: Schema.Number,
@@ -751,6 +752,11 @@ const factoryTaskPart = workflow(
     };
     let reviewedHead: string | null = null;
     let acceptedHead: string | null = null;
+    const readPrPosition = Effect.map(pullRequests.read(pr), (detail) => ({
+      state: detail.state,
+      baseBranch: detail.baseBranch,
+      headSha: detail.headSha ?? null,
+    }));
     const merged = Effect.fnUntraced(function* (
       tier = risk.tier ?? null,
       authorizedHead: string | null = null,
@@ -759,12 +765,8 @@ const factoryTaskPart = workflow(
         const { expectedHead, target: expectedTarget } = verifiedWriter;
         const { state, baseBranch, headSha } = yield* step(
           "merged-head",
-          { returns: MergedHead },
-          Effect.map(pullRequests.read(pr), (detail) => ({
-            state: detail.state,
-            baseBranch: detail.baseBranch,
-            headSha: detail.headSha ?? null,
-          })),
+          { returns: PullRequestPosition },
+          readPrPosition,
         );
         const mergedHead = state === "merged" ? headSha : null;
         let text: string | null = null;
@@ -834,6 +836,7 @@ const factoryTaskPart = workflow(
         `risk-pr/${at}`,
         PullRequestRiskSnapshot,
         Effect.map(pullRequests.read(pr), (detail) => ({
+          state: detail.state,
           headSha: detail.headSha ?? null,
           baseBranch: detail.baseBranch,
           changedFiles: detail.changedFiles,
@@ -847,6 +850,10 @@ const factoryTaskPart = workflow(
               : undefined,
         },
       );
+      if (localWriter !== null) {
+        if (snapshot.state === "merged") return "merged" as const;
+        if (snapshot.state === "closed") return yield* stop("pull request closed");
+      }
       const head = snapshot.headSha;
       const reviewBase =
         writer === null
@@ -1057,14 +1064,28 @@ const factoryTaskPart = workflow(
         );
         if (disproof.outcome === "done") findings = applyDisproof(findings, disproof.value.results);
       }
-      const after = yield* readHead(`head/${at}`);
+      let after: string | null;
+      if (localWriter === null) {
+        after = yield* readHead(`head/${at}`);
+      } else {
+        const position = yield* checkedRead(
+          `head/${at}`,
+          PullRequestPosition,
+          readPrPosition,
+          (value) => value.headSha,
+        );
+        if (position.state === "merged") return "merged" as const;
+        if (position.state === "closed") return yield* stop("pull request closed");
+        after = position.headSha;
+      }
+      const requiresReviewedHead = localWriter !== null || reviewBase !== null || remote;
       const stale =
         head !== null &&
         (staleScope ||
           (after !== null && after !== head) ||
           reports.some(
             ({ report }) =>
-              (reviewBase !== null || remote || report.reviewedHead !== null) &&
+              (requiresReviewedHead || report.reviewedHead !== null) &&
               report.reviewedHead !== head,
           ));
       const verdict = stale ? "stale" : deriveVerdict(findings);

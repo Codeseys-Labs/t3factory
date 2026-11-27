@@ -3963,6 +3963,9 @@ it.each([
   "head moved",
   "queued",
   "externally merged",
+  "merged before review",
+  "merged during review",
+  "unknown review head",
   "wrong head",
   "wrong branch",
   "wrong fork",
@@ -4011,26 +4014,41 @@ it.each([
       const url = "https://github.com/factory/pack/pull/17";
       let baseBranch = delivery === "wrong base" ? "other-base" : "main";
       let reads = 0;
+      let sawReviewer = false;
       let acts: World["acts"] = [];
       const baseline = script({ noPullRequest: true });
       await withWorld(
         {
           ...baseline,
-          agent: (turn) =>
-            turn.origin.step === "do/deliver" ||
-            (delivery === "wrong first PR" && turn.origin.step === "do")
-              ? {
-                  output: {
-                    summary: "Finished publishing.",
-                    prUrl: delivery === "missing" ? null : url,
-                  },
-                }
-              : baseline.agent(turn),
+          agent: (turn) => {
+            const step = turn.origin.step;
+            if (step.startsWith("review/")) {
+              sawReviewer = true;
+              const { output } = reviewReport([]);
+              return {
+                output: {
+                  ...output,
+                  reviewedHead: delivery === "unknown review head" ? null : head,
+                },
+              };
+            }
+            if (step === "do/deliver" || (delivery === "wrong first PR" && step === "do")) {
+              return {
+                output: {
+                  summary: "Finished publishing.",
+                  prUrl: delivery === "missing" ? null : url,
+                },
+              };
+            }
+            return baseline.agent(turn);
+          },
           readPullRequest: (_address, detail) => {
             reads += 1;
             const merged =
               (acts.length > 0 && delivery !== "queued") ||
-              (delivery === "externally merged" && reads > 1);
+              (delivery === "externally merged" && reads > 1) ||
+              (delivery === "merged before review" && reads > 2) ||
+              (delivery === "merged during review" && sawReviewer);
             return Effect.succeed({
               ...detail,
               state: merged ? "merged" : detail.state,
@@ -4105,13 +4123,24 @@ it.each([
                   status: "completed",
                   result: { parts: [{ outcome: "merged", prUrl: url }] },
                 });
+              } else if (delivery === "unknown review head") {
+                yield* askStuck(world, workflows, child.runId);
+                yield* workflows.answer(child.runId, "stuck", { choice: "Stop" });
+                expect(yield* world.ended(workflows, runId)).toMatchObject({ status: "stopped" });
+                expect(world.acts).toEqual([]);
               } else if (
                 delivery === "held" ||
                 delivery === "retargeted" ||
                 delivery === "queued" ||
-                delivery === "externally merged"
+                delivery === "externally merged" ||
+                delivery === "merged before review" ||
+                delivery === "merged during review"
               ) {
-                if (delivery === "externally merged") {
+                if (
+                  delivery === "externally merged" ||
+                  delivery === "merged before review" ||
+                  delivery === "merged during review"
+                ) {
                   const warning = yield* ask(
                     world,
                     workflows,
@@ -4123,6 +4152,7 @@ it.each([
                   expect(warning.request).toMatchObject({
                     title: expect.stringContaining("no accepted review"),
                   });
+                  expect(sawReviewer).toBe(delivery === "merged during review");
                   yield* workflows.answer(child.runId, "unreviewed", { choice: "Seen" });
                   expect(yield* world.ended(workflows, runId)).toMatchObject({ status: "stopped" });
                   expect(world.acts).toEqual([]);

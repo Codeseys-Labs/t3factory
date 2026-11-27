@@ -674,7 +674,7 @@ it("L1 L3 L4 M1 a review with no findings approves, is recorded, and merges a cl
               world.definitions
                 .filter((definition) => definition.name === name)
                 .map((definition) => definition.version),
-            ).toEqual([5]);
+            ).toEqual([6]);
           }
           // L4.4: a standard tier runs the brief lens only; L4.5: nothing blocks, no disprove.
           expect(turnSteps(world, child.runId)).toEqual(["do", "scope/0", "review/0"]);

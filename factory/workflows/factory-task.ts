@@ -921,14 +921,19 @@ const factoryTaskPart = workflow(
         };
       }
       const head = snapshot.headSha;
+      const baseSource =
+        writer ??
+        (localWriter !== null && localFolder !== null
+          ? { folder: localFolder, target: localWriter.target }
+          : null);
       const reviewBase =
-        writer === null
+        baseSource === null
           ? null
           : yield* step(
               `review-base/${at}`,
               { returns: ReviewBase },
-              Effect.map(readOriginHead(writer.folder, writer.target), (baseSha) => ({
-                target: writer.target,
+              Effect.map(readOriginHead(baseSource.folder, baseSource.target), (baseSha) => ({
+                target: baseSource.target,
                 baseSha,
               })),
             );
@@ -956,7 +961,13 @@ const factoryTaskPart = workflow(
             interactionMode: "plan",
           } as const)
         : { project, ...(reviewModel === null ? {} : { model: reviewModel }) };
-      const readLines = remote ? [remoteLine(head)] : [];
+      const localFetch =
+        range === null
+          ? []
+          : [
+              "If a pinned commit is missing, fetch the target branch from origin or the pull request head without checking either out, then use only the exact SHAs in the comparison.",
+            ];
+      const readLines = remote ? [remoteLine(head)] : [...localFetch];
       if (remote && reviewBase !== null) {
         readLines.push(
           "Run every Git command with `GIT_NO_LAZY_FETCH=1` and `GIT_ALLOW_PROTOCOL=factory-review-no-transport` in its environment. This prevents implicit fetches from partial clones. If you cannot set both variables, do not run Git.",
@@ -1108,6 +1119,7 @@ const factoryTaskPart = workflow(
               READER_LINE,
               `Try to refute each finding on pull request ${prUrl} by reproducing it or by a counter-example.`,
               ...commit,
+              ...localFetch,
               "Change nothing. Answer refuted only when you have shown the claim false; otherwise answer survived. For each id, say what you tried.",
               ...(range === null
                 ? []

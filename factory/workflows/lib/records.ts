@@ -258,7 +258,7 @@ type TaskWorkflow = Parameters<typeof start<FactoryTaskRunInput>>[0];
 
 // `start` reads only the name and version. A workflow file cannot import another for its
 // definition: the loader would register that file's workflows twice.
-export const FACTORY_TASK_VERSION = 5;
+export const FACTORY_TASK_VERSION = 6;
 const workflowRef = (name: string) =>
   ({ name, version: name === FACTORY_TASK ? FACTORY_TASK_VERSION : 1 }) as unknown as TaskWorkflow;
 

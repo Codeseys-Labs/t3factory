@@ -45,7 +45,7 @@ The server reloads changed top-level workflow files without a restart, but not t
 - `uninstall` removes only the files the manifest lists, and prints a restart warning if it removed helpers under `lib/`.
 - The skill is copied by `install` and left alone by `status` and `uninstall`.
 
-`factory-task` and `factory-task-part` are at version 5 and `factory-intake` at version 2, and the pack ships no earlier version of them. The server holds a changed file back while unfinished runs still use a version it would remove, so update a home only when no run of an old version is unfinished. `t3 workflow list` shows which runs have not ended. This update also changes files under `lib/`, so restart the server after installing it.
+`factory-task` and `factory-task-part` are at version 6 and `factory-intake` at version 2, and the pack ships no earlier version of them. The server holds a changed file back while unfinished runs still use a version it would remove, so update a home only when no run of an old version is unfinished. `t3 workflow list` shows which runs have not ended. This update also changes files under `lib/`, so restart the server after installing it.
 
 For `factory-task` and `factory-task-part`, let unfinished runs end, or cancel them on the Workflows page, before installing the pack. For `factory-intake`, whose tick starts every five minutes, cut over in this order:
 

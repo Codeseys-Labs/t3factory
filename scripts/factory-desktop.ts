@@ -155,18 +155,11 @@ export const factoryVersion = (version: string, commit: string) =>
   `${version}-factory.g${commit.slice(0, 7).toLowerCase()}`;
 
 export function scrubEnvironment(environment: Readonly<NodeJS.ProcessEnv>) {
-  const names = new Set([
-    "GITHUB_REPOSITORY",
-    "GH_TOKEN",
-    "GITHUB_TOKEN",
-    "T3CODE_HOME",
-    "T3CODE_JSIGN",
-  ]);
+  // A terminal opened by T3 Code sets ELECTRON_RUN_AS_NODE and its own T3CODE_* and T3_* variables.
+  const names = ["GITHUB_REPOSITORY", "GH_TOKEN", "GITHUB_TOKEN", "ELECTRON_RUN_AS_NODE"];
   const prefixes = [
-    "T3CODE_DESKTOP_",
-    "T3CODE_DEV_",
-    "T3CODE_APPLE_",
-    "T3CODE_MODEL_PROXY",
+    "T3CODE_",
+    "T3_",
     "VITE_",
     "CSC_",
     "WIN_CSC_",
@@ -182,7 +175,7 @@ export function scrubEnvironment(environment: Readonly<NodeJS.ProcessEnv>) {
   return Object.fromEntries(
     Object.entries(environment).filter(([key]) => {
       const name = key.toUpperCase();
-      return !names.has(name) && !prefixes.some((prefix) => name.startsWith(prefix));
+      return !names.includes(name) && !prefixes.some((prefix) => name.startsWith(prefix));
     }),
   );
 }

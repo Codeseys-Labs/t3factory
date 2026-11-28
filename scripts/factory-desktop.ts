@@ -451,6 +451,9 @@ const build = Effect.fn("factoryDesktop.build")(function* (
   if (!fullCommit.test(sha)) return yield* problem("build requires a full 40-hex commit SHA");
   const fs = yield* FileSystem.FileSystem;
   const output = yield* destination(out);
+  if (inside(yield* fs.realPath(root), output)) {
+    return yield* problem("--out is inside the repository");
+  }
   const makeTemp = keepStage ? fs.makeTempDirectory : fs.makeTempDirectoryScoped;
   const stage =
     requestedStage === undefined

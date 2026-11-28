@@ -184,9 +184,9 @@ export const DEFAULT_INSPECT_RULES: InspectRules = {
     },
     {
       literal: "pingdotgg/t3code",
-      patterns: quotedForms("pingdotgg/t3code"),
-      // The web client in server.asar keeps its star prompt and release-notes links.
-      excludeFiles: ["resources/server.asar"],
+      // The web client in server.asar names this repository for its star prompt, so match the
+      // constant `t3 update` and the service download from, as the server and desktop bundles hold it.
+      patterns: ['CLI_RELEASE_REPOSITORY = "pingdotgg/t3code"'],
       reason: "The bundled t3 update and service must not download a stock T3 Code runtime.",
     },
   ],

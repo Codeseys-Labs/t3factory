@@ -27,15 +27,19 @@ export const planInstall = (input: PlanInput & { readonly force: boolean }) => {
   const write: string[] = [];
   const unchanged: string[] = [];
   const remove: string[] = [];
+  // A file is the pack's to replace or remove only while it holds what the last install wrote.
+  const inTheWay = (name: string, current: string | undefined) =>
+    current !== undefined && current !== input.manifest?.get(name) && !input.force;
   for (const [name, hash] of input.pack) {
     const current = input.target.get(name);
     if (current === hash) unchanged.push(name);
-    else if (current !== undefined && !input.manifest?.has(name) && !input.force)
-      conflicts.push(name);
+    else if (inTheWay(name, current)) conflicts.push(name);
     else write.push(name);
   }
   for (const name of input.manifest?.keys() ?? []) {
-    if (!input.pack.has(name)) remove.push(name);
+    if (input.pack.has(name)) continue;
+    if (inTheWay(name, input.target.get(name))) conflicts.push(name);
+    else remove.push(name);
   }
   return {
     conflicts,
@@ -165,7 +169,10 @@ export const prepareInstall = Effect.fn("factoryPack.prepareInstall")(function* 
         }),
       )
     : null;
-  const target = yield* readTargets(input.directory, hashes.keys());
+  const target = yield* readTargets(input.directory, [
+    ...hashes.keys(),
+    ...(manifest?.keys() ?? []),
+  ]);
   const existing =
     target.size > 0 ||
     (input.managed && (yield* fs.exists(path.join(input.directory, FACTORY_PACK_MANIFEST))));
@@ -177,6 +184,18 @@ export const prepareInstall = Effect.fn("factoryPack.prepareInstall")(function* 
     existing,
     conflicts: plan.conflicts.map((name) => filePath(path, input.directory, name)),
   };
+});
+
+/** Leaves `filename` with its old bytes or all of the new ones; a torn file would read as edited. */
+const replaceFile = Effect.fn("factoryPack.replaceFile")(function* (
+  filename: string,
+  bytes: Uint8Array,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  // The workflow runtime loads only names that end in a script extension.
+  const part = `${filename}.part`;
+  yield* fs.writeFile(part, bytes);
+  yield* fs.rename(part, filename);
 });
 
 /** Writes what `prepareInstall` planned, or nothing when a file is in the way. */
@@ -199,7 +218,7 @@ export const applyInstall = Effect.fn("factoryPack.applyInstall")(function* (
     const filename = filePath(path, directory, name);
     yield* fs.makeDirectory(path.dirname(filename), { recursive: true });
     const bytes = files.get(name);
-    if (bytes !== undefined) yield* fs.writeFile(filename, bytes);
+    if (bytes !== undefined) yield* replaceFile(filename, bytes);
   }
   if (prepared.managed) {
     const manifestJson = `${yield* encodeManifest({
@@ -210,7 +229,8 @@ export const applyInstall = Effect.fn("factoryPack.applyInstall")(function* (
     const previousManifest = (yield* fs.exists(manifestPath))
       ? yield* fs.readFileString(manifestPath)
       : null;
-    if (previousManifest !== manifestJson) yield* fs.writeFileString(manifestPath, manifestJson);
+    if (previousManifest !== manifestJson)
+      yield* replaceFile(manifestPath, new TextEncoder().encode(manifestJson));
   }
   return { written: plan.write, removed };
 });

@@ -41,6 +41,16 @@ const logged = Effect.fn("FactoryPackInstallTest.logged")(function* <A, E, R>(
 const warnings = (logs: ReadonlyArray<{ readonly level: string; readonly message: unknown }>) =>
   logs.filter((log) => log.level === "Warn").map((log) => log.message);
 
+const denied = (file: string) =>
+  new PlatformError.PlatformError(
+    new PlatformError.SystemError({
+      _tag: "PermissionDenied",
+      module: "FileSystem",
+      method: "writeFile",
+      pathOrDescriptor: file,
+    }),
+  );
+
 it.layer(NodeServices.layer)("FactoryPackInstall", (it) => {
   it.effect.each([
     { label: "there is no pack", elsewhere: false, pack: null, warned: 0 },
@@ -134,8 +144,39 @@ it.layer(NodeServices.layer)("FactoryPackInstall", (it) => {
       assert.strictEqual(yield* fs.readFileString(path.join(workflows, "run.ts")), "mine");
       assert.deepStrictEqual(warnings(logs), [
         [
-          "The bundled workflow pack is not installed: files in its folder are not the pack's",
+          "The bundled workflow pack is not installed: files in its folder are not what the pack installed",
           { paths: [path.join(workflows, "run.ts")] },
+        ],
+      ]);
+    }),
+  );
+
+  it.effect.each([
+    { label: "a pack file", edited: "run.ts" },
+    { label: "a file the pack dropped", edited: "old.ts" },
+  ])("installs nothing and names the path when $label was edited", ({ edited }) =>
+    Effect.gen(function* () {
+      const { fs, path, home, workflows, manifest } = yield* setup;
+      yield* FactoryPackInstall.install({ pack: { ...PACK, "old.ts": "old" }, home, workflows });
+      const installed = yield* fs.readFileString(manifest);
+      yield* fs.writeFileString(path.join(workflows, edited), "mine");
+      const logs = yield* logged(
+        FactoryPackInstall.install({
+          pack: { "lib/helper.ts": "changed", "run.ts": "changed" },
+          home,
+          workflows,
+        }),
+      );
+      assert.strictEqual(yield* fs.readFileString(path.join(workflows, edited)), "mine");
+      assert.strictEqual(
+        yield* fs.readFileString(path.join(workflows, "lib", "helper.ts")),
+        "helper",
+      );
+      assert.strictEqual(yield* fs.readFileString(manifest), installed);
+      assert.deepStrictEqual(warnings(logs), [
+        [
+          "The bundled workflow pack is not installed: files in its folder are not what the pack installed",
+          { paths: [path.join(workflows, edited)] },
         ],
       ]);
     }),
@@ -144,23 +185,13 @@ it.layer(NodeServices.layer)("FactoryPackInstall", (it) => {
   it.effect("logs once and does not fail its caller when the folder cannot be written", () =>
     Effect.gen(function* () {
       const { fs, home, workflows, manifest } = yield* setup;
-      const denied = FileSystem.FileSystem.of({
+      const readOnly = FileSystem.FileSystem.of({
         ...fs,
-        writeFile: (file) =>
-          Effect.fail(
-            new PlatformError.PlatformError(
-              new PlatformError.SystemError({
-                _tag: "PermissionDenied",
-                module: "FileSystem",
-                method: "writeFile",
-                pathOrDescriptor: file,
-              }),
-            ),
-          ),
+        writeFile: (file) => Effect.fail(denied(file)),
       });
       const logs = yield* logged(
         FactoryPackInstall.install({ pack: PACK, home, workflows }).pipe(
-          Effect.provideService(FileSystem.FileSystem, denied),
+          Effect.provideService(FileSystem.FileSystem, readOnly),
         ),
       );
       assert.deepStrictEqual(
@@ -168,6 +199,30 @@ it.layer(NodeServices.layer)("FactoryPackInstall", (it) => {
         ["The bundled workflow pack is not installed"],
       );
       assert.isFalse(yield* fs.exists(manifest));
+    }),
+  );
+
+  it.effect("keeps a file whole when its write fails, and installs on the next start", () =>
+    Effect.gen(function* () {
+      const { fs, path, home, workflows } = yield* setup;
+      yield* FactoryPackInstall.install({ pack: PACK, home, workflows });
+      const next = { ...PACK, "run.ts": "changed" };
+      const torn = FileSystem.FileSystem.of({
+        ...fs,
+        writeFile: (file, data, options) =>
+          Effect.andThen(
+            fs.writeFile(file, data.subarray(0, 1), options),
+            Effect.fail(denied(file)),
+          ),
+      });
+      yield* FactoryPackInstall.install({ pack: next, home, workflows }).pipe(
+        Effect.provideService(FileSystem.FileSystem, torn),
+      );
+      assert.strictEqual(yield* fs.readFileString(path.join(workflows, "run.ts")), "workflow");
+
+      const logs = yield* logged(FactoryPackInstall.install({ pack: next, home, workflows }));
+      assert.strictEqual(yield* fs.readFileString(path.join(workflows, "run.ts")), "changed");
+      assert.deepStrictEqual(warnings(logs), []);
     }),
   );
 });

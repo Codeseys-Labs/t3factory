@@ -109,37 +109,31 @@ it.effect.each(forbiddenPatternCases)(
     }),
 );
 
-it.effect("does not find a literal split across two resource files", () =>
+it.effect("does not join a literal split across two resource files", () =>
   Effect.sync(() => {
-    const [splitTarget] = DEFAULT_INSPECT_RULES.required;
-    if (splitTarget === undefined) {
+    const [required] = DEFAULT_INSPECT_RULES.required;
+    if (required === undefined) {
       assert.fail("expected at least one required rule");
       return;
     }
-    const midpoint = Math.floor(splitTarget.literal.length / 2);
-    const result = scanDesktopApp({
-      files: ["T3 Factory v2.exe", "resources/part-a.bin", "resources/part-b.bin"],
-      resources: [
-        {
-          path: "resources/part-a.bin",
-          bytes: utf8(
-            `${validAppAsarText(splitTarget.literal)}\n${splitTarget.literal.slice(0, midpoint)}\n"com.t3tools.`,
-          ),
-        },
-        {
-          path: "resources/part-b.bin",
-          bytes: utf8(`${splitTarget.literal.slice(midpoint)}\nt3code"`),
-        },
-      ],
-    });
-    assert.isFalse(result.ok);
-    assert.deepStrictEqual(result.problems, [
-      {
-        kind: "missing-literal",
-        literal: splitTarget.literal,
-        reason: splitTarget.reason,
-      },
-    ]);
+    const split = (text: string, head: string, tail: string) =>
+      scanDesktopApp({
+        files: ["T3 Factory v2.exe", "resources/part-a.bin", "resources/part-b.bin"],
+        resources: [
+          { path: "resources/part-a.bin", bytes: utf8(`${text}\n${head}`) },
+          { path: "resources/part-b.bin", bytes: utf8(tail) },
+        ],
+      });
+    const midpoint = Math.floor(required.literal.length / 2);
+    assert.deepStrictEqual(
+      split(
+        validAppAsarText(required.literal),
+        required.literal.slice(0, midpoint),
+        required.literal.slice(midpoint),
+      ).problems,
+      [{ kind: "missing-literal", literal: required.literal, reason: required.reason }],
+    );
+    assert.deepStrictEqual(split(validAppAsarText(), '"com.t3tools.', 't3code"').problems, []);
   }),
 );
 

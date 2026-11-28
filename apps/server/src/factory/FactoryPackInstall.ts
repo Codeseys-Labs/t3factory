@@ -1,4 +1,3 @@
-import * as Cause from "effect/Cause";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -46,12 +45,12 @@ export const install = Effect.fn("FactoryPackInstall.install")(
   Effect.catchTags({
     FactoryPackConflictError: (error) =>
       Effect.logWarning(
-        "The bundled workflow pack is not installed: files in its folder are not the pack's",
+        "The bundled workflow pack is not installed: files in its folder are not what the pack installed",
         { paths: error.paths },
       ),
   }),
   Effect.catchCause((cause) =>
-    Effect.logWarning("The bundled workflow pack is not installed", Cause.pretty(cause)),
+    Effect.logWarning("The bundled workflow pack is not installed", { cause }),
   ),
 );
 
@@ -68,7 +67,7 @@ export const installBundled = Effect.gen(function* () {
   });
 }).pipe(
   Effect.catchCause((cause) =>
-    Effect.logWarning("The bundled workflow pack is not installed", Cause.pretty(cause)),
+    Effect.logWarning("The bundled workflow pack is not installed", { cause }),
   ),
   Effect.withSpan("FactoryPackInstall.installBundled"),
 );

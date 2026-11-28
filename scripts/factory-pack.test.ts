@@ -51,15 +51,13 @@ it.effect("plans installs and status from pack, target, and manifest hashes", ()
     ]);
     const update = { pack, target: old, manifest: old, force: false };
     assert.isFalse(needsWorkflowRestart(planInstall(update), true));
+    const helperChanged = new Map([
+      ["workflow.ts", "new"],
+      ["lib/helper.ts", "old"],
+    ]);
     assert.isTrue(
       needsWorkflowRestart(
-        planInstall({
-          ...installed,
-          target: new Map([
-            ["workflow.ts", "new"],
-            ["lib/helper.ts", "old"],
-          ]),
-        }),
+        planInstall({ ...installed, target: helperChanged, manifest: helperChanged }),
         true,
       ),
     );
@@ -75,6 +73,26 @@ it.effect("plans installs and status from pack, target, and manifest hashes", ()
       { path: "lib/helper.ts", status: "same" },
       { path: "old.ts", status: "stale" },
     ]);
+    const edited = {
+      ...update,
+      target: new Map([
+        ["workflow.ts", "mine"],
+        ["lib/helper.ts", "helper"],
+        ["old.ts", "mine"],
+      ]),
+    };
+    assert.deepStrictEqual(planInstall(edited), {
+      conflicts: ["workflow.ts", "old.ts"],
+      write: [],
+      remove: [],
+      unchanged: ["lib/helper.ts"],
+    });
+    assert.deepStrictEqual(planInstall({ ...edited, force: true }), {
+      conflicts: [],
+      write: ["workflow.ts"],
+      remove: ["old.ts"],
+      unchanged: ["lib/helper.ts"],
+    });
     const conflict = { pack, target: old, manifest: null, force: false };
     assert.deepStrictEqual(planInstall(conflict), {
       conflicts: ["workflow.ts"],

@@ -463,6 +463,9 @@ const build = Effect.fn("factoryDesktop.build")(function* (
     return yield* problem("--out and --stage must be separate directories");
   }
 
+  // A receipt from an earlier build into this folder would make a failed one look finished.
+  const receiptFile = "factory-desktop-build.json";
+  yield* fs.remove(NodePath.join(output, receiptFile), { force: true });
   const receipt = yield* stageDesktop(sha, stage);
   if (requestedStage !== undefined && !keepStage) {
     yield* Effect.addFinalizer(() => fs.remove(stage, { recursive: true }).pipe(Effect.orDie));
@@ -544,7 +547,6 @@ const build = Effect.fn("factoryDesktop.build")(function* (
     artifacts,
     unpackedApp,
   };
-  const receiptFile = "factory-desktop-build.json";
   yield* fs.writeFileString(NodePath.join(temp, receiptFile), manifest(buildReceipt));
   yield* fs.rename(NodePath.join(temp, receiptFile), NodePath.join(output, receiptFile));
   yield* Console.log(`Built ${NodePath.join(output, zip)}`);

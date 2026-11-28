@@ -123,10 +123,17 @@ export const uninstallFactoryPack = Effect.fn("factoryPack.uninstall")(function*
   const directory = path.join(home, "workflows");
   const manifest = yield* readManifest(directory);
   if (manifest === null) return;
+  const current = yield* readTargets(directory, manifest.keys());
   let removedNested = false;
-  for (const name of manifest.keys()) {
+  for (const [name, installed] of manifest) {
     const filename = path.join(directory, ...name.split("/"));
-    if (name.includes("/") && (yield* fs.exists(filename))) removedNested = true;
+    const now = current.get(name);
+    if (now === undefined) continue;
+    if (now !== installed) {
+      yield* Console.log(`Kept ${filename}: it was changed after the pack installed it.`);
+      continue;
+    }
+    if (name.includes("/")) removedNested = true;
     yield* fs.remove(filename, { force: true });
   }
   yield* fs.remove(path.join(directory, FACTORY_PACK_MANIFEST));

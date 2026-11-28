@@ -115,6 +115,7 @@ it.layer(NodeServices.layer)("FactoryPackInstall", (it) => {
         workflows,
       });
       yield* fs.writeFileString(path.join(workflows, "mine.ts"), "mine");
+      yield* fs.writeFileString(path.join(workflows, "run.ts.part"), "mine");
       const logs = yield* logged(
         FactoryPackInstall.install({
           pack: { "lib/helper.ts": "helper", "run.ts": "helper" },
@@ -126,6 +127,7 @@ it.layer(NodeServices.layer)("FactoryPackInstall", (it) => {
       assert.isFalse(yield* fs.exists(path.join(workflows, "old.ts")));
       assert.isFalse(yield* fs.exists(path.join(workflows, "lib", "old.ts")));
       assert.strictEqual(yield* fs.readFileString(path.join(workflows, "mine.ts")), "mine");
+      assert.strictEqual(yield* fs.readFileString(path.join(workflows, "run.ts.part")), "mine");
       assert.strictEqual(
         yield* fs.readFileString(manifest),
         `${JSON.stringify({ v: 1, files: { "lib/helper.ts": HELPER, "run.ts": HELPER } })}\n`,
@@ -219,6 +221,11 @@ it.layer(NodeServices.layer)("FactoryPackInstall", (it) => {
         Effect.provideService(FileSystem.FileSystem, torn),
       );
       assert.strictEqual(yield* fs.readFileString(path.join(workflows, "run.ts")), "workflow");
+      assert.deepStrictEqual((yield* fs.readDirectory(workflows)).toSorted(), [
+        ".factory-pack.json",
+        "lib",
+        "run.ts",
+      ]);
 
       const logs = yield* logged(FactoryPackInstall.install({ pack: next, home, workflows }));
       assert.strictEqual(yield* fs.readFileString(path.join(workflows, "run.ts")), "changed");

@@ -192,10 +192,12 @@ const replaceFile = Effect.fn("factoryPack.replaceFile")(function* (
   bytes: Uint8Array,
 ) {
   const fs = yield* FileSystem.FileSystem;
-  // The workflow runtime loads only names that end in a script extension.
-  const part = `${filename}.part`;
-  yield* fs.writeFile(part, bytes);
-  yield* fs.rename(part, filename);
+  // Named for its content, so it is no file of the user's; the workflow runtime does not load it.
+  const part = `${filename}.${(yield* hash(bytes)).slice(0, 16)}.part`;
+  yield* fs.writeFile(part, bytes).pipe(
+    Effect.andThen(fs.rename(part, filename)),
+    Effect.onError(() => Effect.ignore(fs.remove(part, { force: true }))),
+  );
 });
 
 /** Writes what `prepareInstall` planned, or nothing when a file is in the way. */

@@ -116,60 +116,68 @@ it.effect("plans installs and status from pack, target, and manifest hashes", ()
 );
 
 it.layer(NodeServices.layer)("factory pack", (it) => {
-  it.effect("installs workflow and skill files and uninstalls only managed workflows", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const root = yield* fs.makeTempDirectoryScoped({ prefix: "factory-pack-" });
-      const source = path.join(root, "source");
-      const home = path.join(root, "home");
-      const skills = path.join(root, "skills");
-      yield* fs.makeDirectory(path.join(source, "workflows", "lib"), { recursive: true });
-      yield* fs.makeDirectory(path.join(source, "skills", "t3factory-orchestrator"), {
-        recursive: true,
-      });
-      yield* fs.makeDirectory(home);
-      yield* fs.writeFileString(path.join(source, "workflows", "run.ts"), "workflow");
-      yield* fs.writeFileString(path.join(source, "workflows", "lib", "helper.ts"), "helper");
-      yield* fs.writeFileString(
-        path.join(source, "skills", "t3factory-orchestrator", "SKILL.md"),
-        "skill",
-      );
-      yield* installFactoryPack({ home, skills, force: false, source });
-      const workflows = path.join(home, "workflows");
-      assert.strictEqual(yield* fs.readFileString(path.join(workflows, "run.ts")), "workflow");
-      assert.strictEqual(
-        yield* fs.readFileString(path.join(workflows, "lib", "helper.ts")),
-        "helper",
-      );
-      assert.strictEqual(
-        yield* fs.readFileString(path.join(skills, "t3factory-orchestrator", "SKILL.md")),
-        "skill",
-      );
-      const manifest: unknown = JSON.parse(
-        yield* fs.readFileString(path.join(workflows, ".factory-pack.json")),
-      );
-      assert.deepStrictEqual(manifest, {
-        v: 1,
-        files: {
-          "lib/helper.ts": "e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a",
-          "run.ts": "da7f739f627198465eeab537a6f7a435dc4a0c332f9e4a8462293eb3f4ab7ee0",
-        },
-      });
-      yield* fs.writeFileString(path.join(workflows, "other.ts"), "other");
-      yield* uninstallFactoryPack(home);
-      assert.include(
-        (yield* TestConsole.logLines).join("\n"),
-        "Restart the server to finish removing this pack: a running server keeps the old lib/ helpers.",
-      );
-      assert.isFalse(yield* fs.exists(path.join(workflows, "run.ts")));
-      assert.isFalse(yield* fs.exists(path.join(workflows, "lib", "helper.ts")));
-      assert.isFalse(yield* fs.exists(path.join(workflows, ".factory-pack.json")));
-      assert.strictEqual(yield* fs.readFileString(path.join(workflows, "other.ts")), "other");
-      assert.strictEqual(
-        yield* fs.readFileString(path.join(skills, "t3factory-orchestrator", "SKILL.md")),
-        "skill",
-      );
-    }),
+  it.effect(
+    "installs workflow and skill files and uninstalls only unchanged managed workflows",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: "factory-pack-" });
+        const source = path.join(root, "source");
+        const home = path.join(root, "home");
+        const skills = path.join(root, "skills");
+        yield* fs.makeDirectory(path.join(source, "workflows", "lib"), { recursive: true });
+        yield* fs.makeDirectory(path.join(source, "skills", "t3factory-orchestrator"), {
+          recursive: true,
+        });
+        yield* fs.makeDirectory(home);
+        yield* fs.writeFileString(path.join(source, "workflows", "run.ts"), "workflow");
+        yield* fs.writeFileString(path.join(source, "workflows", "lib", "helper.ts"), "helper");
+        yield* fs.writeFileString(path.join(source, "workflows", "keep.ts"), "keep");
+        yield* fs.writeFileString(
+          path.join(source, "skills", "t3factory-orchestrator", "SKILL.md"),
+          "skill",
+        );
+        yield* installFactoryPack({ home, skills, force: false, source });
+        const workflows = path.join(home, "workflows");
+        assert.strictEqual(yield* fs.readFileString(path.join(workflows, "run.ts")), "workflow");
+        assert.strictEqual(
+          yield* fs.readFileString(path.join(workflows, "lib", "helper.ts")),
+          "helper",
+        );
+        assert.strictEqual(
+          yield* fs.readFileString(path.join(skills, "t3factory-orchestrator", "SKILL.md")),
+          "skill",
+        );
+        const manifest: unknown = JSON.parse(
+          yield* fs.readFileString(path.join(workflows, ".factory-pack.json")),
+        );
+        assert.deepStrictEqual(manifest, {
+          v: 1,
+          files: {
+            "keep.ts": "6ca7ea2feefc88ecb5ed6356ed963f47dc9137f82526fdd25d618ea626d0803f",
+            "lib/helper.ts": "e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a",
+            "run.ts": "da7f739f627198465eeab537a6f7a435dc4a0c332f9e4a8462293eb3f4ab7ee0",
+          },
+        });
+        yield* fs.writeFileString(path.join(workflows, "other.ts"), "other");
+        yield* fs.writeFileString(path.join(workflows, "keep.ts"), "mine");
+        yield* uninstallFactoryPack(home);
+        const printed = (yield* TestConsole.logLines).join("\n");
+        assert.include(
+          printed,
+          "Restart the server to finish removing this pack: a running server keeps the old lib/ helpers.",
+        );
+        assert.include(printed, `Kept ${path.join(workflows, "keep.ts")}`);
+        assert.strictEqual(yield* fs.readFileString(path.join(workflows, "keep.ts")), "mine");
+        assert.isFalse(yield* fs.exists(path.join(workflows, "run.ts")));
+        assert.isFalse(yield* fs.exists(path.join(workflows, "lib", "helper.ts")));
+        assert.isFalse(yield* fs.exists(path.join(workflows, ".factory-pack.json")));
+        assert.strictEqual(yield* fs.readFileString(path.join(workflows, "other.ts")), "other");
+        assert.strictEqual(
+          yield* fs.readFileString(path.join(skills, "t3factory-orchestrator", "SKILL.md")),
+          "skill",
+        );
+      }),
   );
 });

@@ -142,12 +142,12 @@
       "why": "The bundled t3 update and the service must never download a stock T3 Code runtime."
     },
     {
-      "id": "recovery-title",
+      "id": "recovery-text",
       "file": "apps/desktop/src/app/DesktopStartupRecovery.ts",
-      "find": "m(msg(\"T3 Code could not start\"))",
-      "replace": "m(msg(\"T3 Factory could not start\"))",
-      "count": 2,
-      "why": "The recovery screen must name the app that failed (#204)."
+      "find": "T3 Code",
+      "replace": "T3 Factory",
+      "count": 7,
+      "why": "The recovery screen, its footer and the details it copies must name the app that failed (#204)."
     },
     {
       "id": "startup-failure-title",

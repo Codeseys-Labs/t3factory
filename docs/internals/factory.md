@@ -119,6 +119,22 @@ Generated files are regenerated after a merge, never merged by hand. Translation
 
 The fork adds no dependencies, so the lockfile stays upstream's, and CI checks it.
 
+## The desktop build
+
+The Factory app has to run on the same Windows machine as T3 Code and T3 Factory v1. An identifier it shares with either, such as the app id, the link scheme, the profile folder, the home or the `t3` command, can take over that install's links, profile, command or data. So every one of them differs, and the build neither updates itself nor puts `t3` on the `PATH` by itself.
+
+Branding at run time would edit nine or more upstream files, and all twelve seams are in use. So the tracked tree stays upstream's, and [`factory-desktop.ts`](../../scripts/factory-desktop.ts) applies the identity to a staged export of one exact commit, just before that copy's own `scripts/build-desktop-artifact.ts` runs. Each entry in [`overlay.json`](../../factory/desktop/overlay.json) replaces one literal with another and says why in one sentence. The script caps how many there may be, because each is upkeep at every upstream sync.
+
+The link scheme is the entry with the widest reach. Upstream uses one constant for the scheme Windows is told about and for the address the window loads from, and the bundled Clerk library registers that scheme with Windows at every start. Keeping `t3code` would hand stock T3 Code's links to Factory the first time Factory ran. Changing it moves the window to `t3code-factory://app`, so the server's trusted origins and the provider sign-in return check each need an entry too, or the app is refused by its own server.
+
+A `find` is literal text that must occur an exact number of times in the file as git stores it. Entries of one file are matched against the committed file, may not overlap, and are applied in one pass. A pattern, or a count of "at least one", would let a sync that moves, copies or rewrites the line build an app that is half renamed and still shares an identifier with stock T3 Code. `check` needs no network and no build, so it fails in CI the moment such a sync lands. A failing `check` after a sync means upstream changed text an entry depends on, not that the build is broken: re-derive that entry from the new upstream code before building.
+
+Factory-owned files are edited in place, never overlaid. An overlaid Factory file would ship code that no Factory test, type check or review saw, so `check` refuses an entry for a file under `factory/`, `apps/server/src/factory/` or `apps/web/src/factory/`, and for a lockfile or a generated file.
+
+A packaged build has no checkout, so the server cannot read `factory/workflows`, and the build copies `apps/server/dist` whole. So the pack travels as a module: [`bundledPack.ts`](../../apps/server/src/factory/bundledPack.ts) is tracked as `null`, and `stage` rewrites it in the staged copy with the text of every pack file. While it is `null`, as in every checkout, the server reads and writes nothing for it. Otherwise [`FactoryPackInstall.ts`](../../apps/server/src/factory/FactoryPackInstall.ts) installs it into `<home>/workflows` with the same plan as `factory-pack.ts install`, in [`factory-pack-plan.ts`](../../scripts/factory-pack-plan.ts), so a home the script made is left byte for byte as it is.
+
+The install has to finish before the workflow runtime first reads the folder: a reload loads top-level files again, but Node keeps the `lib/` helpers they import for the life of the process. The `FactoryTasks` layer is built after the runtime, so the install is its own layer, `FactoryTasks.layerBundledPack`, which `runtimeLayer.ts` provides to the workflow runtime. A provided layer is built first, so no restart follows a first start or a new build. That is the fifth Factory line in that seam.
+
 ## Pinned third-party assets
 
 [`factory/vendor/manifest.json`](../../factory/vendor/manifest.json) pins CLIProxyAPI and its Management Center by exact version, URL, size and SHA-256 for each file and its licence text. The Work page can have the server install these assets and run the proxy beside it; the pack installer still does not copy them.

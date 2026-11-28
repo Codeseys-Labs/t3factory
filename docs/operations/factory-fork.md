@@ -16,7 +16,7 @@ node scripts/factory-home.ts init --home <dir>
 vp run dev --home-dir "<dir>"
 ```
 
-It loads the pack from `<dir>/workflows`, picks free ports, and prints a `pairingUrl:` line; open that link in a browser. To get a new pairing link later, run `node apps/server/src/bin.ts pair --base-dir "<dir>"`. A path such as `~/.t3factory-v2` works for `<dir>`. This runs the development build from the checkout; a packaged desktop build of T3 Factory does not exist yet.
+It loads the pack from `<dir>/workflows`, picks free ports, and prints a `pairingUrl:` line; open that link in a browser. To get a new pairing link later, run `node apps/server/src/bin.ts pair --base-dir "<dir>"`. This runs the development build from the checkout. The packaged Windows app keeps its data in `~/.t3factory-v2`; give the dev server that home only while the app is not running, since only one server can run on a home. To build the app, see [Build the desktop app](#build-the-desktop-app).
 
 - Never point `init` or the dev server at a home that is in use, and never start Factory against `~/.t3/userdata` or `~/.t3factory`. The first is T3 Code's home; the second is the live v1 install.
 - `init` refuses a home that already has a database (`userdata/statev2.sqlite` or legacy `userdata/state.sqlite`). Pass `--existing` only to run it again on a home Factory created.
@@ -39,10 +39,10 @@ The home must already exist. `install` writes `<dir>/workflows` and records what
 
 The server reloads changed top-level workflow files without a restart, but not the helpers under `lib/`: an update that changes one needs a server restart, and `install` prints a line saying so when it applies.
 
-- Running `install` again updates the pack files and removes ones the pack no longer ships.
-- A file in `workflows` that is not from the pack and differs from it is a conflict: nothing is written, and the paths are listed. `--force` overwrites them.
+- Running `install` again updates the pack files and removes ones the pack no longer ships, as long as each still holds what the last install wrote.
+- A file in `workflows` that differs from the pack and is not what the last install wrote is a conflict, whether it was never the pack's or is a pack file edited since: nothing is written or removed, and the paths are listed. `--force` overwrites and removes them.
 - `status` prints `same`, `changed`, `missing` or `stale` per file and exits 1 unless all are `same`.
-- `uninstall` removes only the files the manifest lists, and prints a restart warning if it removed helpers under `lib/`.
+- `uninstall` removes the files the manifest lists that still hold what the pack installed, prints the path of each one it kept because it was changed, and prints a restart warning if it removed helpers under `lib/`. A kept file is then a conflict for the next install, on a server start too, until it is moved or `--force` is used.
 - The skill is copied by `install` and left alone by `status` and `uninstall`.
 
 `factory-task` and `factory-task-part` are at version 6 and `factory-intake` at version 2, and the pack ships no earlier version of them. The server holds a changed file back while unfinished runs still use a version it would remove, so update a home only when no run of an old version is unfinished. `t3 workflow list` shows which runs have not ended. This update also changes files under `lib/`, so restart the server after installing it.
@@ -90,6 +90,43 @@ By hand:
 How often: run the plan against the newest nightly every day, and merge on Monday and Thursday, or sooner when the plan predicts seam conflicts. Keep one sync open at a time. After a sync that needed more than one round of fixes, merge daily until two go through clean. The first real sync, 102 upstream commits that touched 6 of the 11 seam files, merged with no conflict.
 
 Do not hand-merge `pnpm-lock.yaml`; Factory adds no dependencies, so it must equal upstream's.
+
+## Build the desktop app
+
+The desktop app is built by hand, on Windows x64, from one exact commit. Nothing builds it by itself and nothing publishes it. For why it is built this way, read [the internals page](../internals/factory.md#the-desktop-build).
+
+```sh
+node scripts/factory-desktop.ts check
+node scripts/factory-desktop.ts stage --sha <commit> --out <dir>
+node scripts/factory-desktop.ts build --sha <commit> --out <dir> [--stage <dir>] [--keep-stage]
+node scripts/factory-desktop-inspect.ts --app <unpacked app folder> [--json]
+```
+
+- `<commit>` is a full 40-character commit that is already in the local repository. Neither command fetches.
+- `check` validates `factory/desktop/overlay.json` against the working tree, with no network, child process or writes. It prints `factory-desktop: ok (N entries)` and exits 0, or prints one line per problem and exits 1. CI runs it too.
+- `stage` exports the commit without `.repos/` into `<dir>`, applies the overlay and writes the workflow pack into `apps/server/src/factory/bundledPack.ts`. Every other file has the commit's bytes. `<dir>` must be outside the repository and must not exist or be empty. It writes `<dir>/factory-desktop-stage.json` with the commit, the version, the SHA-256 of `overlay.json`, the entries applied and each pack file with its SHA-256. Stage on its own to review what the overlay changes: compare the folder with the commit.
+- `build` refuses any host or target but Windows x64. `<dir>` must be outside the repository. It stages into a short folder in the system temp folder, or into `--stage <dir>`; `--keep-stage` keeps that folder. It installs with the frozen lockfile and runs the staged copy's `scripts/build-desktop-artifact.ts --platform win --arch x64 --target zip`, writing a zip into `<dir>`. The version is the one in `apps/desktop/package.json`, then `-factory.g` and the commit's first seven characters, such as `0.1.12-factory.gd9328b9`. It removes the update, signing and GitHub variables, every `T3CODE_*`, `T3_*` and `VITE_*` variable and `ELECTRON_RUN_AS_NODE` from the build's environment, and fails if the output holds `app-update.yml` or a `latest*.yml`. It writes `<dir>/factory-desktop-build.json` last, with the commit, the version, the overlay's hash, each artifact's name, size and SHA-256, and the unpacked app's path: a `<dir>` without that file is a failed build, whatever else it holds. It never starts the app and never publishes.
+- The build sets `T3CODE_DESKTOP_UNTRUSTED_BUNDLE`, which makes upstream's script skip its prepared server compile cache and its bundle self-check. On a Windows host that cache adds about 37 files and upstream's own 80-file check then refuses the app; upstream builds its Windows release on Linux (`release.yml`), where the cache step does not run. The first start in a throwaway profile is what shows the bundled server runs.
+- `factory-desktop-inspect.ts` reads a built app without running it. Point `--app` at the unpacked app's path from `factory-desktop-build.json`. It checks that the executable is `T3 Factory v2.exe` with no `T3 Code*.exe` beside it, that there is no `app-update.yml`, and that the files under `resources/` hold every required literal and no forbidden one. It prints `factory-desktop-inspect: ok (R required, F forbidden)`, or one `missing <literal>` or `forbidden <literal> in <file>` line per problem and exits 1; `--json` prints the same as data. A stock T3 Code build fails it on every forbidden literal.
+
+Run `check`, then `build`, then `factory-desktop-inspect.ts`. Start a new build for the first time only in a throwaway Windows profile, such as a new local user account or a virtual machine, never in the profile where you use T3 Code. Start it from an environment with no `T3CODE_*` variables and no `ELECTRON_RUN_AS_NODE`: an inherited `T3CODE_HOME` points the app at that home, and a terminal opened by T3 Code sets several of these. Install and start stock T3 Code there first, so there is something for the app to leave alone. Record these before the first start and again after quitting the app:
+
+- the registry under `HKEY_CURRENT_USER`, with `reg export HKCU <file>`;
+- the user's `PATH`, from `[Environment]::GetEnvironmentVariable("Path", "User")` in PowerShell;
+- every file, with its size and SHA-256, under `~/.t3`, `~/.t3factory` and each `%APPDATA%\t3code*` folder.
+
+`PATH`, `~/.t3`, `~/.t3factory` and `%APPDATA%\t3code*` must be unchanged. In the registry, any change to the `t3code` link scheme (as opposed to `t3code-factory`) or to a key or value that names `com.t3tools.t3code` is a defect. The app's own data is in `~/.t3factory-v2` and `%APPDATA%\t3factory-v2`. One write outside them is known and left: a background service installed with the app's `t3` keeps its task file in `%LOCALAPPDATA%\t3code`, under Factory's own file name.
+
+### When `check` reports drift
+
+`drift <id> <file>: found K, expected C` means `<file>` no longer holds the text entry `<id>` replaces exactly `C` times, almost always because an upstream sync changed it. Do not build until `check` passes.
+
+1. Read upstream's change to the file: `git log -p <previous tag>..<tag> -- <file>`.
+2. Find the text the entry replaced and what it is now. Set `find` to the new literal, `count` to how often it legitimately occurs if more than once, and `replace` so the entry makes the same change. Keep its `why`. If upstream no longer has the value, or now sets it another way, rewrite or remove the entry and say so in the pull request.
+3. Never shorten a `find` until it matches, and never merge two unrelated edits into one entry. `check` caps the number of entries; if keeping the app apart from T3 Code needs more, rank them and ask the maintainers before raising the cap.
+4. Run `check`, then build, inspect and repeat the first start in a throwaway profile before you use the new build.
+
+Any other line from `check` is a broken rule in `overlay.json` itself, such as a duplicate `id`, a missing `why`, an entry for a file it may not edit, or two entries whose matches overlap.
 
 ## Development server inside the checkout
 
@@ -147,6 +184,7 @@ For `port-in-use`, identify the program listening on the recorded port on that m
 
 - the lockfile equals the merge base with `origin/main`;
 - `node scripts/factory-seams.ts --base origin/main` (at most twelve seam files, each within its `maxAdded` line cap, and all of them together within `maxAddedTotal`);
+- `node scripts/factory-desktop.ts check`, the desktop overlay against the tree ([drift](#when-check-reports-drift));
 - typecheck of contracts, server, client-runtime, web, mobile, scripts and evals;
 - the server's `factory` tests, all `scripts/factory-*.test.ts` tests, and `evals/factory-pack`, which tests every pack workflow: `run`, `sync`, `brief`, `experiment`, `risk`, `self-repair`, `ledger`, `metrics`, `intake`, `signals`, `placement`, `remote-writer` and `reader`;
 - upstream seam unit tests (`ws.test.ts`, `RpcAuthorization.test.ts`, `RpcInstrumentation.test.ts`, `rpc.test.ts`, `client.test.ts`);

@@ -47,6 +47,7 @@ import * as Stream from "effect/Stream";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as Workflows from "../workflows/Workflows.ts";
+import * as FactoryPackInstall from "./FactoryPackInstall.ts";
 import * as FactoryProxy from "./FactoryProxy.ts";
 import * as FactorySignals from "./FactorySignals.ts";
 import * as FactoryTaskStore from "./FactoryTaskStore.ts";
@@ -1042,6 +1043,9 @@ export const layer: Layer.Layer<
   never,
   SqlClient.SqlClient | Workflows.Workflows | FileSystem.FileSystem | Path.Path
 > = Layer.effect(FactoryTasks, make).pipe(Layer.provide(NodeCrypto.layer));
+
+/** Built ahead of the workflow runtime, so the runtime's first read finds this build's pack. */
+export const layerBundledPack = Layer.effectDiscard(FactoryPackInstall.installBundled);
 
 export const wsHandlers = (service: FactoryTasks["Service"]) => ({
   [FACTORY_WS_METHODS.factoryTasksSubscribe]: (_input: FactoryTasksSubscribeInput) => service.watch,

@@ -299,6 +299,17 @@ The board itself works without workflows: create, edit, move and annotate tasks.
 
 The model proxy does not need Workflows on.
 
+## The desktop app
+
+T3 Factory v2 is a desktop app of its own, for Windows x64 only. It is not signed. It runs beside T3 Code and T3 Factory v1 and does not take over their data, profile, links or `t3` command. It comes as a zip, `T3-Factory-v2-<version>-x64.zip`: unpack it into a folder and start `T3 Factory v2.exe`.
+
+- **Where it keeps its data.** Its home is `~/.t3factory-v2`, and its window profile is `%APPDATA%\t3factory-v2`. A T3 Factory server started another way, such as with the app's own `t3` command, uses the same home by default. Only one of them can run on the home at a time, so quit the app before starting another server on it, and the reverse.
+- **Links.** The app opens `t3code-factory://` links, and `t3code://` links still go to T3 Code. The app link its server prints starts with `t3code-factory://pair`. The QR code and the pairing URL beside it are unchanged, so a phone pairs through the T3 Code mobile app as usual; the app link itself does nothing on a phone.
+- **Updates.** The app does not update itself. To move to a new build, quit the app, unpack the new zip into a new folder and start it from there. It uses the same home and profile, so your threads and settings stay. Delete the old folder once you no longer need it.
+- **The `t3` command.** The app does not add `t3` to your `PATH` by itself. To use it from a terminal, choose **Install** next to **t3 command** in **Settings → About**, as for [T3 Code](install.md#the-t3-command).
+- **Workflows.** Workflows are on unless you turn them off, and the app installs the Factory workflows into `~/.t3factory-v2\workflows` each time it starts. It adds missing files, updates its own and removes the ones it no longer ships. If a file there is not from the pack and differs from it, nothing is installed and the server log names the file; move it away and restart the app. If `T3CODE_WORKFLOWS` points the server at another folder, nothing is installed.
+- **Model proxy.** The app cannot install the [model proxy](#model-proxy): a packaged build has no pinned manifest, so **Install** refuses. Use a server run from a Factory checkout for it.
+
 ## Limits
 
 - There is no Work screen on mobile yet. Questions and runs on mobile are the ones workflows already show.

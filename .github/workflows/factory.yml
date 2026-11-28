@@ -48,6 +48,9 @@ jobs:
       - name: Check upstream seams
         run: node scripts/factory-seams.ts --base origin/main
 
+      - name: Check desktop overlay
+        run: node scripts/factory-desktop.ts check
+
       - name: Typecheck
         run: vp run --filter @t3tools/contracts --filter @t3tools/client-runtime --filter @t3tools/mobile --filter t3 --filter @t3tools/web --filter @t3tools/scripts --filter @t3tools/evals typecheck
 

@@ -1,0 +1,160 @@
+{
+  "v": 1,
+  "entries": [
+    {
+      "id": "desktop-home",
+      "file": "apps/desktop/src/app/DesktopStatePaths.ts",
+      "find": "input.joinPath(input.homeDirectory, \".t3\")",
+      "replace": "input.joinPath(input.homeDirectory, \".t3factory-v2\")",
+      "why": "Factory needs its own state, settings and logs."
+    },
+    {
+      "id": "server-home",
+      "file": "apps/server/src/os-jank.ts",
+      "find": "return join(yield* HostProcess.HomeDirectory, \".t3\");",
+      "replace": "return join(yield* HostProcess.HomeDirectory, \".t3factory-v2\");",
+      "why": "The bundled server and CLI must default to the same home as the desktop app."
+    },
+    {
+      "id": "profile",
+      "file": "apps/desktop/src/app/DesktopUserData.ts",
+      "find": "    const names = input.isDevelopment\n      ? { current: \"t3code-dev\", legacy: \"T3 Code (Dev)\" }\n      : { current: \"t3code-v2\", legacy: \"T3 Code (Alpha)\" };",
+      "replace": "    if (!input.isDevelopment) return path.join(input.appDataDirectory, \"t3factory-v2\");\n    const names = { current: \"t3code-dev\", legacy: \"T3 Code (Dev)\" };",
+      "why": "Select a fresh packaged profile before inspecting either stock profile for encryption keys."
+    },
+    {
+      "id": "legacy-storage",
+      "file": "apps/desktop/src/app/DesktopLegacyLocalStorage.ts",
+      "find": "const V1_PROFILE_NAMES = [\"T3 Code (Alpha)\", \"t3code\"];",
+      "replace": "const V1_PROFILE_NAMES: readonly string[] = [];",
+      "why": "Factory must never import drafts or settings from an existing T3 Code profile."
+    },
+    {
+      "id": "first-launch-cli",
+      "file": "apps/desktop/src/app/DesktopApp.ts",
+      "find": "const installCli = (yield* DesktopCliCommand.DesktopCliCommand).installOnFirstLaunch;",
+      "replace": "const installCli = environment.isPackaged ? Effect.void : (yield* DesktopCliCommand.DesktopCliCommand).installOnFirstLaunch;",
+      "why": "Only an explicit Settings action may install the command or change PATH."
+    },
+    {
+      "id": "service-task",
+      "file": "apps/server/src/serviceLauncher.ts",
+      "find": "`t3code-${domain}-${userName}`",
+      "replace": "`t3factory-v2-${domain}-${userName}`",
+      "why": "Each Windows user needs a separate Factory task for install, repair and stop."
+    },
+    {
+      "id": "service-unit",
+      "file": "apps/server/src/cloud/bootService.ts",
+      "find": "const BOOT_SERVICE_NAME = \"t3code\";",
+      "replace": "const BOOT_SERVICE_NAME = \"t3factory-v2\";",
+      "why": "The Factory service manager and its launcher must select a distinct task XML file."
+    },
+    {
+      "id": "app-id",
+      "file": "scripts/build-desktop-artifact.ts",
+      "find": "const DESKTOP_APP_ID = \"com.t3tools.t3code\";",
+      "replace": "const DESKTOP_APP_ID = \"io.github.codeseys-labs.t3factory.v2\";",
+      "why": "The Windows package needs its own application identity."
+    },
+    {
+      "id": "app-user-model-id",
+      "file": "apps/desktop/src/app/DesktopEnvironment.ts",
+      "find": "isDevelopment ? \"com.t3tools.t3code.dev\" : \"com.t3tools.t3code\"",
+      "replace": "isDevelopment ? \"com.t3tools.t3code.dev\" : \"io.github.codeseys-labs.t3factory.v2\"",
+      "why": "Windows must group packaged Factory windows and notifications separately."
+    },
+    {
+      "id": "scheme",
+      "file": "apps/desktop/src/electron/ElectronProtocol.ts",
+      "find": "const DESKTOP_PRODUCTION_SCHEME = \"t3code\";",
+      "replace": "const DESKTOP_PRODUCTION_SCHEME = \"t3code-factory\";",
+      "why": "Packaged Factory needs its own link handler and renderer origin."
+    },
+    {
+      "id": "packaged-updates",
+      "file": "apps/desktop/src/updates/DesktopUpdates.ts",
+      "find": "  if (!args.hasUpdateFeedConfig) {",
+      "replace": "  if (args.isPackaged) return \"Automatic updates are disabled in T3 Factory v2.\";\n  if (!args.hasUpdateFeedConfig) {",
+      "why": "A managed feed or a runtime mock must never enable updates in the Factory package."
+    },
+    {
+      "id": "product-name",
+      "file": "apps/desktop/package.json",
+      "find": "\"productName\": \"T3 Code (Beta)\"",
+      "replace": "\"productName\": \"T3 Factory v2\"",
+      "why": "The packaged executable must be recognizable alongside T3 Code."
+    },
+    {
+      "id": "window-name",
+      "file": "apps/desktop/src/app/DesktopEnvironment.ts",
+      "find": "    baseName: APP_BASE_NAME,\n    stageLabel,\n    displayName: `${APP_BASE_NAME} (${stageLabel})`,",
+      "replace": "    baseName: input.isDevelopment ? APP_BASE_NAME : \"T3 Factory v2\",\n    stageLabel,\n    displayName: input.isDevelopment ? `${APP_BASE_NAME} (${stageLabel})` : \"T3 Factory v2\",",
+      "why": "The main window and About panel must identify the running Factory app."
+    },
+    {
+      "id": "artifact-name",
+      "file": "scripts/build-desktop-artifact.ts",
+      "find": "artifactName: \"T3-Code-${version}-${arch}.${ext}\"",
+      "replace": "artifactName: \"T3-Factory-v2-${version}-${arch}.${ext}\"",
+      "why": "A Factory zip must have a distinct release filename."
+    },
+    {
+      "id": "recovery-releases",
+      "file": "apps/desktop/src/app/DesktopStartupRecovery.ts",
+      "find": "const RELEASES_URL = \"https://github.com/pingdotgg/t3code/releases\";",
+      "replace": "const RELEASES_URL = \"https://github.com/Codeseys-Labs/t3factory/releases\";",
+      "why": "Recovery must send the user to Factory releases."
+    },
+    {
+      "id": "workflows",
+      "file": "packages/contracts/src/settings.ts",
+      "find": "workflowsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false)))",
+      "replace": "workflowsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true)))",
+      "why": "A new Factory home must enable workflows without writing a preference."
+    },
+    {
+      "id": "renderer-origin",
+      "file": "apps/server/src/httpCors.ts",
+      "find": "export const DESKTOP_RENDERER_ORIGINS = [\"t3code://app\", \"t3code-dev://app\"] as const;",
+      "replace": "export const DESKTOP_RENDERER_ORIGINS = [\"t3code-factory://app\", \"t3code://app\", \"t3code-dev://app\"] as const;",
+      "why": "The window loads from the Factory scheme, so the server must trust that origin or it refuses its own app."
+    },
+    {
+      "id": "provider-auth-return",
+      "file": "packages/shared/src/providerAuthReturnUrl.ts",
+      "find": "const desktop = [\"t3code:\", \"t3code-dev:\"].includes(url.protocol) && url.host === \"app\";",
+      "replace": "const desktop = [\"t3code-factory:\", \"t3code:\", \"t3code-dev:\"].includes(url.protocol) && url.host === \"app\";",
+      "why": "A provider sign-in must be able to return to the Factory window."
+    },
+    {
+      "id": "pairing-app-link",
+      "file": "packages/shared/src/remote.ts",
+      "find": "`t3code://pair?${new URLSearchParams(",
+      "replace": "`t3code-factory://pair?${new URLSearchParams(",
+      "why": "An app link printed by a Factory server must open Factory, not T3 Code (#141)."
+    },
+    {
+      "id": "cli-release-source",
+      "file": "packages/shared/src/cliRelease.ts",
+      "find": "const CLI_RELEASE_REPOSITORY = \"pingdotgg/t3code\";",
+      "replace": "const CLI_RELEASE_REPOSITORY = \"Codeseys-Labs/t3factory\";",
+      "why": "The bundled t3 update and the service must never download a stock T3 Code runtime."
+    },
+    {
+      "id": "recovery-title",
+      "file": "apps/desktop/src/app/DesktopStartupRecovery.ts",
+      "find": "m(msg(\"T3 Code could not start\"))",
+      "replace": "m(msg(\"T3 Factory could not start\"))",
+      "count": 2,
+      "why": "The recovery screen must name the app that failed (#204)."
+    },
+    {
+      "id": "startup-failure-title",
+      "file": "apps/desktop/src/app/DesktopApp.ts",
+      "find": "m(msg(\"T3 Code failed to start\"))",
+      "replace": "m(msg(\"T3 Factory failed to start\"))",
+      "why": "The fatal startup dialog must name the app that failed (#204)."
+    }
+  ]
+}

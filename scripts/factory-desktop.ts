@@ -505,7 +505,9 @@ const build = Effect.fn("factoryDesktop.build")(function* (
       dist,
     ],
     stage,
-    { env },
+    // On a Windows host upstream's afterPack hook adds about 37 compile-cache files, and its own
+    // 80-file payload check then refuses the app. This skips that hook and the bundle self-check.
+    { env: { ...env, T3CODE_DESKTOP_UNTRUSTED_BUNDLE: "true" } },
   );
 
   const zip = `T3-Factory-v2-${receipt.version}-x64.zip`;

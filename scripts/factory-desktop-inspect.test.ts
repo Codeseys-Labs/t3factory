@@ -79,15 +79,15 @@ it.effect.each(DEFAULT_INSPECT_RULES.required)(
     }),
 );
 
-const forbiddenQuoteCases = DEFAULT_INSPECT_RULES.forbidden.flatMap((rule) =>
-  (['"', "'", "`"] as const).map((quote) => ({
-    name: `${rule.literal} with ${quote} quotes`,
+const forbiddenPatternCases = DEFAULT_INSPECT_RULES.forbidden.flatMap((rule) =>
+  (rule.patterns ?? [rule.literal]).map((snippet) => ({
+    name: `${rule.literal} as ${snippet}`,
     rule,
-    snippet: `${quote}${rule.literal}${quote}`,
+    snippet,
   })),
 );
 
-it.effect.each(forbiddenQuoteCases)(
+it.effect.each(forbiddenPatternCases)(
   "reports forbidden literal with its file ($name)",
   ({ rule, snippet }) =>
     Effect.sync(() => {
@@ -143,7 +143,7 @@ it.effect("does not find a literal split across two resource files", () =>
   }),
 );
 
-it.effect("does not trip com.t3tools.t3code on com.t3tools.t3code.dev or prefixed suffixes", () =>
+it.effect("does not trip on a stock name held in a form the app's code does not use", () =>
   Effect.sync(() => {
     const result = scanDesktopApp(
       validInput({
@@ -154,6 +154,8 @@ it.effect("does not trip com.t3tools.t3code on com.t3tools.t3code.dev or prefixe
           "`com.t3tools.t3code.dev`",
           '"com.t3tools.t3code.service"',
           '"https://play.google.com/store/apps/details?id=com.t3tools.t3code"',
+          '${If} $1 == "T3 Code (Alpha)"',
+          "Where-Object { $$_ -in 'T3 Code (Alpha)', 'T3 Code (Beta)' }",
         ].join("\n"),
       }),
     );

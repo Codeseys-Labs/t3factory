@@ -155,6 +155,13 @@
       "find": "m(msg(\"T3 Code failed to start\"))",
       "replace": "m(msg(\"T3 Factory failed to start\"))",
       "why": "The fatal startup dialog must name the app that failed (#204)."
+    },
+    {
+      "id": "usage-data-off",
+      "file": "apps/server/src/telemetry/AnalyticsService.ts",
+      "find": "const enabledByDefault = !isCiEnvironment(hostEnvironment);",
+      "replace": "const enabledByDefault = false;",
+      "why": "Usage events go to T3 Code's own collector under T3 Code's key; a Factory build must not report there unless T3CODE_TELEMETRY_ENABLED asks for it."
     }
   ]
 }

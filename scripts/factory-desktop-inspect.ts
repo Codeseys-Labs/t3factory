@@ -161,7 +161,8 @@ export const DEFAULT_INSPECT_RULES: InspectRules = {
     },
     {
       literal: "T3 Code (Alpha)",
-      patterns: quotedForms("T3 Code (Alpha)"),
+      // The packaged installer.nsh names this product too, so match only how the app's code holds it.
+      patterns: ['["T3 Code (Alpha)"', 'legacy: "T3 Code (Alpha)"', 'legacy:"T3 Code (Alpha)"'],
       reason: "Factory must not read or take over stock T3 Code (Alpha) profiles or Local Storage.",
     },
     {
@@ -184,6 +185,8 @@ export const DEFAULT_INSPECT_RULES: InspectRules = {
     {
       literal: "pingdotgg/t3code",
       patterns: quotedForms("pingdotgg/t3code"),
+      // The web client in server.asar keeps its star prompt and release-notes links.
+      excludeFiles: ["resources/server.asar"],
       reason: "The bundled t3 update and service must not download a stock T3 Code runtime.",
     },
   ],

@@ -309,6 +309,8 @@ T3 Factory v2 is a desktop app of its own, for Windows x64 only. It is not signe
 - **The `t3` command.** The app does not add `t3` to your `PATH` by itself. To use it from a terminal, choose **Install** next to **t3 command** in **Settings → About**, as for [T3 Code](install.md#the-t3-command).
 - **Workflows.** Workflows are on unless you turn them off, and the app installs the Factory workflows into `~/.t3factory-v2\workflows` each time it starts. It adds missing files, updates its own and removes the ones it no longer ships. If a file there is not from the pack and differs from it, nothing is installed and the server log names the file; move it away and restart the app. If `T3CODE_WORKFLOWS` points the server at another folder, nothing is installed.
 - **Model proxy.** The app cannot install the [model proxy](#model-proxy): a packaged build has no pinned manifest, so **Install** refuses. Use a server run from a Factory checkout for it.
+- **Usage data.** The app sends no usage data. Its server reports usage only if `T3CODE_TELEMETRY_ENABLED` is `true` in its environment, and those reports go to T3 Code's collector.
+- **What it calls itself.** The window title, the taskbar and the startup failure messages say T3 Factory. Text inside the window still says T3 Code, including the welcome screen's note that it collects usage data.
 
 ## Limits
 

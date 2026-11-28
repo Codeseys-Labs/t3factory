@@ -204,21 +204,28 @@ it.layer(NodeServices.layer)("FactoryPackInstall", (it) => {
     }),
   );
 
-  it.effect("keeps a file whole when its write fails, and installs on the next start", () =>
+  it.effect.each([
+    { label: "its write", failRename: false },
+    { label: "the rename into place", failRename: true },
+  ])("keeps a file whole when $label fails, and installs on the next start", ({ failRename }) =>
     Effect.gen(function* () {
       const { fs, path, home, workflows } = yield* setup;
       yield* FactoryPackInstall.install({ pack: PACK, home, workflows });
       const next = { ...PACK, "run.ts": "changed" };
-      const torn = FileSystem.FileSystem.of({
+      const failing = FileSystem.FileSystem.of({
         ...fs,
-        writeFile: (file, data, options) =>
-          Effect.andThen(
-            fs.writeFile(file, data.subarray(0, 1), options),
-            Effect.fail(denied(file)),
-          ),
+        ...(failRename
+          ? { rename: (from: string) => Effect.fail(denied(from)) }
+          : {
+              writeFile: (file, data, options) =>
+                Effect.andThen(
+                  fs.writeFile(file, data.subarray(0, 1), options),
+                  Effect.fail(denied(file)),
+                ),
+            }),
       });
       yield* FactoryPackInstall.install({ pack: next, home, workflows }).pipe(
-        Effect.provideService(FileSystem.FileSystem, torn),
+        Effect.provideService(FileSystem.FileSystem, failing),
       );
       assert.strictEqual(yield* fs.readFileString(path.join(workflows, "run.ts")), "workflow");
       assert.deepStrictEqual((yield* fs.readDirectory(workflows)).toSorted(), [

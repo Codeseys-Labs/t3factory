@@ -42,7 +42,7 @@ The server reloads changed top-level workflow files without a restart, but not t
 - Running `install` again updates the pack files and removes ones the pack no longer ships, as long as each still holds what the last install wrote.
 - A file in `workflows` that differs from the pack and is not what the last install wrote is a conflict, whether it was never the pack's or is a pack file edited since: nothing is written or removed, and the paths are listed. `--force` overwrites and removes them.
 - `status` prints `same`, `changed`, `missing` or `stale` per file and exits 1 unless all are `same`.
-- `uninstall` removes the files the manifest lists that still hold what the pack installed, prints the path of each one it kept because it was changed, and prints a restart warning if it removed helpers under `lib/`.
+- `uninstall` removes the files the manifest lists that still hold what the pack installed, prints the path of each one it kept because it was changed, and prints a restart warning if it removed helpers under `lib/`. A kept file is then a conflict for the next install, on a server start too, until it is moved or `--force` is used.
 - The skill is copied by `install` and left alone by `status` and `uninstall`.
 
 `factory-task` and `factory-task-part` are at version 6 and `factory-intake` at version 2, and the pack ships no earlier version of them. The server holds a changed file back while unfinished runs still use a version it would remove, so update a home only when no run of an old version is unfinished. `t3 workflow list` shows which runs have not ended. This update also changes files under `lib/`, so restart the server after installing it.
